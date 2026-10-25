@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-10-24T18:04:04Z",
+  "change": "vpnd-review-signal-cleanup",
+  "commit_sha": "f6f6a8e77c3d8deaa2ddf37582e17f94c78fccbc",
+  "outcome": "review",
+  "schema": 1,
+  "task_id": "SEC-1792842686096891"
+}

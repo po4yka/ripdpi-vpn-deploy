@@ -44,10 +44,11 @@
       "jmax": 70,
       "s1": 50,
       "s2": 100,
-      "h1": 11,
-      "h2": 12,
-      "h3": 13,
-      "h4": 14
+      "h1": "11",
+      "h2": "12",
+      "h3": "13",
+      "h4": "14",
+      "wire_profile": "awg-3.1-ranges-v1"
     },
     {
       "name": "narrow-junk-sequential",
@@ -56,11 +57,29 @@
       "jmax": 50,
       "s1": 0,
       "s2": 0,
-      "h1": 1,
-      "h2": 2,
-      "h3": 3,
-      "h4": 4
+      "h1": "1",
+      "h2": "2",
+      "h3": "3",
+      "h4": "4",
+      "wire_profile": "awg-3.1-ranges-v1"
     }
   ],
-  "go_module_proxy": "https://goproxy.cn"
+  "go_module_proxy": "https://goproxy.cn",
+  "range_signature_shape": {
+    "wire_profile": "awg-3.1-ranges-v1",
+    "jc": 4,
+    "jmin": 40,
+    "jmax": 70,
+    "s1": 50,
+    "s2": 100,
+    "h1": "1000-1999",
+    "h2": "2000-2999",
+    "h3": "3000-3999",
+    "h4": "4000-4999",
+    "i1": "<b 0xaabbcc01><r 4><rd 2><rc 2><t>",
+    "i2": "<b 0xaabbcc02><r 4><rd 2><rc 2><t>",
+    "i3": "<b 0xaabbcc03><r 4><rd 2><rc 2><t>",
+    "i4": "<b 0xaabbcc04><r 4><rd 2><rc 2><t>",
+    "i5": "<b 0xaabbcc05><r 4><rd 2><rc 2><t>"
+  }
 }

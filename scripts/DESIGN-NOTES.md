@@ -139,6 +139,11 @@ substitution cannot receive secrets or be reported as the prepared root.
 
 ## Client emission — `emit-bundle.sh`, `emit-singbox.sh`
 
+Xray pin parity reads exactly one repository-pin heading. Upstream Latest is
+a separate release fact and never authorizes promotion or bypasses staging.
+
+AWG delivery uses bundle version 2 and the named range/signature profile. Header values are canonical strings; signature programs retain their exact supported tags. Source admission requires the reviewed source pair for ranges or signatures. Standalone native configuration omits the JSON profile marker. Keep schema, fingerprint and paired consumer mirrors aligned; numeric legacy headers require a fresh export.
+
 **Bundle topology is host-order independent** — `emit-bundle.sh` aggregates
 split-hop ingress and realm metadata across every `HOSTS` entry. Never infer
 client-facing topology from the first host; conflicting non-null realm IDs

@@ -834,7 +834,7 @@ def test_emit_bundle_roundtrip_preserves_singbox_args_and_extension(tmp_path):
     }
 
     ripdpi = bundle["ripdpi"]
-    assert ripdpi["schema_version"] == 1
+    assert ripdpi["schema_version"] == 2
     assert len(ripdpi["amneziawg"]) == 1
     assert ripdpi["amneziawg"][0]["cohort_fingerprint"].startswith("sha256:")
     assert ripdpi["hysteria_extras"] == {

@@ -1,6 +1,6 @@
 # RIPDPI Bundle — server-side schema specification
 
-> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-23
 
 > **The executable contract is [`contract/ripdpi-bundle.schema.json`](../../contract/ripdpi-bundle.schema.json)** — a JSON Schema (draft 2020-12) that is the single source of truth for the `ripdpi` object. This document is its prose companion. The schema is vendored byte-identical into the RIPDPI Android client repo and validated by a contract test in **both** CIs (`scripts/validate-bundle.py` + `tests/unit/test_bundle_schema.py` here; `RipdpiBundleContractTest` there), so the contract cannot drift silently between the two repos. When you change the shape of the `ripdpi` object, change the schema first.
 
@@ -30,7 +30,7 @@ transport. Operators serving those clients must use the `/sub` plain endpoint.
 
   // --- RIPDPI extension ---
   "ripdpi": {
-    "schema_version": 1,
+    "schema_version": 2,
     "amneziawg":      [ <AWGEntry>, ... ],
     "hysteria_extras": { "<tag>": <HysteriaExtras>, ... },
     "topology":       <Topology>,        // declares split-hop / realm relay
@@ -42,24 +42,17 @@ transport. Operators serving those clients must use the `/sub` plain endpoint.
 The validator also checks protocol semantics without changing the JSON schema:
 AWG public and preshared keys use canonical base64 for exactly 32 bytes;
 endpoints have a valid host and port; addresses and allowed networks use valid
-CIDRs; junk bounds are ordered and header values are distinct. DNS addresses,
+CIDRs; junk bounds are ordered and header ranges do not overlap. DNS addresses,
 port-hop ranges and calendar expiry must be valid. Refusals report categories
 without credential values. Public examples use deterministic synthetic keys.
 
 ## `ripdpi.schema_version`
 
-Integer.  Currently `1`.  The RIPDPI client rejects (ignores) a `ripdpi` block
-whose `schema_version` it does not recognise.
-
-**Additive evolution stays at version 1.** Every field added after the initial
-release — `cohort_fingerprint`, `salamander_upstream_tag`, `topology`,
-`expires` — is *optional and additive*: an old client ignores it, a new client
-reads it, and both keep working. Only a **breaking** change (renaming or
-removing a field, changing a type, tightening a required set) bumps
-`schema_version` to `2`, and the client parser must learn version `2` *before*
-the server starts emitting it. The `x-contract-version` integer in the schema
-is the cross-repo pin: the server contract test and the client both assert it
-equals the version they support.
+Integer. Currently `2`. The client rejects other versions. Version 2 changes
+AWG headers from JSON integers to canonical strings and requires the named wire
+profile. Update the producer and consumer together, then export a fresh bundle;
+there is no version 1 fallback. The `x-contract-version` schema field is the
+paired version pin. The nested payload-failover contract retains its own version.
 
 ## `ripdpi.payload_failover`
 
@@ -169,20 +162,20 @@ instance, using the same resolver as the standalone and liveness clients.
   // AmneziaWG obfuscation parameters — must match the server awg0.conf exactly.
   // Resolved with three-level precedence (SOPS > cohort YAML > hard default):
   //   jc=4  jmin=40  jmax=70  s1=50  s2=100  (H1..H4 have no hard default)
+  "wire_profile": "awg-3.1-ranges-v1",
   "jc":   4,
   "jmin": 40,
   "jmax": 70,
   "s1":   50,
   "s2":   100,
-  "h1":   <integer>,
-  "h2":   <integer>,
-  "h3":   <integer>,
-  "h4":   <integer>,
+  "h1":   "1000-1999",
+  "h2":   "2000-2999",
+  "h3":   "3000-3999",
+  "h4":   "4000-4999",
 
-  // I1..I5 — special-junk packet definitions, lowercase-hex STRINGS (the
-  // client parses them as strings and the schema types them ^[0-9a-f]+$).
+  // I1..I5 are bounded canonical tag programs.
   // Present only when configured in SOPS or the cohort YAML; omitted when absent.
-  "i1": "<hex>",   // optional
+  "i1": "<b 0xaabb><r 8><rd 2><rc 2><t>",   // optional
   // ... i2..i5 follow the same rule
 
   // Fingerprint of the resolved obfuscation parameter set above (see below).
@@ -202,6 +195,22 @@ instance, using the same resolver as the standalone and liveness clients.
 }
 ```
 
+Header ranges must be disjoint unsigned 32-bit intervals. Singletons from 0
+through 4 are legal only for their own standard message type; other ranges
+start above 4. Use one decimal value for a singleton, with no leading zero.
+Programs use `<b 0x...>` with lowercase even-length hex, `<r N>` for arbitrary
+bytes, `<rd N>` for ASCII digits, `<rc N>` for ASCII letters, and `<t>` for the
+four-byte big-endian Unix timestamp. Programs contain at most 4096 characters,
+64 tags, and 1280 output bytes. Each count is positive. Spaces occur only inside
+tags as shown. S3/S4 remain zero. Header protection, custom timers, content
+padding, random trailers, and disabled cookies are outside this profile.
+
+The server admits ranges and signatures only for the reviewed source pair in
+`tests/integration/awg_source_candidate/sources.json`. That source remains a
+candidate; local interoperation does not establish production or physical-device
+eligibility. Native `.conf` files carry the supported wire fields and omit the
+JSON profile marker.
+
 ### Cohort fingerprint
 
 `cohort_fingerprint` is a SHA-256 over the resolved AWG obfuscation parameter
@@ -215,11 +224,12 @@ retries" in the lucky case and a full handshake failure in the unlucky one).
 Canonical pre-image (UTF-8, no trailing newline):
 
 ```
-jc=<jc>&jmin=<jmin>&jmax=<jmax>&s1=<s1>&s2=<s2>&h1=<h1>&h2=<h2>&h3=<h3>&h4=<h4>&i1=<i1>&i2=<i2>&i3=<i3>&i4=<i4>&i5=<i5>
+wire_profile=awg-3.1-ranges-v1&jc=<jc>&jmin=<jmin>&jmax=<jmax>&s1=<s1>&s2=<s2>&h1=<h1>&h2=<h2>&h3=<h3>&h4=<h4>&i1=<i1>&i2=<i2>&i3=<i3>&i4=<i4>&i5=<i5>
 ```
 
-Each numeric value is base-10 with no leading zeros; each `i`-value is its
-lowercase-hex string, or the empty string when absent. The fingerprint is
+Each scalar is base-10 with no leading zeros. Each header is a canonical
+singleton or closed range string. Each `i`-value is its canonical tag program,
+or the empty string when absent. The fingerprint is
 `"sha256:" + hex(sha256(pre-image))`. The **one** implementation is
 `scripts/ripdpi_cohort_fingerprint.py` (called by `emit-bundle.sh` and pinned
 by the contract test); the client reimplements the identical algorithm and

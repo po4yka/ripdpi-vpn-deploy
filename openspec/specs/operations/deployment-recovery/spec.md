@@ -3,7 +3,11 @@
 ## Purpose
 Keep deployment phases ordered and retain complete accepted VPN authority when
 candidate publication fails, while preserving exact environment recovery state.
+Deliver admitted recipient hopping policies without silent loss or partial
+publication.
+
 ## Requirements
+
 ### Requirement: REQ-DR-ORDER — Run dependent phases in order
 
 Blue-green MUST complete init, plan, apply, dry-run and deploy in dependency order
@@ -115,14 +119,22 @@ Convergence MUST repair old modes without changing recipient bytes.
 
 ### Requirement: REQ-DR-HOPPING-ADMISSION — Refuse unsupported recipient hopping
 
-RIPDPI export MUST refuse Hysteria port hopping before recipient publication.
-Official sing-box export MUST retain supported hopping. Other existing format
-and transport compatibility checks MUST remain effective.
+RIPDPI and official sing-box export MUST retain the admitted Hysteria hopping range and interval. RIPDPI export MUST enforce the qualified client interval limits. Invalid recipient hopping MUST fail before publication. Other existing format and transport compatibility checks MUST remain effective. A failed replacement MUST preserve the prior recipient artifact; credentials MUST NOT appear in the failure result.
 
 #### Scenario: RIPDPI recipient selects a hopping profile
 
-- **WHEN** a selected Hysteria profile has a nonempty port range and format ripdpi
-- **THEN** generation fails without publishing a partial recipient artifact
+- **WHEN** a selected Hysteria profile has a valid nonempty port range and format ripdpi
+- **THEN** generation preserves identical port and interval semantics in standard fields and extras
+
+#### Scenario: Replacement has an invalid interval
+
+- **WHEN** a replacement hopping profile fails interval admission
+- **THEN** generation emits no partial payload and leaves the prior published recipient artifact intact
+
+#### Scenario: Hopping is disabled
+
+- **WHEN** the selected profile has no hopping port range
+- **THEN** the recipient keeps its fixed server port without hopping fields
 
 ### Requirement: REQ-DR-RESTORE-COMPLETE — Verify all selected restore inputs
 

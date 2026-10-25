@@ -10,9 +10,9 @@ Primary owns `scripts/client_payload.py`, `tests/unit/test_recipient_port_hoppin
 
 ## Execution
 
-- [ ] OPS-1792820856126759 Export the admitted hopping policy with exact interval validation and recipient regression tests #feature !high @item:OPS-1792820562787120
-- [ ] OPS-1792820857234441 Verify paired native client traffic and import parity before producer release admission #feature !high @item:OPS-1792820562787120
-- [ ] OPS-1792820858662402 Deliver qualified producer and client changes through passing PRs to main #feature !high @item:OPS-1792820562787120
+- [x] OPS-1792820856126759 Export the admitted hopping policy with exact interval validation and recipient regression tests #feature !high @item:OPS-1792820562787120
+- [x] OPS-1792820857234441 Verify paired native client traffic and import parity before producer release admission #feature !high @item:OPS-1792820562787120
+- [x] OPS-1792820858662402 Deliver qualified producer and client changes through passing PRs to main #feature !high @item:OPS-1792820562787120
 
 ## Verification
 

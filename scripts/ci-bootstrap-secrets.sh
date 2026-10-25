@@ -11,7 +11,7 @@
 #     covering the ${SERVER_NAME} the workflow uses
 #   * distinct internal normalizer/gateway passwords
 #   * Hysteria client password
-#   * AmneziaWG server private key + four random H1-H4 ints + one
+#   * AmneziaWG server private key + four random H1-H4 singleton strings + one
 #     peer (the role itself is disabled in the CI deploy via
 #     group_vars, but the schema still needs the fields)
 #   * naive_secrets fields (role disabled)
@@ -277,10 +277,11 @@ amneziawg_secrets:
       jmax: 70
       s1: 50
       s2: 100
-      h1: ${H1}
-      h2: ${H2}
-      h3: ${H3}
-      h4: ${H4}
+      wire_profile: awg-3.1-ranges-v1
+      h1: "${H1}"
+      h2: "${H2}"
+      h3: "${H3}"
+      h4: "${H4}"
       peers:
         - name: ${CLIENT_NAME}
           public_key: "${peer_pub}"

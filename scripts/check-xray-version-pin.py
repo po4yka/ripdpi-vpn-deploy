@@ -2,7 +2,7 @@
 """Check that the Xray-core version pin is consistent.
 
 Extracts the "current" pinned version asserted in docs/reference/xray-release-line.md
-(the heading marked "(current Latest") and compares it to the canonical
+(the heading marked "(repository pin)") and compares it to the canonical
 in-repo pin at secrets/prod.secrets.example.yaml → xray.version.
 
 Source-of-truth table (from CLAUDE.md):
@@ -24,19 +24,19 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 RELEASE_LINE_DOC = REPO_ROOT / "docs/reference/xray-release-line.md"
 EXAMPLE_PIN_FILE = REPO_ROOT / "secrets" / "prod.secrets.example.yaml"
 
-# Matches a version heading that is marked as the current Latest, e.g.:
-#   ## v26.3.27 — ~2026-03-27 (current Latest as of 2026-05-10)
+# Matches a version heading that is marked as the repository pin, e.g.:
+#   ## v26.3.27 — ~2026-03-27 (repository pin)
 # The version token is the first group.
 _CURRENT_HEADING_RE = re.compile(
-    r"^##\s+(v[\d.]+)[^\n]*\(current Latest",
+    r"^##\s+(v[\d.]+)[^\n]*\(repository pin\)",
     re.MULTILINE,
 )
 
 
 def extract_doc_version(text: str) -> str | None:
-    """Return the version string from the '(current Latest' heading, or None."""
-    m = _CURRENT_HEADING_RE.search(text)
-    return m.group(1) if m else None
+    """Return the version string from the '(repository pin)' heading, or None."""
+    matches = _CURRENT_HEADING_RE.findall(text)
+    return matches[0] if len(matches) == 1 else None
 
 
 def extract_pin_version(data: dict) -> str | None:
@@ -60,9 +60,9 @@ def main() -> int:
     doc_version = extract_doc_version(doc_text)
     if doc_version is None:
         print(
-            f"could not find a '(current Latest' heading in {RELEASE_LINE_DOC}\n"
+            f"expected exactly one '(repository pin)' heading in {RELEASE_LINE_DOC}\n"
             "Expected a heading of the form:\n"
-            "  ## vX.Y.Z — <date> (current Latest as of <date>)",
+            "  ## vX.Y.Z — <date> (repository pin)",
             file=sys.stderr,
         )
         return 1
@@ -79,14 +79,14 @@ def main() -> int:
     if doc_version == pin_version:
         print(
             f"OK — Xray-core version pin is consistent: {pin_version}\n"
-            f"  docs/reference/xray-release-line.md current Latest : {doc_version}\n"
+            f"  docs/reference/xray-release-line.md repository pin : {doc_version}\n"
             f"  secrets/prod.secrets.example.yaml xray.version: {pin_version}"
         )
         return 0
 
     print(
         f"MISMATCH — Xray-core version pin is inconsistent:\n"
-        f"  docs/reference/xray-release-line.md current Latest : {doc_version}\n"
+        f"  docs/reference/xray-release-line.md repository pin : {doc_version}\n"
         f"  secrets/prod.secrets.example.yaml xray.version: {pin_version}\n"
         f"\n"
         f"Update one of the two files so they agree, then re-run this check.\n"

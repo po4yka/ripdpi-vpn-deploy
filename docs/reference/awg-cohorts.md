@@ -1,8 +1,8 @@
 # AmneziaWG cohort obfuscation profiles
 
-> **Status:** Current · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-10-23
 
-The `amneziawg_secrets.instances[].{jc,jmin,jmax,s1,s2,h1,h2,h3,h4}` block is what
+The `amneziawg_secrets.instances[].{wire_profile,jc,jmin,jmax,s1,s2,h1,h2,h3,h4,i1,i2,i3,i4,i5}` block is what
 turns plain WireGuard into AmneziaWG. The role's broad defaults work
 on most networks, but some DPI deployments apply WireGuard-shaped
 rules that need cohort-specific tuning. This file lists the shipped
@@ -56,7 +56,7 @@ Cohort profiles ship as YAML files under
 `ansible/roles/amneziawg/vars/cohorts/<slug>.yml`. Activate one by
 setting `vpn.awg_cohort: <slug>` in `ansible/group_vars/all.yml` (or
 a host-specific group_vars file). The role reads the cohort file at
-runtime and uses its `jc/jmin/jmax/s1/s2/h1..h4` as defaults;
+runtime and uses its `wire_profile/jc/jmin/jmax/s1/s2/h1..h4/i1..i5` as defaults;
 explicit values in each `amneziawg_secrets.instances[]` still win, so the cohort file
 sets the profile and SOPS overrides anything per-deployment.
 
@@ -67,13 +67,14 @@ network without a documented profile.
 `vpn.awg_cohort` supplies defaults for every instance; explicit per-instance
 parameters win. A single instance uses the same nonempty list contract.
 
-H1..H4 should be **random integers per instance** outside the
+For singleton profiles, choose **random uint32 values per instance**, stored as
+quoted decimal strings, outside the
 `narrow-junk-sequential` profile — using the literal sequential set
 `1, 2, 3, 4` everywhere creates a template the censor can train on.
 All peers of an instance use the same headers. Use separate instances for
-different wire profiles. Each header must equal its standard message type
-(`H1=1`, `H2=2`, `H3=3`, `H4=4`) or exceed four. The pinned engine silently
-rewrites other values at most four. All four headers must differ, and
+different wire profiles. Each header must be its standard message type
+(`H1="1"`, `H2="2"`, `H3="3"`, `H4="4"`) or use values above four. The
+engine rewrites other values at most four. The four closed intervals must not overlap, and
 `148 + S1` must differ from `92 + S2`. Admission refuses these invalid inputs
 before deployment or export.
 
@@ -81,7 +82,7 @@ Generate four candidate random 32-bit unsigned integers with:
 
 ```bash
 for i in 1 2 3 4; do
-  printf 'h%d: %d\n' "$i" "$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')"
+  printf 'h%d: "%d"\n' "$i" "$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')"
 done
 ```
 
@@ -112,8 +113,8 @@ broken combination is AmneziaVPN 4.8.15.5 with embedded awg-go v0.2.16.
 Reproducer: `S1=47, S2=45, S3=38, S4=22` drops; `S3=S4=0` (keeping S1/S2)
 restores connectivity.
 
-The role does **not** emit S3/S4 today (`awg0.conf.j2` writes only Jc/Jmin/Jmax,
-S1/S2, H1–H4), so the baseline is already safe. This is enforced forward: the
+The role does **not** emit S3/S4 today (`awg0.conf.j2` writes Jc/Jmin/Jmax,
+S1/S2, H1–H4 and optional I1–I5), so the baseline retains zero S3/S4. The
 amneziawg role fails the play if any cohort file, `amneziawg_secrets`, or
 `instances[]` entry sets S3 or S4 to a non-zero value, citing `amneziawg-go#110`.
 
@@ -254,9 +255,24 @@ records. Three native reconnect cycles run at each MTU endpoint, 1280 and 1420.
 Missing or substituted logs/artifacts refuse; hand-written success records do
 not establish acceptance.
 
-This procedure produces **emulator/native-core** evidence. The owner removed
-physical-device and Android VpnService/TUN acceptance from this change. The
+This procedure produces **emulator/native-core** evidence. It does not establish
+physical-device or Android VpnService/TUN acceptance. The
 Linux native lane separately proves kernel forwarding, per-device revocation,
 tunnel-death lockdown and complete activation compensation. Emulator evidence
 does not establish production Android VPN policy. The separate hardware policy
 for upgrading the non-zero S3/S4 version floor remains unchanged.
+
+## Range and signature profile
+
+Bundle version 2 uses `wire_profile: awg-3.1-ranges-v1`. Headers are canonical
+strings such as `"11"` or `"1000-1999"`. I1-I5 use bounded tag programs and are
+sent before handshake junk packets. The exact contract and limits are in
+[ripdpi-bundle.md](ripdpi-bundle.md). Earlier source pairs admit singleton
+headers without signatures. The reviewed 3.1 pair admits the supported ranges
+and tags but retains its production hold. Keep S3/S4 zero until the physical
+arm64 policy has qualifying evidence.
+
+Before the coordinated version 2 rollout, add the named `wire_profile` to each
+private instance and quote its current singleton H values. This preserves the
+existing packet headers. Export fresh bundles after the client update; version 1
+bundles are rejected. Private documents are not changed automatically.
