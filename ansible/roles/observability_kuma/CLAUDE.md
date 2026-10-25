@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+Panel-only convergence retires only the delivery heartbeat, its private token/config and unit files. Co-hosted node and pipeline heartbeats retain their independent authority.
+
+Explicit panel-only mode has N+1 node/pipeline monitors and no Telegram authority or delivery heartbeat. Its pipeline proves current node samples and advancing rule evaluation, not notification delivery. The collector disables Alertmanager/relay and retains expected-target recording rules.
+
 - This role runs only on one explicitly admitted existing independent host. It
   installs no Docker, nginx, age, firewall, private-network enrollment, or VPN
   baseline. Missing existing dependencies or separate private backup storage
@@ -19,8 +23,8 @@
   source addresses and only GET `/api/push/<token>` without query parameters.
 - Configure monitors through the pinned upstream authenticated UI; do not write
   SQLite or add a third-party provisioning dependency. Create one node monitor
-  per enrolled node plus one pipeline and one delivery monitor: five for three
-  nodes, twelve for ten. Set a distinct random 20–128-character URL-safe token
+  per enrolled node plus one pipeline monitor. Telegram mode adds one delivery monitor: five for three
+  nodes, twelve for ten. Panel-only mode uses N+1 monitors and no notification token. Set a distinct random 20–128-character URL-safe token
   through the authenticated editor and save it in its matching SOPS
   `push_monitors` entry. The role does not claim the monitors are configured.
 - In the UI set node/pipeline heartbeat interval 120 seconds, retries 0, retry

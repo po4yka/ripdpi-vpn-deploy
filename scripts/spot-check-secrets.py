@@ -189,6 +189,8 @@ def main() -> int:
                       ("hysteria", "key_pem"),
                       ("naive_secrets", "key_pem")):
         block = data.get(role) or {}
+        if role in ('nginx_xhttp', 'hysteria') and 'acme' in block:
+            continue  # Shared semantic admission checks policy; live acceptance checks the certificate.
         check_cert_pem(block.get("cert_pem", ""), block.get(key, ""),
                        f"{role}.cert_pem", f)
 

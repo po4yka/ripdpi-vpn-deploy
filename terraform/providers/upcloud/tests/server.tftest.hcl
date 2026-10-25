@@ -45,6 +45,73 @@ run "developer_plan_is_not_rewritten_to_starter" {
   }
 }
 
+run "small_starter_uses_bundled_standard_storage" {
+  command = plan
+
+  variables {
+    plan            = "STARTER-1xCPU-2GB"
+    storage_size_gb = 20
+  }
+
+  assert {
+    condition     = upcloud_server.vpn.plan == "STARTER-1xCPU-2GB" && upcloud_server.vpn.template[0].size == 20 && upcloud_server.vpn.template[0].tier == "standard"
+    error_message = "The small Starter must retain its exact SKU and included Standard disk without a MaxIOPS surcharge"
+  }
+}
+
+run "smallest_starter_uses_bundled_root" {
+  command = plan
+
+  variables {
+    plan            = "STARTER-1xCPU-1GB"
+    storage_size_gb = 10
+  }
+
+  assert {
+    condition     = upcloud_server.vpn.template[0].size == 10 && upcloud_server.vpn.template[0].tier == "standard"
+    error_message = "The smallest admitted Starter must use its included 10 GB Standard disk"
+  }
+}
+
+run "starter_rejects_an_unpriced_root_size" {
+  command = plan
+
+  variables {
+    plan            = "STARTER-1xCPU-2GB"
+    storage_size_gb = 25
+  }
+
+  expect_failures = [var.storage_size_gb]
+}
+
+run "observer_has_no_public_protocol_listener" {
+  command = plan
+
+  variables {
+    node_purpose            = "observer"
+    observer_backup_size_gb = 10
+    public_listeners        = []
+    enable_hysteria         = false
+  }
+
+  assert {
+    condition     = length(output.public_listeners) == 0
+    error_message = "A management-only observer must not inherit VPN listeners"
+  }
+}
+
+run "observer_rejects_public_protocols" {
+  command = plan
+
+  variables {
+    node_purpose            = "observer"
+    observer_backup_size_gb = 10
+    enable_hysteria         = false
+  }
+
+  expect_failures = [upcloud_firewall_rules.vpn]
+}
+
 run "rejects_unreviewed_starter_sku" {
   command = plan
 
@@ -188,4 +255,57 @@ run "rejects_unfilled_template_marker" {
   }
 
   expect_failures = [var.storage_template]
+}
+
+run "observer_backup_disk_has_exact_encrypted_archive_authority" {
+  command = apply
+
+  variables {
+    node_purpose            = "observer"
+    observer_backup_size_gb = 10
+    public_listeners        = []
+    enable_hysteria         = false
+  }
+
+  assert {
+    condition     = length(upcloud_storage.observer_backup) == 1 && upcloud_storage.observer_backup[0].size == 10 && upcloud_storage.observer_backup[0].tier == "hdd" && upcloud_storage.observer_backup[0].encrypt
+    error_message = "Observer backup must use exactly one encrypted 10 GB Archive volume."
+  }
+
+  assert {
+    condition     = anytrue([for disk in upcloud_server.vpn.storage_devices : disk.storage == upcloud_storage.observer_backup[0].id && disk.address_position == "2"])
+    error_message = "The exact observer disk must be attached at its distinct device slot."
+  }
+}
+
+run "vpn_never_allocates_observer_storage" {
+  command = plan
+
+  assert {
+    condition     = length(upcloud_storage.observer_backup) == 0
+    error_message = "A VPN node must not inherit an observer backup disk."
+  }
+}
+
+run "observer_cannot_skip_independent_backup_storage" {
+  command = plan
+
+  variables {
+    node_purpose            = "observer"
+    observer_backup_size_gb = 0
+    public_listeners        = []
+    enable_hysteria         = false
+  }
+
+  expect_failures = [upcloud_server.vpn]
+}
+
+run "vpn_rejects_extra_observer_disk" {
+  command = plan
+
+  variables {
+    observer_backup_size_gb = 10
+  }
+
+  expect_failures = [upcloud_server.vpn]
 }

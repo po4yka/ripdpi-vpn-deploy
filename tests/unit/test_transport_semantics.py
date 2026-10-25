@@ -290,3 +290,27 @@ def test_unknown_cohort_fields_are_not_silently_discarded():
 def test_explicit_empty_membership_represents_retired_cohort():
     assert not cohort_errors({'clients': [{'name': 'device', 'short_id': 'aa'}],
                               'cohorts': [{'name': 'retired', 'clients': []}]})
+
+
+@pytest.mark.parametrize('case', ['valid', 'both', 'fallback', 'wrong-first', 'duplicate', 'ip', 'email', 'ca'])
+def test_managed_public_tls_has_one_bounded_authority(case):
+    from transport_semantics import xhttp_errors
+    frontend = {'server_name': 'site.example.test', 'acme': {
+        'email': 'operator@example.test', 'domains': ['site.example.test', 'www.example.test']}}
+    if case == 'both':
+        frontend['key_pem'] = 'private-marker'
+    elif case == 'fallback':
+        frontend['fallback_enabled'] = True
+    elif case == 'wrong-first':
+        frontend['acme']['domains'].reverse()
+    elif case == 'duplicate':
+        frontend['acme']['domains'] *= 2
+    elif case == 'ip':
+        frontend['acme']['domains'].append('192.0.2.1')
+    elif case == 'email':
+        frontend['acme']['email'] = 'private-marker'
+    elif case == 'ca':
+        frontend['acme']['ca'] = 'private-marker'
+    errors = xhttp_errors({'nginx_xhttp': frontend}, {})
+    assert bool(errors) is (case != 'valid')
+    assert 'private-marker' not in json.dumps(errors)

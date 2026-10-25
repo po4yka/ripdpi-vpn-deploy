@@ -112,7 +112,7 @@ def test_check_certs_matches_only_exact_or_complete_wildcard_dns_san(
     }, authority)
     assert result.returncode == (0 if accepted else 1), result.stdout + result.stderr
     if accepted:
-        assert "OK — certs healthy" in result.stdout
+        assert "OK — supplied certs healthy" in result.stdout
     else:
         assert result.stdout.count("SAN does not cover") == 3
 
@@ -292,7 +292,7 @@ def test_check_certs_resolves_exact_inventory_profiles_without_cohort_flags(
     scripts = repo / "scripts"
     scripts.mkdir(parents=True)
     for name in ("check-certs.sh", "deploy-controller.py", "fleet_inspection.py", "bootstrap_readiness.py",
-                 "sshd_bundle_source.py", "sshd_contexts.py", "sshd_transaction_limits.py"):
+                 "sshd_bundle_source.py", "sshd_contexts.py", "sshd_transaction_limits.py", "transport_semantics.py"):
         shutil.copy2(ROOT / "scripts" / name, scripts / name)
     group_vars = repo / "ansible/group_vars"
     group_vars.mkdir(parents=True)

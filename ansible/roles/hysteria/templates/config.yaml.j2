@@ -1,8 +1,19 @@
 listen: ":{{ hysteria_port }}"
 
+{% if hysteria.acme is defined %}
+acme:
+  domains: {{ hysteria.acme.domains | to_json }}
+  email: {{ hysteria.acme.email | to_json }}
+  ca: letsencrypt
+  dir: /var/lib/hysteria/acme
+  type: http
+  http:
+    altPort: 80
+{% else %}
 tls:
   cert: {{ (hysteria_config_dir ~ '/server.fullchain.pem') | to_json }}
   key:  {{ (hysteria_config_dir ~ '/server.key') | to_json }}
+{% endif %}
 
 {% if hysteria.ech is defined %}
 ech:

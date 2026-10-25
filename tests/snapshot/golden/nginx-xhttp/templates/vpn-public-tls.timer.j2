@@ -1,0 +1,11 @@
+[Unit]
+Description=Check the public HTTPS certificate twice each day
+
+[Timer]
+OnCalendar=*-*-* 00,12:00:00
+RandomizedDelaySec=3600
+Persistent=true
+Unit=vpn-public-tls.service
+
+[Install]
+WantedBy=timers.target

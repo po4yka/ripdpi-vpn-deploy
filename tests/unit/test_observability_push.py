@@ -207,3 +207,33 @@ def test_real_tls_acknowledgement_and_redirect_refusal(tmp_path):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+@pytest.mark.parametrize('case', ['healthy', 'stale', 'failed-node', 'rules-error', 'delivery'])
+def test_panel_only_pipeline_has_real_fresh_conditions_without_relay_authority(inputs, case):
+    config, directory = inputs
+    config.update(kind='pipeline', notification_mode='panel-only')
+    (directory / 'relay-auth-token').unlink()
+    if case == 'delivery': config['kind'] = 'delivery'
+    calls = []
+    def fetch(url, **kwargs):
+        calls.append(url)
+        assert '19095' not in url and 'relay' not in url and 'observability-alertmanager' not in url
+        if '/api/v1/query?' in url:
+            return {'status': 'success', 'data': {'resultType': 'vector', 'result': [{'value': [1000, '0' if case == 'failed-node' else '1']}]}}
+        if url.endswith('/api/v1/rules'):
+            return {'status': 'success', 'data': {'groups': [{'lastEvaluation': dt.datetime.fromtimestamp(980, dt.UTC).isoformat(),
+                    'rules': [{'health': 'err' if case == 'rules-error' else 'ok', 'lastError': ''}]}]}}
+        return {'ok': True}
+    if case == 'stale':
+        (directory / 'state').write_text(json.dumps({'sequence': 980, 'last_success': 999}))
+    before = (directory / 'state').read_bytes() if (directory / 'state').exists() else None
+    if case == 'healthy':
+        result = push.run(config, directory, directory / 'state', now=1000, fetcher=fetch, runner=runner)
+        assert result == {'sequence': 980, 'last_success': 1000}
+        assert any('/api/push/' in url for url in calls)
+    else:
+        with pytest.raises(push.Refusal):
+            push.run(config, directory, directory / 'state', now=1000, fetcher=fetch, runner=runner)
+        assert not any('/api/push/' in url for url in calls)
+        assert ((directory / 'state').read_bytes() if (directory / 'state').exists() else None) == before

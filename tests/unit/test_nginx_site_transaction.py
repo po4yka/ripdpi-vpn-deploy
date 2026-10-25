@@ -831,3 +831,186 @@ def test_pre_consumer_failure_restores_missing_or_newly_installed_unit(fixture, 
     assert not (tx.STATE_ROOT / 'nginx.service/site.json').exists()
     for owner in context['owners']:
         assert not Path(owner['paths'][0]).exists()
+
+
+def test_renewal_refuses_open_site_journal_under_the_same_lock(fixture):
+    tx, context, commands = fixture
+    state = install_accepted(tx, context)
+    tx.site_transaction('begin', context)
+    document = desired(tx, context, owner='public-tls')
+    before = tx.capture(state / 'site.json')
+    with pytest.raises(tx.TransactionError, match='site-transaction-busy'):
+        tx.publish(document, outside_site=True)
+    assert tx.capture(state / 'site.json') == before
+    assert not commands
+
+
+def tls_coordinator(fixture, monkeypatch):
+    tx, context, commands = fixture
+    spec = importlib.util.spec_from_file_location('tls_coordinator', SOURCE.with_name('activate_public_tls.py'))
+    tls = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tls)
+    root = tx.STATE_ROOT.parent
+    for name in ('LIVE', 'ARCHIVE', 'RENEWAL'):
+        path = root / name.lower(); path.mkdir(mode=0o700)
+        monkeypatch.setattr(tls, name, path)
+    config = {'name': 'site.example.test', 'domains': ['site.example.test'], 'email': 'operator@example.test',
+              'http_vhost': 'server { listen 80; }'}
+    monkeypatch.setattr(tls, 'CONFIG', root / 'config.json')
+    monkeypatch.setattr(tls, 'boot_id', lambda: '00000000-0000-0000-0000-000000000001')
+    inactive = {'LoadState': 'loaded', 'ActiveState': 'inactive', 'SubState': 'dead', 'MainPID': '0', 'Job': ''}
+    absent = {**inactive, 'LoadState': 'not-found'}
+    monkeypatch.setattr(tls, 'issuer_state', lambda: (inactive if (tx.STATE_ROOT / 'nginx.service/public-tls-issuer.json').exists() else absent).copy())
+    monkeypatch.setattr(tls, 'stop_issuer', lambda: inactive.copy())
+    return tx, context, tls, config
+
+
+def test_open_site_refuses_issuer_before_any_ca_operation(fixture, monkeypatch):
+    tx, context, tls, config = tls_coordinator(fixture, monkeypatch)
+    tx.site_transaction('begin', context)
+    monkeypatch.setattr(tls, 'run_certbot', lambda _config: pytest.fail('issuer ran'))
+    with pytest.raises(tls.Refusal, match='site-transaction-busy'):
+        tls.issue(tx, config, renewal=True)
+    assert not list((tx.STATE_ROOT / 'nginx.service').glob('public-tls-lineage-*'))
+
+
+def test_lineage_claim_survives_failed_issuance_and_excludes_site_begin(fixture, monkeypatch):
+    tx, context, tls, config = tls_coordinator(fixture, monkeypatch)
+    def failed(_config):
+        with pytest.raises(BlockingIOError):
+            with tx.unit_lock(tx.STATE_ROOT / 'nginx.service', allow_issuer=True):
+                pass
+        raise tls.Refusal('certificate-issuance-failed')
+    monkeypatch.setattr(tls, 'run_certbot', failed)
+    with pytest.raises(tls.Refusal, match='certificate-issuance-failed'):
+        tls.issue(tx, config)
+    state = tx.STATE_ROOT / 'nginx.service'
+    claim = state / ('public-tls-lineage-'+config['name']+'.json')
+    before = claim.read_bytes()
+    (tls.LIVE / config['name']).mkdir()
+    seen = []
+    monkeypatch.setattr(tls, 'run_certbot', lambda _config: seen.append('issuer'))
+    monkeypatch.setattr(tls, 'request', lambda _config: desired(tx, context, owner='public-tls'))
+    def publish(document, **kwargs):
+        with pytest.raises(BlockingIOError):
+            tx.site_transaction('begin', context)
+        return {'changed': False}
+    monkeypatch.setattr(tx, 'publish', publish)
+    assert tls.issue(tx, config) == {'changed': False}
+    assert seen == ['issuer'] and claim.read_bytes() == before
+
+
+def test_unclaimed_foreign_lineage_is_never_adopted_or_removed(fixture, monkeypatch):
+    tx, context, tls, config = tls_coordinator(fixture, monkeypatch)
+    foreign = tls.ARCHIVE / config['name']; foreign.mkdir()
+    marker = foreign / 'foreign.pem'; marker.write_bytes(b'foreign')
+    monkeypatch.setattr(tls, 'run_certbot', lambda _config: pytest.fail('issuer ran'))
+    with pytest.raises(tls.Refusal, match='foreign-certificate-lineage'):
+        tls.issue(tx, config)
+    assert marker.read_bytes() == b'foreign'
+
+
+def test_publication_borrows_the_existing_locked_descriptor(fixture):
+    tx, context, _ = fixture
+    state = install_accepted(tx, context)
+    document = desired(tx, context, owner='public-tls', content=b'accepted')
+    with tx.unit_lock(state) as descriptor:
+        result = tx.publish(document, lock_fd=descriptor)
+        assert result == {'status': 'unchanged', 'changed': False}
+        os.fstat(descriptor)
+        with pytest.raises(BlockingIOError):
+            tx.site_transaction('begin', context)
+
+
+@pytest.mark.parametrize('action', ['begin', 'restore', 'commit', 'recover-commit', 'publish', 'check', 'site-check'])
+def test_surviving_issuer_lease_blocks_every_nginx_writer(fixture, action):
+    tx, context, _ = fixture
+    state = install_accepted(tx, context)
+    lease = state / 'public-tls-issuer.json'
+    tx.persist(lease, {'schema': 1, 'unit': 'vpn-public-tls-issuer.service',
+                       'boot_id': '00000000-0000-0000-0000-000000000001'})
+    before = tx.capture(lease)
+    with pytest.raises(tx.TransactionError, match='public-tls-issuer-recovery-required'):
+        if action in {'publish', 'check'}:
+            document = desired(tx, context)
+            document['check'] = action == 'check'
+            tx.publish(document)
+        else:
+            tx.site_transaction('begin' if action == 'site-check' else action, {**context, 'check': action == 'site-check'})
+    assert tx.capture(lease) == before
+
+
+@pytest.mark.parametrize('case', ['running', 'job', 'unknown-launch', 'completed', 'rebooted'])
+def test_issuer_recovery_requires_confirmed_completion_or_new_boot(fixture, monkeypatch, case):
+    tx, context, tls, config = tls_coordinator(fixture, monkeypatch)
+    state = install_accepted(tx, context)
+    lease = state / 'public-tls-issuer.json'
+    tx.persist(lease, {'schema': 1, 'unit': tls.ISSUER, 'boot_id': tls.boot_id()})
+    status = {'LoadState': 'loaded', 'ActiveState': 'active', 'SubState': 'exited', 'MainPID': '0', 'Job': ''}
+    if case == 'running': status.update(ActiveState='activating', SubState='start', MainPID='123')
+    elif case == 'job': status['Job'] = '12'
+    elif case in {'unknown-launch', 'rebooted'}:
+        status.update(LoadState='not-found', ActiveState='inactive', SubState='dead')
+        if case == 'rebooted': monkeypatch.setattr(tls, 'boot_id', lambda: '00000000-0000-0000-0000-000000000002')
+    monkeypatch.setattr(tls, 'issuer_state', lambda: status)
+    with tx.unit_lock(state, allow_issuer=True):
+        if case in {'completed', 'rebooted'}:
+            tls.recover_issuer(tx, state)
+            assert not lease.exists()
+        else:
+            with pytest.raises(tls.Refusal): tls.recover_issuer(tx, state)
+            assert lease.exists()
+
+
+def test_sigkill_releases_kernel_lock_but_surviving_issuer_retains_exclusion(fixture, monkeypatch):
+    import select
+    import signal
+    import subprocess
+    tx, context, tls, _config = tls_coordinator(fixture, monkeypatch)
+    state = install_accepted(tx, context)
+    lease = state / 'public-tls-issuer.json'
+    tx.persist(lease, {'schema': 1, 'unit': tls.ISSUER, 'boot_id': tls.boot_id()})
+    program = ('import fcntl,os,sys,time;fd=os.open(sys.argv[1],os.O_RDWR);'
+               'fcntl.flock(fd,fcntl.LOCK_EX);print("locked",flush=True);time.sleep(60)')
+    coordinator = subprocess.Popen([sys.executable, '-c', program, str(state / 'lock')], stdout=subprocess.PIPE, text=True)
+    # This process represents the external PID1-owned issuer boundary, not a real ACME claim.
+    issuer = subprocess.Popen([sys.executable, '-c', 'import time;time.sleep(60)'])
+    try:
+        assert select.select([coordinator.stdout], [], [], 10)[0]
+        assert coordinator.stdout.readline().strip() == 'locked'
+        coordinator.kill()
+        assert coordinator.wait(timeout=10) == -signal.SIGKILL
+        assert issuer.poll() is None
+        for action in ('begin', 'restore', 'recover-commit'):
+            with pytest.raises(tx.TransactionError, match='public-tls-issuer-recovery-required'):
+                tx.site_transaction(action, context)
+        with pytest.raises(tx.TransactionError, match='public-tls-issuer-recovery-required'):
+            tx.publish(desired(tx, context))
+        monkeypatch.setattr(tls, 'issuer_state', lambda: {'LoadState': 'loaded', 'ActiveState': 'activating',
+                            'SubState': 'start', 'MainPID': str(issuer.pid), 'Job': '12'})
+        with tx.unit_lock(state, allow_issuer=True):
+            with pytest.raises(tls.Refusal, match='issuer-still-running'):
+                tls.recover_issuer(tx, state)
+        assert lease.exists()
+        issuer.terminate(); issuer.wait(timeout=10)
+        monkeypatch.setattr(tls, 'issuer_state', lambda: {'LoadState': 'loaded', 'ActiveState': 'inactive',
+                            'SubState': 'dead', 'MainPID': '0', 'Job': ''})
+        with tx.unit_lock(state, allow_issuer=True):
+            tls.recover_issuer(tx, state)
+        with tx.unit_lock(state):
+            assert not lease.exists()
+    finally:
+        for process in (coordinator, issuer):
+            if process.poll() is None: process.kill()
+            process.wait(timeout=10)
+
+
+def test_foreign_fixed_issuer_unit_is_never_claimed_or_stopped(fixture, monkeypatch):
+    tx, _context, tls, config = tls_coordinator(fixture, monkeypatch)
+    monkeypatch.setattr(tls, 'issuer_state', lambda: {'LoadState': 'loaded', 'ActiveState': 'active',
+                        'SubState': 'running', 'MainPID': '123', 'Job': ''})
+    monkeypatch.setattr(tls, 'run_certbot', lambda _config: pytest.fail('issuer ran'))
+    monkeypatch.setattr(tls, 'stop_issuer', lambda: pytest.fail('foreign issuer stopped'))
+    with pytest.raises(tls.Refusal, match='unclaimed-issuer-unit'):
+        tls.issue(tx, config)
+    assert not (tx.STATE_ROOT / 'nginx.service/public-tls-issuer.json').exists()

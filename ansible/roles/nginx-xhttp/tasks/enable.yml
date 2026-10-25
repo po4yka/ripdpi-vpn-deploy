@@ -53,6 +53,19 @@
       cdn_front.port={{ cdn_front.port | default(cdn_front_port) }}). Pick a free port for the
       direct (non-CDN) XHTTP fallback frontend.
 
+- name: Inspect native certificate timer before supplied TLS selection
+  ansible.builtin.stat:
+    path: /etc/systemd/system/vpn-public-tls.timer
+    follow: false
+  register: _nginx_managed_tls_timer
+  when: nginx_xhttp.acme is not defined
+
+- name: Refuse an overlapping supplied and native certificate authority
+  ansible.builtin.assert:
+    that: not (_nginx_managed_tls_timer.stat.exists | default(false)) and not (_nginx_managed_tls_timer.stat.islnk | default(false))
+    fail_msg: Changing between supplied and managed TLS requires node recreation.
+  when: nginx_xhttp.acme is not defined
+
 - name: Install nginx
   ansible.builtin.apt:
     name:
@@ -64,6 +77,18 @@
     cache_valid_time: 3600
     policy_rc_d: 101
   register: _nginx_xhttp_install_plan
+
+- name: Prepare managed public TLS for standalone convergence
+  ansible.builtin.include_tasks: tls-prepare.yml
+  when:
+    - nginx_xhttp.acme is defined
+    - _transport_ingress_request is not defined
+
+- name: Establish managed public TLS for standalone convergence
+  ansible.builtin.include_tasks: tls-bootstrap.yml
+  when:
+    - nginx_xhttp.acme is defined
+    - _transport_ingress_request is not defined
 
 - name: Ensure TLS material directory
   ansible.builtin.file:
@@ -126,21 +151,9 @@
   loop: '{{ _nginx_public_site_directories.results }}'
   when: not (item.stat.exists | default(false))
 
-- name: Stage complete XHTTP TLS and vhost authority
+- name: Stage complete XHTTP vhost authority
   ansible.builtin.set_fact:
     nginx_transaction_files:
-      - path: "/etc/nginx/tls/{{ nginx_xhttp.server_name }}.fullchain.pem"
-        kind: file
-        content_b64: "{{ nginx_xhttp.cert_pem | b64encode }}"
-        mode: "0644"
-        uid: 0
-        gid: 0
-      - path: "/etc/nginx/tls/{{ nginx_xhttp.server_name }}.key"
-        kind: file
-        content_b64: "{{ nginx_xhttp.key_pem | b64encode }}"
-        mode: "0600"
-        uid: 0
-        gid: 0
       - path: /etc/nginx/sites-available/vpn-xhttp.conf
         kind: file
         content_b64: "{{ lookup('ansible.builtin.template', 'site.conf.j2') | b64encode }}"
@@ -154,6 +167,18 @@
         uid: 0
         gid: 0
       - {path: /etc/nginx/sites-enabled/default, kind: absent}
+  no_log: true
+  diff: false
+
+- name: Stage supplied TLS only for the application-owned certificate authority
+  ansible.builtin.set_fact:
+    nginx_transaction_files: >-
+      {{ nginx_transaction_files + [
+          {'path': '/etc/nginx/tls/' ~ nginx_xhttp.server_name ~ '.fullchain.pem',
+           'kind': 'file', 'content_b64': nginx_xhttp.cert_pem | b64encode, 'mode': '0644', 'uid': 0, 'gid': 0},
+          {'path': '/etc/nginx/tls/' ~ nginx_xhttp.server_name ~ '.key',
+           'kind': 'file', 'content_b64': nginx_xhttp.key_pem | b64encode, 'mode': '0600', 'uid': 0, 'gid': 0}] }}
+  when: nginx_xhttp.acme is not defined
   no_log: true
   diff: false
 
@@ -247,3 +272,9 @@
     enabled: true
     state: started
   when: not ansible_check_mode or _nginx_xhttp_unit_before.stat.exists | default(false)
+
+- name: Enable managed public TLS renewal after standalone acceptance
+  ansible.builtin.include_tasks: tls-finish.yml
+  when:
+    - nginx_xhttp.acme is defined
+    - _transport_ingress_request is not defined

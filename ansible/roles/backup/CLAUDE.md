@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Managed certificates include the native Hysteria cache or complete Certbot account, lineage and archive. Supplied Hysteria TLS paths are not required in native mode. Native backups restore the exact new snapshot ID and validate its certificate/key, CA/account binding and metadata before retention or replication. This does not prove that the CA accepts the account key for a new order. nginx backups share the publication lock and refuse open journals, retaining exact lineage claims with the accepted policy. Restore drills check those selected authorities without replacing live certificate state.
+
 AWG interface names come only from the nonempty canonical instance list; no
 legacy `awg0` fallback grants forwarding or backup authority.
 

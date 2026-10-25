@@ -1,0 +1,30 @@
+---
+- name: Publish the complete HTTP challenge authority inside guarded ingress
+  ansible.builtin.command:
+    argv: [python3, /usr/local/libexec/vpn-public-tls, --prepare, --config-stdin]
+    stdin: >-
+      {{ {'name': nginx_xhttp.server_name, 'domains': nginx_xhttp.acme.domains,
+          'email': nginx_xhttp.acme.email,
+          'http_vhost': lookup('ansible.builtin.template', 'public-acme.conf.j2')} | to_json }}
+  register: _public_tls_http
+  changed_when: (_public_tls_http.stdout | from_json).changed
+  no_log: true
+  when: not ansible_check_mode
+
+- name: Issue validate and publish the exact trusted certificate under one lock
+  ansible.builtin.command:
+    argv: [python3, /usr/local/libexec/vpn-public-tls, --issue, --config-stdin]
+    stdin: >-
+      {{ {'name': nginx_xhttp.server_name, 'domains': nginx_xhttp.acme.domains,
+          'email': nginx_xhttp.acme.email,
+          'http_vhost': lookup('ansible.builtin.template', 'public-acme.conf.j2')} | to_json }}
+  register: _public_tls_activation
+  changed_when: (_public_tls_activation.stdout | from_json).changed
+  no_log: true
+  when: not ansible_check_mode
+
+- name: Predict public TLS issuance without claiming certificate validation
+  ansible.builtin.debug:
+    msg: Managed public TLS requires HTTP-01 issuance and trusted certificate activation during deployment.
+  changed_when: true
+  when: ansible_check_mode

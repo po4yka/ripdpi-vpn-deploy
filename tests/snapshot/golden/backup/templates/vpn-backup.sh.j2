@@ -24,6 +24,7 @@ remote_succeeded_at=""
 remote_failed_at=""
 active_stage=""
 
+
 timestamp() {
   date -u +%Y-%m-%dT%H:%M:%SZ
 }
@@ -124,6 +125,7 @@ publish_outcome() {
 
 record_failure() {
   local status=$?
+
   if [[ "$active_stage" == "local" && "$local_result" == "pending" ]]; then
     local_result="failed"
     local_failed_at="$(timestamp)"
@@ -159,10 +161,12 @@ INCLUDES=(
 
 
 
+
   "/etc/amnezia/amneziawg"
 
 
   /etc/nginx
+
 
 
 
@@ -242,6 +246,7 @@ PY
 
 # restic may tolerate a partially unreadable tree. Required selected inputs
 # must exist before snapshot/retention/integrity can publish success.
+
 for input in "${INCLUDES[@]}"; do
   if [[ ! -e "$input" ]]; then
     printf '%s\n' 'backup: required enabled input is absent' >&2
@@ -258,8 +263,10 @@ REQUIRED_FILES=(
 
 
   "/etc/hysteria/config.yaml"
+
   "/etc/hysteria/server.fullchain.pem"
   "/etc/hysteria/server.key"
+
 
 
 
@@ -297,10 +304,13 @@ for input in "${REQUIRED_FILES[@]}"; do
   fi
 done
 
+
 restic -r "$REPO" backup \
   --tag "vpn-stack" \
   --tag "host=$(hostname)" \
   "${INCLUDES[@]}"
+
+
 
 restic -r "$REPO" forget \
   --tag vpn-stack \

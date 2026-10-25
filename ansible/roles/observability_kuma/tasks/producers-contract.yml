@@ -3,6 +3,8 @@
   ansible.builtin.assert:
     that:
       - observability_push.node_id is match('^[a-z][a-z0-9_-]{0,63}$')
+      - (observability_kuma_secrets.notification_mode | default('telegram')) in ['telegram', 'panel-only']
+      - (observability_kuma_secrets.notification_mode | default('telegram')) != 'panel-only' or 'delivery' not in observability_push.kinds
       - observability_push.kinds | length > 0
       - observability_push.kinds | difference(['node', 'pipeline', 'delivery']) | length == 0
       - observability_push.kinds | unique | length == observability_push.kinds | length
@@ -41,7 +43,8 @@
         exec(compile(source, 'push_contract', 'exec'), namespace)
         namespace['validate_config'](json.load(sys.stdin))
     stdin: >-
-      {{ {'kind': item, 'node_id': observability_push.node_id, 'origin': observability_push.origin,
+      {{ {'notification_mode': observability_kuma_secrets.notification_mode | default('telegram'),
+      'kind': item, 'node_id': observability_push.node_id, 'origin': observability_push.origin,
       'services': observability_push.services, 'expected_nodes': observability_push.expected_nodes,
       'prometheus_origin': observability_push.prometheus_origin, 'relay_origin': observability_push.relay_origin,
       'textfile_dir': observability_push.textfile_dir} | to_json }}

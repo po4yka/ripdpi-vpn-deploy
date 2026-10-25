@@ -273,6 +273,17 @@
       tags: [baseline, security, updates]
 
   tasks:
+    - name: Install inert managed public TLS prerequisites before ingress capture
+      ansible.builtin.import_role:
+        name: nginx-xhttp
+        tasks_from: tls-prepare
+        public: true
+      when:
+        - vpn.enable_nginx_xhttp | default(true) | bool
+        - not (vpn_subscription_only | default(false) | bool)
+        - nginx_xhttp.acme is defined
+      tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
+
     # One ingress decision owns initial firewall compensation. AWG commits later.
     - name: Converge protected consumers with retained initial firewall authority
       block:
@@ -291,6 +302,16 @@
             name: intrusion_prevention
             public: true
           tags: [security, intrusion-prevention]
+        - name: Establish trusted managed public TLS after HTTP firewall admission
+          ansible.builtin.import_role:
+            name: nginx-xhttp
+            tasks_from: tls-bootstrap
+            public: true
+          when:
+            - vpn.enable_nginx_xhttp | default(true) | bool
+            - not (vpn_subscription_only | default(false) | bool)
+            - nginx_xhttp.acme is defined
+          tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
         - name: Reconcile geodata prerequisites
           ansible.builtin.import_role:
             name: geodata
@@ -351,6 +372,16 @@
           tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
         - name: Commit the ready protected ingress and egress composition
           ansible.builtin.import_tasks: tasks/transport-ingress-commit.yml
+          tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
+        - name: Enable autonomous public TLS renewal after the protected commit
+          ansible.builtin.import_role:
+            name: nginx-xhttp
+            tasks_from: tls-finish
+            public: true
+          when:
+            - vpn.enable_nginx_xhttp | default(true) | bool
+            - not (vpn_subscription_only | default(false) | bool)
+            - nginx_xhttp.acme is defined
           tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
         - name: Finish an initial firewall without a selected protected consumer
           ansible.builtin.command:

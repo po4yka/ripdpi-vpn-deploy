@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Explicit fresh ACME recovery keeps its directory-commit journal outside accepted runtime authority. Its warm probe uses the unchanged ACME policy and a PID1-owned disposable cache bind mount, then proves system trust, SNI and authenticated forwarding. A pending restore blocks ordinary Hysteria candidate admission.
+
 Standalone frontend retirement passes its exact revocation authority to outer-route completion. Full protected retirement closes through the shared production egress finish task after every staged consumer and owned route has retired.
 
 Device revocation uses the existing transaction with an exact operation/digest and immutable candidate plan. A durable private fence precedes stopping the old generation; failures retain denial and journals for the same forward retry. Ordinary callers and boot admission cannot adopt unfinished revocation. The accepted revocation receipt is a compensation floor; later ordinary changes may still compensate to that revoked baseline. Snell/Naive reuse the same lock and fence around role-owned writes, without a second publication journal.

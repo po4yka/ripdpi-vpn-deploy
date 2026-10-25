@@ -46,14 +46,21 @@
   ansible.builtin.assert:
     that:
       - observability_push is defined
-      - observability_push.kinds | sort == ['delivery', 'pipeline']
-      - observability_control_plane.alerting.enabled | bool
+      - >-
+        observability_push.kinds | sort == (['pipeline']
+        if (observability_kuma_secrets.notification_mode | default('telegram')) == 'panel-only' else ['delivery', 'pipeline'])
+      - >-
+        (observability_control_plane.alerting.enabled | bool)
+        == ((observability_kuma_secrets.notification_mode | default('telegram')) == 'telegram')
+      - >-
+        (observability_kuma_secrets.notification_mode | default('telegram')) != 'panel-only'
+        or observability_control_plane.expected_targets.enabled | bool
       - >-
         observability_push.expected_nodes | sort ==
         observability_control_plane.ingest_identities | map(attribute='node_id') | sort
       - observability_push.node_id in observability_push.expected_nodes
     fail_msg: >-
-      Enabled collector requires active primary alerting, independent pipeline and delivery pushes,
+      Enabled collector requires mode-matched alerting and independent pipeline producers,
       and exact enrolled-node coverage including its cohosted agent.
 
 - name: Validate independent collector producer credentials before mutation

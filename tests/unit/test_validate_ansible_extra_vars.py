@@ -43,6 +43,21 @@ def test_accepts_management_path_and_forwarding_overrides(tmp_path: Path) -> Non
     validator.validate(path)
 
 
+@pytest.mark.parametrize('root,snapshot,accepted', [
+    ('/run/vpn-acme-restore-a1b2c3d4', 'a'*64, True),
+    ('/etc', 'a'*64, False), ('/run/vpn-acme-restore-a1b2c3d4/../other', 'a'*64, False),
+    ('/run/vpn-acme-restore-a1b2c3d4', 'short-id', False),
+    (None, 'a'*64, False), ('/run/vpn-acme-restore-a1b2c3d4', None, False),
+])
+def test_native_cache_recovery_has_one_bounded_source_and_exact_snapshot(tmp_path, root, snapshot, accepted):
+    path = write_yaml(tmp_path, {'hysteria_acme_restore_root': root, 'hysteria_acme_restore_snapshot_id': snapshot})
+    if accepted:
+        validator.validate(path)
+    else:
+        with pytest.raises(ValueError, match='native ACME recovery'):
+            validator.validate(path)
+
+
 @pytest.mark.parametrize(
     "key",
     [

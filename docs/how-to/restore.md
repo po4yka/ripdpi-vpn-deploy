@@ -149,8 +149,37 @@ snapshot before restoring its server artifacts:
 ```bash
 sudo restic -r /var/backups/vpn-restic --password-file /etc/restic/password snapshots
 sudo restic -r /var/backups/vpn-restic --password-file /etc/restic/password \
-    restore latest --target /
+    restore latest --target / \
+    --exclude /var/lib/hysteria/acme \
+    --exclude /etc/hysteria/config.yaml \
+    --exclude /etc/systemd/system/hysteria-server.service
 ```
+
+Native Hysteria ACME requires separate fresh-node admission. Never restore its
+cache or unit directly into the replacement host. Select a full snapshot ID,
+restore that exact snapshot into a root-owned mode-0700 directory under
+`/run/vpn-acme-restore-<8-to-32-alphanumeric-characters>`, and retain that ID.
+The live `/var/lib/hysteria` parent must be root-owned mode 0750; the cache
+must be an empty, separate mode-0700 directory owned by the current Hysteria
+user and group. The Hysteria service must not exist yet.
+
+For the initial full dry-run and deploy, pass a same-owner mode-0600
+`ANSIBLE_EXTRA_VARS_FILE` with only `hysteria_acme_restore_root` and
+`hysteria_acme_restore_snapshot_id`. Use the selected private runtime path and
+the full 64-character snapshot ID. The role checks the exact production CA,
+domain, certificate/key pair, metadata and account, then runs its pinned native
+server and authenticated client in an isolated network. The original ACME
+configuration uses a disposable cache copy. Only a successful proof permits
+atomic publication of the normalized cache with current service ownership.
+An interrupted publication resumes through its retained private journal.
+An accepted node or a foreign/nonempty cache refuses fresh recovery.
+
+After successful deploy, remove these one-time overrides and the private
+scratch directory. Ordinary convergence does not copy or change cache contents.
+A certificate already near its renewal window cannot pass disconnected warm
+admission; inspect it before choosing fresh online issuance instead. Warm
+admission proves immediate authenticated service. Only a separate online
+renewal proves that the CA still accepts the restored account key.
 
 A root restore can overwrite recovery files, SSH policy and deployment source
 metadata. Stop before ordinary deployment: inspect those changes, reinstall the

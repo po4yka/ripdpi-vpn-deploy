@@ -52,6 +52,7 @@ resource "upcloud_server" "vpn" {
     encrypt = var.ci_ssh_seed == null ? null : true
     storage = var.storage_template
     size    = var.storage_size_gb
+    tier    = startswith(var.plan, "STARTER-") || startswith(var.plan, "DEV-") ? "standard" : "maxiops"
     title   = "${var.server_name}-root"
 
     dynamic "backup_rule" {
@@ -70,6 +71,16 @@ resource "upcloud_server" "vpn" {
       storage          = storage_devices.value.id
       address          = "virtio"
       address_position = "1"
+      type             = "disk"
+    }
+  }
+
+  dynamic "storage_devices" {
+    for_each = upcloud_storage.observer_backup
+    content {
+      storage          = storage_devices.value.id
+      address          = "virtio"
+      address_position = "2"
       type             = "disk"
     }
   }
@@ -111,6 +122,10 @@ resource "upcloud_server" "vpn" {
   labels = local.base_labels
 
   lifecycle {
+    precondition {
+      condition     = var.node_purpose == "observer" ? var.observer_backup_size_gb == 10 : var.observer_backup_size_gb == 0
+      error_message = "An observer requires its approved separate 10 GB backup disk; VPN nodes cannot request it."
+    }
     prevent_destroy = true
     replace_triggered_by = [
       terraform_data.ssh_port,

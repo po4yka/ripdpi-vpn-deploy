@@ -26,6 +26,11 @@ RestrictRealtime=true
 RestrictSUIDSGID=true
 StateDirectory=vpn-backup
 StateDirectoryMode=0700
+{% if not (vpn_subscription_only | default(false)) and vpn.enable_hysteria | default(true) and hysteria.acme is defined %}
+RuntimeDirectory=vpn-backup-cache-check
+RuntimeDirectoryMode=0700
+UMask=0077
+{% endif %}
 # restic's default cache lives under $HOME, which ProtectHome hides;
 # pin it inside the state directory.
 Environment=RESTIC_CACHE_DIR=/var/lib/vpn-backup/cache

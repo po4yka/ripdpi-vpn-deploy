@@ -18,8 +18,8 @@ variable "plan" {
   description = "Exact UpCloud plan slug, e.g. STARTER-2xCPU-4GB or an existing supported legacy SKU."
 
   validation {
-    condition     = contains(["1xCPU-1GB", "1xCPU-2GB", "2xCPU-4GB", "DEV-2xCPU-4GB", "STARTER-2xCPU-4GB"], var.plan)
-    error_message = "plan must be one of: 1xCPU-1GB, 1xCPU-2GB, 2xCPU-4GB, DEV-2xCPU-4GB, STARTER-2xCPU-4GB."
+    condition     = contains(["1xCPU-1GB", "1xCPU-2GB", "2xCPU-4GB", "DEV-2xCPU-4GB", "STARTER-1xCPU-1GB", "STARTER-1xCPU-2GB", "STARTER-2xCPU-4GB"], var.plan)
+    error_message = "plan must be one of: 1xCPU-1GB, 1xCPU-2GB, 2xCPU-4GB, DEV-2xCPU-4GB, STARTER-1xCPU-1GB, STARTER-1xCPU-2GB, STARTER-2xCPU-4GB."
   }
 }
 
@@ -40,6 +40,37 @@ variable "storage_size_gb" {
   type        = number
   default     = 25
   description = "Root disk size in GB."
+
+  validation {
+    condition = !contains(["STARTER-1xCPU-1GB", "STARTER-1xCPU-2GB", "STARTER-2xCPU-4GB"], var.plan) || var.storage_size_gb == lookup({
+      STARTER-1xCPU-1GB = 10
+      STARTER-1xCPU-2GB = 20
+      STARTER-2xCPU-4GB = 30
+    }, var.plan, var.storage_size_gb)
+    error_message = "Starter roots must use the exact bundled size: 10, 20 or 30 GB for the selected SKU."
+  }
+}
+
+variable "node_purpose" {
+  type        = string
+  default     = "vpn"
+  description = "VPN node or management-only independent observer; observers must declare no public protocol listeners."
+
+  validation {
+    condition     = contains(["vpn", "observer"], var.node_purpose)
+    error_message = "node_purpose must be vpn or observer."
+  }
+}
+
+variable "observer_backup_size_gb" {
+  type        = number
+  default     = 0
+  description = "Explicit separate Archive backup disk for the observer; zero creates no extra storage."
+
+  validation {
+    condition     = contains([0, 10], var.observer_backup_size_gb)
+    error_message = "observer_backup_size_gb must be zero or the approved 10 GB."
+  }
 }
 
 variable "admin_user" {

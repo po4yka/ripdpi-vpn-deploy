@@ -20,6 +20,8 @@ ALLOWED_KEYS = {
     "network_exposure_gate",
     "vpn_device_revocation",
     "vpn_device_retained_publisher",
+    "hysteria_acme_restore_root",
+    "hysteria_acme_restore_snapshot_id",
 }
 DNS_NAME = re.compile(
     r"(?=^.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*"
@@ -101,6 +103,14 @@ def validate(path: Path) -> None:
     unknown = sorted(set(document) - ALLOWED_KEYS)
     if unknown:
         raise ValueError("extra-vars document contains a non-allowlisted key")
+
+    recovery_keys = {"hysteria_acme_restore_root", "hysteria_acme_restore_snapshot_id"}
+    if recovery_keys & set(document):
+        root = document.get("hysteria_acme_restore_root")
+        snapshot = document.get("hysteria_acme_restore_snapshot_id")
+        if (not isinstance(root, str) or re.fullmatch(r"/run/vpn-acme-restore-[A-Za-z0-9]{8,32}", root) is None
+                or not isinstance(snapshot, str) or SHA256.fullmatch(snapshot) is None):
+            raise ValueError("native ACME recovery requires its exact private runtime root and full snapshot ID")
 
     if "ansible_host" in document:
         host = document["ansible_host"]

@@ -14,6 +14,9 @@ Scaleway routed IPv4 and IPv6 addresses are explicit Terraform resources and are
 
 See `terraform/providers/scaleway/CLAUDE.md` for design decisions and pitfalls.
 
+
+The root disk is explicit Block Storage 5K (`sbs_volume`, 5000 IOPS), defaults to 20 GB through `root_size_gb`, and is deleted with its instance. Include the disk and the separately billed IPv4 in the cost plan. Changing an existing root type or size requires a reviewed replacement or resize plan.
+
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
 
@@ -54,6 +57,7 @@ No modules.
 | <a name="input_labels"></a> [labels](#input\_labels) | Provider-specific resource tags/labels. | `map(string)` | `{}` | no |
 | <a name="input_nginx_xhttp_public_port"></a> [nginx\_xhttp\_public\_port](#input\_nginx\_xhttp\_public\_port) | Public TCP port for nginx-xhttp. Keep this in sync with Ansible nginx\_xhttp\_public\_port. | `number` | `8443` | no |
 | <a name="input_public_listeners"></a> [public\_listeners](#input\_public\_listeners) | Public TCP/UDP listeners allowed at the provider edge. Specify exactly one of port or port\_range for each entry. | <pre>list(object({<br/>    name       = string<br/>    protocol   = string<br/>    port       = optional(number)<br/>    port_range = optional(string)<br/>  }))</pre> | `[]` | no |
+| <a name="input_root_size_gb"></a> [root\_size\_gb](#input\_root\_size\_gb) | Root Block Storage 5K size in decimal GB, fixed in the reviewed cost plan. | `number` | `20` | no |
 | <a name="input_server_name"></a> [server\_name](#input\_server\_name) | Hostname / Terraform name of the VPS. | `string` | n/a | yes |
 | <a name="input_server_type"></a> [server\_type](#input\_server\_type) | Scaleway Instance commercial type. | `string` | n/a | yes |
 | <a name="input_ssh_port"></a> [ssh\_port](#input\_ssh\_port) | Effective SSH listener port configured by cloud-init and opened at the provider edge. | `number` | `22` | no |

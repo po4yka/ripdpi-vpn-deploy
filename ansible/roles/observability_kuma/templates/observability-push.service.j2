@@ -11,7 +11,7 @@ Slice=observability-agent.slice
 LoadCredential=config:/etc/observability-push/{{ item }}.json
 LoadCredential=push-token:/etc/observability-push/{{ item }}.token
 LoadCredential=observer-ca:/etc/observability-push/observer-ca.crt
-{% if item != 'node' %}
+{% if item != 'node' and (observability_kuma_secrets.notification_mode | default('telegram')) == 'telegram' %}
 LoadCredential=relay-auth-token:{{ observability_push.relay_auth_path }}
 {% endif %}
 ExecStart=/usr/bin/python3 /usr/local/libexec/observability-push.py {{ item }}

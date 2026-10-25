@@ -153,6 +153,16 @@ require_nonempty_directory() {
   fi
 }
 
+require_nonempty_tree() {
+  local relative_path="$1" artifact
+  artifact="$(restored_path "$relative_path")" || return 1
+  if [[ ! -d "$artifact" ]] ||
+     ! find "$artifact" -type f -size +0c -print -quit | grep -q .; then
+    echo "restore drill: required artifact tree empty: $relative_path" >&2
+    return 1
+  fi
+}
+
 require_file "etc/nftables.conf"
 require_file "etc/ssh/sshd_config.d/20-ansible-hardening.conf"
 require_file "etc/sysctl.d/90-vpn.conf"
@@ -165,6 +175,17 @@ validate_json "{{ xray_etc_dir | default(xray_config_dir | default('/etc/xray'))
 require_file "etc/nginx/sites-available/vpn-xhttp.conf"
 require_file "etc/nginx/tls/{{ nginx_xhttp.server_name }}.fullchain.pem"
 require_file "etc/nginx/tls/{{ nginx_xhttp.server_name }}.key"
+{% if nginx_xhttp.acme is defined %}
+require_file "etc/vpn-public-tls/config.json"
+require_file "etc/letsencrypt/live/{{ nginx_xhttp.server_name }}/fullchain.pem"
+require_file "etc/letsencrypt/live/{{ nginx_xhttp.server_name }}/privkey.pem"
+require_nonempty_tree "etc/letsencrypt/accounts"
+require_file "var/lib/vpn-nginx-publication/nginx.service/public-tls-lineage-{{ nginx_xhttp.server_name }}.json"
+require_file "var/lib/vpn-nginx-publication/nginx.service/public-tls.activated.json"
+validate_json "etc/vpn-public-tls/config.json"
+validate_json "var/lib/vpn-nginx-publication/nginx.service/public-tls-lineage-{{ nginx_xhttp.server_name }}.json"
+validate_json "var/lib/vpn-nginx-publication/nginx.service/public-tls.activated.json"
+{% endif %}
 {% if nginx_xhttp.fallback_enabled | default(false) and
       (nginx_xhttp.fallback_server_name | default(nginx_xhttp.server_name)) != nginx_xhttp.server_name %}
 require_file "etc/nginx/tls/{{ nginx_xhttp.fallback_server_name }}.fullchain.pem"
@@ -173,8 +194,14 @@ require_file "etc/nginx/tls/{{ nginx_xhttp.fallback_server_name }}.key"
 {% endif %}
 {% if not (vpn_subscription_only | default(false)) and (vpn.enable_hysteria | default(true)) %}
 require_file "{{ hysteria_config_dir | default('/etc/hysteria') | regex_replace('^/', '') }}/config.yaml"
+{% if hysteria.acme is defined %}
+python3 -Es /usr/local/libexec/ripdpi-transport-egress/transport_runtime_validate.py \
+  --check-cache "$restore_target" \
+  --config-relative "{{ hysteria_config_dir | default('/etc/hysteria') | regex_replace('^/', '') }}/config.yaml"
+{% else %}
 require_file "{{ hysteria_config_dir | default('/etc/hysteria') | regex_replace('^/', '') }}/server.fullchain.pem"
 require_file "{{ hysteria_config_dir | default('/etc/hysteria') | regex_replace('^/', '') }}/server.key"
+{% endif %}
 {% endif %}
 {% if not (vpn_subscription_only | default(false)) and (vpn.enable_snell | default(false)) %}
 require_file "etc/snell/config.json"

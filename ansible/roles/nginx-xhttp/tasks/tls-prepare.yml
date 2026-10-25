@@ -1,0 +1,104 @@
+---
+- name: Admit managed public TLS inputs before installing prerequisites
+  ansible.builtin.import_tasks: "{{ role_path }}/../../playbooks/tasks/transport-input-preflight.yml"
+  vars:
+    transport_input_sections: [xhttp]
+
+- name: Require the qualified Certbot package platform
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Ubuntu'
+      - ansible_facts['distribution_version'] == '24.04'
+    fail_msg: Managed public TLS requires the qualified Ubuntu 24.04 package pin.
+
+- name: Install inert public TLS prerequisites before ingress capture
+  ansible.builtin.apt:
+    name: [nginx, openssl, util-linux, 'certbot=2.9.0-1', 'python3-certbot=2.9.0-1']
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    policy_rc_d: 101
+
+- name: Disable the distribution renewal timer in favor of guarded activation
+  ansible.builtin.systemd_service:
+    name: certbot.timer
+    enabled: false
+    state: stopped
+  when: not ansible_check_mode
+
+- name: Inspect managed public TLS directories before taking ownership
+  ansible.builtin.stat:
+    path: '{{ item }}'
+    follow: false
+  loop:
+    - /etc/nginx/tls
+    - /var/lib/vpn-nginx-publication
+    - /var/lib/vpn-public-tls
+    - /usr/local/libexec
+    - /etc/vpn-public-tls
+    - /etc/letsencrypt
+    - /var/lib/letsencrypt
+    - /var/log/letsencrypt
+  register: _public_tls_directories
+
+- name: Refuse redirected or foreign public TLS directories
+  ansible.builtin.assert:
+    that:
+      - not (item.stat.islnk | default(false))
+      - not (item.stat.exists | default(false)) or (item.stat.isdir | default(false))
+      - not (item.stat.exists | default(false)) or item.stat.uid == 0
+      - not (item.stat.exists | default(false)) or item.stat.mode is match('^[0-7]+[0145][0145]$')
+    fail_msg: Managed public TLS requires root-owned directories without writable or redirected ancestry.
+  loop: '{{ _public_tls_directories.results }}'
+
+- name: Create private TLS publication state and public challenge roots
+  ansible.builtin.file:
+    path: '{{ item.path }}'
+    state: directory
+    owner: root
+    group: root
+    mode: '{{ item.mode }}'
+  loop:
+    - {path: /etc/nginx/tls, mode: '0750'}
+    - {path: /var/lib/vpn-nginx-publication, mode: '0700'}
+    - {path: /var/lib/vpn-public-tls, mode: '0755'}
+    - {path: /usr/local/libexec, mode: '0755'}
+    - {path: /etc/vpn-public-tls, mode: '0700'}
+    - {path: /etc/letsencrypt, mode: '0700'}
+    - {path: /var/lib/letsencrypt, mode: '0700'}
+    - {path: /var/log/letsencrypt, mode: '0700'}
+
+- name: Install public TLS publication helpers without starting issuance
+  ansible.builtin.copy:
+    src: '{{ item.src }}'
+    dest: '/usr/local/libexec/{{ item.dest }}'
+    owner: root
+    group: root
+    mode: '0750'
+  loop:
+    - {src: nginx_transaction.py, dest: vpn-nginx-transaction}
+    - {src: activate_public_tls.py, dest: vpn-public-tls}
+
+- name: Install guarded public certificate renewal units
+  ansible.builtin.template:
+    src: 'vpn-public-tls.{{ item }}.j2'
+    dest: '/etc/systemd/system/vpn-public-tls.{{ item }}'
+    owner: root
+    group: root
+    mode: '0644'
+  loop: [service, timer]
+
+- name: Validate managed public TLS units before loading them
+  ansible.builtin.command:
+    argv:
+      - systemd-analyze
+      - verify
+      - /etc/systemd/system/vpn-public-tls.service
+      - /etc/systemd/system/vpn-public-tls.timer
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Load public TLS units without enabling issuance
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: not ansible_check_mode

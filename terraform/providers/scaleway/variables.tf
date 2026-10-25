@@ -39,6 +39,17 @@ variable "image" {
   }
 }
 
+variable "root_size_gb" {
+  type        = number
+  default     = 20
+  description = "Root Block Storage 5K size in decimal GB, fixed in the reviewed cost plan."
+
+  validation {
+    condition     = var.root_size_gb == floor(var.root_size_gb) && var.root_size_gb >= 20 && var.root_size_gb <= 100
+    error_message = "root_size_gb must be an integer from 20 to 100."
+  }
+}
+
 variable "admin_user" {
   type        = string
   default     = "deploy"

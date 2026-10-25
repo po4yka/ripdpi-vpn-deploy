@@ -8,6 +8,15 @@
   vars:
     transport_input_sections: [hysteria, egress]
 
+- name: Require one exact fresh native ACME recovery intent
+  ansible.builtin.assert:
+    that:
+      - hysteria.acme is defined
+      - hysteria_acme_restore_root | default('') is match('^/run/vpn-acme-restore-[A-Za-z0-9]{8,32}$')
+      - hysteria_acme_restore_snapshot_id | default('') is match('^[0-9a-f]{64}$')
+    fail_msg: Native cache recovery requires its approved private runtime root and full snapshot ID.
+  when: hysteria_acme_restore_root is defined or hysteria_acme_restore_snapshot_id is defined
+
 - name: Derive private masquerade origin resolution without global host changes
   ansible.builtin.command:
     argv:
@@ -57,6 +66,21 @@
     update_cache: true
     cache_valid_time: 3600
 
+- name: Inspect supplied TLS paths before native ACME admission
+  ansible.builtin.stat:
+    path: '{{ hysteria_config_dir }}/{{ item }}'
+    follow: false
+  loop: [server.fullchain.pem, server.key]
+  register: _hysteria_supplied_tls
+  when: hysteria.acme is defined
+
+- name: Refuse native ACME adoption of a supplied TLS generation
+  ansible.builtin.assert:
+    that: not (item.stat.exists | default(false)) and not (item.stat.islnk | default(false))
+    fail_msg: Native ACME requires a fresh node without supplied TLS authority.
+  loop: '{{ _hysteria_supplied_tls.results | default([]) }}'
+  when: hysteria.acme is defined
+
 - name: Create hysteria system user
   ansible.builtin.user:
     name: hysteria
@@ -69,8 +93,12 @@
   ansible.builtin.file:
     path: "{{ item.path }}"
     state: directory
-    owner: "{{ item.owner | default('root') }}"
-    group: "{{ item.group | default('root') }}"
+    owner: >-
+      {{ omit if (transport_egress_fresh_check_mode | default(false) | bool)
+         and item.owner | default('root') == 'hysteria' else item.owner | default('root') }}
+    group: >-
+      {{ omit if (transport_egress_fresh_check_mode | default(false) | bool)
+         and item.group | default('root') == 'hysteria' else item.group | default('root') }}
     mode: "{{ item.mode }}"
   loop:
     - path: "{{ hysteria_config_dir }}"
@@ -81,6 +109,39 @@
       mode: "0750"
       owner: hysteria
       group: hysteria
+
+- name: Keep native ACME parent under root authority
+  ansible.builtin.file:
+    path: /var/lib/hysteria
+    state: directory
+    owner: root
+    group: '{{ omit if transport_egress_fresh_check_mode | default(false) | bool else "hysteria" }}'
+    mode: '0750'
+  when: hysteria.acme is defined
+
+- name: Inspect native ACME cache without reading certificate material
+  ansible.builtin.stat:
+    path: /var/lib/hysteria/acme
+    follow: false
+  register: _hysteria_acme_cache
+  when: hysteria.acme is defined
+
+- name: Refuse a redirected native ACME cache
+  ansible.builtin.assert:
+    that:
+      - not (_hysteria_acme_cache.stat.islnk | default(false))
+      - not (_hysteria_acme_cache.stat.exists | default(false)) or (_hysteria_acme_cache.stat.isdir | default(false))
+    fail_msg: Native ACME requires its exact role-owned cache directory.
+  when: hysteria.acme is defined
+
+- name: Create the private native ACME cache without managing its contents
+  ansible.builtin.file:
+    path: /var/lib/hysteria/acme
+    state: directory
+    owner: '{{ omit if transport_egress_fresh_check_mode | default(false) | bool else "hysteria" }}'
+    group: '{{ omit if transport_egress_fresh_check_mode | default(false) | bool else "hysteria" }}'
+    mode: '0700'
+  when: hysteria.acme is defined
 
 - name: Install pinned Hysteria release through runtime-release
   ansible.builtin.include_role:
@@ -107,6 +168,33 @@
   ansible.builtin.set_fact:
     transport_runtime_candidates: >-
       {{ (transport_runtime_candidates | default([])) + runtime_release_candidates }}
+
+- name: Admit an explicitly requested fresh native ACME cache recovery
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - -Es
+      - '{{ transport_egress_libexec_dir }}/transport_runtime_validate.py'
+      - --recover-cache
+      - '{{ hysteria_acme_restore_root }}'
+      - --config-relative
+      - '{{ hysteria_config_dir | regex_replace("^/", "") }}/config.yaml'
+      - --request-stdin
+    stdin: >-
+      {{ {'binary': hysteria_install_root ~ '/releases/' ~ hysteria.version ~ '/hysteria',
+          'gateway_binary': transport_egress_runtime_binary,
+          'config': lookup('ansible.builtin.template', 'config.yaml.j2'),
+          'unit': lookup('ansible.builtin.template', 'hysteria-server.service.j2'),
+          'client_name': transport_runtime_probe_clients.hysteria,
+          'snapshot_id': hysteria_acme_restore_snapshot_id} | to_json }}
+    stdin_add_newline: false
+  no_log: true
+  register: _hysteria_acme_recovery
+  changed_when: (_hysteria_acme_recovery.stdout | from_json).changed
+  when:
+    - hysteria.acme is defined
+    - hysteria_acme_restore_root is defined
+    - not ansible_check_mode
 
 - name: Validate Hysteria candidate before quiescing the accepted route
   # Private candidates are removed below; accepted publication reports runtime changes.
@@ -157,7 +245,7 @@
     src: "{{ item.source }}"
     dest: "{{ item.destination }}"
     owner: root
-    group: "{{ item.group }}"
+    group: "{{ omit if (transport_egress_fresh_check_mode | default(false) | bool) and item.group == 'hysteria' else item.group }}"
     mode: "{{ item.mode }}"
   loop:
     - {source: config.yaml.j2, destination: "{{ hysteria_config_dir }}/config.yaml", group: hysteria, mode: '0640'}
@@ -172,7 +260,7 @@
     content: '{{ hysteria_masquerade_hosts.content }}'
     dest: '{{ hysteria_config_dir }}/masquerade-hosts'
     owner: root
-    group: hysteria
+    group: '{{ omit if transport_egress_fresh_check_mode | default(false) | bool else "hysteria" }}'
     mode: '0640'
   check_mode: true
   register: _hysteria_hosts_change
@@ -184,7 +272,7 @@
     content: "{{ item.content }}"
     dest: "{{ item.destination }}"
     owner: root
-    group: hysteria
+    group: '{{ omit if transport_egress_fresh_check_mode | default(false) | bool else "hysteria" }}'
     mode: '0640'
   loop:
     - {content: "{{ hysteria.cert_pem }}", destination: "{{ hysteria_config_dir }}/server.fullchain.pem"}
@@ -193,6 +281,7 @@
   register: _hysteria_tls_change
   no_log: true
   diff: false
+  when: hysteria.acme is not defined
 
 - name: Detect Hysteria ECH authority change without publication
   ansible.builtin.copy:
@@ -249,16 +338,18 @@
           'data': lookup('ansible.builtin.template', 'hysteria-server.service.j2') | b64encode},
          {'path': hysteria_config_dir ~ '/masquerade-hosts', 'mode': 416,
           'gid': transport_egress_frontend_gids.hysteria | int, 'data': hysteria_masquerade_hosts.content | b64encode},
-         {'path': hysteria_config_dir ~ '/server.fullchain.pem', 'mode': 416,
-          'gid': transport_egress_frontend_gids.hysteria | int, 'data': hysteria.cert_pem | b64encode},
-         {'path': hysteria_config_dir ~ '/server.key', 'mode': 416,
-          'gid': transport_egress_frontend_gids.hysteria | int, 'data': hysteria.key_pem | b64encode},
          {'path': '/usr/local/libexec/transport_semantics.py', 'mode': 420, 'gid': 0,
           'data': lookup('ansible.builtin.file', role_path ~ '/../../../scripts/transport_semantics.py', rstrip=false) | b64encode},
          {'path': '/usr/local/libexec/ripdpi-validate-yaml-mapping', 'mode': 493, 'gid': 0,
           'data': lookup('ansible.builtin.file',
                          role_path ~ '/../runtime-release/files/validate_yaml_mapping.py', rstrip=false) | b64encode}
-         ] + ([{'path': hysteria_config_dir ~ '/ech.key', 'mode': 384, 'gid': 0,
+         ] + ([{'path': hysteria_config_dir ~ '/server.fullchain.pem', 'absent': true},
+               {'path': hysteria_config_dir ~ '/server.key', 'absent': true}] if hysteria.acme is defined else [
+               {'path': hysteria_config_dir ~ '/server.fullchain.pem', 'mode': 416,
+                'gid': transport_egress_frontend_gids.hysteria | int, 'data': hysteria.cert_pem | b64encode},
+               {'path': hysteria_config_dir ~ '/server.key', 'mode': 416,
+                'gid': transport_egress_frontend_gids.hysteria | int, 'data': hysteria.key_pem | b64encode}])
+         + ([{'path': hysteria_config_dir ~ '/ech.key', 'mode': 384, 'gid': 0,
                  'data': hysteria.ech.keys_pem | b64encode}] if hysteria.ech is defined
                  else [{'path': hysteria_config_dir ~ '/ech.key', 'absent': true}]) }}
   no_log: true

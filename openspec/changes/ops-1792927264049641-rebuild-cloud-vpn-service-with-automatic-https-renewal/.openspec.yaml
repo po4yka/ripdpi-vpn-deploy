@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-10-25
+goal: OPS-1792927264049641 Rebuild cloud VPN service with automatic HTTPS renewal

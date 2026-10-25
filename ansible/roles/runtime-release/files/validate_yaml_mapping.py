@@ -83,9 +83,12 @@ def _validate_hysteria(document: dict) -> None:
     ports = [int(value) for value in match.groups() if value is not None]
     if any(port > 65535 for port in ports) or (len(ports) == 3 and ports[1] > ports[2]):
         raise ValueError("Hysteria listen port is invalid")
-    tls = _mapping(document, "tls")
-    _string(tls, "cert")
-    _string(tls, "key")
+    if ('tls' in document) == ('acme' in document):
+        raise ValueError('Hysteria requires exactly one TLS authority')
+    if 'tls' in document:
+        tls = _mapping(document, "tls")
+        _string(tls, "cert")
+        _string(tls, "key")
     if 'ech' in document:
         ech = _mapping(document, 'ech')
         if ech != {'keyPath': '/run/credentials/hysteria-server.service/hysteria-ech'}:
@@ -112,6 +115,10 @@ def _validate_hysteria(document: dict) -> None:
     spec = importlib.util.spec_from_file_location("transport_semantics", shared)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    if 'acme' in document:
+        module.hysteria_native_acme(document['acme'])
+        if 'ech' in document:
+            raise ValueError('Hysteria native ACME does not admit ECH')
     proxy = _mapping(masquerade, "proxy")
     if module.hysteria_errors({"masquerade_type": masquerade.get("type"),
                                "masquerade_url": proxy.get("url")}):

@@ -4,7 +4,9 @@ auth: {{ (client.name ~ ':' ~ client.password) | to_json }}
 tls:
   sni: {{ (hysteria.ech.inner_name if hysteria.ech is defined else hysteria.server_name | default(nginx_xhttp.server_name | default(xray.server_names[0]))) | to_json }}
   insecure: false
+{% if hysteria.acme is not defined %}
   ca: {{ (hysteria_config_dir ~ '/server.fullchain.pem') | to_json }}
+{% endif %}
 {% if hysteria.ech is defined %}
   ech: {{ hysteria.ech.config_list | to_json }}
 {% endif %}

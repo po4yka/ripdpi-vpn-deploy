@@ -31,6 +31,9 @@ so they exercise the effective legacy contract.
 - Mock-provider tests pin cloud-init wiring, routed IP allocation, default-deny ingress, listener parity, and SSH CIDR restrictions.
 - The Instance keeps Terraform `prevent_destroy`; the normal destroy wrapper uses a temporary lifecycle override.
 
+
+The root disk is explicit Block Storage 5K (`sbs_volume`, 5000 IOPS), defaults to 20 GB through `root_size_gb`, and is deleted with its instance. Include the disk and the separately billed IPv4 in the cost plan. Changing an existing root type or size requires a reviewed replacement or resize plan.
+
 ## Pitfalls
 
 - **Provider refreshes stay within reviewed 2.x resources** — keep the baseline
