@@ -131,7 +131,8 @@ class ShardReport:
         if self.worker:
             # xdist sends workeroutput after the inner sessionfinish hooks return.
             self.config.workeroutput["shard_collection"] = {"expected": self.expected, "selected": self.selected}
-            return (yield)
+            yield
+            return
         if self.worker_collections:
             # Every worker must collect and select the same tests; otherwise the report stays empty.
             first = self.worker_collections[0]
