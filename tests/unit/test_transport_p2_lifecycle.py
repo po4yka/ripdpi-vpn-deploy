@@ -92,12 +92,13 @@ def test_probe_unit_change_queues_only_affected_runtime(tmp_path, changed):
 
 
 @pytest.mark.parametrize(
-    "environment,success", [("staging", True), ("prod", False), ("", False)]
+    "environment,native_acme,success", [("staging", False, True), ("prod", False, False),
+                                       ("", False, False), ("staging", True, False)]
 )
 def test_realm_exact_prerelease_guard_is_before_any_mutation(
-    tmp_path, environment, success
+    tmp_path, environment, native_acme, success
 ):
-    guard = tasks("hysteria-realm")[0]
+    guards = tasks("hysteria-realm")[:2]
     play = [
         {
             "hosts": "localhost",
@@ -107,9 +108,10 @@ def test_realm_exact_prerelease_guard_is_before_any_mutation(
             "vars": {
                 "env": environment,
                 "hysteria_realm": {"version": "v1.14.0-alpha.22", "max_realms": 16},
+                "hysteria": {"acme": {}} if native_acme else {},
             },
             "tasks": [
-                guard,
+                *guards,
                 {
                     "name": "Observe mutation admission",
                     "ansible.builtin.copy": {

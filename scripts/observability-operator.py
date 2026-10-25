@@ -60,6 +60,19 @@ STATUS_UNITS = {
     ),
     "kuma": ("observability-kuma.service", "nginx.service"),
 }
+CONTROL_PLANE_ALERTING_UNITS = frozenset({
+    "observability-alertmanager.service", "observability-telegram-relay.service",
+    "observability-silence-gateway.service", "observability-push-delivery.timer",
+})
+
+
+def _status_units(component: str, notification_mode: str | None = None) -> tuple[str, ...]:
+    units = STATUS_UNITS[component]
+    if component == "control-plane" and notification_mode == "panel-only":
+        return tuple(unit for unit in units if unit not in CONTROL_PLANE_ALERTING_UNITS)
+    return units
+
+
 SECRET_COMMANDS = frozenset({"render", "check", "validate", "deploy", "rotate", "rollback"})
 MUTATING_COMMANDS = frozenset(
     {
@@ -730,11 +743,11 @@ class _NoGatewayRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         raise RuntimeError("gateway redirect rejected")
 
-gateway_token = read_gateway_token("/etc/observability-control-plane/credentials", """
-        + repr(name)
-        + """)
 gateway_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoGatewayRedirect())
 def gateway_request(path, data=None, method="GET"):
+    gateway_token = read_gateway_token("/etc/observability-control-plane/credentials", """
+        + repr(name)
+        + """)
     request = urllib.request.Request("http://127.0.0.1:19094" + path, data=data,
         headers={"Authorization": "Bearer " + gateway_token, "Content-Type": "application/json"}, method=method)
     return gateway_opener.open(request, timeout=5)
@@ -754,12 +767,31 @@ def _status_program(component: str) -> bytes:
     }[component]
     source = (
         (_gateway_program() if component == "control-plane" else "") + f"""import json
+import shlex
 import subprocess
 import urllib.request
 
 COMPONENT = {component!r}
 UNITS = {units!r}
 READINESS = {readiness!r}
+notification_mode = None
+if COMPONENT == "control-plane":
+    notification_mode = "unknown"
+    try:
+        result = subprocess.run(
+            ["/usr/bin/systemctl", "show", "observability-prometheus.service", "--property=Environment", "--value"],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True, timeout=5, check=False,
+        )
+        modes = [value.split("=", 1)[1] for value in shlex.split(result.stdout)
+                 if value.startswith("OBSERVABILITY_NOTIFICATION_MODE=")]
+        if result.returncode == 0 and len(modes) == 1 and modes[0] in {{"telegram", "panel-only"}}:
+            notification_mode = modes[0]
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    if notification_mode == "panel-only":
+        UNITS = {_status_units(component, 'panel-only')!r}
+        READINESS = ("http://127.0.0.1:9090/-/ready",)
 states = {{}}
 for unit in UNITS:
     try:
@@ -783,8 +815,11 @@ for url in READINESS:
             ready.append(valid)
     except Exception:
         ready.append(False)
-healthy = all(value == "active" for value in states.values()) and all(ready)
-print(json.dumps({{"schema_version": 1, "component": COMPONENT, "state": "healthy" if healthy else "degraded", "units": states}}, sort_keys=True))
+healthy = (notification_mode != "unknown" and all(value == "active" for value in states.values()) and all(ready))
+report = {{"schema_version": 1, "component": COMPONENT, "state": "healthy" if healthy else "degraded", "units": states}}
+if COMPONENT == "control-plane":
+    report["notification_mode"] = notification_mode
+print(json.dumps(report, sort_keys=True))
 """
     )
     return source.encode("utf-8")
@@ -933,10 +968,17 @@ def _remote(
     ):
         raise OperatorError("remote report rejected")
     if operation == "status":
-        expected_units = set(STATUS_UNITS[args.component])
+        mode = value.get("notification_mode")
+        expected_fields = {"schema_version", "component", "state", "units"}
+        if args.component == "control-plane":
+            expected_fields.add("notification_mode")
+            if (not isinstance(mode, str) or mode not in {"telegram", "panel-only", "unknown"}
+                    or (mode == "unknown" and value.get("state") != "degraded")):
+                raise OperatorError("remote report rejected")
+        expected_units = set(_status_units(args.component, mode))
         units = value.get("units")
         if (
-            set(value) != {"schema_version", "component", "state", "units"}
+            set(value) != expected_fields
             or value.get("state") not in {"healthy", "degraded"}
             or not isinstance(units, dict)
             or set(units) != expected_units

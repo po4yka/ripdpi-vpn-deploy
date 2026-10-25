@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Native Hysteria ACME cannot supply Realm PEM files. Controller admission and direct Realm entry refuse that combination before mutation, including explicit TLS-sharing overrides.
+
 Disabled role intent stops only declared owned services and removes exact runtime
 configuration; shared packages, immutable release receipts and unrelated state
 remain. The unique `hysteria_realm_role_enabled` selector defaults true for direct calls.

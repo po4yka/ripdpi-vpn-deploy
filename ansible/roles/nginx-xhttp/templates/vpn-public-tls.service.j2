@@ -23,5 +23,6 @@ LockPersonality=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
 SystemCallArchitectures=native
-CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_SYS_ADMIN
+# Runtime adoption checks /proc identities of nginx workers with another UID.
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_SYS_ADMIN CAP_SYS_PTRACE
 ReadWritePaths=/etc/letsencrypt /var/lib/letsencrypt /var/log/letsencrypt /var/lib/vpn-public-tls /etc/nginx/tls /etc/nginx/conf.d /etc/vpn-public-tls /var/log/nginx /var/lib/vpn-nginx-publication

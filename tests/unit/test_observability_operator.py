@@ -137,7 +137,7 @@ if entry['program'] == 'ssh':
     elif '/api/v2/alerts' in payload:
         print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'receiver': 'telegram-primary', 'state': 'api-delivered'}}))
     else:
-        print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'state': 'healthy', 'units': {{'observability-ingress.service': 'active', 'observability-prometheus.service': 'active', 'observability-alertmanager.service': 'active', 'observability-telegram-relay.service': 'active', 'observability-silence-gateway.service': 'active', 'observability-control-plane-adapter.timer': 'active', 'observability-protocol-liveness-adapter.timer': 'active', 'observability-disk-guard.service': 'active', 'observability-push-pipeline.timer': 'active', 'observability-push-delivery.timer': 'active'}}}}))
+        print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'state': 'healthy', 'notification_mode': 'telegram', 'units': {{'observability-ingress.service': 'active', 'observability-prometheus.service': 'active', 'observability-alertmanager.service': 'active', 'observability-telegram-relay.service': 'active', 'observability-silence-gateway.service': 'active', 'observability-control-plane-adapter.timer': 'active', 'observability-protocol-liveness-adapter.timer': 'active', 'observability-disk-guard.service': 'active', 'observability-push-pipeline.timer': 'active', 'observability-push-delivery.timer': 'active'}}}}))
 """
     for name in ("ansible-playbook", "ssh"):
         _write(binary / name, recorder, 0o700)
@@ -239,6 +239,66 @@ def test_agent_status_uses_vmagent_initialization_readiness(monkeypatch, capsys,
     monkeypatch.setattr(urllib.request, "build_opener", lambda *_: SimpleNamespace(open=open_readiness))
     exec(compile(module._status_program("agent"), "status-program", "exec"), {})
     assert json.loads(capsys.readouterr().out)["state"] == expected
+
+
+@pytest.mark.parametrize('mode,ready_status,expected', [
+    ('panel-only', 200, 'healthy'), ('panel-only', 503, 'degraded'),
+    ('telegram', 200, 'degraded'), ('', 200, 'degraded'), ('unsupported', 200, 'degraded'),
+])
+def test_control_plane_status_uses_installed_mode_without_notification_credentials(monkeypatch, capsys, mode, ready_status, expected):
+    from types import SimpleNamespace
+    import urllib.request
+
+    module = _operator_module()
+    inspected = []
+    def systemctl(argv, **kwargs):
+        inspected.append(argv)
+        return SimpleNamespace(returncode=0, stdout=(f'OBSERVABILITY_NOTIFICATION_MODE={mode}\n'
+            if '--property=Environment' in argv else 'active\n'))
+    credential_reads = []
+    def missing_credential(*args, **kwargs):
+        credential_reads.append(args)
+        raise FileNotFoundError('no notification credential')
+    def readiness(url, **kwargs):
+        assert url == 'http://127.0.0.1:9090/-/ready'
+        return _DrillResponse(ready_status, {})
+    monkeypatch.setattr(subprocess, 'run', systemctl)
+    monkeypatch.setattr(os, 'open', missing_credential)
+    monkeypatch.setattr(urllib.request, 'build_opener', lambda *_: SimpleNamespace(open=readiness))
+    exec(compile(module._status_program('control-plane'), 'status-program', 'exec'), {})
+    report = json.loads(capsys.readouterr().out)
+    assert report['state'] == expected
+    assert report['notification_mode'] == (mode if mode in {'telegram', 'panel-only'} else 'unknown')
+    if mode == 'panel-only':
+        assert not credential_reads
+        assert set(report['units']) == {'observability-ingress.service', 'observability-prometheus.service',
+            'observability-control-plane-adapter.timer', 'observability-protocol-liveness-adapter.timer',
+            'observability-disk-guard.service', 'observability-push-pipeline.timer'}
+        assert not any('observability-push-delivery.timer' in call for call in inspected)
+    else:
+        assert credential_reads
+
+
+@pytest.mark.parametrize('mode,unit_mode,state,accepted', [
+    ('panel-only', 'panel-only', 'healthy', True), ('telegram', 'panel-only', 'healthy', False),
+    ('unknown', 'telegram', 'healthy', False), ('unknown', 'telegram', 'degraded', True),
+    ('unsupported', 'telegram', 'degraded', False),
+    ([], 'telegram', 'degraded', False), (None, 'telegram', 'degraded', False),
+])
+def test_status_report_requires_mode_matched_units(monkeypatch, mode, unit_mode, state, accepted):
+    from types import SimpleNamespace
+
+    module = _operator_module()
+    report = {'schema_version': 1, 'component': 'control-plane', 'state': state,
+              'notification_mode': mode, 'units': {unit: 'active' for unit in module._status_units('control-plane', unit_mode)}}
+    monkeypatch.setattr(module.fleet_inspection, 'ssh_command', lambda *_: ['ssh'])
+    monkeypatch.setattr(module.fleet_inspection, 'bounded_command', lambda *a, **kw: json.dumps(report).encode())
+    args = SimpleNamespace(component='control-plane', known_hosts=Path('/unused'))
+    if accepted:
+        assert module._remote(args, {}, b'payload', operation='status') == report
+    else:
+        with pytest.raises(module.OperatorError, match='remote report rejected'):
+            module._remote(args, {}, b'payload', operation='status')
 
 
 def _calls(operator: dict[str, object]) -> list[dict[str, object]]:
@@ -407,6 +467,7 @@ def test_status_is_secretless_read_only_and_redacted(
         "host": "node-a",
         "schema_version": 1,
         "state": "healthy",
+        "notification_mode": "telegram",
         "units": {
             "observability-ingress.service": "active",
             "observability-prometheus.service": "active",
@@ -424,7 +485,7 @@ def test_status_is_secretless_read_only_and_redacted(
     assert [entry["program"] for entry in observed] == ["ssh", "ssh-payload"]
     payload = observed[1]["payload"]
     assert "journalctl" not in payload
-    assert "Environment" not in payload
+    assert "os.environ" not in payload
     assert "systemctl" in payload
     assert "observability-deadman-pulse.service" not in payload
     assert "observability-primary-canary.service" not in payload
@@ -1227,25 +1288,11 @@ def _run_drill_program(
     monkeypatch.setattr(urllib.request, "build_opener", build_opener)
     monkeypatch.setattr(time, "monotonic", lambda: next(monotonic))
     monkeypatch.setattr(time, "sleep", lambda _: pytest.fail("unexpected drill sleep"))
-    source = SCRIPT.read_text(encoding="utf-8")
-    start = source.index("def _drill_program")
-    end = source.index("def _remote", start)
-    gateway_start = source.index("def _gateway_program")
-    gateway_end = source.index("def _status_program", gateway_start)
-    namespace: dict[str, object] = {"re": re, "OperatorError": RuntimeError}
-    exec(compile(source[gateway_start:gateway_end], str(SCRIPT), "exec"), namespace)
-    gateway = namespace["_gateway_program"]("operator")
-    # Credential reader has separate filesystem tests; keep this routing test hermetic.
-    gateway = (
-        gateway[: gateway.index("gateway_token =")]
-        + "read_gateway_token = lambda *args: '"
-        + "a" * 64
-        + "'\ngateway_token = read_gateway_token()\n"
-        + gateway[gateway.index("gateway_opener =") :]
-    )
-    namespace["_gateway_program"] = lambda owner: gateway
-    exec(compile(source[start:end], str(SCRIPT), "exec"), namespace)
-    program = namespace["_drill_program"]("operator", "c" * 40)
+    module = _operator_module()
+    # The token reader is a tested filesystem boundary; this test owns routing.
+    gateway = module._gateway_program("operator") + "\nread_gateway_token = lambda *args: '" + "a" * 64 + "'\n"
+    monkeypatch.setattr(module, "_gateway_program", lambda owner: gateway)
+    program = module._drill_program("operator", "c" * 40)
     exec(compile(program, "drill-program", "exec"), {})
     return calls
 
@@ -1392,16 +1439,8 @@ def test_rollback_program_refuses_same_basename_outside_expected_generation(
 
 
 def _gateway_token_reader():
-    source = SCRIPT.read_text(encoding="utf-8")
-    start = source.index("def _gateway_program")
-    end = source.index("def _status_program", start)
     namespace = {}
-    exec(compile(source[start:end], str(SCRIPT), "exec"), namespace)
-    program = namespace["_gateway_program"]("operator")
-    exec(
-        compile(program[: program.index("gateway_token =")], "gateway-reader", "exec"),
-        namespace,
-    )
+    exec(compile(_operator_module()._gateway_program("operator"), "gateway-reader", "exec"), namespace)
     return namespace["read_gateway_token"]
 
 
@@ -1424,7 +1463,6 @@ def test_gateway_token_reader_requires_private_regular_anchored_file(
     tmp_path, monkeypatch, mutation
 ):
     import os
-    import stat
     from types import SimpleNamespace
 
     root = tmp_path / "credentials"
@@ -1541,16 +1579,8 @@ def test_make_gateway_commands_forward_owner_literally(operator, owner, command)
 
 
 def test_gateway_client_never_redirects_authorization():
-    source = SCRIPT.read_text()
-    start = source.index("def _gateway_program")
-    end = source.index("def _status_program", start)
     namespace = {}
-    exec(compile(source[start:end], str(SCRIPT), "exec"), namespace)
-    program = namespace["_gateway_program"]("operator")
-    exec(
-        compile(program[: program.index("gateway_token =")], "gateway-reader", "exec"),
-        namespace,
-    )
+    exec(compile(_operator_module()._gateway_program("operator"), "gateway-reader", "exec"), namespace)
     handler = namespace["_NoGatewayRedirect"]()
     with pytest.raises(RuntimeError, match="gateway redirect rejected"):
         handler.redirect_request(

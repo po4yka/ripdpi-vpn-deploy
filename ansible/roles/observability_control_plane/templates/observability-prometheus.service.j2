@@ -10,6 +10,7 @@ ConditionPathExists=!/var/lib/observability-disk-guard/latched
 Slice=observability-collector.slice
 User={{ observability_control_plane.service_user }}
 Group={{ observability_control_plane.service_group }}
+Environment=OBSERVABILITY_NOTIFICATION_MODE={{ 'telegram' if (observability_control_plane.alerting | default({'enabled': false}, true)).enabled | default(false) | bool else 'panel-only' }}
 {% if (observability_control_plane.alerting | default({'enabled': false}, true)).enabled | default(false) %}
 LoadCredential=silence-sender-token:/etc/observability-control-plane/credentials/silence-sender-token
 {% endif %}

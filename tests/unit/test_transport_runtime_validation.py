@@ -1,5 +1,6 @@
 """Exact native validation leases refuse foreign state before cleanup."""
 import importlib.util
+import errno
 import json
 import os
 from pathlib import Path
@@ -316,6 +317,39 @@ def acme_cache(tls, tmp_path, monkeypatch):
     return root, document, files, cert, account
 
 
+@pytest.mark.parametrize('case', ['success', 'directory-refusal', 'file-refusal', 'missing', 'read-error'])
+def test_cache_read_closes_every_descriptor(tmp_path, monkeypatch, case):
+    directory = tmp_path/'one/two'
+    directory.mkdir(parents=True, mode=0o700)
+    path = directory/'cache.json'
+    path.write_bytes(b'cache')
+    path.chmod(0o600)
+    if case == 'directory-refusal': (tmp_path/'one').chmod(0o777)
+    elif case == 'file-refusal': path.chmod(0o666)
+    elif case == 'missing': path.unlink()
+    opened = []
+    original_open = os.open
+    def tracked_open(*args, **kwargs):
+        descriptor = original_open(*args, **kwargs)
+        opened.append(descriptor)
+        return descriptor
+    def failed_read(*args):
+        raise OSError(errno.EIO, 'read failed')
+    with monkeypatch.context() as change:
+        change.setattr(validation.os, 'open', tracked_open)
+        if case == 'read-error': change.setattr(validation.os, 'read', failed_read)
+        if case == 'success':
+            assert validation.cache_file(tmp_path, 'one/two/cache.json') == b'cache'
+        else:
+            with pytest.raises((Refusal, OSError)):
+                validation.cache_file(tmp_path, 'one/two/cache.json')
+    assert opened
+    for descriptor in opened:
+        with pytest.raises(OSError) as error:
+            os.fstat(descriptor)
+        assert error.value.errno == errno.EBADF
+
+
 @pytest.mark.parametrize('zero_ari', [False, True])
 def test_complete_cache_has_exact_domain_and_account_authority(acme_cache, zero_ari):
     root, document, files, cert, _account = acme_cache
@@ -420,7 +454,6 @@ def test_cache_recovery_retries_exact_commit_after_each_interruption(cache_recov
         if phase == 'renamed': change.setattr(os, 'rename', rename)
         with pytest.raises(Interrupted):
             validation.recover_cache(root, 'etc/hysteria/config.yaml', request)
-    journal = json.loads((validation.STATE/'hysteria-acme-restore.json').read_text())
     if phase in {'renamed', 'complete'}:
         assert destination.stat().st_ino != before
     else:

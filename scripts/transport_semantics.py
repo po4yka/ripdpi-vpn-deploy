@@ -901,6 +901,9 @@ def transport_errors(doc: object, context: object = None, *, sections: list[str]
     if "xray" in sections:
         errors.extend(cohort_errors(doc.get("xray"), allow_placeholders=allow_placeholders))
     vpn = context.get("vpn")
+    if (isinstance(vpn, dict) and vpn.get('enable_hysteria_realm', False)
+            and isinstance(doc.get('hysteria'), dict) and 'acme' in doc['hysteria']):
+        errors.append(('hysteria.acme', 'Realm requires supplied PEM authority; native ACME cannot supply it'))
     if ("xhttp" in sections
             or ("xray" in sections and (not isinstance(vpn, dict) or vpn.get("enable_nginx_xhttp", False)))
             or ("hysteria" in sections and isinstance(vpn, dict) and vpn.get("enable_nginx_xhttp", False))):

@@ -314,3 +314,11 @@ def test_managed_public_tls_has_one_bounded_authority(case):
     errors = xhttp_errors({'nginx_xhttp': frontend}, {})
     assert bool(errors) is (case != 'valid')
     assert 'private-marker' not in json.dumps(errors)
+
+
+@pytest.mark.parametrize('realm', [False, True])
+def test_native_acme_cannot_supply_realm_pem_authority(realm):
+    document = {'hysteria': {'acme': {'domains': ['site.example.test'], 'email': 'operator@example.test'}}}
+    errors = transport_errors(document, {'vpn': {'enable_hysteria_realm': realm}}, sections=[])
+    assert errors == ([('hysteria.acme', 'Realm requires supplied PEM authority; native ACME cannot supply it')]
+                      if realm else [])
