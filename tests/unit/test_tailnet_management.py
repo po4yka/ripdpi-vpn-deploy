@@ -60,6 +60,7 @@ def test_live_fleet_profiles_enable_only_reviewed_tailnet_management_sources() -
     assert len(approved_sources) == 2
 
     enabled_profiles = {
+        "vpn-p0-minimal.yml",
         "vpn-p0-self-steal.yml",
         "vpn-p1-web.yml",
         "vpn-p2-udp.yml",

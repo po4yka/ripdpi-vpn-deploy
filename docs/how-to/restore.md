@@ -62,7 +62,7 @@ node has no accepted Tailnet handoff or socket contexts until bootstrap succeeds
 
 ```bash
 deploy_alias='<exact-inventory-alias>'
-make install-ssh-recovery ANSIBLE_LIMIT="$deploy_alias" SSH_RECOVERY_EXCLUSIVE_WINDOW=1
+make install-ssh-recovery ANSIBLE_LIMIT="$deploy_alias" SSH_RECOVERY_EXCLUSIVE_WINDOW=1 SSH_RECOVERY_INVENTORY_SECTION=vpn
 # Prepare the one-node private config as documented in tailnet-management.md.
 make bootstrap-tailnet ANSIBLE_LIMIT="$deploy_alias" \
   TAILNET_BOOTSTRAP_CONFIG="$HOME/.config/vpn-provision/bootstrap-tailnet.json"

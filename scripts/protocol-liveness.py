@@ -152,6 +152,7 @@ def remote_probe_deadline(config: dict, sentinel: dict) -> int:
 
 def ssh_options(sentinel: dict, connect_timeout: int) -> list[str]:
     values = ["BatchMode=yes", "StrictHostKeyChecking=yes", "UpdateHostKeys=no",
+              "GlobalKnownHostsFile=/dev/null", "KnownHostsCommand=none",
               "VerifyHostKeyDNS=no", f"ConnectTimeout={min(connect_timeout, 10)}", "ConnectionAttempts=1",
               "ProxyCommand=none", "ProxyJump=none", "ControlMaster=no", "ControlPath=none", "ControlPersist=no",
               "ClearAllForwardings=yes", "ForwardAgent=no", "ForwardX11=no", "PermitLocalCommand=no",

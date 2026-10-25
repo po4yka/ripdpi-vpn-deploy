@@ -26,23 +26,23 @@ def controller(monkeypatch):
 
 @pytest.mark.parametrize('target', ['', 'vpn*', 'vpn:a', 'vpn,a', 'all', "x'; touch owned", '$(touch owned)', '$(shell touch owned)'])
 def test_invalid_target_refuses_before_inventory_or_subprocess(controller, monkeypatch, target):
-    monkeypatch.setattr(controller.inspection, 'select_hosts', lambda *_: pytest.fail('inventory reached'))
+    monkeypatch.setattr(controller.inspection, 'select_hosts', lambda *_, **kw: pytest.fail('inventory reached'))
     with pytest.raises(controller.InstallError):
-        controller.build_invocation({'SSH_RECOVERY_TARGET': target, 'SSH_RECOVERY_WINDOW':'1'})
+        controller.build_invocation({'SSH_RECOVERY_TARGET': target, 'SSH_RECOVERY_WINDOW':'1','SSH_RECOVERY_INVENTORY_SECTION':'vpn'})
 
 
 @pytest.mark.parametrize('value', ['true','True','1','yes','on','arbitrary'])
 def test_debug_cannot_leak_no_log_results(controller, value):
     with pytest.raises(controller.InstallError, match='debug'):
-        controller.build_invocation({'SSH_RECOVERY_TARGET':'vpn-fixture','SSH_RECOVERY_WINDOW':'1','ANSIBLE_DEBUG':value})
+        controller.build_invocation({'SSH_RECOVERY_TARGET':'vpn-fixture','SSH_RECOVERY_WINDOW':'1','SSH_RECOVERY_INVENTORY_SECTION':'vpn','ANSIBLE_DEBUG':value})
 
 
 def test_exact_argv_and_debug_false_override_config(controller, monkeypatch):
     host = dict(name='vpn-fixture', transport='192.0.2.1', address='192.0.2.1',alias='192.0.2.1',
                 port=2222,user='deploy',key='/keys/private key')
-    monkeypatch.setattr(controller.inspection, 'select_hosts', lambda *_:[host])
-    monkeypatch.setattr(controller.inspection, 'ssh_command', lambda *_:['ssh','-F','/dev/null','-o','StrictHostKeyChecking=yes','-o','ConnectionAttempts=1',host['transport'],'sudo fixed'])
-    argv, env, inventory = controller.build_invocation({'SSH_RECOVERY_TARGET':'vpn-fixture','SSH_RECOVERY_WINDOW':'1',
+    monkeypatch.setattr(controller.inspection, 'select_hosts', lambda *_, **kw:[host])
+    monkeypatch.setattr(controller.inspection, 'ssh_command', lambda *_, **kw:['ssh','-F','/dev/null','-o','StrictHostKeyChecking=yes','-o','ConnectionAttempts=1',host['transport'],'sudo fixed'])
+    argv, env, inventory = controller.build_invocation({'SSH_RECOVERY_TARGET':'vpn-fixture','SSH_RECOVERY_WINDOW':'1','SSH_RECOVERY_INVENTORY_SECTION':'vpn',
                                             'PATH':os.environ['PATH'],'ANSIBLE_DEBUG':'false'})
     assert argv[argv.index('--limit')+1] == 'vpn-fixture'
     assert '--diff' not in argv and '--tags' not in argv
@@ -51,6 +51,37 @@ def test_exact_argv_and_debug_false_override_config(controller, monkeypatch):
     assert env['ANSIBLE_SSH_COMMON_ARGS'] == env['ANSIBLE_SSH_EXTRA_ARGS'] == ''
     assert env['ANSIBLE_HOST_KEY_CHECKING'] == 'true'
     assert inventory == '[vpn]\nvpn-fixture\n'
+
+
+@pytest.mark.parametrize('section', [None, '', 'all', 'vpn-observability-control'])
+def test_explicit_inventory_section_is_required(controller, monkeypatch, section):
+    monkeypatch.setattr(controller.inspection, 'select_hosts', lambda *a, **kw: pytest.fail('inventory reached'))
+    with pytest.raises(controller.InstallError, match='inventory-section-required'):
+        controller.build_invocation({'SSH_RECOVERY_TARGET': 'observer-one', 'SSH_RECOVERY_WINDOW': '1',
+                                     'SSH_RECOVERY_INVENTORY_SECTION': section})
+
+
+@pytest.mark.parametrize('section', ['vpn', 'observability-kuma'])
+def test_source_section_selects_exact_host_without_persistent_membership(controller, tmp_path, section):
+    key = tmp_path / 'identity'
+    key.write_text('fixture identity\n')
+    key.chmod(0o600)
+    pins = tmp_path / 'known_hosts'
+    pins.write_text('fixture host pin\n')
+    inventory = tmp_path / 'inventory.ini'
+    inventory.write_text(f'[{section}]\nobserver-one ansible_host=192.0.2.10 ansible_user=deploy '
+                         f'ansible_port=22 ansible_ssh_private_key_file={key}\n')
+    configuration = {'SSH_RECOVERY_TARGET': 'observer-one', 'SSH_RECOVERY_WINDOW': '1',
+                     'SSH_RECOVERY_INVENTORY': str(inventory), 'SSH_RECOVERY_KNOWN_HOSTS': str(pins),
+                     'SSH_RECOVERY_INVENTORY_SECTION': section}
+    argv, environment, adapter = controller.build_invocation(configuration)
+    assert argv[argv.index('--limit') + 1] == 'observer-one'
+    assert adapter == '[vpn]\nobserver-one\n'
+    assert f'[{section}]' in inventory.read_text()
+    assert 'StrictHostKeyChecking=yes' in environment['ANSIBLE_SSH_ARGS']
+    configuration['SSH_RECOVERY_INVENTORY_SECTION'] = 'vpn' if section == 'observability-kuma' else 'observability-kuma'
+    with pytest.raises(controller.inspection.InspectionError, match='host-not-found'):
+        controller.build_invocation(configuration)
 
 
 def test_make_limit_data_never_runs_shell_or_make_expansions(tmp_path):
@@ -63,7 +94,7 @@ def test_make_limit_data_never_runs_shell_or_make_expansions(tmp_path):
         assert value not in result.stdout
 
 
-@pytest.mark.parametrize('field', ['SSH_RECOVERY_EXCLUSIVE_WINDOW', 'SSH_RECOVERY_INVENTORY', 'SSH_RECOVERY_KNOWN_HOSTS', 'ANSIBLE_DEBUG'])
+@pytest.mark.parametrize('field', ['SSH_RECOVERY_EXCLUSIVE_WINDOW', 'SSH_RECOVERY_INVENTORY', 'SSH_RECOVERY_INVENTORY_SECTION', 'SSH_RECOVERY_KNOWN_HOSTS', 'ANSIBLE_DEBUG'])
 def test_make_other_owned_fields_are_literal_data(tmp_path, field):
     marker = tmp_path/'unexpected-expansion'
     value = '$(shell touch '+str(marker)+')'
@@ -113,9 +144,9 @@ def test_manifest_covers_exact_bundle_source_and_binds_generation(controller):
 
 def test_inherited_environment_cannot_skip_install_or_override_git_and_plugins(controller, monkeypatch):
     host = dict(name='vpn-fixture',transport='192.0.2.1',address='192.0.2.1',alias='192.0.2.1',port=2222,user='deploy',key='/keys/key')
-    monkeypatch.setattr(controller.inspection,'select_hosts',lambda *_:[host])
-    monkeypatch.setattr(controller.inspection,'ssh_command',lambda *_:['ssh','-F','/dev/null','-o','ConnectionAttempts=1',host['transport'],'sudo fixed'])
-    result = controller.build_invocation({'SSH_RECOVERY_TARGET':'vpn-fixture','SSH_RECOVERY_WINDOW':'1','PATH':os.environ['PATH'],
+    monkeypatch.setattr(controller.inspection,'select_hosts',lambda *_, **kw:[host])
+    monkeypatch.setattr(controller.inspection,'ssh_command',lambda *_, **kw:['ssh','-F','/dev/null','-o','ConnectionAttempts=1',host['transport'],'sudo fixed'])
+    result = controller.build_invocation({'SSH_RECOVERY_TARGET':'vpn-fixture','SSH_RECOVERY_WINDOW':'1','SSH_RECOVERY_INVENTORY_SECTION':'vpn','PATH':os.environ['PATH'],
         'ANSIBLE_RUN_TAGS':'nonexistent','ANSIBLE_SKIP_TAGS':'all','ANSIBLE_SSH_EXECUTABLE':'/tmp/fake-ssh',
         'ANSIBLE_CALLBACK_PLUGINS':'/tmp/plugins','GIT_DIR':'/tmp/other-repo','PROVIDER_TOKEN':'private'})
     env = result[1]
@@ -126,9 +157,9 @@ def test_inherited_environment_cannot_skip_install_or_override_git_and_plugins(c
 def test_strict_arguments_are_also_valid_for_sftp_and_scp(controller, monkeypatch):
     import shlex
     host = dict(name='vpn-fixture',transport='192.0.2.1',address='192.0.2.1',alias='192.0.2.1',port=2222,user='deploy',key='/keys/private key')
-    monkeypatch.setattr(controller.inspection,'select_hosts',lambda *_:[host])
+    monkeypatch.setattr(controller.inspection,'select_hosts',lambda *_, **kw:[host])
     monkeypatch.setattr(controller.inspection,'_local_file',lambda path,**kwargs:str(path))
-    result = controller.build_invocation({'SSH_RECOVERY_TARGET':'vpn-fixture','SSH_RECOVERY_WINDOW':'1','PATH':os.environ['PATH']})
+    result = controller.build_invocation({'SSH_RECOVERY_TARGET':'vpn-fixture','SSH_RECOVERY_WINDOW':'1','SSH_RECOVERY_INVENTORY_SECTION':'vpn','PATH':os.environ['PATH']})
     options = shlex.split(result[1]['ANSIBLE_SSH_ARGS'])
     assert '-l' not in options and '-p' not in options
     assert 'User=deploy' in options and 'Port=2222' in options and 'IdentityFile="/keys/private key"' in options
@@ -140,10 +171,10 @@ def test_strict_arguments_are_also_valid_for_sftp_and_scp(controller, monkeypatc
 def test_install_retries_only_transport_with_pinned_identity(controller, monkeypatch):
     host = dict(name='vpn-fixture', transport='192.0.2.1', address='192.0.2.1', alias='192.0.2.1',
                 port=22, user='deploy', key='/keys/private')
-    monkeypatch.setattr(controller.inspection, 'select_hosts', lambda *_: [host])
+    monkeypatch.setattr(controller.inspection, 'select_hosts', lambda *_, **kw: [host])
     monkeypatch.setattr(controller.inspection, '_local_file', lambda path, **kwargs: str(path))
     _, env, _ = controller.build_invocation({'SSH_RECOVERY_TARGET': 'vpn-fixture',
-                                             'SSH_RECOVERY_WINDOW': '1', 'PATH': os.environ['PATH']})
+                                             'SSH_RECOVERY_WINDOW': '1', 'SSH_RECOVERY_INVENTORY_SECTION': 'vpn', 'PATH': os.environ['PATH']})
     arguments = env['ANSIBLE_SSH_ARGS']
     assert 'ConnectionAttempts=3' in arguments
     assert 'ConnectionAttempts=1' not in arguments
@@ -164,11 +195,12 @@ def test_real_ansible_cannot_load_external_host_vars(controller, monkeypatch, tm
     assert json.loads(baseline.stdout)['ansible_ssh_args'] == 'unsafe-override'
     host = dict(name='vpn-fixture', transport='192.0.2.1', address='192.0.2.1', alias='192.0.2.1',
                 port=2222, user='deploy', key='/keys/private key')
-    monkeypatch.setattr(controller.inspection, 'select_hosts', lambda *_: [host])
+    monkeypatch.setattr(controller.inspection, 'select_hosts', lambda *_, **kw: [host])
     monkeypatch.setattr(controller.inspection, '_local_file', lambda path, **kwargs: str(path))
     monkeypatch.setattr(controller, '_clean_source', lambda _: None)
     monkeypatch.setenv('SSH_RECOVERY_TARGET', 'vpn-fixture')
     monkeypatch.setenv('SSH_RECOVERY_WINDOW', '1')
+    monkeypatch.setenv('SSH_RECOVERY_INVENTORY_SECTION', 'vpn')
     monkeypatch.setenv('SSH_RECOVERY_INVENTORY', str(original))
     observed = []
 

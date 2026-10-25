@@ -32,6 +32,13 @@ phantom, missing or duplicate step IDs before deletion history is accepted.
 
 ## Deploy controller and inventory — `deploy-controller.py`, `deploy-source-identity.sh`, `bootstrap_readiness.py`, `render-inventory.sh`
 
+Fresh cloud promotion reuses recovery promotion's canonical native installer,
+capability snapshots, epoch and committed-receipt retry. Its separate cloud scope
+binds both canonical provider states and the sentinel's pinned live SSH identity.
+It derives required profiles from the exact target cohort. It does not create
+recovery journals or relax the fresh protocol gate. Disposable targets retain
+their registered cleanup authority; local and CI executor contracts stay separate.
+
 **Handoff ownership crosses the script boundary** — when changing bootstrap
 output or inventory transport selection, inspect both ends of this chain:
 
@@ -1046,6 +1053,10 @@ Telegram `topic_id` is `0` for direct/non-forum chats so runtime senders omit
 `ssh-ownership.py` is the explicit fresh-node SSH ownership verb between
 dual-path Tailnet bootstrap and ordinary deployment. Its private configuration
 binds the exact source and one inventory alias; check mode only previews.
+Tailnet bootstrap schema 3 selects an absolute fenced inventory and either
+`vpn` or `observability-kuma`. SSH recovery requires the same explicit section.
+Both installers use a private one-node Ansible adapter; this does not add the
+independent observer to the persistent VPN fleet. Old bootstrap schemas refuse.
 `staging-tailnet-recovery.py` is the disposable-only acceptance verb behind two
 fixed Make targets. It deliberately kills the enrollment worker or reboots the
 node after durable pending state; it never exposes a general fault selector or

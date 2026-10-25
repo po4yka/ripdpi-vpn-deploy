@@ -51,9 +51,12 @@ def build_invocation(environment):
     debug = environment.get('ANSIBLE_DEBUG', '').lower().strip()
     if debug not in {'', 'false', 'no', '0', 'off'}:
         raise InstallError('ansible-debug-forbidden')
+    section = environment.get('SSH_RECOVERY_INVENTORY_SECTION')
+    if section not in {'vpn', 'observability-kuma'}:
+        raise InstallError('inventory-section-required')
     inventory = Path(environment.get('SSH_RECOVERY_INVENTORY') or ROOT/'ansible/inventory/generated.ini').expanduser().absolute()
     known_hosts = Path(environment.get('SSH_RECOVERY_KNOWN_HOSTS') or Path.home()/'.ssh/known_hosts').expanduser().absolute()
-    hosts = inspection.select_hosts(inventory, [target])
+    hosts = inspection.select_hosts(inventory, [target], primary_section=section)
     host = hosts[0]
     # Reuse the established strict SSH identity boundary, including custom-port
     # aliases, no agent, no inherited proxy, and no multiplexed connection.

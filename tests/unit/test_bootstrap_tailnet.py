@@ -44,7 +44,9 @@ def inputs(tmp_path):
         f"[vpn:vars]\nansible_ssh_private_key_file={key}\n"
     )
     config = {
-        "schema_version": 2,
+        "schema_version": 3,
+        "inventory_path": str(inventory),
+        "inventory_section": "vpn",
         "policy_approval": None,
         "environment": "prod",
         "build_environment": "prod",
@@ -69,11 +71,11 @@ def inputs(tmp_path):
 
 def load(controller, inputs, monkeypatch, **changes):
     root, inventory, path, config = inputs
+    config["inventory_path"] = str(inventory)
     config.update(changes)
     path.write_text(json.dumps(config))
     directory = root / "frozen"
     directory.mkdir(mode=0o700)
-    monkeypatch.setattr(controller, "INVENTORY", inventory)
     monkeypatch.setattr(controller.deploy, "source_identity", lambda *a, **kw: {
         "DEPLOY_SOURCE_REVISION": "a" * 40, "DEPLOYABLE_SOURCE_DIGEST": "b" * 64,
     })
@@ -94,6 +96,48 @@ def test_fresh_node_inputs_freeze_public_transport_and_one_host_key(controller, 
     assert "198.51.100.10" not in " ".join(command)
     assert selected.config["approved_sources"] == inputs[3]["approved_sources"]
     assert not Path(selected.config["output"]).exists()
+
+
+def test_observer_uses_its_own_inventory_section_and_fence(controller, inputs, monkeypatch):
+    inventory = inputs[1]
+    inventory.write_text(inventory.read_text().replace("[vpn]", "[observability-kuma]"))
+    selected = load(controller, inputs, monkeypatch, inventory_section="observability-kuma")
+    assert selected.host["name"] == "node-one"
+    assert "StrictHostKeyChecking=yes" in selected.ssh
+    inventory.write_text(inventory.read_text() + "# changed after selection\n")
+    with pytest.raises(controller.deploy.DeployError):
+        for fence in selected.fences:
+            controller.deploy.verify_input_fence(fence)
+
+
+@pytest.mark.parametrize("section", ["vpn-observability-control", "all", "", None])
+def test_unsupported_inventory_section_refuses(controller, inputs, monkeypatch, section):
+    with pytest.raises(controller.BootstrapError):
+        load(controller, inputs, monkeypatch, inventory_section=section)
+
+
+@pytest.mark.parametrize("section", ["vpn", "observability-kuma"])
+def test_host_in_other_section_refuses(controller, inputs, monkeypatch, section):
+    inventory = inputs[1]
+    other = "observability-kuma" if section == "vpn" else "vpn"
+    inventory.write_text(inventory.read_text().replace("[vpn]", f"[{other}]"))
+    with pytest.raises(controller.BootstrapError):
+        load(controller, inputs, monkeypatch, inventory_section=section)
+
+
+@pytest.mark.parametrize("selector", ["relative", "symlink", "old-schema"])
+def test_inventory_path_and_schema_are_explicit(controller, inputs, monkeypatch, selector):
+    changes = {}
+    if selector == "relative":
+        changes["inventory_path"] = "inventory.ini"
+    elif selector == "symlink":
+        link = inputs[0] / "inventory-link.ini"
+        link.symlink_to(inputs[1])
+        changes["inventory_path"] = str(link)
+    else:
+        changes["schema_version"] = 2
+    with pytest.raises(controller.BootstrapError):
+        load(controller, inputs, monkeypatch, **changes)
 
 
 def test_named_permanent_workspace_keeps_identity(controller, inputs, monkeypatch):

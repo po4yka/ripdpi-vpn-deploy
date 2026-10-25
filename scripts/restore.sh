@@ -101,7 +101,7 @@ print_prerequisites() {
   printf '          make apply\n          make inventory\n'
   printf '  Authenticate and pin public SSH identity before first SSH contact.\n'
   printf '          make wait\n'
-  printf "          make install-ssh-recovery ANSIBLE_LIMIT=\"\$deploy_alias\" SSH_RECOVERY_EXCLUSIVE_WINDOW=1\n"
+  printf "          make install-ssh-recovery ANSIBLE_LIMIT=\"\$deploy_alias\" SSH_RECOVERY_EXCLUSIVE_WINDOW=1 SSH_RECOVERY_INVENTORY_SECTION=vpn\n"
   printf '  Prepare the reviewed private bootstrap input and its output handoff path.\n'
   printf "          make bootstrap-tailnet ANSIBLE_LIMIT=\"\$deploy_alias\" TAILNET_BOOTSTRAP_CONFIG=<private-config>\n"
   printf '          TAILNET_HANDOFFS=<confirmed-private-handoff> make inventory\n'

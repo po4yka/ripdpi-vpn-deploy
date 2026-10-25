@@ -258,6 +258,7 @@ def test_pull_report_uses_direct_transport_with_pinned_host_identity(monkeypatch
         "ControlMaster=no",
         "ControlPath=none",
         "ControlPersist=no",
+        "GlobalKnownHostsFile=/dev/null", "KnownHostsCommand=none",
         "ClearAllForwardings=yes", "ForwardAgent=no", "ForwardX11=no",
         "PermitLocalCommand=no", "RemoteCommand=none", "RequestTTY=no",
         "PasswordAuthentication=no", "KbdInteractiveAuthentication=no", "GSSAPIAuthentication=no",

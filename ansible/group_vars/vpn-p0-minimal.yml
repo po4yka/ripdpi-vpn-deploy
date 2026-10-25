@@ -11,8 +11,9 @@ vpn:
   enable_amneziawg: false
   enable_geodata: true
   enable_monitoring: true
-  enable_watchdog: true
+  enable_watchdog: false
   enable_backup: true
+  enable_tailnet_management: true
   enable_subscription_host: false
   enable_policy_ratelimit: false
   enable_cdn_front: false

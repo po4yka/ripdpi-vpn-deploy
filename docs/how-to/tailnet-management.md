@@ -27,7 +27,7 @@ opens only those sources on `tailscale0` and the effective existing sshd port.
 An empty, duplicate, noncanonical or out-of-range list refuses locally before
 the first host write.
 
-The current production inventory profiles `vpn-p0-self-steal`, `vpn-p1-web`
+The current production inventory profiles `vpn-p0-minimal`, `vpn-p0-self-steal`, `vpn-p1-web`
 and `vpn-p2-udp` explicitly enable this role. Their one reviewed controller
 address per family is shared from `group_vars/all.yml`; the global VPN toggle
 remains false, so every other cohort stays inert unless it opts in separately.
@@ -62,7 +62,8 @@ exact fields are:
 
 | Field | Required value |
 |---|---|
-| `schema_version` | Integer `2` |
+| `schema_version` | Integer `3` |
+| `inventory_path`, `inventory_section` | Absolute source inventory path and explicit `vpn` or `observability-kuma` section. The observer stays outside the VPN fleet. |
 | `environment`, `provider` | Exact routed Terraform workspace, including named permanent workspaces; `upcloud`, `scaleway` or `vultr`. Disposable `ci-staging-*` workspaces always require their manifest; disposable Scaleway is unsupported. |
 | `build_environment` | Canonical `vpn_build_environment` emitted by inventory and matching `/etc/vpn-build-id`; named permanent workspaces require `prod` |
 | `inventory_alias`, `public_address`, `ssh_port` | One exact canonical inventory node and its current public SSH endpoint |

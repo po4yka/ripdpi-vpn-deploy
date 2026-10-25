@@ -19,17 +19,22 @@ from test_sshd_promotion_proof import _config
 
 
 @pytest.fixture
-def intent(tmp_path):
+def intent(tmp_path, request):
     proof = json.loads(_config(tmp_path).read_text())
     config = yaml.safe_load(Path(proof['liveness_config']).read_bytes())
     target = {key: proof['target_identity'][key] for key in promotion.TARGET}
     config['sentinels'][0]['target'] = target
     config['sentinels'][0].pop('awg_target', None)
     config['policies'][0]['required_profiles'] = ['p0-reality']
-    return {'schema_version': 1, 'kind': promotion.KIND, 'target_identity': target,
+    value = {'schema_version': 1, 'kind': promotion.KIND, 'target_identity': target,
             'host': 'upcloud:replacement', 'cohort': 'p0-minimal', 'client': 'dedicated-probe',
             'liveness': config, 'inputs': {name: str(tmp_path / name) if name != 'awg_key_file' else None
                                          for name in promotion.INPUTS}}
+    if getattr(request, 'param', 'recovery') == 'cloud':
+        value['kind'] = promotion.CLOUD_KIND
+        value['inputs']['provisioning_manifest'] = value['inputs'].pop('recovery_manifest')
+        config['sentinels'][0].update(ssh_transport_host='192.0.2.44', ssh_host_key_alias='192.0.2.44')
+    return value
 
 
 def test_draft_requires_no_manufactured_epoch_or_private_file_reads(intent):
@@ -38,6 +43,51 @@ def test_draft_requires_no_manufactured_epoch_or_private_file_reads(intent):
     assert intent == original
     assert 'applied_at' not in intent['liveness']['sentinels'][0]['target']
     assert all(path is None or not Path(path).exists() for path in intent['inputs'].values())
+
+
+@pytest.mark.parametrize('intent', ['cloud'], indirect=True)
+@pytest.mark.parametrize(('host', 'cohort', 'profiles'), [
+    ('upcloud:p0-node', 'p0-minimal', ['p0-reality']),
+    ('scaleway:p1-node', 'p1-web', ['p1-xhttp']),
+    ('vultr:p2-node', 'p2-udp', ['p2-amneziawg', 'p2-hysteria2']),
+    ('upcloud:ci-staging-full', 'device-full-staging', ['p0-reality', 'p1-xhttp', 'p2-amneziawg', 'p2-hysteria2']),
+])
+def test_cloud_intent_requires_exact_target_profile_subset(intent, host, cohort, profiles, tmp_path):
+    intent.update(host=host, cohort=cohort)
+    intent['liveness']['policies'][0]['required_profiles'] = profiles
+    if 'p2-amneziawg' in profiles:
+        provider, environment = host.split(':')
+        intent['inputs']['awg_key_file'] = str(tmp_path / 'awg-private')
+        intent['liveness']['sentinels'][0]['awg_target'] = {'provider': provider, 'environment': environment, 'instance': 'awg0'}
+        intent['liveness']['expected_runtime']['awg_toolchain'] = 'a' * 64
+    assert promotion.validate_intent(intent) == intent
+    intent['liveness']['policies'][0]['required_profiles'] = ['p1-xhttp'] if profiles == ['p0-reality'] else ['p0-reality']
+    with pytest.raises(promotion.PromotionError):
+        promotion.validate_intent(intent)
+
+
+@pytest.mark.parametrize('intent', ['cloud'], indirect=True)
+def test_cloud_draft_schema_admits_canonical_nondefault_host_key_alias(intent):
+    intent['liveness']['sentinels'][0]['ssh_host_key_alias'] = '[192.0.2.44]:2222'
+    assert promotion.validate_intent(intent) == intent
+
+
+@pytest.mark.parametrize('intent', ['cloud'], indirect=True)
+@pytest.mark.parametrize('change_at', [2, 3])
+def test_cloud_first_install_rechecks_resource_scope_before_publishing_proof(installation, monkeypatch, change_at):
+    value, outputs, state = installation
+    manifest, server, _ = promotion._scope(value, {})
+    calls = []
+    def scope(*_):
+        calls.append(1)
+        return manifest, (server if len(calls) < change_at else {'public_ipv4': ['192.0.2.99']}), outputs
+    monkeypatch.setattr(promotion, '_scope', scope)
+    with pytest.raises(promotion.PromotionError):
+        promotion.finalize(value, {}, clock=lambda: 1_800_000_001)
+    assert state['installs'] == (1 if change_at == 3 else 0)
+    assert not Path(outputs['proof']).exists()
+    if change_at == 2:
+        assert not any(Path(path).exists() for path in outputs.values())
 
 
 @pytest.mark.parametrize('fault', ['prod', 'staging', 'foreign-provider', 'epoch', 'missing-profile',
@@ -74,7 +124,7 @@ def prepared(intent, tmp_path, monkeypatch):
     directory.mkdir(mode=0o700)
     outputs = {key: str(tmp_path / ('owned-' + key + '.json')) for key in promotion.OUTPUTS}
     manifest = {'source_revision': 'a' * 40}
-    server = {'public_ipv4': ['192.0.2.10']}
+    server = {'public_ipv4': ['192.0.2.10'], 'ssh_port': 22, 'admin_user': 'deploy'}
     monkeypatch.setattr(promotion, '_scope', lambda value, environment: (manifest, server, outputs))
     for name, path in intent['inputs'].items():
         if path:
@@ -85,7 +135,7 @@ def prepared(intent, tmp_path, monkeypatch):
         output.write_bytes(plaintext)
         output.chmod(0o600)
     monkeypatch.setattr(disposable_promotion, '_decrypt', decrypt)
-    host = {'name': intent['target_identity']['inventory_alias'], 'address': '192.0.2.10'}
+    host = {'name': intent['target_identity']['inventory_alias'], 'address': '192.0.2.10', 'port': 22, 'user': 'deploy'}
     value = promotion.prepare_intent(intent, host, ['vpn-p0-minimal'], directory, plaintext, {})
     return value, outputs, directory, host, plaintext
 
@@ -99,6 +149,18 @@ def test_prepare_freezes_exact_capabilities_without_mutating_source(prepared):
         assert frozen.stat().st_mode & 0o777 == 0o600
     assert not (directory / 'recovery-promotion-plaintext.yaml').exists()
     assert not any(Path(path).exists() for path in outputs.values())
+
+
+@pytest.mark.parametrize('intent', ['cloud'], indirect=True)
+@pytest.mark.parametrize(('field', 'wrong'), [('port', 2222), ('user', 'root')])
+def test_cloud_scope_binds_target_ssh_endpoint_before_freezing(prepared, field, wrong):
+    value, _, parent, host, plain = prepared
+    directory = parent / 'mismatched-target'
+    directory.mkdir(mode=0o700)
+    with pytest.raises(promotion.PromotionError, match='preflight-refused'):
+        promotion.prepare_intent(promotion._original(value), {**host, field: wrong},
+                                 ['vpn-p0-minimal'], directory, plain, {})
+    assert not list(directory.iterdir())
 
 
 def test_prepare_decrypts_actual_sops_and_cleans_owned_plaintext(intent, tmp_path, monkeypatch):
@@ -172,7 +234,7 @@ def installation(prepared, monkeypatch):
             'public_profile_digest': 'e' * 64, 'vantage': 'external'}
         target = sentinel['target'] | {'required_profiles': ['p0-reality'], 'source_revision': 'a' * 40,
             'runner_sha256': provenance['runner_sha256'], 'public_profile_digest': 'e' * 64}
-        entry = {'client': client, 'ssh_target': sentinel['ssh_target'], 'policy': sentinel['policy'],
+        entry = {'client': client, **{k: sentinel[k] for k in ('ssh_target', 'ssh_transport_host', 'ssh_host_key_alias') if k in sentinel}, 'policy': sentinel['policy'],
             'vantage': sentinel['vantage'], 'generation_id': provenance['client_generation_id'],
             'provenance': provenance, 'required_profiles': ['p0-reality'], 'target_identity': target}
         installer._write(registry, canonical({'schema_version': 2, 'sentinels': {sid: entry}}))
@@ -190,6 +252,7 @@ def installation(prepared, monkeypatch):
 
 
 @pytest.mark.parametrize('lost_ack', [False, True])
+@pytest.mark.parametrize('intent', ['recovery', 'cloud'], indirect=True)
 def test_real_registry_resume_requires_exact_receipt_and_retains_epoch(installation, lost_ack):
     value, outputs, state = installation
     state['lost_ack'] = lost_ack
@@ -254,6 +317,7 @@ def test_cli_validates_draft_without_treating_it_as_live_proof(intent, tmp_path)
     assert proof.returncode != 0 and not proof.stdout
 
 
+@pytest.mark.parametrize('intent', ['recovery', 'cloud'], indirect=True)
 def test_baseline_dispatches_typed_recovery_intent(prepared, monkeypatch):
     value, _, directory, *_ = prepared
     source = directory / 'prepared.json'
@@ -308,6 +372,7 @@ def test_scope_binds_real_journal_state_manifest_and_clean_source(cloud, manifes
     assert clean == [True, True, True]
 
 
+@pytest.mark.parametrize('intent', ['recovery', 'cloud'], indirect=True)
 def test_deploy_prepares_recovery_before_validation_or_remote_write(prepared, monkeypatch):
     value, _, directory, host, plaintext = prepared
     original = promotion._original(value)

@@ -22,9 +22,9 @@ import fleet_inspection as inspection
 import tailnet_management as tailnet
 
 ROOT = Path(__file__).resolve().parents[1]
-INVENTORY = ROOT / "ansible/inventory/generated.ini"
 CONFIG_FIELDS = {
     "schema_version", "environment", "build_environment", "provider", "inventory_alias",
+    "inventory_path", "inventory_section",
     "public_address", "ssh_port", "host_key_sha256", "public_sources",
     "approved_sources", "source_revision", "deployable_digest", "known_hosts",
     "cleanup_manifest", "output", "policy_approval",
@@ -178,8 +178,12 @@ def load_inputs(environment, directory):
             environment["TAILNET_BOOTSTRAP_CONFIG"], private=True, exact_mode=0o600,
         )
         config = inspection.decode_json(raw)
-        if set(config) != CONFIG_FIELDS or type(config["schema_version"]) is not int or config["schema_version"] != 2:
+        if set(config) != CONFIG_FIELDS or type(config["schema_version"]) is not int or config["schema_version"] != 3:
             raise BootstrapError("config-invalid")
+        if (not isinstance(config["inventory_path"], str)
+                or not Path(config["inventory_path"]).is_absolute()
+                or config["inventory_section"] not in {"vpn", "observability-kuma"}):
+            raise BootstrapError("inventory-selector-invalid")
         if (config["inventory_alias"] != target or config["provider"] not in {"upcloud", "vultr", "scaleway"}
                 or not isinstance(config["environment"], str)
                 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,63}", config["environment"])):
@@ -217,9 +221,10 @@ def load_inputs(environment, directory):
                 or identity["DEPLOYABLE_SOURCE_DIGEST"] != config["deployable_digest"]):
             raise BootstrapError("source-mismatch")
         deploy.validate_discovery_paths(ROOT)
-        inventory, inventory_fence = deploy.read_fenced_input(INVENTORY)
+        inventory, inventory_fence = deploy.read_fenced_input(config["inventory_path"])
         frozen = deploy.private_file(directory / "inventory-source", inventory)
-        host = inspection.select_hosts(frozen, [target], include_variables=True)[0]
+        host = inspection.select_hosts(frozen, [target], primary_section=config["inventory_section"],
+                                       include_variables=True)[0]
         variables = host.pop("variables")
         if (not config["environment"].startswith("ci-staging-")
                 and host["name"].startswith("vpn-ci-staging-")):

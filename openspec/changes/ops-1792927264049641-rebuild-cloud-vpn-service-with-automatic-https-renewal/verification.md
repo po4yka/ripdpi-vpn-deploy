@@ -26,6 +26,7 @@ artifact_evidence: null
 |---|---|---|---|
 | REQ-BCNI-SIZE | OPS-1792928402362900 | Not yet run | required |
 | REQ-BCNI-OBSERVER | OPS-1792928402362900 | Not yet run | required |
+| REQ-BCNI-PROMOTION | OPS-1792928404361547 | Focused cloud-scope and native-onboarding checks pass; live protocol acceptance pending | required |
 | REQ-MTLS-AUTHORITY | OPS-1792928402860448 | Not yet run | required |
 | REQ-PROTO-RTA-CANDIDATE | OPS-1792928402860448 | Not yet run | required |
 | REQ-MTLS-ACTIVATE | OPS-1792928402860448 | Not yet run | required |
@@ -39,7 +40,10 @@ artifact_evidence: null
 
 Operator API issuance and vault readback exist as private operational evidence;
 they do not accept any source or deployed service requirement above. No paid
-server or DNS change exists at planning time. Client acceptance uses dedicated
+server or DNS change existed at planning time. The rollout has now provisioned
+one disposable and one permanent cloud node. Strict initial SSH and cloud-init
+readiness passed only for the disposable node. Permanent-node host-key admission,
+runtime deployment and DNS cutover remain open. Client acceptance uses dedicated
 cloud probe identities; personal devices and filtered-network acceptance are
 outside this run. The owner selected panel-only monitoring and provider account
 notifications; no Telegram delivery or human receipt is claimed. Hosted evidence

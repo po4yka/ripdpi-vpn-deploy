@@ -21,3 +21,22 @@ The implementation MUST distinguish a management-only observer from a VPN node. 
 
 - **WHEN** an explicit observer node is planned
 - **THEN** only the declared management and observer interfaces are permitted, with no implicit public VPN or administrative listener.
+
+#### Scenario: Independent observer management enrollment
+
+- **WHEN** an operator bootstraps the independent observer
+- **THEN** schema 3 selects an absolute fenced inventory and the explicit `observability-kuma` section, preserves source and host-key checks, and leaves the observer outside the persistent VPN fleet.
+
+### Requirement: REQ-BCNI-PROMOTION — Fresh deployment with a cloud sentinel
+
+The implementation MUST support first deployment through a distinct cloud sentinel, bind clean source, canonical provider state and exact SSH identities, reject tainted or deposed servers, and preserve the existing fresh protocol gate. Disposable targets MUST retain registered cleanup authority; personal devices MUST NOT serve as VPN probes.
+
+#### Scenario: Separate transport nodes
+
+- **WHEN** a fresh P0, P1 or P2 target selects the cloud promotion intent
+- **THEN** its policy requires exactly its enabled transport profiles, creates the epoch during deployment, and accepts only the canonical installed runner and fresh real protocol results.
+
+#### Scenario: Changed cloud scope
+
+- **WHEN** source, target state, sentinel state or pinned access differs before installation or final proof publication
+- **THEN** the controller refuses promotion and publishes no successful proof.
