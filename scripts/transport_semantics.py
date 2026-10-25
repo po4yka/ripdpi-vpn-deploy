@@ -915,7 +915,6 @@ def selected_context(context: object, sections: list[str] | None) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--section", action="append", choices=("xray", "xhttp", "awg", "hysteria", "egress", "mtg"))
-    parser.add_argument("--allow-placeholders", action="store_true")
     args = parser.parse_args()
     try:
         payload = sys.stdin.buffer.read(MAX_INPUT_BYTES + 1)
@@ -926,7 +925,7 @@ def main() -> int:
             raise ValueError
         doc = request.get("secrets", request)
         context = selected_context(request.get("context"), args.section)
-        errors = transport_errors(doc, context if "context" in request or context else None, sections=args.section, allow_placeholders=args.allow_placeholders)
+        errors = transport_errors(doc, context if "context" in request or context else None, sections=args.section)
     except (ValueError, TypeError, UnicodeError, RecursionError):
         print("transport: invalid bounded JSON input", file=sys.stderr)
         return 1

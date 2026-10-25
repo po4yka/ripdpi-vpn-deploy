@@ -206,12 +206,7 @@ def main() -> int:
     parser.add_argument("--config", required=True, type=Path)
     parser.add_argument("--state-dir", type=Path)
     args = parser.parse_args()
-    state_dir = args.state_dir or Path(
-        os.environ.get(
-            "PROTOCOL_LIVENESS_STATE_DIR",
-            str(Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "vpn-deploy/protocol-liveness"),
-        )
-    )
+    state_dir = args.state_dir or Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "vpn-deploy/protocol-liveness"
     now = int(time.time())
     try:
         report = evaluate(args.config, state_dir)
