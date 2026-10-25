@@ -1695,18 +1695,14 @@ def test_staging_destroy_keeps_inventory_and_plan_when_provider_absence_is_unver
     assert not audit_log.exists()
 
 
-def test_ci_workflows_do_not_suppress_destroy_failure_or_cleanup_tfvars_early() -> None:
+def test_ci_workflows_delegate_destroy_to_the_controller_without_suppressing_failure() -> None:
+    # Destroy ordering and tfvars retention run in test_ci_real_deploy.py.
     for workflow in ("real-vps-deploy.yml", "transport-reachability-matrix.yml"):
         source = (REPO_ROOT / ".github/workflows" / workflow).read_text()
         assert "./.github/workflows/ci-disposable-deploy.yml" in source
         assert "continue-on-error" not in source
     shared = (REPO_ROOT / ".github/workflows/ci-disposable-deploy.yml").read_text()
     assert "scripts/ci-real-deploy.py" in shared
-    controller = (REPO_ROOT / "scripts/ci-real-deploy.py").read_text()
-    assert 'runtime.make("staging-destroy")' in controller
-    assert 'cleanup_errors.append("provider-cleanup-incomplete")' in controller
-    assert 'if not cleanup_errors:' in controller
-    assert 'tfvars.unlink(missing_ok=True)' in controller
 
 
 @pytest.mark.parametrize("provider", ["upcloud", "vultr"])

@@ -77,15 +77,6 @@ def test_load_rejects_group_readable_secrets(tmp_path):
         Secrets.load(path)
 
 
-# Rust test: vpnd/tests/secrets_parse.rs::load_rejects_symlinked_secrets
-def test_load_rejects_symlinked_secrets(tmp_path):
-    path = secret(tmp_path)
-    link = tmp_path / "link"
-    link.symlink_to(path)
-    with pytest.raises(ValueError):
-        Secrets.load(link)
-
-
 # Rust test: vpnd/tests/secrets_parse.rs::fixture_exposes_nginx_xhttp_server_name
 def test_fixture_exposes_nginx_xhttp_server_name(tmp_path):
     assert Secrets.load(secret(tmp_path)).nginx_xhttp.server_name == "vpn.example.com"
@@ -156,6 +147,7 @@ print(json.dumps(outcomes))
     assert json.loads(result.stdout) == [True, True]
 
 
+# Rust test: vpnd/tests/secrets_parse.rs::load_rejects_symlinked_secrets
 # Rust test: vpnd/tests/secrets_gate.rs::load_rejects_symlink_even_to_compliant_file
 def test_load_rejects_symlink_even_to_compliant_file(tmp_path):
     path = secret(tmp_path, STUB_YAML)

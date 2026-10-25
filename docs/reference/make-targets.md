@@ -172,7 +172,6 @@ Variables (override on command line):
   vpnd-lint                  Python lint and type checks
   vpnd-dependency-check      audit hash-locked Python runtime dependencies
   vpnd-package-check         verify installed Python release artifacts
-  tf-policy                  terraform test + conftest OPA policy check for all providers
   tf-policy-verify           Run pinned Conftest policy tests without provider credentials
   network-exposure-review    Validate signed policy without changing managed hosts
   molecule-test ROLE=<name>  Run one role's molecule scenario

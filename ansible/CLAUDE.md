@@ -231,7 +231,7 @@ count in `docs/reference/testing.md`.
 - **Idempotency is a contract** — every role's molecule scenario runs the
   play twice and asserts the second run is `changed=0`. Drift = bug.
 - **No `command:` / `shell:` without `creates:` or `changed_when:`** —
-  ansible-lint enforces this. Pre-commit + CI catch violations.
+  ansible-lint enforces this. `make validate` and CI catch violations.
 - **Vault is not used** — SOPS owns secrets. `VPN_SECRETS_FILE` env is
   loaded through a play-level `vars_files:` entry in `playbooks/site.yml`.
 

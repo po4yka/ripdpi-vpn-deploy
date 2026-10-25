@@ -157,7 +157,9 @@ in a clean checkout without `.fleet.mk` before attributing it to source.
 
 1. Branch from `main`. Keep diffs focused; a bug fix does not carry
    surrounding cleanup.
-2. Run the narrowest check that exercises the change, then the full gate:
+2. Run the narrowest check that exercises the change. Before you hand off a
+   change that spans layers or touches schemas, secrets handling, CI or shared
+   scripts, also run the full gate once:
 
    ```bash
    mise exec "${setup_gate_tools[@]}" -- make check

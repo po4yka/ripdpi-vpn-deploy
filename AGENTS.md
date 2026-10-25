@@ -80,9 +80,22 @@ use rescue/GRUB only when the owner explicitly chooses that emergency path.
 | Shell scripts | `make shellcheck` |
 | vpnd | `make vpnd-test vpnd-lint vpnd-parity-check` |
 
-Verify in proportion to risk. Run the narrowest check that exercises the change (the matching test file, `molecule-test` for the touched role, `snapshot-check` for template edits, `tf-test` for a provider root, `make vpnd-test` for vpnd), then `make check` once, before handing off changes that span layers or touch schemas, secrets handling, CI, or shared scripts. After a failure, rerun only the failing check (`pytest --lf`, the single target) until it passes, then the gate once; do not rerun a full gate after each small fix. While iterating on documentation-only edits, `make docs-check` is the narrow check. `docs/reference/testing.md` maps each area to its CI coverage. Report the commands you ran and their results; a skipped or failing check is reported as such.
+Verify in proportion to risk. Make all related edits first, then validate them together. Run the narrowest check that exercises the change (the matching test file, `molecule-test` for the touched role, `snapshot-check` for template edits, `tf-test` for a provider root, `make vpnd-test` for vpnd). Run `make check` once, before handing off changes that span layers or touch schemas, secrets handling, CI, or shared scripts; for other changes the narrow check is sufficient, because CI runs every check that the changed paths select. A passing check stays valid until its inputs change: do not run it again for a commit, a push, a PR or a merge (the commit hooks check staged files, CI checks the merged tree). After a failure, rerun only the failing check (`pytest --lf`, the single target) until it passes, then the gate once. Skip that gate rerun only when a `make -k` run showed every other check passing and the fix does not change their inputs; without `-k`, Make stops starting checks after the first failure. While iterating on documentation-only edits, `make docs-check` is the narrow check. `docs/reference/testing.md` maps each area to its CI coverage. Report the commands you ran and their results; a skipped or failing check is reported as such.
 
 Toolchains are pinned in `mise.toml` (Python 3.12 with `requirements.txt`, Terraform, Go, conftest, promtool). If a non-interactive shell resolves a different `python3`, run commands through `mise exec -- <cmd>`; otherwise Ansible-dependent tests fail with `ModuleNotFoundError` instead of reporting real regressions. An operator-local `.fleet.mk` feeds every `make` call, so Make-driven tests can fail locally for fleet-configuration reasons; confirm such a failure against a clean checkout before treating it as a regression.
+
+### Writing tests
+
+Each test must protect a concrete behavior or regression that existing tests do not catch. These rules apply to every new or changed test, and also to temporary assertions and smoke scripts.
+
+- Search the area's tests first. Extend the matching test or add a case to its parametrization instead of writing a near copy.
+- Assert behavior that you can observe: run the code (subprocess, import and call, rendered template, evaluated Ansible task fields). Do not assert code fragments, names or AST shape of a Python or shell implementation when a test that runs it can show the property.
+- Use a source assertion only for a contract that a test cannot run offline. Examples are Make and workflow wiring, security or wire properties of Ansible, systemd, Terraform and templates, and version pins. Pin the property, not the formatting.
+- Get expected values from literals, fixtures or an independent method, never from the implementation's own function or algorithm.
+- Use a fake only for an external boundary (network, provider API, privileged process). Assert what the application does with the fake's result, not the value that the fake returns.
+- Do not add production parameters, hooks or environment variables only to inject trivial wiring. Use the existing boundaries: subprocess, monkeypatch of the external call, or a stub binary in `tests/stubs/bin/`. Add a shared helper or fixture only when two or more tests use it.
+- Before you commit, delete temporary assertions, debug output and one-off smoke scripts, or turn them into a test in the matching file.
+- When you delete or simplify a test, name the test that still catches the regression. For a vpnd test with a `# Rust test:` annotation, move the annotation to the remaining test, update `vpnd/test-transfer.json`, and run `make vpnd-parity-check`.
 
 ## Where knowledge lives
 

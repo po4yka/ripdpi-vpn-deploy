@@ -723,7 +723,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         awg-evidence-provision \
         native-naive-build test-native-runtime test-probe-matrix-mtproto test-unit test-unit-profile test-unit-shard snapshot-check snapshot-update validate-secrets \
         actionlint-check zizmor-check zizmor-test cloud-init-schema tf-test yamllint-check shellcheck \
-        ci-fast bats-test vpnd-test vpnd-lint vpnd-dependency-check vpnd-package-check vpnd-parity-check vpnd-mutants tf-policy tf-policy-verify \
+        ci-fast bats-test vpnd-test vpnd-lint vpnd-dependency-check vpnd-package-check vpnd-parity-check vpnd-mutants tf-policy-verify \
         task-tools task-check task-list task-ready task-graph task-federation \
         docs-reference docs-check check
 
@@ -890,7 +890,6 @@ help:
 	@echo "  vpnd-lint                  Python lint and type checks"
 	@echo "  vpnd-dependency-check      audit hash-locked Python runtime dependencies"
 	@echo "  vpnd-package-check         verify installed Python release artifacts"
-	@echo "  tf-policy                  terraform test + conftest OPA policy check for all providers"
 	@echo "  tf-policy-verify           Run pinned Conftest policy tests without provider credentials"
 	@echo "  network-exposure-review    Validate signed policy without changing managed hosts"
 	@echo "  molecule-test ROLE=<name>  Run one role's molecule scenario"
@@ -1599,8 +1598,8 @@ promtool-check:
 # Union gate: task contract, everything in validate, everything in ci-fast.
 # ci-fast's test-unit already runs the docs guards (test_docs_index.py,
 # test_docs_reference.py), so docs-check stays a standalone docs-only target.
-# Run this before any commit touching Ansible, Terraform, or Python to get
-# the same signal that CI produces without waiting for a remote run.
+# Run it once before handing off a change that spans layers or touches schemas,
+# secrets handling, CI or shared scripts; a narrower target covers other changes.
 check: task-check validate ci-fast  ## Full local gate: task contract + validate + ci-fast
 
 # Regenerate the documentation pages that mirror code: the Make target
@@ -2103,13 +2102,6 @@ vpnd-test:
 vpnd-mutants:
 	./scripts/test-vpnd-mutants.sh
 
-tf-policy:
-	@for p in upcloud hetzner vultr scaleway; do \
-	  echo "== $$p =="; \
-	  terraform -chdir=terraform/providers/$$p init -backend=false >/dev/null && \
-	  terraform -chdir=terraform/providers/$$p test || exit 1; \
-	done
-	conftest verify --rego-version v0 -p terraform/policy/
 endif
 
 .PHONY: test-hysteria-ech-runtime test-hysteria-resource-profiles

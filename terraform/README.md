@@ -68,7 +68,7 @@ Each provider/environment contract is tied to the Ansible cohort deployed for th
 
 ## Plan policy enforcement
 
-The Rego rules under `terraform/policy/` gate plans through conftest in two places. PR CI (`tf-policy.yml`) runs their unit tests for every provider and, for the roots whose SDK tolerates credential-shaped dummies at configure time (`hetzner`, `vultr`), renders an offline plan and evaluates the full rule set against it. Operator environments must run `make PROVIDER=<p> ENV=<e> tf-conftest` before every apply; this is the only enforcement point for `upcloud` and `scaleway`, whose providers cannot render a credential-free plan.
+The Rego rules under `terraform/policy/` gate plans through conftest in two places. PR CI (`tf-policy.yml`) runs their unit tests once and, for the roots whose SDK tolerates credential-shaped dummies at configure time (`hetzner`, `vultr`), renders an offline plan and evaluates the full rule set against it. Operator environments must run `make PROVIDER=<p> ENV=<e> tf-conftest` before every apply; this is the only enforcement point for `upcloud` and `scaleway`, whose providers cannot render a credential-free plan.
 
 ## Providers
 

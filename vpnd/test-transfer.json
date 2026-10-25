@@ -569,7 +569,7 @@
       "vpnd/tests/test_secrets.py::test_load_rejects_group_readable_secrets"
     ],
     "vpnd/tests/secrets_parse.rs::load_rejects_symlinked_secrets": [
-      "vpnd/tests/test_secrets.py::test_load_rejects_symlinked_secrets"
+      "vpnd/tests/test_secrets.py::test_load_rejects_symlink_even_to_compliant_file"
     ],
     "vpnd/tests/secrets_parse.rs::malformed_or_empty_secrets_fail_without_a_typed_payload": [
       "vpnd/tests/test_secrets.py::test_malformed_or_empty_secrets_fail_without_a_typed_payload"
