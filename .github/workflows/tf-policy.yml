@@ -9,18 +9,12 @@ permissions:
   contents: read
 
 jobs:
+  # Native Terraform tests run in the ci.yml tf-test job; the Rego suite is
+  # provider-independent, so one runner verifies it once.
   conftest:
     timeout-minutes: 15
-    name: conftest (${{ matrix.provider }})
+    name: conftest
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        provider:
-          - upcloud
-          - hetzner
-          - vultr
-          - scaleway
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -41,12 +35,6 @@ jobs:
           tar xf conftest.tar.gz conftest
           sudo install conftest /usr/local/bin/
 
-      - name: terraform native tests
-        working-directory: terraform/providers/${{ matrix.provider }}
-        run: |
-          terraform init -backend=false
-          terraform test
-
       - name: conftest policy unit tests
         run: conftest verify --rego-version v0 -p terraform/policy/
 
@@ -54,51 +42,53 @@ jobs:
       # SDKs tolerate credential-shaped dummies at configure time (hetzner,
       # vultr) can render an offline plan here; upcloud and scaleway are gated
       # by `make PROVIDER=<p> ENV=<e> tf-conftest` before every operator apply.
-      - name: conftest policies against rendered plan
-        if: matrix.provider == 'hetzner' || matrix.provider == 'vultr'
-        working-directory: terraform/providers/${{ matrix.provider }}
+      - name: conftest policies against rendered plans
         env:
           HCLOUD_TOKEN: >-
             0000000000000000000000000000000000000000000000000000000000000000
           VULTR_API_KEY: ci-plan-only-dummy
         run: |
           set -euo pipefail
-          case "${{ matrix.provider }}" in
-            hetzner)
-              printf '%s\n' \
-                'server_name = "ci-policy"' \
-                'location = "hel1"' \
-                'server_type = "cx23"' \
-                'admin_ssh_public_key = "ssh-ed25519 AAAACI ci@invalid"' \
-                'allowed_ssh_cidrs = ["192.0.2.33/32"]' \
-                'public_listeners = [' \
-                '  { name = "xray", protocol = "tcp", port = 443 },' \
-                '  { name = "xray-fallback", protocol = "tcp", port = 2053 },' \
-                '  { name = "nginx-xhttp", protocol = "tcp", port = 8443 },' \
-                '  { name = "hysteria", protocol = "udp", port = 443 },' \
-                '  { name = "amneziawg", protocol = "udp", port = 51820 },' \
-                ']' \
-                > environments/ci-policy.tfvars
-              ;;
-            vultr)
-              printf '%s\n' \
-                'server_name = "ci-policy"' \
-                'region = "ams"' \
-                'plan = "vc2-1c-1gb"' \
-                'os_id = 2625' \
-                'admin_ssh_public_key = "ssh-ed25519 AAAACI ci@invalid"' \
-                'allowed_ssh_cidrs = ["192.0.2.33/32"]' \
-                'public_listeners = [' \
-                '  { name = "xray", protocol = "tcp", port = 443 },' \
-                '  { name = "xray-fallback", protocol = "tcp", port = 2053 },' \
-                '  { name = "nginx-xhttp", protocol = "tcp", port = 8443 },' \
-                '  { name = "hysteria", protocol = "udp", port = 443 },' \
-                '  { name = "amneziawg", protocol = "udp", port = 51820 },' \
-                ']' \
-                > environments/ci-policy.tfvars
-              ;;
-          esac
-          terraform plan -input=false -refresh=false -lock=false \
-            -var-file=environments/ci-policy.tfvars -out=ci-policy.tfplan
-          terraform show -json ci-policy.tfplan > ci-policy.json
-          ../../../scripts/check-tf-plan.sh ci-policy.json
+          for provider in hetzner vultr; do
+            cd "$GITHUB_WORKSPACE/terraform/providers/$provider"
+            case "$provider" in
+              hetzner)
+                printf '%s\n' \
+                  'server_name = "ci-policy"' \
+                  'location = "hel1"' \
+                  'server_type = "cx23"' \
+                  'admin_ssh_public_key = "ssh-ed25519 AAAACI ci@invalid"' \
+                  'allowed_ssh_cidrs = ["192.0.2.33/32"]' \
+                  'public_listeners = [' \
+                  '  { name = "xray", protocol = "tcp", port = 443 },' \
+                  '  { name = "xray-fallback", protocol = "tcp", port = 2053 },' \
+                  '  { name = "nginx-xhttp", protocol = "tcp", port = 8443 },' \
+                  '  { name = "hysteria", protocol = "udp", port = 443 },' \
+                  '  { name = "amneziawg", protocol = "udp", port = 51820 },' \
+                  ']' \
+                  > environments/ci-policy.tfvars
+                ;;
+              vultr)
+                printf '%s\n' \
+                  'server_name = "ci-policy"' \
+                  'region = "ams"' \
+                  'plan = "vc2-1c-1gb"' \
+                  'os_id = 2625' \
+                  'admin_ssh_public_key = "ssh-ed25519 AAAACI ci@invalid"' \
+                  'allowed_ssh_cidrs = ["192.0.2.33/32"]' \
+                  'public_listeners = [' \
+                  '  { name = "xray", protocol = "tcp", port = 443 },' \
+                  '  { name = "xray-fallback", protocol = "tcp", port = 2053 },' \
+                  '  { name = "nginx-xhttp", protocol = "tcp", port = 8443 },' \
+                  '  { name = "hysteria", protocol = "udp", port = 443 },' \
+                  '  { name = "amneziawg", protocol = "udp", port = 51820 },' \
+                  ']' \
+                  > environments/ci-policy.tfvars
+                ;;
+            esac
+            terraform init -backend=false -input=false
+            terraform plan -input=false -refresh=false -lock=false \
+              -var-file=environments/ci-policy.tfvars -out=ci-policy.tfplan
+            terraform show -json ci-policy.tfplan > ci-policy.json
+            ../../../scripts/check-tf-plan.sh ci-policy.json
+          done
