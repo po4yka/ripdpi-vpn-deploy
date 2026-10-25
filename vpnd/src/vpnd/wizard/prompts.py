@@ -26,32 +26,6 @@ def terminal_line(label):
             handle.close()
 
 
-def choose(label, options, default=0):
-    if not options:
-        raise ValueError("choose() called with no options")
-    selected = min(max(default, 0), len(options) - 1)
-    if not sys.stderr.isatty():
-        raise OSError("not a terminal")
-    print(label, file=sys.stderr)
-    for index, value in enumerate(options):
-        print(f"  {index + 1}. {value}", file=sys.stderr)
-    while True:
-        response = terminal_line(f"Choice [{selected + 1}]: ").strip()
-        if not response:
-            return selected
-        if response.isdigit() and 1 <= int(response) <= len(options):
-            return int(response) - 1
-
-
-def prompt(label, default=None):
-    while True:
-        response = terminal_line(label + (f" [{default}] " if default is not None else ": "))
-        if response:
-            return response
-        if default is not None:
-            return default
-
-
 def confirm(label, default=True):
     while True:
         response = terminal_line(label + (" [Y/n] " if default else " [y/N] ")).strip().lower()

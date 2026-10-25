@@ -103,14 +103,6 @@ def site(ctx):
     return playbook(ctx, "site")
 
 
-def verify(ctx):
-    return playbook(ctx, "verify")
-
-
-def smoke(ctx):
-    return playbook(ctx, "smoke-test")
-
-
 def rotate(ctx, alias):
     """Rotation acts on one exact inventory alias; the play refuses every other limit."""
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", alias):

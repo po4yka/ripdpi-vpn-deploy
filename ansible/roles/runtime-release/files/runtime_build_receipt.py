@@ -603,20 +603,6 @@ def _receipt_payload(descriptor: dict) -> dict:
     return {**_expected_identity(descriptor), "outputs": outputs}
 
 
-def _record_locked(directory: int, receipt_name: str, descriptor: dict) -> dict:
-    payload = _receipt_payload(descriptor)
-    encoded = (
-        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
-    ).encode()
-    if len(encoded) > MAX_RECEIPT_BYTES:
-        raise UnsafeState("oversize-receipt")
-    current = _read_receipt(directory, receipt_name)
-    if current == payload:
-        return {"schema_version": SCHEMA_VERSION, "changed": False}
-    _atomic_write(directory, receipt_name, encoded)
-    return {"schema_version": SCHEMA_VERSION, "changed": True}
-
-
 def _transaction_journal_name(project: str) -> str:
     return f".{project}.transaction.json"
 
