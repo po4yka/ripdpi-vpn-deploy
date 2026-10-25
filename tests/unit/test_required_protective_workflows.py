@@ -62,12 +62,13 @@ def _run_gate(gate, results):
     )
 
 
+@pytest.mark.parametrize("job", ("python-validators", "pr-title", "gitleaks", "shellcheck", "task-contract"))
 @pytest.mark.parametrize("outcome", ("failure", "cancelled", "skipped"))
-def test_unsuccessful_python_validators_reject_merge(outcome):
+def test_unsuccessful_always_run_jobs_reject_merge(job, outcome):
     gate = _workflow("ci")["jobs"]["required"]
     outcomes = {name: "success" for name in gate["needs"]}
-    assert "python-validators" in outcomes
-    outcomes["python-validators"] = outcome
+    assert job in outcomes
+    outcomes[job] = outcome
     assert _run_gate(gate, list(outcomes.values())).returncode != 0
 
 
@@ -76,11 +77,12 @@ def test_successful_ci_emits_the_existing_branch_required_context():
     gate = ci["jobs"]["required"]
     assert gate["if"] == "always()"
     assert gate["name"] == "required checks"
-    assert '"required checks"' in (WORKFLOWS / "branch-protection.yml").read_text()
+    policy = json.loads((ROOT / '.github/repository-policy.json').read_text())
+    assert 'required checks' in {c['context'] for c in policy['rulesets'][1]['rules'][0]['parameters']['required_status_checks']}
     assert set(gate["needs"]) == set(ci["jobs"]) - {"required"}
     assert _run_gate(gate, ["success"] * len(gate["needs"])).returncode == 0
     assert set(ci[True]) == {"push", "pull_request", "workflow_dispatch"}
-    assert not ci[True]["pull_request"]  # No path filters can suppress the gate.
+    assert set(ci[True]["pull_request"]) == {"types"}  # No path filters can suppress the gate.
 
 
 def test_security_events_write_is_scoped_to_the_image_scan_call():

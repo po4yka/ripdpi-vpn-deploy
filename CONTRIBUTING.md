@@ -243,3 +243,14 @@ Do not add `Co-Authored-By:` trailers; the commit-message hook rejects them.
 - Cross-repository references use qualified IDs such as
   `po4yka/RIPDPI#TRN-...`; validate them with
   `make task-federation PEER_ROOT=../RIPDPI`.
+
+## Pull request titles and merges
+
+Use a Conventional Commit PR title, such as `fix(vpnd): reject invalid input` or
+`ci: improve repository checks`. The title must have a supported type, an optional
+lowercase scope, an optional breaking-change marker, and a nonempty subject.
+Do not end it with a period. CI validates title edits as well as new commits.
+GitHub permits squash merging only, uses the PR title as the commit subject and
+the PR body as the message, and deletes merged head branches automatically.
+The owner can bypass CI only through a PR; branch integrity requirements remain
+in force. See [repository policy](docs/how-to/branch-protection.md).

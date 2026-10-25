@@ -12,6 +12,8 @@ environment or from the git-ignored `.fleet.mk`.
 
 ```text
 vpn-deploy Makefile
+  repository-policy-plan     Preview managed GitHub rules, merge settings, and release integrity
+  repository-policy-apply    Apply reviewed GitHub repository policy and verify readback
   workspace-status  Read-only local checkout provenance (no fetch or fleet configuration)
 
 Variables (override on command line):

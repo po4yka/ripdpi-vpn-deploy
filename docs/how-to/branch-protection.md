@@ -1,156 +1,98 @@
-# Branch protection
+# Repository rules and merge policy
 
-> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-25
 
-`main` requires all configured required statuses to pass before merge. The CI
-aggregate requires selected jobs to succeed and permits only explicitly planned
-skips for unselected jobs. Protection also requires a pull request, linear
-history, conversation resolution, and admin enforcement. Approving
-reviews are not required while this is a single-maintainer repository because
-GitHub does not allow an author to approve their own pull request. The default
-`GITHUB_TOKEN` does **not** carry `Administration: write`, so the
-protection rule is applied through `.github/workflows/branch-protection.yml`,
-gated on a fine-grained personal access token (PAT).
+The source of truth is [repository-policy.json](../../.github/repository-policy.json).
+The [configuration command](../../scripts/configure-repository.py), exposed through
+Make, replaces the classic branch-protection workflow. Do not recreate a classic rule:
+GitHub enforces it alongside rulesets and it can block the intended CI bypass.
 
-## One-time setup
+## Protection layers
 
-### 1. Create the PAT
+| Ruleset | Target | Requirements | Bypass |
+|---|---|---|---|
+| `main-integrity` | `main` | PR, squash only, linear history, resolved conversations, no force push or deletion | None |
+| `main-ci` | `main` | Three required contexts and an up-to-date branch | Repository owner, PR only |
+| `release-tags` | `vpnd-v*` tags | No updates or deletion | None |
 
-GitHub → Settings → Developer settings → Personal access tokens →
-**Fine-grained tokens** → Generate new token.
+The owner can explicitly bypass pending or failed CI from a PR. This exception
+does not bypass integrity rules or permit direct pushes. Other users have no CI
+bypass. Required approvals remain zero for this single-maintainer repository.
+Code Owner approval and approval of the last push remain disabled. If another
+maintainer joins, update the review policy before relying on independent review.
 
-| Field | Value |
-|---|---|
-| Token name | `vpn-deploy branch-protection` |
-| Expiration | 1 year (set a reminder) |
-| Repository access | Only the `ripdpi-vpn-deploy` repository |
-| Repository permissions → Administration | **Read and write** |
-| Repository permissions → Contents | Read |
+## Required status checks
 
-Other permissions stay at default (no access). Save the token.
+| Workflow | Context | Expected source |
+|---|---|---|
+| `ci.yml` | `required checks` | GitHub Actions |
+| `codeql.yml` | `codeql (python)` | GitHub Actions |
+| `codeql.yml` | `codeql (actions)` | GitHub Actions |
 
-### 2. Save the token as a repo secret
+The CI aggregate requires every selected job to pass. It rejects missing jobs,
+failed selection, malformed plans, failures, cancellations, and unexpected skips.
+Only planned, unselected jobs can be skipped. It includes secret checks,
+validators, task contracts, PR-title validation, and protective workflows.
+Do not add those child jobs as duplicate branch requirements. Update the JSON
+configuration if an aggregate or CodeQL context is renamed. Keep the GitHub
+Actions source binding; an identically named result from another app is not enough.
 
-GitHub → repo Settings → Secrets and variables → Actions → New repository
-secret:
+The PR title must use Conventional Commit syntax, for example
+`ci: improve repository policy`. CI rechecks titles on PR edits. Dependabot uses
+the `chore` prefix. Squash merging uses the PR title and body, and GitHub removes
+merged head branches. Auto-merge remains available when requirements pass.
 
-- Name: `BRANCH_PROTECTION_TOKEN`
-- Value: paste the PAT
+The aggregate enforces the existing behavior of its child checks. It does not
+strengthen their contracts: `reproducible-build` still permits example placeholder
+pins and treats Xray rebuild mismatches as advisory. Costly PR jobs follow the
+complete dependency plan; unknown paths and shared configuration select full CI.
+See [CI dependency selection](../reference/testing.md#ci-dependency-selection).
 
-### 3. Run the workflow
+## Preview and apply
 
-GitHub → Actions → **branch-protection** → Run workflow → leave default
-(`main`) → Run.
+Use existing authenticated GitHub CLI access with repository administration
+permission. The configuration command prints only public policy, never tokens.
+It does not read the fleet, inventory, SOPS files, or local operator kit.
 
-Verify it succeeded; the job logs should print the required-status-check
-count (currently 9 in the repository manifest).
+```bash
+make repository-policy-plan
+```
 
-### 4. Verify in Settings
+Review the printed operations and exact repository. With authorization to apply
+that plan:
 
-Settings → Branches → `main` → see:
+```bash
+make repository-policy-apply
+make repository-policy-plan
+```
 
-- Require a pull request before merging ✅
-- Required approvals: **0** ✅
-- Require review from Code Owners: **disabled** ✅
-- Require status checks to pass before merging ✅
-- 9 status checks listed after the current workflow has been applied
-- Require branches to be up to date before merging ✅
-- Require conversation resolution before merging ✅
-- Require linear history ✅
-- Include administrators ✅
-- Do not allow force pushes ✅
-- Do not allow deletions ✅
+The second plan must be `[]`. The command verifies repository identity, owner
+identity, admin access, and the absence of classic `main` protection before any
+write. It preserves unrelated rulesets and refuses ambiguous managed names or
+inherited rulesets. It creates integrity protection before converting the old
+`main` ruleset to `main-ci`; no rule deletion is needed. It reads back every
+managed setting after apply and fails if any drift remains.
 
-## Required status checks (must match CI job names exactly)
+Policy changes run from an authorized operator session with GitHub CLI access.
+No administration token is stored in Actions for this feature. The default
+`GITHUB_TOKEN` does not have repository administration permission. CI validates
+the checked-in policy and its behavior at the API boundary; it does not modify
+repository settings. Remove any obsolete protection credential separately only
+when its owner has confirmed that no other consumer uses it.
 
-| Workflow | Job name |
-|---|---|
-| ci.yml | `required checks` |
-| ci.yml | `CI dependency selection` |
-| ci.yml | `task-contract` |
-| ci.yml | `gitleaks` |
-| ci.yml | `shellcheck` |
-| ci.yml | `python validators` |
-| ci.yml | `pytest unit tests` |
-| codeql.yml | `codeql (python)` |
-| codeql.yml | `codeql (actions)` |
+## Releases and recovery
 
-If you rename a CI job, update both the matrix in this workflow and the
-`CONTEXTS` list in `branch-protection.yml`. Otherwise GitHub treats the
-old name as a "missing" required check and the merge is blocked
-indefinitely.
+Future published releases are immutable. Release tag creation remains open to
+the existing release workflow; tag updates and deletion are blocked. Build and
+upload every asset while the release is a draft, then publish it. The current
+release chain follows that order and refuses uploads to a published release.
+Immutability does not retrofit earlier releases.
 
-The aggregate `required checks` depends on every CI job, including the
-`CI dependency selection` planner. It checks the complete named result map
-against that planner: selected jobs must succeed, and only explicitly unselected
-jobs may be skipped. Missing jobs, failed selection, malformed plans, failures,
-cancellations and unexpected skips reject the merge.
+GitHub configuration writes are not atomic. If one fails, do not claim success:
+run a new preview against actual remote state, inspect it, and apply only the
+remaining authorized operations. To restore a previous ruleset or merge setting,
+review that policy change and apply it explicitly. The command refuses to disable
+release immutability. A published immutable asset correction requires a new version.
 
-PRs select complete consumer groups from the changed-file dependency graph.
-Main pushes and manual CI runs execute every group. Unknown paths, shared
-configuration, unavailable history and empty diffs also request the full graph.
-See [Testing: CI dependency selection](../reference/testing.md#ci-dependency-selection).
-
-The optional matrix contexts are enforced through the aggregate, not as separate
-branch requirements: a skipped matrix does not emit each expanded job name.
-After the full PR CI passes, migrate the live context list to the nine names
-above **before merging**, preserving strict mode, app bindings and unrelated
-settings. Leaving old matrix contexts required would block selective PRs.
-
-`python validators` still executes all seven validators. Pytest, static lint and
-task contracts are unconditional. The reusable `tf-policy`, `image-scan`,
-`contract-sync` and `reproducible-build` workflows remain in the result gate and
-must succeed whenever selected. Their manual entry points remain available;
-contract-sync retains its weekly external-drift check.
-
-This gates the outcomes those workflows currently implement. In particular,
-`reproducible-build` still permits placeholder example pins and treats Xray
-rebuild mismatches as advisory; making it required does not strengthen that
-separate verification contract.
-
-## Admin enforcement
-
-The workflow sets `enforce_admins: true`. This is deliberate: this repo deploys
-active VPN infrastructure, so maintainers cannot bypass required CI, the pull
-request boundary, linear history, or conversation resolution on `main`. The
-solo maintainer can merge a green, resolved pull request without an impossible
-self-approval. If a second maintainer joins, raise the approval count and
-re-enable Code Owner review in the codified workflow before relying on reviews
-as a gate. Emergency production repair should still use a short-lived PR with
-the same checks, not a direct push around branch protection.
-
-## Why not just enable it in Settings?
-
-You can. The workflow exists so the rule is **codified** — the next
-operator checking out the repo sees what protection is meant to be
-applied without having to read the org admin's mind. Re-running the
-workflow reasserts the rule, which is useful after CI matrix changes.
-
-## Re-running after a CI matrix change
-
-1. Update the CI jobs, `CONTEXTS` in `.github/workflows/branch-protection.yml`,
-   and the table above together.
-2. Push the PR branch and wait for its new jobs and `required checks` to pass.
-   Removed context names can still block merging at this point.
-3. **Before merging**, apply the reviewed context migration to `main` through
-   the `required_status_checks` API endpoint. Preserve strict mode, GitHub
-   Actions app bindings, and every unrelated protection setting.
-4. Read back protection and confirm the exact contexts and unchanged settings.
-   Confirm the PR's required checks pass, then merge.
-
-Do not wait for a green `main` run to migrate renamed checks: the old names
-would prevent that revision from reaching `main`. Use the full
-**branch-protection** workflow for initial setup or deliberate reconciliation
-of the complete codified rule.
-
-## Informational (NOT required)
-
-These run but don't gate merge:
-
-- `markdown-link-check` (lychee)
-- `scorecard` (OSSF)
-- `release-please` (writes the release PR; isn't a check)
-
-Adding them to required would block on transient external service
-failures (link rot, OSSF rate limits) and slow merges without quality
-benefit.
+The optional `scorecard` and external link checks remain informational. They do
+not block a merge due to transient external service failures.

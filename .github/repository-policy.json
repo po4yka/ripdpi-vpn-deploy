@@ -1,0 +1,118 @@
+{
+  "repository": "po4yka/ripdpi-vpn-deploy",
+  "settings": {
+    "allow_merge_commit": false,
+    "allow_squash_merge": true,
+    "allow_rebase_merge": false,
+    "squash_merge_commit_title": "PR_TITLE",
+    "squash_merge_commit_message": "PR_BODY",
+    "delete_branch_on_merge": true,
+    "allow_auto_merge": true
+  },
+  "immutable_releases": true,
+  "rulesets": [
+    {
+      "name": "main-integrity",
+      "target": "branch",
+      "enforcement": "active",
+      "bypass_actors": [],
+      "conditions": {
+        "ref_name": {
+          "include": [
+            "refs/heads/main"
+          ],
+          "exclude": []
+        }
+      },
+      "rules": [
+        {
+          "type": "deletion"
+        },
+        {
+          "type": "non_fast_forward"
+        },
+        {
+          "type": "required_linear_history"
+        },
+        {
+          "type": "pull_request",
+          "parameters": {
+            "dismiss_stale_reviews_on_push": true,
+            "require_code_owner_review": false,
+            "require_last_push_approval": false,
+            "required_approving_review_count": 0,
+            "required_review_thread_resolution": true,
+            "allowed_merge_methods": [
+              "squash"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "main-ci",
+      "target": "branch",
+      "enforcement": "active",
+      "bypass_actors": [
+        {
+          "actor_id": 42894392,
+          "actor_type": "User",
+          "bypass_mode": "pull_request"
+        }
+      ],
+      "conditions": {
+        "ref_name": {
+          "include": [
+            "refs/heads/main"
+          ],
+          "exclude": []
+        }
+      },
+      "rules": [
+        {
+          "type": "required_status_checks",
+          "parameters": {
+            "do_not_enforce_on_create": true,
+            "strict_required_status_checks_policy": true,
+            "required_status_checks": [
+              {
+                "context": "required checks",
+                "integration_id": 15368
+              },
+              {
+                "context": "codeql (python)",
+                "integration_id": 15368
+              },
+              {
+                "context": "codeql (actions)",
+                "integration_id": 15368
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "release-tags",
+      "target": "tag",
+      "enforcement": "active",
+      "bypass_actors": [],
+      "conditions": {
+        "ref_name": {
+          "include": [
+            "refs/tags/vpnd-v*"
+          ],
+          "exclude": []
+        }
+      },
+      "rules": [
+        {
+          "type": "update"
+        },
+        {
+          "type": "deletion"
+        }
+      ]
+    }
+  ]
+}

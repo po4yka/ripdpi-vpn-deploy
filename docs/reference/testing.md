@@ -723,3 +723,18 @@ compilation. The complete native core plan also runs
 zero-producing IPv6 UDP tuple and an adjacent control to deliver six real DNS
 replies, with complete pre-NAT checksums and no checksum errors. Keep offloads,
 authentication and packet guards active in this lane.
+
+## Repository policy checks
+
+The branch-required contexts are `required checks`, `codeql (python)`, and
+`codeql (actions)`, each bound to GitHub Actions. The first context includes every
+selected CI job, including `PR title`; child contexts are not duplicate branch
+requirements. PR edits trigger CI so the squash subject is checked again.
+`test_branch_protection_contract.py` exercises the configuration command through
+its GitHub API boundary, including migration order, identity refusal, remote
+failures, readback, and idempotence. The existing aggregate tests retain failure,
+cancellation, missing-job, and planned-skip coverage.
+
+Dependabot covers Actions, all four provider roots, root and vpnd Python,
+tasking npm, and the Go helper. Routine updates are grouped weekly after the
+seven-day cooldown. Galaxy collection updates retain their separate drift check.
