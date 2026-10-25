@@ -5,6 +5,95 @@ Do not edit by hand — write [Conventional Commits](https://www.conventionalcom
 on `main` and the next merge of the auto-generated release PR will populate
 this file.
 
+## [3.0.0](https://github.com/po4yka/ripdpi-vpn-deploy/compare/vpnd-v2.0.0...vpnd-v3.0.0) (2026-10-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **transport:** exported AWG bundles require version 2, an explicit wire profile and string headers. Old exported profiles require replacement.
+* **bundle:** payload_failover policy version 1 is rejected. Upgrade the paired recipient and migrate configured policies to version 2 before refresh.
+* **operations:** blue-green requires a private migration plan and separate target SOPS authority; fleet rotation entries require migration approval and target secrets.
+* Alternate REALITY listeners are disabled by default and require explicit matching runtime and provider configuration.
+* **scripts:** fleet status requires pinned inventory identity; rotation plans require schema version 1 with explicit health configuration, and legacy journals cannot resume.
+
+### Features
+
+* **bundle:** add bounded transfer quality policies ([#378](https://github.com/po4yka/ripdpi-vpn-deploy/issues/378)) ([2e6a8ff](https://github.com/po4yka/ripdpi-vpn-deploy/commit/2e6a8ff21b468e225ba5eca72505b52f513a3692))
+* **bundle:** deliver Hysteria port hopping to native clients ([#382](https://github.com/po4yka/ripdpi-vpn-deploy/issues/382)) ([f6f6a8e](https://github.com/po4yka/ripdpi-vpn-deploy/commit/f6f6a8e77c3d8deaa2ddf37582e17f94c78fccbc))
+* **operations:** add resumable device lifecycle and node recovery ([#369](https://github.com/po4yka/ripdpi-vpn-deploy/issues/369)) ([2cd629e](https://github.com/po4yka/ripdpi-vpn-deploy/commit/2cd629e05e4699413b6a3f2e2eae2d9f8741e8ca))
+* **transport:** export AWG 3.1 profiles in bundle v2 ([0462413](https://github.com/po4yka/ripdpi-vpn-deploy/commit/0462413b9332830826bef68d849600d6adcbe8b0))
+* verify payload health and make alternate listeners opt-in ([bf7f9ba](https://github.com/po4yka/ripdpi-vpn-deploy/commit/bf7f9baef8130246a255f503909457f676ab46dc))
+* **vpnd:** index the documentation tree in ai-docs ([1781581](https://github.com/po4yka/ripdpi-vpn-deploy/commit/1781581236c1c69a5a1e8e9d97d536b5d85ce823))
+
+
+### Bug Fixes
+
+* **ansible:** bind verification plays to the selected environment ([2330bab](https://github.com/po4yka/ripdpi-vpn-deploy/commit/2330bab7b31da5a8feec322e9998feac2ce1c233))
+* **ansible:** build amneziawg-go with a checksum-pinned Go toolchain ([166ef70](https://github.com/po4yka/ripdpi-vpn-deploy/commit/166ef70f62b4e631c88f469bbbc3d6e66c555278))
+* **ansible:** keep bearer paths out of nginx-xhttp logs ([c7c46f6](https://github.com/po4yka/ripdpi-vpn-deploy/commit/c7c46f6f17d2e3ec063d37f21495c2cd59f14d0f))
+* **ansible:** keep the environment guard of verification plays unskippable ([32d8e3f](https://github.com/po4yka/ripdpi-vpn-deploy/commit/32d8e3f2e430ec7533767c269a879ab8c30c4755))
+* **ansible:** read host OS and architecture from ansible_facts ([7955a55](https://github.com/po4yka/ripdpi-vpn-deploy/commit/7955a55f964d5238e749742bac63ac1822369d83))
+* **ansible:** refuse private destinations for forwarded AWG traffic ([7f5c526](https://github.com/po4yka/ripdpi-vpn-deploy/commit/7f5c52698eb5df2fd39adb4c371a627e3ab4d7d6))
+* **ansible:** require an exact stable Hysteria version pin ([bd10289](https://github.com/po4yka/ripdpi-vpn-deploy/commit/bd102893f84591e4656550a2ac4fd1fe12e2fa6f))
+* **ansible:** rotate Xray logs through guarded recovery on every profile ([feac1b8](https://github.com/po4yka/ripdpi-vpn-deploy/commit/feac1b81ac3b41c206da85acd4202554aed5d0b9))
+* **ansible:** stop installing resolvconf for AmneziaWG ([266ba03](https://github.com/po4yka/ripdpi-vpn-deploy/commit/266ba038e406124130e31f9842e3ba48b1e331ea))
+* **ansible:** stop installing resolvconf on the real-VPS AWG sentinel ([ad73788](https://github.com/po4yka/ripdpi-vpn-deploy/commit/ad737883f641b26205d36e4ce59a2dca5c4bc937))
+* **ansible:** withhold watchdog recovery after failed config validation ([ddedbd7](https://github.com/po4yka/ripdpi-vpn-deploy/commit/ddedbd73ac918bdf64a64cbc131aa670f87004d7))
+* **device-lifecycle:** wait for AWG control readiness ([#374](https://github.com/po4yka/ripdpi-vpn-deploy/issues/374)) ([69bbf62](https://github.com/po4yka/ripdpi-vpn-deploy/commit/69bbf62f930de88a04106d43161dbc0dca511930))
+* **make:** honor BLUE_ENV in blue-green and warm-spare recipes ([f03305c](https://github.com/po4yka/ripdpi-vpn-deploy/commit/f03305c1ed6198ace539bc7dd588d41fb19a502b))
+* **runtime-release:** retain build process group ownership ([#380](https://github.com/po4yka/ripdpi-vpn-deploy/issues/380)) ([ec655f0](https://github.com/po4yka/ripdpi-vpn-deploy/commit/ec655f037b5a1b7a26d8ddf4c673ef4e55791701))
+* **scripts:** bind deploy selections to the selected ENV ([776458c](https://github.com/po4yka/ripdpi-vpn-deploy/commit/776458c45cb07977e0a83cafc8691f50b9dbb6be))
+* **scripts:** close the YubiKey operator terminal in its own with block ([7126201](https://github.com/po4yka/ripdpi-vpn-deploy/commit/7126201d18fc065c85269d117ba5c4a7d4cbeaa6))
+* **scripts:** confirm a parsed destroy hostname and drop the saved plan ([876e6b0](https://github.com/po4yka/ripdpi-vpn-deploy/commit/876e6b0e21c62704f93b5aba6f60fcf5b8648024))
+* **scripts:** enforce fleet health and exact-plan rotation ([#356](https://github.com/po4yka/ripdpi-vpn-deploy/issues/356)) ([37939d5](https://github.com/po4yka/ripdpi-vpn-deploy/commit/37939d5a412b11375b71172e7fbf1bad9d73bb5a))
+* **scripts:** name the bound environments in the promote command ([753bef1](https://github.com/po4yka/ripdpi-vpn-deploy/commit/753bef168d96dcd6306453bf02afb776213db690))
+* **scripts:** refuse a Hetzner green environment that repeats the blue key ([0ee944c](https://github.com/po4yka/ripdpi-vpn-deploy/commit/0ee944c86e53976bb4f89c5d60e600ade800fea6))
+* **scripts:** require review before blue-green and vpnd mutations ([b83c3a8](https://github.com/po4yka/ripdpi-vpn-deploy/commit/b83c3a8b4035d68997d1e4d4fec0845af5ceb5c1))
+* **scripts:** run the cached Xray image through its entrypoint ([5da75f7](https://github.com/po4yka/ripdpi-vpn-deploy/commit/5da75f737110dd9fd81375354ea7b14954c6902a))
+* **terraform:** admit only host releases that support nft destroy ([277daa6](https://github.com/po4yka/ripdpi-vpn-deploy/commit/277daa64f4f684b029098fae726b5e602d299cf5))
+* **terraform:** refuse a Vultr os_id change on an existing node ([1b748ab](https://github.com/po4yka/ripdpi-vpn-deploy/commit/1b748ab95fc4691715b6a2adbe4cff9739feb0d9))
+* **vpnd:** clean plaintext after a hangup or quit at the review ([af7275b](https://github.com/po4yka/ripdpi-vpn-deploy/commit/af7275b6c85b46781bc687c1a4847eaa33183e13))
+* **vpnd:** clean plaintext when a pipeline step is interrupted ([ef6855f](https://github.com/po4yka/ripdpi-vpn-deploy/commit/ef6855f1ac23ee83e5d4ccbd7035d9e00eb92cb8))
+* **vpnd:** clean plaintext when a signal interrupts the review ([75a1939](https://github.com/po4yka/ripdpi-vpn-deploy/commit/75a193951e66c4e63bd24f277029cddd11d8b5e6))
+* **vpnd:** finish terminal reviews on worker signals ([#385](https://github.com/po4yka/ripdpi-vpn-deploy/issues/385)) ([2610fd1](https://github.com/po4yka/ripdpi-vpn-deploy/commit/2610fd19e2709ab78365c015456d550a8406f718))
+* **vpnd:** guard make clean and keep inherited signal ignores ([5b363cd](https://github.com/po4yka/ripdpi-vpn-deploy/commit/5b363cd0ef4bbd3a3ea9d0cac7ca5abb41976d3e))
+* **vpnd:** rebuild the ai-docs per-page directory on every run ([1781581](https://github.com/po4yka/ripdpi-vpn-deploy/commit/1781581236c1c69a5a1e8e9d97d536b5d85ce823))
+
+
+### Performance
+
+* **ci:** rebalance native shards and group short Molecule roles ([#399](https://github.com/po4yka/ripdpi-vpn-deploy/issues/399)) ([2e7f752](https://github.com/po4yka/ripdpi-vpn-deploy/commit/2e7f7529309a44a3a759aa26de393c66e1d55d99))
+* **ci:** shorten CI and local check wall time ([#384](https://github.com/po4yka/ripdpi-vpn-deploy/issues/384)) ([5328eaf](https://github.com/po4yka/ripdpi-vpn-deploy/commit/5328eaf90fc9372cc5544cd780b2fd57384c2530))
+* **ci:** skip full CI for instruction edits and cancel stale runs ([#398](https://github.com/po4yka/ripdpi-vpn-deploy/issues/398)) ([ad70440](https://github.com/po4yka/ripdpi-vpn-deploy/commit/ad704408c00be70256752a51301676952b7abeda))
+
+
+### Tests
+
+* **ansible:** keep smoke harness free of fact gathering ([63bb6c6](https://github.com/po4yka/ripdpi-vpn-deploy/commit/63bb6c6bddd3f8549e9e49d68597bf3b723da0de))
+* **ansible:** render unguarded rotation without protected frontends ([c493ed2](https://github.com/po4yka/ripdpi-vpn-deploy/commit/c493ed20eaa14ed3e167c369ccac33bfd9850bf7))
+* **ci:** stabilize native restart and recovery acceptance ([#370](https://github.com/po4yka/ripdpi-vpn-deploy/issues/370)) ([38e34dc](https://github.com/po4yka/ripdpi-vpn-deploy/commit/38e34dceaebd0fe18b165b2f1ce07abac865cd52))
+* drop covered source pins and define test-writing rules ([#387](https://github.com/po4yka/ripdpi-vpn-deploy/issues/387)) ([20a14ed](https://github.com/po4yka/ripdpi-vpn-deploy/commit/20a14ed43931a354a36e62ac32584a64e4d54aa4))
+* **native:** stabilize fixture admission and recovery scheduling ([4dc486e](https://github.com/po4yka/ripdpi-vpn-deploy/commit/4dc486e9b700e3372196070bfbf721bff2a716ad))
+* resolve CodeQL mixed-return and implicit-concat alerts ([#400](https://github.com/po4yka/ripdpi-vpn-deploy/issues/400)) ([4db57b1](https://github.com/po4yka/ripdpi-vpn-deploy/commit/4db57b1075c700dfd4c274939cbc7b50322557fd))
+* **scripts:** answer the blue-green review prompts in the audit path test ([527ea05](https://github.com/po4yka/ripdpi-vpn-deploy/commit/527ea05e5ab605265f6f8d5423db5df2f7d0e689))
+
+
+### Documentation
+
+* **agents:** add investigation and delegation guidance ([#397](https://github.com/po4yka/ripdpi-vpn-deploy/issues/397)) ([1fa7e97](https://github.com/po4yka/ripdpi-vpn-deploy/commit/1fa7e979d24842ca33058739ae4f8bd074528b96))
+* **agents:** align test and gate guidance across instructions ([#395](https://github.com/po4yka/ripdpi-vpn-deploy/issues/395)) ([e26039e](https://github.com/po4yka/ripdpi-vpn-deploy/commit/e26039e694424757bab2789aed45dbd2a4e4333e))
+* **device-operations:** record verified source acceptance ([ce52cb7](https://github.com/po4yka/ripdpi-vpn-deploy/commit/ce52cb73cbdceb0b878fa20ed928201214e3fe2a))
+* rewrite the documentation tree, README and contributor guides ([#354](https://github.com/po4yka/ripdpi-vpn-deploy/issues/354)) ([1781581](https://github.com/po4yka/ripdpi-vpn-deploy/commit/1781581236c1c69a5a1e8e9d97d536b5d85ce823))
+* **runbook:** clean decrypted secrets around the re-deploy recipe ([bf086fd](https://github.com/po4yka/ripdpi-vpn-deploy/commit/bf086fd141636246f2d67b3072228e2fd00ecbda))
+* **tasks:** close admitted destination failover ([cb3a177](https://github.com/po4yka/ripdpi-vpn-deploy/commit/cb3a177e7d5b546b869df00ea0f288391049c7a9))
+
+
+### Refactoring
+
+* delete uncalled helpers and a state-read alias ([#392](https://github.com/po4yka/ripdpi-vpn-deploy/issues/392)) ([ed068d0](https://github.com/po4yka/ripdpi-vpn-deploy/commit/ed068d03e47724709fe3e9ea7944a21c468725c2))
+* drop validator options that no caller uses ([#393](https://github.com/po4yka/ripdpi-vpn-deploy/issues/393)) ([b729894](https://github.com/po4yka/ripdpi-vpn-deploy/commit/b72989490202491f09769f26ab38444b6975381e))
+* **observability:** retire the undeployed dead-man pipeline ([#394](https://github.com/po4yka/ripdpi-vpn-deploy/issues/394)) ([9e361e0](https://github.com/po4yka/ripdpi-vpn-deploy/commit/9e361e00e634be8aa23f701d14003ed1938ca940))
+
 ## [2.0.0](https://github.com/po4yka/ripdpi-vpn-deploy/compare/vpnd-v1.4.2...vpnd-v2.0.0) (2026-10-20)
 
 
