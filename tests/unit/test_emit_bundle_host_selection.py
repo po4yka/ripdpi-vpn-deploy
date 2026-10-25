@@ -17,14 +17,15 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.parametrize(
-    ("hosts", "cohorts"),
+    ("hosts", "cohorts", "padding_bytes"),
     (
-        ("upcloud:p0,vultr:p2", "p0,p2"),
-        ("vultr:p2,upcloud:p0", "p2,p0"),
+        ("upcloud:p0,vultr:p2", "p0,p2", 0),
+        ("vultr:p2,upcloud:p0", "p2,p0", 0),
+        ("upcloud:p0,vultr:p2", "p0,p2", 262144),
     ),
 )
 def test_bundle_uses_feature_host_and_emits_ingress_topology(
-    tmp_path: Path, hosts: str, cohorts: str
+    tmp_path: Path, hosts: str, cohorts: str, padding_bytes: int
 ) -> None:
     for tool in ("jq", "python3"):
         if not shutil.which(tool):
@@ -112,10 +113,17 @@ def test_bundle_uses_feature_host_and_emits_ingress_topology(
         )
     )
 
+    if padding_bytes:
+        document = json.loads(secrets.read_text())
+        document["fixture_padding"] = "x" * padding_bytes
+        secrets.write_text(json.dumps(document))
     secrets.chmod(0o600)
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
-    (fake_bin / "sops").write_text("#!/bin/sh\ncat \"$SOPS_FILE\"\n")
+    # Consume /dev/stdin when requested, as real SOPS does.
+    (fake_bin / "sops").write_text(
+        '#!/bin/sh\nfor input in "$@"; do :; done\nexec cat -- "$input"\n'
+    )
     (fake_bin / "terraform").write_text("#!/bin/sh\nexit 0\n")
     (fake_bin / "wg").write_text("#!/bin/sh\ncat >/dev/null\nprintf 'server-public-fixture'\n")
     for stub in fake_bin.iterdir():
@@ -155,7 +163,7 @@ def test_actual_consumed_top_level_awg_view_cannot_hide_behind_valid_instance(tm
     import copy
     from transport_semantics import transport_errors
 
-    test_bundle_uses_feature_host_and_emits_ingress_topology(tmp_path, "upcloud:p0,vultr:p2", "p0,p2")
+    test_bundle_uses_feature_host_and_emits_ingress_topology(tmp_path, "upcloud:p0,vultr:p2", "p0,p2", 0)
     repo = tmp_path / "repo"
     secrets_path = tmp_path / "secrets.json"
     payload = json.loads(secrets_path.read_text())
