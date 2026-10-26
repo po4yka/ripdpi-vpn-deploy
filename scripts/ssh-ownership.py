@@ -15,7 +15,7 @@ from sshd_contexts import bind_contexts
 
 
 ROOT = Path(__file__).resolve().parents[1]
-FIELDS = {"schema_version", "mode", "inventory_alias", "inventory_path",
+FIELDS = {"schema_version", "mode", "inventory_alias", "inventory_path", "inventory_section",
           "known_hosts_path", "contexts_path", "source_revision", "deployable_digest"}
 HEX = re.compile(r"[0-9a-f]{64}")
 REVISION = re.compile(r"[0-9a-f]{40}")
@@ -45,7 +45,8 @@ def _document(raw):
     try:
         value = json.loads(raw, object_pairs_hook=_unique)
         if (not isinstance(value, dict) or set(value) != FIELDS
-                or type(value["schema_version"]) is not int or value["schema_version"] != 1
+                or type(value["schema_version"]) is not int or value["schema_version"] != 2
+                or value["inventory_section"] not in {"vpn", "observability-kuma"}
                 or not isinstance(value["mode"], str) or value["mode"] not in {"check", "deploy"}
                 or not isinstance(value["inventory_alias"], str)
                 or fleet_inspection.SAFE_NAME.fullmatch(value["inventory_alias"]) is None
@@ -102,7 +103,8 @@ def execute(config_path, *, controller=None):
         directory = Path(directory)
         inventory_path = deploy.private_file(directory / "inventory.ini", inventory)
         pin_path = deploy.private_file(directory / "known_hosts", pin)
-        host = fleet_inspection.select_hosts(inventory_path, [config["inventory_alias"]])[0]
+        host = fleet_inspection.select_hosts(
+            inventory_path, [config["inventory_alias"]], primary_section=config["inventory_section"])[0]
         bind_contexts(contexts, host["address"], host["transport"], host["port"])
         for fence in (inventory_fence, pin_fence, contexts_fence):
             deploy.verify_input_fence(fence)

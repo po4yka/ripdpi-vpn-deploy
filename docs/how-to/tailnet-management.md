@@ -27,7 +27,7 @@ opens only those sources on `tailscale0` and the effective existing sshd port.
 An empty, duplicate, noncanonical or out-of-range list refuses locally before
 the first host write.
 
-The current production inventory profiles `vpn-p0-self-steal`, `vpn-p1-web`
+The current production inventory profiles `vpn-p0-minimal`, `vpn-p0-self-steal`, `vpn-p1-web`
 and `vpn-p2-udp` explicitly enable this role. Their one reviewed controller
 address per family is shared from `group_vars/all.yml`; the global VPN toggle
 remains false, so every other cohort stays inert unless it opts in separately.
@@ -62,7 +62,8 @@ exact fields are:
 
 | Field | Required value |
 |---|---|
-| `schema_version` | Integer `2` |
+| `schema_version` | Integer `3` |
+| `inventory_path`, `inventory_section` | Absolute source inventory path and explicit `vpn` or `observability-kuma` section. The observer stays outside the VPN fleet. |
 | `environment`, `provider` | Exact routed Terraform workspace, including named permanent workspaces; `upcloud`, `scaleway` or `vultr`. Disposable `ci-staging-*` workspaces always require their manifest; disposable Scaleway is unsupported. |
 | `build_environment` | Canonical `vpn_build_environment` emitted by inventory and matching `/etc/vpn-build-id`; named permanent workspaces require `prod` |
 | `inventory_alias`, `public_address`, `ssh_port` | One exact canonical inventory node and its current public SSH endpoint |
@@ -95,6 +96,10 @@ random mode-`0600` auth file under `/run/vpn-tailnet-management`, uses
 `--auth-key=file:`, and removes and fsyncs it after login. Bootstrap never
 changes provider firewall policy or Tailnet ACLs.
 
+Ansible installation permits three initial connection attempts to the same
+pinned endpoint, as SSH recovery installation does. Remote commands and
+enrollment RPCs are not replayed by this transport setting.
+
 Before changing access, the guest verifies both the enabled early boot
 firewall recovery unit and the late recovery worker, then arms one durable
 generation-, target-, nonce- and snapshot-bound transaction. Its 300-second
@@ -106,6 +111,15 @@ pending network transactions refuse without flushing unrelated policy. The
 exact four empty daemon tables (`ip/ip6 filter/nat`) may remain as inert
 baseline objects; any chains, rules, sets, maps or extra attributes disqualify
 that exception. Their original state is included in apply and rollback.
+
+An Ubuntu image can report `ufw.service` as `active (exited)` while UFW is
+disabled. Bootstrap accepts this wrapper only when its root-owned configuration
+matches the verified package template, contains exactly one `ENABLED=no` setting, and
+`ufw status` reports inactive. The loaded unit must match the package after
+path resolution, have no overrides, diversions or pending reload, and pass
+package integrity and safe helper-file checks. It leaves that unit unchanged. Active UFW,
+modified configuration and other active firewall services still refuse; kernel
+rule ownership checks remain mandatory.
 
 After login, fresh public and Tailnet SSH and SFTP connections must verify the
 same original host key and real socket addresses. Local status alone cannot

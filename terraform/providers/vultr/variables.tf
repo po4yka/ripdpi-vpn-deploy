@@ -165,63 +165,49 @@ variable "enable_ipv6" {
   description = "Allocate and expose a public IPv6 address."
 }
 
-variable "manage_public_ipv6_endpoint" {
-  type        = bool
-  default     = false
-  description = "Manage the shared public IPv6 endpoint as a Vultr DNS AAAA record."
-}
-
-variable "public_ipv6_endpoint_domain" {
+variable "dns_zone" {
   type        = string
   default     = ""
-  description = "Existing Vultr DNS zone that owns the public IPv6 endpoint."
+  description = "Existing Vultr DNS zone for the explicitly managed records."
 
   validation {
-    condition = (
-      var.public_ipv6_endpoint_domain == ""
-      || can(regex("^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$", var.public_ipv6_endpoint_domain))
+    condition = var.dns_zone == "" || (
+      length(var.dns_zone) <= 253 && can(regex("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$", var.dns_zone))
     )
-    error_message = "public_ipv6_endpoint_domain must be empty or a DNS domain name."
+    error_message = "dns_zone must be empty or a lowercase DNS domain name."
   }
 }
 
-variable "public_ipv6_endpoint_name" {
-  type        = string
-  default     = ""
-  description = "Relative Vultr DNS record name; empty means the zone apex."
+variable "managed_dns_records" {
+  type = map(object({
+    name     = string
+    type     = string
+    data     = string
+    ttl      = number
+    priority = optional(number)
+  }))
+  default     = {}
+  description = "A, AAAA and CNAME records in dns_zone, keyed by stable operator IDs. Import existing records before applying."
 
   validation {
-    condition = (
-      var.public_ipv6_endpoint_name == ""
-      || can(regex("^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$", var.public_ipv6_endpoint_name))
-    )
-    error_message = "public_ipv6_endpoint_name must be empty or a relative DNS name."
+    condition = alltrue([for record in values(var.managed_dns_records) :
+      (record.name == "" || record.name == "*" || (length(record.name) <= 253 && can(regex("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$", record.name))))
+      && (record.priority == null ? true : record.priority == floor(record.priority) && record.priority >= -1 && record.priority <= 65535)
+      && record.ttl == floor(record.ttl) && record.ttl >= 60 && record.ttl <= 86400
+      && (
+        (record.type == "A" && can(cidrnetmask("${record.data}/32")))
+        || (record.type == "AAAA" && strcontains(record.data, ":") && can(cidrhost("${record.data}/128", 0)))
+        || (record.type == "CNAME" && record.name != "" && length(record.data) <= 254 && can(regex("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+\\.?$", record.data)))
+      )
+    ])
+    error_message = "Records require valid relative names, A/AAAA addresses or a non-apex CNAME target, and an integer TTL from 60 to 86400."
   }
-}
-
-variable "public_ipv6_endpoint_address" {
-  type        = string
-  default     = ""
-  sensitive   = true
-  description = "Public IPv6 address published by the managed AAAA record."
 
   validation {
-    condition = (
-      var.public_ipv6_endpoint_address == ""
-      || can(cidrhost("${var.public_ipv6_endpoint_address}/128", 0))
-    )
-    error_message = "public_ipv6_endpoint_address must be empty or a valid IPv6 address."
-  }
-}
-
-variable "public_ipv6_endpoint_ttl" {
-  type        = number
-  default     = 300
-  description = "TTL in seconds for the managed public IPv6 endpoint."
-
-  validation {
-    condition     = var.public_ipv6_endpoint_ttl >= 60 && var.public_ipv6_endpoint_ttl <= 86400
-    error_message = "public_ipv6_endpoint_ttl must be between 60 and 86400 seconds."
+    condition = length(distinct([for record in values(var.managed_dns_records) : "${record.name}:${record.type}"])) == length(var.managed_dns_records) && alltrue([
+      for record in values(var.managed_dns_records) : record.type != "CNAME" || length([for other in values(var.managed_dns_records) : other if other.name == record.name]) == 1
+    ])
+    error_message = "Managed record names and types must be unique, and CNAME names cannot have another managed record."
   }
 }
 

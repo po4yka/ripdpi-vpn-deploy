@@ -18,8 +18,8 @@ def load(name):
     return module
 
 
-@pytest.fixture
-def configured(tmp_path, monkeypatch):
+@pytest.fixture(params=["vpn", "observability-kuma"])
+def configured(tmp_path, monkeypatch, request):
     operator = load("ssh-ownership")
     deploy = load("deploy-controller")
     controller = load("sshd-baseline-controller")
@@ -28,9 +28,9 @@ def configured(tmp_path, monkeypatch):
     key.chmod(0o600)
     inventory = tmp_path / "inventory.ini"
     inventory.write_text(
-        "[vpn]\nnode-a ansible_host=192.0.2.10 ansible_user=deploy ansible_port=2222 "
+        f"[{request.param}]\nnode-a ansible_host=192.0.2.10 ansible_user=deploy ansible_port=2222 "
         "inspection_transport_host=100.64.0.10 inspection_host_key_alias=192.0.2.10\n"
-        "[vpn:vars]\nansible_ssh_private_key_file=" + str(key) + "\n"
+        f"[{'vpn' if request.param == 'vpn' else 'observability'}:vars]\nansible_ssh_private_key_file=" + str(key) + "\n"
     )
     known = tmp_path / "known_hosts"
     known.write_text("[192.0.2.10]:2222 ssh-ed25519 fixture-pin\n")
@@ -43,7 +43,7 @@ def configured(tmp_path, monkeypatch):
     ]}))
     contexts.chmod(0o600)
     config = tmp_path / "ownership.json"
-    data = {"schema_version": 1, "mode": "check", "inventory_alias": "node-a",
+    data = {"schema_version": 2, "mode": "check", "inventory_alias": "node-a", "inventory_section": request.param,
             "inventory_path": str(inventory), "known_hosts_path": str(known),
             "contexts_path": str(contexts), "source_revision": "a" * 40,
             "deployable_digest": "b" * 64}
@@ -216,4 +216,19 @@ def test_mutation_requires_clean_exact_source(configured, monkeypatch):
     monkeypatch.setattr(deploy, "source_identity", source)
     monkeypatch.setattr(controller, "transaction_rpc", lambda *args, **kwargs: pytest.fail("RPC before source check"))
     with pytest.raises(deploy.DeployError, match="clean source required"):
+        operator.execute(config)
+
+
+@pytest.mark.parametrize('mutation', ['missing-section', 'invalid-section', 'old-schema'])
+def test_explicit_inventory_section_is_required_before_host_access(configured, monkeypatch, mutation):
+    operator, controller, config, data, _ = configured
+    if mutation == 'missing-section':
+        del data['inventory_section']
+    elif mutation == 'invalid-section':
+        data['inventory_section'] = 'vpn-observability-control'
+    else:
+        data['schema_version'] = 1
+    config.write_text(json.dumps(data))
+    monkeypatch.setattr(controller, 'transaction_rpc', lambda *args, **kwargs: pytest.fail('RPC before scope validation'))
+    with pytest.raises(operator.OwnershipControllerError, match='configuration-invalid'):
         operator.execute(config)

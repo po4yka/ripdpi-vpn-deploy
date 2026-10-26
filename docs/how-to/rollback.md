@@ -154,10 +154,13 @@ single-node maintenance window:
 
 ```bash
 make install-ssh-recovery ANSIBLE_LIMIT=<exact-inventory-alias> \
-  SSH_RECOVERY_EXCLUSIVE_WINDOW=1
+  SSH_RECOVERY_EXCLUSIVE_WINDOW=1 SSH_RECOVERY_INVENTORY_SECTION=vpn
 ```
 
 The existing generated inventory and pinned known-hosts file are required.
+`SSH_RECOVERY_INVENTORY_SECTION` is required: use `vpn` for a VPN node or
+`observability-kuma` for the independent observer. The installer never adds
+the observer to the persistent VPN inventory.
 Optional `SSH_RECOVERY_INVENTORY` and `SSH_RECOVERY_KNOWN_HOSTS` select existing
 owner-controlled files; they never disable host-key checking. Enabled Ansible
 debug is rejected. Only validated connection fields enter the isolated play.

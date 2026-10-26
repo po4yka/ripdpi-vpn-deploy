@@ -216,12 +216,54 @@ Uses:
   plan before revoking its predecessor; a failed plan is not provider-state
   evidence.
 - Optional secondary IPv4 allocation uses the provider's reboot path. After apply, `render-inventory.sh` blocks until the address appears on a guest interface over the primary SSH endpoint; API allocation alone is not sufficient evidence for publishing `honeypot_listen_addr`.
-- The optional `vultr_dns_record.public_ipv6_endpoint` owns the shared AAAA
-  record because the authoritative DNS zone is hosted by Vultr. Keep its
-  target in the ignored environment `*.tfvars` file, populated from the
-  endpoint provider's `server_ipv6` output. A server replacement is not
-  complete until the record is refreshed and `make verify` confirms the
-  published address.
+- `vultr_dns_record.managed` owns only the records selected by
+  `managed_dns_records` in the existing `dns_zone`. Keep cross-provider targets
+  in ignored environment `*.tfvars`, populated from the endpoint provider's
+  `server_ipv4` and `server_ipv6` outputs. A server replacement is not complete
+  until DNS is refreshed and `make verify` confirms the published addresses.
+
+### Migrate existing Vultr DNS state
+
+Before the first plan with `managed_dns_records`, stop concurrent Terraform
+writers and make an encrypted state backup with `make backup-state`, using the
+same `PROVIDER=vultr` and explicit `ENV` as the DNS-owning workspace. Never
+apply a plan that deletes a retained DNS record during adoption.
+
+If that workspace already contains
+`vultr_dns_record.public_ipv6_endpoint[0]`, configure the retained record under
+one stable map key, such as `apex-aaaa`. Set `dns_zone` and copy its exact name,
+AAAA data, TTL and provider priority into that entry. Remove the old
+`public_ipv6_endpoint_*` and `manage_public_ipv6_endpoint` inputs. Then move
+the existing state binding; do not import a second binding for the same remote
+record:
+
+```bash
+# Select the actual DNS-owning environment; prod maps to the legacy default workspace.
+export PROVIDER=vultr ENV=prod
+./scripts/terraform-env.sh state list
+./scripts/terraform-env.sh state mv \
+  'vultr_dns_record.public_ipv6_endpoint[0]' \
+  'vultr_dns_record.managed["apex-aaaa"]'
+```
+
+Replace `apex-aaaa` with the key selected in the private inputs. `state mv`
+changes the local binding without deleting or creating the remote record.
+Confirm that `state list` contains only the new address for this record. Then
+run the ordinary `make plan` and review it before any apply. Adoption must show
+no create, update or delete for this retained record.
+
+If the same remote record was already imported at the new address while its
+old address remains, confirm the equal remote IDs privately and retain the
+encrypted backup. Remove only the duplicate old binding:
+
+```bash
+./scripts/terraform-env.sh state rm 'vultr_dns_record.public_ipv6_endpoint[0]'
+```
+
+This command forgets the duplicate binding; it does not delete the remote
+record. Do not use it unless the new binding already owns that exact record.
+Review a new plan and require no remote DNS change for adoption. Import other
+existing records only when no address in this workspace already owns them.
 
 ## Scaleway
 

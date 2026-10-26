@@ -38,7 +38,7 @@ Prepare these exact manifest fields:
 | `hostname`, `cohort` | Planned inventory alias and canonical runtime profile |
 | `state_directory` | Empty private durable operation directory |
 | `sops_file`, `age_key_file`, `ssh_key_file` | Separate target authority and its admitted private inputs |
-| `known_hosts_file`, `bootstrap_config` | Independently authenticated host pin and schema-2 Tailnet bootstrap inputs |
+| `known_hosts_file`, `bootstrap_config` | Independently authenticated host pin and schema-3 Tailnet bootstrap inputs with the current absolute inventory path and section `vpn` |
 | `promotion_configs_file` | Per-alias production recovery promotion intent |
 | `migration_plan` | Exact source/target migration plan using the surviving publisher |
 | `inventory` | Complete desired set of 3–10 rows with `host`, `cohort`, and optional private `handoff` path |

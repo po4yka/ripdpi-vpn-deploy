@@ -197,8 +197,10 @@ def bootstrap(runtime, config, enrollment, seed, identity, alias, address, sourc
     runtime.make("inventory")
     trusted_wait(runtime, str(pin), alias)
     runtime.make("install-ssh-recovery", SSH_RECOVERY_EXCLUSIVE_WINDOW="1",
-                 SSH_RECOVERY_INVENTORY=str(ROOT / "ansible/inventory/generated.ini"), SSH_RECOVERY_KNOWN_HOSTS=str(pin))
-    common = {"schema_version": 2, "environment": runtime.environment["ENV"], "build_environment": runtime.environment["ENV"],
+                 SSH_RECOVERY_INVENTORY=str(ROOT / "ansible/inventory/generated.ini"),
+                 SSH_RECOVERY_INVENTORY_SECTION="vpn", SSH_RECOVERY_KNOWN_HOSTS=str(pin))
+    common = {"schema_version": 3, "inventory_path": str(ROOT / "ansible/inventory/generated.ini"),
+              "inventory_section": "vpn", "environment": runtime.environment["ENV"], "build_environment": runtime.environment["ENV"],
               "provider": "upcloud", "inventory_alias": alias, "public_address": address, "ssh_port": 22,
               "host_key_sha256": seed["host_public_key_sha256"], "public_sources": [public_source],
               "approved_sources": sources, "source_revision": identity[0], "deployable_digest": identity[1],
@@ -218,7 +220,7 @@ def bootstrap(runtime, config, enrollment, seed, identity, alias, address, sourc
     runtime.environment.update(TAILNET_HANDOFFS=str(handoff), DEPLOY_CI_TAILNET_HANDOFF=str(handoff),
                                DEPLOY_SSH_CONTEXTS_FILE=str(contexts))
     runtime.make("inventory")
-    ownership = {"schema_version": 1, "inventory_alias": alias,
+    ownership = {"schema_version": 2, "inventory_alias": alias, "inventory_section": "vpn",
                  "inventory_path": str(ROOT / "ansible/inventory/generated.ini"), "known_hosts_path": str(pin),
                  "contexts_path": str(contexts), "source_revision": identity[0], "deployable_digest": identity[1]}
     for mode in ("check", "deploy"):

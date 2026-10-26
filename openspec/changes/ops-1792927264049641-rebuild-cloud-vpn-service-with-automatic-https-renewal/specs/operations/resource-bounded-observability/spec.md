@@ -32,6 +32,11 @@ The implementation MUST provide a pinned private Uptime Kuma container with boun
 - **WHEN** the owner selects panel-only monitoring without external notification credentials
 - **THEN** node and pipeline monitors operate with distinct credentials and bounded resources, the panel exposes their state privately, and delivery remains explicitly disabled.
 
+#### Scenario: Separate service profiles without external notification providers
+
+- **WHEN** the separate P0, P1 and P2 service profiles converge
+- **THEN** monitoring and backup remain enabled, restricted Tailnet management stays enabled, and the standalone ntfy/Pushover watchdog is disabled.
+
 ### Requirement: REQ-IRBO-DELIVERY — Honest relay evidence
 
 Notification-enabled mode MUST distinguish fresh-message send from edit receipts and API acknowledgement from human receipt, require distinct primary/secondary notification authority, and withhold success for stale, invalid or failed canaries. Synthetic rule-to-relay receipts MUST be fresh and single-use. Both Telegram routes MUST disclose their common dependency. Panel-only mode MUST explicitly disable the relay and delivery heartbeat, without treating absent notification authority as successful external delivery.

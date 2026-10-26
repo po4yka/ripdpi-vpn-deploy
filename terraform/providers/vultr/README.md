@@ -36,6 +36,11 @@ VULTR_API_KEY=... make PROVIDER=vultr ENV=prod init plan
 
 See `terraform/providers/vultr/CLAUDE.md` for design decisions and pitfalls.
 
+Before adopting DNS records, follow the [existing DNS state migration](../../../docs/reference/provider-notes.md#migrate-existing-vultr-dns-state).
+Move a retained legacy binding to the selected `managed` map key instead of
+importing the same remote record twice. Review a plan with no DNS changes for
+adoption before applying endpoint updates.
+
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
 
@@ -55,7 +60,7 @@ No modules.
 | [terraform_data.admin_ssh_public_key](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
 | [terraform_data.admin_user](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
 | [terraform_data.ssh_port](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
-| [vultr_dns_record.public_ipv6_endpoint](https://registry.terraform.io/providers/vultr/vultr/latest/docs/resources/dns_record) | resource |
+| [vultr_dns_record.managed](https://registry.terraform.io/providers/vultr/vultr/latest/docs/resources/dns_record) | resource |
 | [vultr_firewall_group.vpn](https://registry.terraform.io/providers/vultr/vultr/latest/docs/resources/firewall_group) | resource |
 | [vultr_firewall_rule.icmp](https://registry.terraform.io/providers/vultr/vultr/latest/docs/resources/firewall_rule) | resource |
 | [vultr_firewall_rule.ssh](https://registry.terraform.io/providers/vultr/vultr/latest/docs/resources/firewall_rule) | resource |
@@ -73,18 +78,15 @@ No modules.
 | <a name="input_admin_user"></a> [admin\_user](#input\_admin\_user) | Non-root user created by cloud-init for SSH and Ansible access. | `string` | `"deploy"` | no |
 | <a name="input_allowed_ssh_cidrs"></a> [allowed\_ssh\_cidrs](#input\_allowed\_ssh\_cidrs) | Source CIDRs allowed to reach ssh\_port/tcp. | `list(string)` | n/a | yes |
 | <a name="input_build_env"></a> [build\_env](#input\_build\_env) | Free-form label baked into /etc/vpn-build-id by cloud-init. | `string` | `"prod"` | no |
+| <a name="input_dns_zone"></a> [dns\_zone](#input\_dns\_zone) | Existing Vultr DNS zone for the explicitly managed records. | `string` | `""` | no |
 | <a name="input_enable_backups"></a> [enable\_backups](#input\_enable\_backups) | Enable provider-side server backups with a daily 03:00 UTC schedule. Off by default: Vultr snapshots are unencrypted and bypass the restic+age backup chain. | `bool` | `false` | no |
 | <a name="input_enable_hysteria"></a> [enable\_hysteria](#input\_enable\_hysteria) | Include the Hysteria2 UDP/443 listener in the legacy default set. Explicit public\_listeners ignore this toggle; add hysteria there directly. | `bool` | `true` | no |
 | <a name="input_enable_ipv6"></a> [enable\_ipv6](#input\_enable\_ipv6) | Allocate and expose a public IPv6 address. | `bool` | `true` | no |
 | <a name="input_labels"></a> [labels](#input\_labels) | Provider-specific resource tags/labels. | `map(string)` | `{}` | no |
-| <a name="input_manage_public_ipv6_endpoint"></a> [manage\_public\_ipv6\_endpoint](#input\_manage\_public\_ipv6\_endpoint) | Manage the shared public IPv6 endpoint as a Vultr DNS AAAA record. | `bool` | `false` | no |
+| <a name="input_managed_dns_records"></a> [managed\_dns\_records](#input\_managed\_dns\_records) | A, AAAA and CNAME records in dns\_zone, keyed by stable operator IDs. Import existing records before applying. | <pre>map(object({<br/>    name     = string<br/>    type     = string<br/>    data     = string<br/>    ttl      = number<br/>    priority = optional(number)<br/>  }))</pre> | `{}` | no |
 | <a name="input_nginx_xhttp_public_port"></a> [nginx\_xhttp\_public\_port](#input\_nginx\_xhttp\_public\_port) | Public TCP port for nginx-xhttp. Keep this in sync with Ansible nginx\_xhttp\_public\_port. | `number` | `8443` | no |
 | <a name="input_os_id"></a> [os\_id](#input\_os\_id) | Vultr OS id, e.g. Debian or Ubuntu image id from `vultr-cli os list`. | `number` | n/a | yes |
 | <a name="input_plan"></a> [plan](#input\_plan) | Vultr plan slug, e.g. vc2-1c-1gb or vhf-1c-1gb. | `string` | n/a | yes |
-| <a name="input_public_ipv6_endpoint_address"></a> [public\_ipv6\_endpoint\_address](#input\_public\_ipv6\_endpoint\_address) | Public IPv6 address published by the managed AAAA record. | `string` | `""` | no |
-| <a name="input_public_ipv6_endpoint_domain"></a> [public\_ipv6\_endpoint\_domain](#input\_public\_ipv6\_endpoint\_domain) | Existing Vultr DNS zone that owns the public IPv6 endpoint. | `string` | `""` | no |
-| <a name="input_public_ipv6_endpoint_name"></a> [public\_ipv6\_endpoint\_name](#input\_public\_ipv6\_endpoint\_name) | Relative Vultr DNS record name; empty means the zone apex. | `string` | `""` | no |
-| <a name="input_public_ipv6_endpoint_ttl"></a> [public\_ipv6\_endpoint\_ttl](#input\_public\_ipv6\_endpoint\_ttl) | TTL in seconds for the managed public IPv6 endpoint. | `number` | `300` | no |
 | <a name="input_public_listeners"></a> [public\_listeners](#input\_public\_listeners) | Public TCP/UDP listeners allowed at the provider edge. Specify exactly one of port or port\_range for each entry. | <pre>list(object({<br/>    name       = string<br/>    protocol   = string<br/>    port       = optional(number)<br/>    port_range = optional(string)<br/>  }))</pre> | `[]` | no |
 | <a name="input_region"></a> [region](#input\_region) | Vultr region, e.g. ams, fra, lhr. | `string` | n/a | yes |
 | <a name="input_server_name"></a> [server\_name](#input\_server\_name) | Hostname / Terraform name of the VPS. | `string` | n/a | yes |

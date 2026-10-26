@@ -309,7 +309,7 @@ def prepare_promotion(path, environment):
         if isinstance(document, dict) and document.get("kind") == "disposable-staging-intent":
             from disposable_promotion import finalize
             return finalize(document, environment), True
-        if isinstance(document, dict) and document.get("kind") == "recovery-promotion-intent":
+        if isinstance(document, dict) and document.get("kind") in {"recovery-promotion-intent", "cloud-promotion-intent"}:
             from recovery_promotion import finalize
             return finalize(document, environment), True
         return path, False

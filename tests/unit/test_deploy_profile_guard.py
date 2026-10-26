@@ -127,12 +127,18 @@ def test_live_explicit_profile_surfaces_are_locked():
     assert p1_web["enable_nginx_xhttp"] is True
     assert p1_web["enable_hysteria"] is False
     assert p1_web["enable_amneziawg"] is False
+    assert p1_web["enable_subscription_host"] is False
     assert p1_web_data["nginx_xhttp_public_port"] == 443
 
     assert p2_udp["enable_xray_reality"] is False
     assert p2_udp["enable_nginx_xhttp"] is False
     assert p2_udp["enable_hysteria"] is True
     assert p2_udp["enable_amneziawg"] is True
+    for service_profile in (minimal, p1_web, p2_udp):
+        assert service_profile["enable_watchdog"] is False
+        assert service_profile["enable_monitoring"] is True
+        assert service_profile["enable_backup"] is True
+        assert service_profile["enable_tailnet_management"] is True
 
     assert lab["allow_research_roles"] == []
     assert lab["vpn"]["enable_split_hop_egress"] is False

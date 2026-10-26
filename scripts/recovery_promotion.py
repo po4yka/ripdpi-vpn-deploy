@@ -1,4 +1,4 @@
-"""First production-replacement onboarding through the canonical sentinel installer."""
+"""First cloud or recovery onboarding through the canonical sentinel installer."""
 from __future__ import annotations
 
 import copy
@@ -15,10 +15,19 @@ import yaml
 from recovery_io import ROOT, canonical, digest, document, load_manifest, module, read
 
 KIND = 'recovery-promotion-intent'
+CLOUD_KIND = 'cloud-promotion-intent'
 TARGET = {'inventory_alias', 'public_service_address_sha256', 'deployable_digest'}
 INPUTS = {'recovery_manifest', 'sops_file', 'age_key_file', 'awg_key_file'}
 OUTPUTS = {'authority', 'liveness', 'registry', 'proof'}
 FIELDS = {'schema_version', 'kind', 'target_identity', 'host', 'cohort', 'client', 'liveness', 'inputs'}
+
+
+def _manifest_input(value):
+    return 'provisioning_manifest' if value['kind'] == CLOUD_KIND else 'recovery_manifest'
+
+
+def _input_fields(value):
+    return (INPUTS - {'recovery_manifest'}) | {_manifest_input(value)}
 
 
 class PromotionError(ValueError):
@@ -43,14 +52,20 @@ def required_profiles(cohort):
 
 def validate_intent(value):
     try:
+        cloud = isinstance(value, dict) and value.get('kind') == CLOUD_KIND
+        inputs = _input_fields(value)
+        authority = _manifest_input(value)
         if (not isinstance(value, dict) or set(value) not in (FIELDS, FIELDS | {'prepared'})
                 or type(value['schema_version']) is not int or value['schema_version'] != 1
-                or value['kind'] != KIND or not re.fullmatch(r'upcloud:[a-z0-9][a-z0-9-]{0,63}', value['host'])
-                or value['host'].split(':')[1] in {'prod', 'default', 'staging'}
-                or value['host'].split(':')[1].startswith('ci-staging-')
+                or value['kind'] not in {KIND, CLOUD_KIND}
+                or not re.fullmatch(r'(upcloud|scaleway|vultr):[a-z0-9][a-z0-9-]{0,63}' if cloud
+                                    else r'upcloud:[a-z0-9][a-z0-9-]{0,63}', value['host'])
+                or value['host'].split(':')[1] == 'default'
+                or (not cloud and (value['host'].split(':')[1] in {'prod', 'staging'}
+                                   or value['host'].split(':')[1].startswith('ci-staging-')))
                 or not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,63}', value['cohort'])
                 or not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,63}', value['client'])
-                or set(value['target_identity']) != TARGET or set(value['inputs']) != INPUTS):
+                or set(value['target_identity']) != TARGET or set(value['inputs']) != inputs):
             raise ValueError
         for name, path in value['inputs'].items():
             if name != 'awg_key_file' or path is not None:
@@ -69,6 +84,10 @@ def validate_intent(value):
                 or config['sentinels'][0]['policy'] != config['policies'][0]['id']
                 or module('protocol-liveness').semantic_errors(config)):
             raise ValueError
+        if cloud and (config['sentinels'][0].get('vantage') != 'external'
+                      or not config['sentinels'][0].get('ssh_transport_host')
+                      or not config['sentinels'][0].get('ssh_host_key_alias')):
+            raise ValueError
         if 'p2-amneziawg' in required:
             awg = config['sentinels'][0]['awg_target']
             if awg['provider'] + ':' + awg['environment'] != value['host']:
@@ -76,8 +95,8 @@ def validate_intent(value):
         if 'prepared' in value:
             prepared = value['prepared']
             if (set(prepared) != {'scope_sha256', 'source_inputs', 'input_sha256', 'outputs'}
-                    or set(prepared['source_inputs']) != INPUTS
-                    or set(prepared['input_sha256']) != INPUTS - {'recovery_manifest'}
+                    or set(prepared['source_inputs']) != inputs
+                    or set(prepared['input_sha256']) != inputs - {authority}
                     or set(prepared['outputs']) != OUTPUTS
                     or not re.fullmatch(r'[0-9a-f]{64}', prepared['scope_sha256'])):
                 raise ValueError
@@ -89,7 +108,7 @@ def validate_intent(value):
                     raise ValueError
                 if sha is not None and not re.fullmatch(r'[0-9a-f]{64}', sha):
                     raise ValueError
-            if (prepared['source_inputs']['recovery_manifest'] != value['inputs']['recovery_manifest']
+            if (prepared['source_inputs'][authority] != value['inputs'][authority]
                     or (prepared['source_inputs']['awg_key_file'] is None) != (value['inputs']['awg_key_file'] is None)):
                 raise ValueError
             for path in prepared['outputs'].values():
@@ -100,7 +119,7 @@ def validate_intent(value):
                      str(Path(prepared['outputs']['authority']).with_suffix('.lock')),
                      prepared['source_inputs']['sops_file'] + '.new-client.lock',
                      *[path for path in prepared['source_inputs'].values() if path],
-                     *[path for name, path in value['inputs'].items() if path and name != 'recovery_manifest']]
+                     *[path for name, path in value['inputs'].items() if path and name != authority]]
             if len({str(Path(path).resolve()) for path in paths}) != len(paths):
                 raise ValueError
         return copy.deepcopy(value)
@@ -110,6 +129,9 @@ def validate_intent(value):
 
 def _scope(value, environment):
     """The existing recovery journal and current local state bind this new node."""
+    if value['kind'] == CLOUD_KIND:
+        from cloud_promotion_scope import scope
+        return scope(value, environment)
     from recovery_provider import server_from_state
     manifest_path = value.get('prepared', {}).get('source_inputs', value['inputs'])['recovery_manifest']
     manifest = load_manifest(manifest_path)
@@ -164,11 +186,13 @@ def prepare_intent(intent, host, memberships, directory, deployed_secrets, envir
         manifest, server, outputs = _scope(value, environment)
         if (memberships != ['vpn-' + value['cohort']]
                 or host['name'] != value['target_identity']['inventory_alias']
-                or host['address'] not in server['public_ipv4']):
+                or host['address'] not in server['public_ipv4']
+                or (value['kind'] == CLOUD_KIND and (host['port'] != server['ssh_port']
+                                                   or host['user'] != server['admin_user']))):
             raise ValueError
         source_inputs = copy.deepcopy(value['inputs'])
         hashes = {}
-        for name in INPUTS - {'recovery_manifest'}:
+        for name in _input_fields(value) - {_manifest_input(value)}:
             if value['inputs'][name] is None:
                 hashes[name] = None
                 continue
@@ -231,8 +255,10 @@ def finalize(intent, environment, *, clock=None):
         source = prepared['source_inputs']
         locks = (Path(source['sops_file'] + '.new-client.lock'), paths['authority'].with_suffix('.lock'))
         with _exclusive_locks(locks):
+            if value['kind'] == CLOUD_KIND and _scope(value, environment) != (manifest, server, outputs):
+                raise ValueError
             hashes = {}
-            for name in INPUTS - {'recovery_manifest'}:
+            for name in _input_fields(value) - {_manifest_input(value)}:
                 hashes[name] = None if source[name] is None else hashlib.sha256(read(source[name], limit=4_194_304)).hexdigest()
                 if source[name] is not None and hashlib.sha256(read(value['inputs'][name], limit=4_194_304)).hexdigest() != hashes[name]:
                     raise ValueError
@@ -296,6 +322,9 @@ def finalize(intent, environment, *, clock=None):
                     raise ValueError
             proof = {'schema_version': 1, 'liveness_config': str(paths['liveness']),
                      'expected_sentinels': [sid], 'target_identity': receipt['target_identity']}
+            if value['kind'] == CLOUD_KIND:
+                if _scope(value, environment) != (manifest, server, outputs):
+                    raise ValueError
             _ensure(paths['proof'], proof)
             return paths['proof']
     except (OSError, ValueError, TypeError, KeyError):

@@ -6,7 +6,7 @@ import sys
 
 import pytest
 import recovery
-from recovery_io import ActionRequired, Journal, RecoveryError, digest, document
+from recovery_io import ROOT, ActionRequired, Journal, RecoveryError, digest, document
 from recovery_runtime import Runtime
 from test_recovery_io import manifest as manifest  # noqa: PLC0414
 
@@ -434,19 +434,42 @@ def test_authenticated_pin_uses_real_ssh_keygen_and_hashed_known_hosts(manifest,
     pins.write_text('[192.0.2.10]:2222 ' + ' '.join(public[:2]) + '\n')
     pins.chmod(0o600)
     subprocess.run(['ssh-keygen', '-q', '-H', '-f', str(pins)], check=True, timeout=10, capture_output=True)
-    config = {'provider': 'upcloud', 'environment': value['environment'], 'inventory_alias': 'vpn-replacement',
+    config = {'schema_version': 3, 'inventory_path': str(ROOT / 'ansible/inventory/generated.ini'),
+              'inventory_section': 'vpn', 'provider': 'upcloud', 'environment': value['environment'], 'inventory_alias': 'vpn-replacement',
               'public_address': '192.0.2.10', 'ssh_port': 2222, 'source_revision': value['source_revision'],
               'deployable_digest': 'a' * 64, 'known_hosts': str(pins), 'host_key_sha256': key_sha}
     configuration = Path(value['bootstrap_config'])
     configuration.write_bytes(canonical(config))
     configuration.chmod(0o600)
-    host = {'name': 'vpn-replacement', 'alias': '192.0.2.10', 'address': '192.0.2.10', 'port': 2222}
+    host = {'name': 'vpn-replacement', 'alias': '192.0.2.10', 'address': '192.0.2.10', 'transport': '192.0.2.10',
+            'port': 2222, 'user': 'deploy', 'key': str(private)}
     with Journal(value) as journal:
         runtime = Runtime(value, path, journal)
         monkeypatch.setattr(runtime, 'source', lambda: {'DEPLOYABLE_SOURCE_DIGEST': 'a' * 64})
         result = runtime.pin_binding({'public_ipv4': ['192.0.2.10']}, host)
         assert result['known_hosts_sha256'] == hashlib.sha256(pins.read_bytes()).hexdigest()
         assert (journal.directory / 'reviewed-known-hosts').read_bytes() == pins.read_bytes()
+        for invalid in ({'schema_version': 2}, {'inventory_path': 'relative'}, {'inventory_section': 'observability-kuma'}):
+            configuration.write_bytes(canonical({**config, **invalid}))
+            with pytest.raises(RecoveryError, match='bootstrap-binding-changed'):
+                runtime.pin_binding({'public_ipv4': ['192.0.2.10']}, host)
+        configuration.write_bytes(canonical(config))
+        import bootstrap_readiness
+        monkeypatch.setattr(bootstrap_readiness, 'wait_for_bootstrap', lambda *a, **kw: None)
+        calls = []
+        def make(goal, *, extra):
+            calls.append((goal, extra))
+            if goal == 'bootstrap-tailnet':
+                prepared = document(extra['TAILNET_BOOTSTRAP_CONFIG'])
+                assert prepared['schema_version'] == 3
+                assert prepared['inventory_path'] == str(runtime.inventory)
+                assert prepared['inventory_section'] == 'vpn'
+                raise RuntimeError('captured-bootstrap-boundary')
+        monkeypatch.setattr(runtime, 'make', make)
+        with pytest.raises(RuntimeError, match='captured-bootstrap-boundary'):
+            runtime.management(host)
+        assert [goal for goal, _ in calls] == ['install-ssh-recovery', 'bootstrap-tailnet']
+        assert calls[0][1]['SSH_RECOVERY_INVENTORY_SECTION'] == 'vpn'
         config['host_key_sha256'] = 'b' * 64
         configuration.write_bytes(canonical(config))
         with pytest.raises(RecoveryError, match='authenticated-host-pin-required'):

@@ -303,9 +303,9 @@ TAILNET_HANDOFFS="${BLUE_TAILNET_HANDOFF:--},-" \
 require_vpn_alias "$GREEN_ALIAS"
 SOPS_FILE="$GREEN_SOPS_FILE" ANSIBLE_LIMIT="$GREEN_ALIAS" ENV="$GREEN_ENV" PROVIDER="$PROVIDER" \
   run_make wait
-cat <<'EOF'
+cat <<EOF
 Before convergence, prepare the new node's pinned public and Tailnet SSH paths:
-  make install-ssh-recovery
+  make install-ssh-recovery ANSIBLE_LIMIT="$GREEN_ALIAS" SSH_RECOVERY_EXCLUSIVE_WINDOW=1 SSH_RECOVERY_INVENTORY_SECTION=vpn
   make bootstrap-tailnet
   make migrate-ssh-ownership
 Use the exact green alias and the private inputs documented in docs/how-to/tailnet-management.md.

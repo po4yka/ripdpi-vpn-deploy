@@ -554,8 +554,8 @@ def transaction_inputs(mode, hosts, identity, directory, root, environment, *,
                     or any(target.get(key) != value for key, value in expected_target.items())):
                 raise DeployError("promotion proof configs do not bind selected targets")
             config = promotions[alias]
-            if config.get("kind") in {"disposable-staging-intent", "recovery-promotion-intent"}:
-                if config["kind"] == "recovery-promotion-intent":
+            if config.get("kind") in {"disposable-staging-intent", "recovery-promotion-intent", "cloud-promotion-intent"}:
+                if config["kind"] in {"recovery-promotion-intent", "cloud-promotion-intent"}:
                     from recovery_promotion import PromotionError as OnboardingError
                     from recovery_promotion import prepare_intent
                 else:

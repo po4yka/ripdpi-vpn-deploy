@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Runtime probes use the watchdog secret's canary URL and expected HTTP status. The default status is 204 when no value is supplied.
+
 Consumer admission streams its fixed helper sources with the private request on stdin. The small launcher pins each source digest and path before any module executes; complete sources must not enter a command argument, which has a separate Linux size limit.
 
 Device revocation carries the same exact operation/digest through outer begin, frontend acceptance and finish. Pending revocation refuses ordinary recovery and snapshot restoration; failure quiesces the route and leaves the immutable candidate for an authorized forward retry. Even after consumer acceptance, an unfinished outer revocation cannot compensate to its old credential snapshot.

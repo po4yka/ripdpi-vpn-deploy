@@ -208,7 +208,9 @@ class Runtime:
 
     def pin_binding(self, server, host):
         config = document(self.manifest['bootstrap_config'])
-        if (config['provider'] != 'upcloud' or config['environment'] != self.manifest['environment']
+        if (type(config.get('schema_version')) is not int or config['schema_version'] != 3
+                or config.get('inventory_path') != str(self.inventory) or config.get('inventory_section') != 'vpn'
+                or config['provider'] != 'upcloud' or config['environment'] != self.manifest['environment']
                 or config['inventory_alias'] != host['name'] or host['address'] not in server['public_ipv4']
                 or config['public_address'] != host['address'] or config['ssh_port'] != host['port']
                 or config['source_revision'] != self.manifest['source_revision']
@@ -238,11 +240,14 @@ class Runtime:
             bootstrap_readiness.wait_for_bootstrap(ssh, environment=self.environment, first_boot=True)
         self.make('install-ssh-recovery', extra={'ANSIBLE_LIMIT': host['name'],
             'SSH_RECOVERY_EXCLUSIVE_WINDOW': '1', 'SSH_RECOVERY_INVENTORY': str(self.inventory),
+            'SSH_RECOVERY_INVENTORY_SECTION': 'vpn',
             'SSH_RECOVERY_KNOWN_HOSTS': str(pins)})
         config = document(self.manifest['bootstrap_config'])
         handoff = self.journal.directory / ('handoff-' + str(self.journal.state['sequence'] + 1) + '.json')
         config['output'] = str(handoff)
         config['known_hosts'] = str(pins)
+        config['inventory_path'] = str(self.inventory)
+        config['inventory_section'] = 'vpn'
         prepared = self.journal.write('bootstrap-input.json', canonical(config))
         self.make('bootstrap-tailnet', extra={'ANSIBLE_LIMIT': host['name'], 'TAILNET_BOOTSTRAP_CONFIG': str(prepared)})
         proof = document(handoff)
@@ -252,7 +257,7 @@ class Runtime:
         self.inventory_render(handoff)
         contexts = self.journal.write('contexts.json', canonical({host['name']: proof['contexts']}))
         identity = self.source()
-        ownership = {'schema_version': 1, 'mode': 'deploy', 'inventory_alias': host['name'],
+        ownership = {'schema_version': 2, 'mode': 'deploy', 'inventory_alias': host['name'], 'inventory_section': 'vpn',
             'inventory_path': str(self.inventory), 'known_hosts_path': str(pins),
             'contexts_path': str(contexts), 'source_revision': identity['DEPLOY_SOURCE_REVISION'],
             'deployable_digest': identity['DEPLOYABLE_SOURCE_DIGEST']}

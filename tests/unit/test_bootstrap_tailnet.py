@@ -44,7 +44,9 @@ def inputs(tmp_path):
         f"[vpn:vars]\nansible_ssh_private_key_file={key}\n"
     )
     config = {
-        "schema_version": 2,
+        "schema_version": 3,
+        "inventory_path": str(inventory),
+        "inventory_section": "vpn",
         "policy_approval": None,
         "environment": "prod",
         "build_environment": "prod",
@@ -69,11 +71,11 @@ def inputs(tmp_path):
 
 def load(controller, inputs, monkeypatch, **changes):
     root, inventory, path, config = inputs
+    config["inventory_path"] = str(inventory)
     config.update(changes)
     path.write_text(json.dumps(config))
     directory = root / "frozen"
     directory.mkdir(mode=0o700)
-    monkeypatch.setattr(controller, "INVENTORY", inventory)
     monkeypatch.setattr(controller.deploy, "source_identity", lambda *a, **kw: {
         "DEPLOY_SOURCE_REVISION": "a" * 40, "DEPLOYABLE_SOURCE_DIGEST": "b" * 64,
     })
@@ -94,6 +96,48 @@ def test_fresh_node_inputs_freeze_public_transport_and_one_host_key(controller, 
     assert "198.51.100.10" not in " ".join(command)
     assert selected.config["approved_sources"] == inputs[3]["approved_sources"]
     assert not Path(selected.config["output"]).exists()
+
+
+def test_observer_uses_its_own_inventory_section_and_fence(controller, inputs, monkeypatch):
+    inventory = inputs[1]
+    inventory.write_text(inventory.read_text().replace("[vpn]", "[observability-kuma]"))
+    selected = load(controller, inputs, monkeypatch, inventory_section="observability-kuma")
+    assert selected.host["name"] == "node-one"
+    assert "StrictHostKeyChecking=yes" in selected.ssh
+    inventory.write_text(inventory.read_text() + "# changed after selection\n")
+    with pytest.raises(controller.deploy.DeployError):
+        for fence in selected.fences:
+            controller.deploy.verify_input_fence(fence)
+
+
+@pytest.mark.parametrize("section", ["vpn-observability-control", "all", "", None])
+def test_unsupported_inventory_section_refuses(controller, inputs, monkeypatch, section):
+    with pytest.raises(controller.BootstrapError):
+        load(controller, inputs, monkeypatch, inventory_section=section)
+
+
+@pytest.mark.parametrize("section", ["vpn", "observability-kuma"])
+def test_host_in_other_section_refuses(controller, inputs, monkeypatch, section):
+    inventory = inputs[1]
+    other = "observability-kuma" if section == "vpn" else "vpn"
+    inventory.write_text(inventory.read_text().replace("[vpn]", f"[{other}]"))
+    with pytest.raises(controller.BootstrapError):
+        load(controller, inputs, monkeypatch, inventory_section=section)
+
+
+@pytest.mark.parametrize("selector", ["relative", "symlink", "old-schema"])
+def test_inventory_path_and_schema_are_explicit(controller, inputs, monkeypatch, selector):
+    changes = {}
+    if selector == "relative":
+        changes["inventory_path"] = "inventory.ini"
+    elif selector == "symlink":
+        link = inputs[0] / "inventory-link.ini"
+        link.symlink_to(inputs[1])
+        changes["inventory_path"] = str(link)
+    else:
+        changes["schema_version"] = 2
+    with pytest.raises(controller.BootstrapError):
+        load(controller, inputs, monkeypatch, **changes)
 
 
 def test_named_permanent_workspace_keeps_identity(controller, inputs, monkeypatch):
@@ -177,7 +221,8 @@ def test_installer_real_ansible_preserves_local_delegation(controller, inputs, m
     playbooks = project / "ansible/playbooks"
     playbooks.mkdir(parents=True)
     (project / "ansible/ansible.cfg").write_text("[defaults]\n")
-    transport = controller.deploy.transport_variables(host, ssh)
+    expected_ssh = ['ConnectionAttempts=3' if value == 'ConnectionAttempts=1' else value for value in ssh]
+    transport = controller.deploy.transport_variables(host, expected_ssh)
     play = [{"hosts": "vpn", "gather_facts": False, "vars": {"expected_transport": transport},
              "tasks": [
                  {"name": "Keep every pinned connection value on the selected node",
@@ -215,6 +260,7 @@ runpy.run_module('ansible.cli.playbook', run_name='__main__')
     monkeypatch.setattr(controller, "_installed", lambda *_: "ready")
 
     controller._install(selected)
+    assert 'ConnectionAttempts=1' in selected.ssh
 
 
 def test_installer_failure_preserves_child_diagnostics_without_enrollment_key(
@@ -441,6 +487,99 @@ def test_preinstall_truly_empty_kernel_needs_no_nft_binary(controller, monkeypat
     monkeypatch.setattr(probe, "nftables_empty", lambda: True)
     monkeypatch.setattr(probe, "command", lambda _: pytest.fail("unexpected subprocess"))
     assert probe.empty_firewall_baseline() is True
+
+
+@pytest.mark.parametrize("consumer", ["probe", "adapter"])
+@pytest.mark.parametrize("fault", [None, "enabled", "edited", "duplicate", "status", "substate",
+                                      "missing-template", "unsafe-config", "other-active", "command-failed",
+                                      "replacement-unit", "drop-in", "transient", "reload", "unit-owner",
+                                      "modified-helper", "diversion", "unsafe-helper"])
+def test_packaged_disabled_ufw_oneshot_keeps_foreign_firewall_guards(
+    controller, monkeypatch, tmp_path, consumer, fault,
+):
+    import tailnet_bootstrap_probe as probe
+    import tailnet_firewall as firewall
+
+    content = b"ENABLED=no\n"
+    if fault == "enabled":
+        content = b"ENABLED=yes\n"
+    elif fault == "duplicate":
+        content += b"ENABLED=no\n"
+    packaged_content = content
+    if fault == "edited":
+        content += b"# local change\n"
+    calls = []
+    unit = tmp_path / "usr/lib/systemd/system/ufw.service"
+    unit.parent.mkdir(parents=True)
+    unit.write_bytes(b"[Service]\nType=oneshot\nExecStart=/lib/ufw/ufw-init start quiet\n")
+    (tmp_path / "lib").symlink_to("usr/lib", target_is_directory=True)
+    helper = tmp_path / "usr/lib/ufw/ufw-init"
+    helper.parent.mkdir()
+    helper.write_bytes(b"#!/bin/sh\nexit 0\n")
+    template = tmp_path / "usr/share/ufw/ufw.conf"
+    template.parent.mkdir(parents=True)
+    template.write_bytes(packaged_content)
+    if fault == "replacement-unit":
+        replacement = tmp_path / "etc/systemd/system/ufw.service"
+        replacement.parent.mkdir(parents=True)
+        replacement.write_bytes(unit.read_bytes())
+
+    def read(path, *_):
+        if path == tmp_path / "etc/ufw/ufw.conf":
+            if fault == "unsafe-config":
+                raise probe.ProbeError("unsafe-input")
+            return content
+        if path == helper and fault == "unsafe-helper":
+            raise probe.ProbeError("unsafe-input")
+        return path.read_bytes()
+
+    def command(argv):
+        calls.append(argv)
+        if argv[0] == "systemctl":
+            if "--value" not in argv:
+                properties = {"ActiveState": "active", "SubState": "exited",
+                              "FragmentPath": "/usr/lib/systemd/system/ufw.service",
+                              "DropInPaths": "", "Transient": "no", "NeedDaemonReload": "no"}
+                changes = {"substate": ("SubState", "running"), "transient": ("Transient", "yes"),
+                           "reload": ("NeedDaemonReload", "yes"),
+                           "replacement-unit": ("FragmentPath", "/etc/systemd/system/ufw.service"),
+                           "drop-in": ("DropInPaths", "/etc/systemd/system/ufw.service.d/local.conf")}
+                if fault in changes:
+                    name, value = changes[fault]
+                    properties[name] = value
+                return "".join(f"{name}={value}\n" for name, value in properties.items()).encode()
+            active = argv[2] == "ufw.service" or (fault == "other-active" and argv[2] == "firewalld.service")
+            return b"active\n" if active else b"inactive\n"
+        if argv[0] == "dpkg-query":
+            if fault == "command-failed":
+                raise probe.ProbeError("probe-command-failed")
+            assert argv == ["dpkg-query", "-L", "ufw"]
+            paths = b"/lib/ufw/ufw-init\n"
+            if fault != "unit-owner":
+                paths += b"/lib/systemd/system/ufw.service\n"
+            if fault != "missing-template":
+                paths += b"/usr/share/ufw/ufw.conf\n"
+            return paths
+        if argv[0] == "dpkg-divert":
+            return b"local diversion of /lib/ufw/ufw-init\n" if fault == "diversion" else b""
+        if argv[0] == "dpkg":
+            return b"??5?????? /lib/ufw/ufw-init\n" if fault == "modified-helper" else b""
+        assert argv == ["ufw", "status"]
+        return b"Status: active\n" if fault == "status" else b"Status: inactive\n"
+
+    monkeypatch.setattr(probe, "read", read)
+    if consumer == "probe":
+        operation = lambda: probe.validate_firewall_services(root=tmp_path, runner=command)
+        error = probe.ProbeError
+    else:
+        operation = firewall.Firewall(root=tmp_path, command=command)._preflight
+        error = firewall.domain.Refusal
+    if fault:
+        with pytest.raises(error, match="foreign-firewall"):
+            operation()
+    else:
+        assert operation() is None
+        assert ["ufw", "status"] in calls
 
 
 @pytest.mark.parametrize("address,expected", [

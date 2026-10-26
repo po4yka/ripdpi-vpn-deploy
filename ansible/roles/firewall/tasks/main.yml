@@ -135,32 +135,8 @@
       Move them to another port; the firewall would otherwise accept SSH from
       sources outside allowed_ssh_cidrs.
 
-- name: Check whether UFW is installed
-  ansible.builtin.stat:
-    path: /usr/sbin/ufw
-  register: _firewall_ufw_binary
-
-- name: Check whether UFW is active
-  # Probe must run for real under --check: the disable step below keys on
-  # this registered stdout, and a check-mode skip leaves it undefined,
-  # aborting dry-runs on provider images that preinstall UFW.
-  ansible.builtin.command: ufw status
-  register: _firewall_ufw_status
-  changed_when: false
-  check_mode: false
-  when: _firewall_ufw_binary.stat.exists
-
-# Provider images can enable UFW before Ansible's first converge. Its
-# iptables-nft INPUT hook runs at the same priority as this role's native
-# nftables table and can therefore drop an otherwise allowed transport.
-# `ufw disable` both stops the service and removes its live rules before the
-# managed nftables ruleset is loaded.
 - name: Disable provider-image UFW firewall
-  ansible.builtin.command: ufw --force disable
-  when:
-    - _firewall_ufw_binary.stat.exists
-    - "'Status: active' in _firewall_ufw_status.stdout"
-  changed_when: true
+  ansible.builtin.import_tasks: retire-provider-ufw.yml
 
 - name: Inspect Tailnet SSH sets include directory before firewall mutation
   ansible.builtin.stat:

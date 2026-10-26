@@ -30,6 +30,7 @@ from tailnet_bootstrap_probe import (
     inspect_legacy_policy,
     lease_active,
     validate_console_receipt,
+    validate_firewall_services,
 )
 
 _spec = importlib.util.spec_from_file_location(
@@ -192,20 +193,10 @@ class Firewall:
             raise domain.Refusal("bootstrap-firewall-service-unsupported") from error
 
     def _preflight(self):
-        for unit in (
-            "ufw.service",
-            "firewalld.service",
-            "netfilter-persistent.service",
-        ):
-            state = (
-                self.command(
-                    ["systemctl", "show", unit, "--property=ActiveState", "--value"]
-                )
-                .decode()
-                .strip()
-            )
-            if state not in {"inactive", ""}:
-                raise domain.Refusal("bootstrap-foreign-firewall")
+        try:
+            validate_firewall_services(root=self.root, runner=self.command)
+        except ProbeError as error:
+            raise domain.Refusal("bootstrap-foreign-firewall") from error
         # Do not race an independently owned network transaction. Existing
         # initialized state is deliberately not inferred to be safe from age.
         for name in ("vpn-tailnet-network", "vpn-network-promotion"):

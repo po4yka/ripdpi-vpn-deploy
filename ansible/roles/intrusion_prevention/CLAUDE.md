@@ -23,6 +23,7 @@ observations fail categorically; stderr never includes offender addresses.
 
 ## Pitfalls
 
+- Fresh check mode requires a planned package install before it can defer an absent service. Runtime activation and restart remain required in normal mode.
 - **Do not make this role own firewall policy** — it may run before firewall, but only firewall owns the durable `inet filter` table, ban sets, and input-chain drop rules.
 - **Do not broaden jail scope casually** — transport logs have different privacy and NAT-pool risks; add a separate design note before watching anything beyond sshd.
 - **CrowdSec is future-only here** — do not add package repositories, enrollments, or `curl | sh` installers without a separate review.

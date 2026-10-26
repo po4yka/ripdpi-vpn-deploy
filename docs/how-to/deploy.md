@@ -104,7 +104,7 @@ ordinary `dry-run` or `deploy`:
 
 ```bash
 make install-ssh-recovery ANSIBLE_LIMIT='<exact-inventory-alias>' \
-  SSH_RECOVERY_EXCLUSIVE_WINDOW=1
+  SSH_RECOVERY_EXCLUSIVE_WINDOW=1 SSH_RECOVERY_INVENTORY_SECTION=vpn
 ```
 
 For a fresh Tailnet node, stop after the recovery installer and run the
@@ -123,13 +123,16 @@ SSH_OWNERSHIP_CONFIG="$HOME/.config/vpn-provision/ssh-ownership.json" make migra
 
 The same target accepts `mode: check` for a read-only preview, then
 `mode: deploy` for the bounded transaction. The private input file must be mode 0600
-and contain exactly `schema_version: 1`, `mode`, one `inventory_alias`, absolute
+and contain exactly `schema_version: 2`, `mode`, one `inventory_alias`,
+`inventory_section` (`vpn` or `observability-kuma`), absolute
 `inventory_path`, `known_hosts_path`, `contexts_path`, and the current checkout's
 `source_revision` and `deployable_digest` from `scripts/deploy-source-identity.sh`.
 The contexts file is the same private per-alias JSON used by ordinary deploy.
 Migration requires the installed recovery generation and fresh strict SSH/SFTP
 proof on both public and Tailnet paths before confirmation. It preserves the
 effective SSH policy; the later baseline transaction applies desired hardening.
+The explicit observer section does not add that host to the VPN fleet. Old
+schema-1 inputs are refused; set the section and refresh the source identity.
 Do not manufacture socket contexts to pass deployment readiness. On disposable staging,
 create the cleanup manifest before either installer. Unset the enrollment
 key before ordinary `dry-run`/`deploy`, which now reject it.
@@ -482,6 +485,55 @@ listener contract before publishing it. Use the ordinary full re-deploy recipe
 when transport ports or enabled transports change.
 
 ## Staging first
+
+### Use an independent cloud sentinel
+
+For a fresh deployment with no local VPN probe, use `cloud-promotion-intent`
+in the exact-alias `DEPLOY_PROMOTION_CONFIG_FILE` mapping. `make deploy` freezes
+the intent before runtime writes and installs the standard native SSH sentinel
+after transport convergence. The policy must require exactly the transports
+enabled by the selected cohort. Full staging requires all four profiles;
+the separate P0, P1 and P2 nodes require their own subsets.
+
+The schema-1 intent has `kind`, `target_identity`, `host`, `cohort`, `client`,
+`liveness` and `inputs`, plus `schema_version`. Use the normal liveness document
+without `applied_at`; the controller creates that epoch. `inputs` contains
+`provisioning_manifest`, `sops_file`, `age_key_file` and `awg_key_file`. The AWG
+path is required only for an enabled AWG profile; otherwise use JSON `null`.
+
+Prepare one private schema-1 provisioning manifest with these fields:
+
+| Field | Required content |
+|---|---|
+| `source_revision` | Exact clean source commit |
+| `target`, `sentinel` | Each has `provider`, `environment`, `inventory_alias`, immutable `server_id` and SHA256 of the current canonical private state in `state_sha256` |
+| `state_directory` | Existing empty mode-0700 output directory for this target |
+| `sops_file`, `age_key_file` | The same authoritative files as the intent |
+| `cleanup_manifest` | Original registered UpCloud cleanup authority for a `ci-staging-*` target; JSON `null` for a permanent target |
+| `sentinel_known_hosts`, `sentinel_identity` | Independently verified host-pin file and the operator SSH identity |
+
+The controller reads each provider's canonical local state path. It requires
+state version 4, one active server and no tainted or deposed server. Target and
+sentinel must have different resource identities, aliases and public IPv4
+addresses. The sentinel must be a permanent cloud node from an admitted provider,
+with pinned runtimes installed through its trusted preparation flow. Provider
+inventory and price checks remain required before provisioning.
+
+Use an explicit SSH alias for the sentinel. Its liveness record must set
+`vantage: external`, the state-derived public IPv4 in `ssh_transport_host`, and
+that address as `ssh_host_key_alias` (use `[address]:port` for a non-22 port).
+Configure one `IdentityFile`, `IdentitiesOnly yes`, `IdentityAgent none`, the
+declared `UserKnownHostsFile`, and `GlobalKnownHostsFile /dev/null` for the alias.
+Native probe commands disable external known-host commands. The controller
+compares resolved SSH settings and probes the original key, hostname and fresh
+cloud-init marker before installation and before proof publication.
+
+The provisioning manifest is a private capability, not provider or VPN success
+evidence. Keep the real reviewed state and pin acquisition record. The normal
+fresh protocol evaluator must still pass before and after SSH policy activation.
+An installed runner or an issued epoch does not satisfy that gate.
+
+### Use the disposable operator executor
 
 This disposable recipe uses **UpCloud only**: the linked UUID-bound cleanup
 instructions describe its exact resource set and initial manifest inputs.

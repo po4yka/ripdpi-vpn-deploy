@@ -298,7 +298,7 @@ def main() -> int:
                 if isinstance(document, dict) and document.get("kind") == "disposable-staging-intent":
                     from disposable_promotion import validate_intent
                     validate_intent(document)
-                elif isinstance(document, dict) and document.get("kind") == "recovery-promotion-intent":
+                elif isinstance(document, dict) and document.get("kind") in {"recovery-promotion-intent", "cloud-promotion-intent"}:
                     from recovery_promotion import validate_intent
                     validate_intent(document)
                 else:

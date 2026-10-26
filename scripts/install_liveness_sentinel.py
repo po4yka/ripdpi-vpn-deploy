@@ -242,8 +242,12 @@ def _state(path, kind):
         if not isinstance(entry.get("client"), str) or not NAME.fullmatch(entry["client"]) or not isinstance(entry.get("ssh_target"), str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.@-]*", entry["ssh_target"]):
             raise InstallError("invalid-registry")
         clients.append(entry["client"])
-        for field in ("ssh_transport_host", "ssh_host_key_alias", "policy"):
-            if field in entry and (not isinstance(entry[field], str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.@-]*", entry[field])):
+        for field, pattern in (
+            ("ssh_transport_host", r"[A-Za-z0-9][A-Za-z0-9_.@-]*"),
+            ("ssh_host_key_alias", r"(?:[A-Za-z0-9][A-Za-z0-9_.@-]*|\[[A-Za-z0-9][A-Za-z0-9_.@-]*\]:[1-9][0-9]{0,4})"),
+            ("policy", r"[A-Za-z0-9][A-Za-z0-9_.@-]*"),
+        ):
+            if field in entry and (not isinstance(entry[field], str) or not re.fullmatch(pattern, entry[field])):
                 raise InstallError("invalid-registry")
         if ("ssh_transport_host" in entry) != ("ssh_host_key_alias" in entry):
             raise InstallError("invalid-registry")

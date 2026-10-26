@@ -361,9 +361,6 @@ def test_p1_web_listener_surface_is_normal_http_and_https() -> None:
     expected = [
         _expected("public-site-http", "tcp", 80),
         _expected("nginx-xhttp", "tcp", 443),
-        # Subscription delivery co-located on the p1 web node (v1 default,
-        # docs/how-to/subscription-host-separation.md) — the only non-web TCP listener.
-        _expected("subscription-host", "tcp", 8444),
     ]
     assert contract.check({"expected": expected, "actual": actual}) == []
 
