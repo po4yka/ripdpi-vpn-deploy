@@ -26,7 +26,7 @@ ReadWritePaths={{ geodata.install_dir }}
 {% if (vpn.enable_xray_reality | default(true) | bool) or (vpn.enable_nginx_xhttp | default(true) | bool) %}
 ReadWritePaths=/var/lib/ripdpi/transport-runtime
 # The exact native parser initializes its declared frontend-owned log file.
-ReadWritePaths=-/var/log/xray
+ReadWritePaths=-{{ xray_log_dir | default('/var/lib/vpn-xray-logs') }}
 # Admission reads that UID's executable/log authority and verifies kernel policy.
 CapabilityBoundingSet=CAP_SYS_PTRACE CAP_DAC_OVERRIDE CAP_NET_ADMIN
 {% endif -%}

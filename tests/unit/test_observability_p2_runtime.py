@@ -358,7 +358,7 @@ def test_real_policy_daemon_idle_heartbeat_and_enabled_disabled_idempotence(tmp_
     unit = Path("/etc/systemd/system/policy-ratelimit.service")
     script = Path("/usr/local/bin/policy-ratelimit.py")
     metrics = Path("/var/lib/node_exporter/textfile/vpn_policy_ratelimit.prom")
-    log = Path("/var/log/xray/access.log")
+    log = Path("/var/lib/vpn-xray-logs/access.log")
     assert all(
         not path.exists() for path in (unit, script, metrics, log)
     ), "requires disposable policy namespace"

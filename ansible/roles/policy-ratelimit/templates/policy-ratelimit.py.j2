@@ -59,7 +59,7 @@ import subprocess
 import sys
 import time
 
-XRAY_LOG = pathlib.Path("/var/log/xray/access.log")
+XRAY_LOG = pathlib.Path({{ ((xray_log_dir | default('/var/lib/vpn-xray-logs')) ~ '/access.log') | tojson }})
 REJECTS_PER_WINDOW = {{ policy_ratelimit.rejects_per_window | default(5) }}
 WINDOW_SECONDS = {{ policy_ratelimit.window_seconds | default(60) }}
 BAN_SECONDS = {{ policy_ratelimit.ban_seconds | default(300) }}

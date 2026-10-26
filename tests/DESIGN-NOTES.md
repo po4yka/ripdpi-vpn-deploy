@@ -377,7 +377,7 @@ Portable process fixtures publish PID records atomically and wait within a bound
 
 The unprivileged local smoke fixture uses pipelining to avoid repeated module uploads. It retains the complete task graph, real target file operations and the existing deadlines and assertions.
 
-Runtime acceptance requires the production log-parent trust contract: root ownership and no group/other write permission. Tighten an owned disposable image before tests; never relax the descriptor-based provisioner or rewrite its failure as a successful activation.
+Runtime acceptance requires the production log-parent trust contract: root ownership and no group/other write permission. Xray uses its own root-owned log directory under `/var/lib`, outside its runtime user's home. Its role scenario retains a group-writable `/var/log` to prove fresh-host convergence without changing shared OS permissions. Never relax the descriptor-based provisioner or rewrite its failure as a successful activation.
 
 Native Alertmanager timeout coverage publishes split alert updates inside a real grouping window. Zero group wait can dispatch before all seven alerts join the group; retain the five-alert cap, two-alert truncation and one-second webhook deadline assertions.
 

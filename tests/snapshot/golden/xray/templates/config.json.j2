@@ -2,8 +2,8 @@
 {
   "log": {
     "loglevel": "warning",
-    "access": "{{ xray_log_dir | default('/var/log/xray') }}/access.log",
-    "error": "{{ xray_log_dir | default('/var/log/xray') }}/error.log"
+    "access": "{{ xray_log_dir | default('/var/lib/vpn-xray-logs') }}/access.log",
+    "error": "{{ xray_log_dir | default('/var/lib/vpn-xray-logs') }}/error.log"
   },
   "api": {
     "tag": "api",

@@ -113,10 +113,11 @@
       ansible.builtin.shell:
         cmd: |
           set -eu
-          test "$(stat -c '%U:%G:%a' /var/log/xray)" = 'root:xray:750'
-          runuser -u xray -- test -w /var/log/xray/access.log
-          runuser -u xray -- test -w /var/log/xray/error.log
-          if runuser -u xray -- test -w /var/log/xray; then exit 1; fi
-          runuser -u xray -- sh -c 'printf "synthetic log\n" >> /var/log/xray/access.log'
+          test "$(stat -c '%a' /var/log)" = '775'
+          test "$(stat -c '%U:%G:%a' /var/lib/vpn-xray-logs)" = 'root:xray:750'
+          runuser -u xray -- test -w /var/lib/vpn-xray-logs/access.log
+          runuser -u xray -- test -w /var/lib/vpn-xray-logs/error.log
+          if runuser -u xray -- test -w /var/lib/vpn-xray-logs; then exit 1; fi
+          runuser -u xray -- sh -c 'printf "synthetic log\n" >> /var/lib/vpn-xray-logs/access.log'
         executable: /bin/bash
       changed_when: false

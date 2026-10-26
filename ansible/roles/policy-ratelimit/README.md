@@ -3,7 +3,7 @@
 This role rate-limits **policy-violating traffic from already-authenticated
 clients** — connections the Xray routing rules send to the `block` outbound
 (BitTorrent, QUIC/UDP-443, RFC1918 destinations) or that the VLESS layer marks
-`rejected`. It tails `/var/log/xray/access.log` and adds repeat offenders to
+`rejected`. It tails `/var/lib/vpn-xray-logs/access.log` and adds repeat offenders to
 the nftables `policy_offenders` set with a TTL.
 
 It is **not** an active-probing defence, and must not be cited as one. REALITY

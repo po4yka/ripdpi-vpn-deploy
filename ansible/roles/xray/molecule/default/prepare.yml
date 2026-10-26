@@ -1,3 +1,14 @@
 ---
 - name: Prepare genuine isolated credential delivery
   ansible.builtin.import_playbook: ../../../../molecule/prepare-transport-credentials.yml
+
+- name: Preserve a shared writable system log parent during Xray convergence
+  hosts: all
+  become: true
+  tasks:
+    - name: Model the Ubuntu system log directory permissions
+      ansible.builtin.file:
+        path: /var/log
+        state: directory
+        owner: root
+        mode: '0775'

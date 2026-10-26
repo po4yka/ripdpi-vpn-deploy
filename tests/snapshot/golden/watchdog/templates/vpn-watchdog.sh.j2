@@ -311,7 +311,7 @@ probe "disk root <90%" \
 # ---------------------------------------------------------------------------
 declare -A classes=()
 
-xray_access="/var/log/xray/access.log"
+xray_access="/var/lib/vpn-xray-logs/access.log"
 if [[ "${ENABLE_XRAY:-true}" == "true" && -r "$xray_access" ]]; then
   recent_reject="$(tail -n 2000 "$xray_access" 2>/dev/null \
     | grep -c -E '(\[[^]]*\bblock\])|(^| )rejected( |$)' || true)"

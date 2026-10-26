@@ -181,7 +181,7 @@ class Lab:
         for path in ('/etc/xray', '/etc/hysteria', '/opt/xray', '/opt/hysteria',
                      '/etc/ripdpi/transport-egress', '/var/lib/ripdpi/transport-egress', '/var/lib/ripdpi/transport-runtime',
                      '/usr/local/libexec/ripdpi-transport-egress', '/var/lib/xray', '/var/lib/hysteria',
-                     '/var/log/xray', '/var/log/hysteria'):
+                     '/var/lib/vpn-xray-logs', '/var/log/hysteria'):
             if os.path.lexists(path):
                 raise RuntimeError('native-fixture-authority-already-exists')
         for path in self.generic_storage:
@@ -572,7 +572,7 @@ with tempfile.TemporaryDirectory(prefix='native-hopped-client-') as temporary:
         owned = ('/etc/xray', '/etc/hysteria', '/opt/xray', '/opt/hysteria',
                  '/etc/ripdpi/transport-egress', '/var/lib/ripdpi/transport-egress',
                  '/var/lib/ripdpi/transport-runtime', '/usr/local/libexec/ripdpi-transport-egress',
-                 '/var/lib/xray', '/var/lib/hysteria', '/var/log/xray', '/var/log/hysteria')
+                 '/var/lib/xray', '/var/lib/hysteria', '/var/lib/vpn-xray-logs', '/var/log/hysteria')
         allowed_uids = {0} | {entry.pw_uid for entry in pwd.getpwall() if entry.pw_name in {'xray','hysteria'}}
         for raw in owned:
             path = Path(raw)

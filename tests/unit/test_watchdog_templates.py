@@ -248,11 +248,11 @@ def test_watchdog_fails_when_stats_service_is_not_queryable():
 
 def test_watchdog_sandbox_allows_xray_config_validation_to_open_logs():
     variables = _multi_cohort_vars()
-    variables["xray_log_dir"] = "/var/log/xray-custom"
+    variables["xray_log_dir"] = "/var/lib/vpn-xray-logs-custom"
 
     rendered = render_template(TEMPLATES / "vpn-watchdog.service.j2", variables)
 
-    assert "ReadWritePaths=/var/lib/vpn-watchdog /var/log/xray-custom" in rendered
+    assert "ReadWritePaths=/var/lib/vpn-watchdog /var/lib/vpn-xray-logs-custom" in rendered
 
 
 def test_watchdog_sandbox_keeps_xray_logs_read_only_when_xray_is_disabled():
@@ -261,7 +261,7 @@ def test_watchdog_sandbox_keeps_xray_logs_read_only_when_xray_is_disabled():
 
     rendered = render_template(TEMPLATES / "vpn-watchdog.service.j2", variables)
 
-    assert "/var/log/xray" not in rendered
+    assert "/var/lib/vpn-xray-logs" not in rendered
 
 
 def test_watchdog_sandbox_allows_nginx_config_validation_to_open_logs():
@@ -271,7 +271,7 @@ def test_watchdog_sandbox_allows_nginx_config_validation_to_open_logs():
 
     rendered = render_template(TEMPLATES / "vpn-watchdog.service.j2", variables)
 
-    assert "ReadWritePaths=/var/lib/vpn-watchdog /var/log/xray /var/log/nginx" in rendered
+    assert "ReadWritePaths=/var/lib/vpn-watchdog /var/lib/vpn-xray-logs /var/log/nginx" in rendered
 
 
 def test_reality_probe_requires_the_explicit_service_address() -> None:
@@ -586,7 +586,7 @@ def test_p1_only_retains_backend_sandbox_paths_and_recovery_budget():
     variables["vpn"].update(enable_xray_reality=False, enable_nginx_xhttp=True, enable_hysteria=False)
     variables["watchdog_reality_probes"] = []
     unit = render_template(TEMPLATES / "vpn-watchdog.service.j2", variables)
-    assert " /var/log/xray" in unit
+    assert " /var/lib/vpn-xray-logs" in unit
     assert "TimeoutStartSec=425s" in unit
     environment = render_template(TEMPLATES / "vpn-watchdog.env.j2", variables)
     assert "ENABLE_XRAY=false" in environment and "ENABLE_NGINX_XHTTP=true" in environment
@@ -598,7 +598,7 @@ def test_subscription_only_has_no_absent_transport_probes():
     variables["vpn_subscription_only"] = True
     variables["vpn"].update(enable_xray_reality=True, enable_nginx_xhttp=True, enable_hysteria=True, enable_amneziawg=True)
     unit = render_template(TEMPLATES / "vpn-watchdog.service.j2", variables)
-    assert "/var/log/xray" not in unit
+    assert "/var/lib/vpn-xray-logs" not in unit
     environment = render_template(TEMPLATES / "vpn-watchdog.env.j2", variables)
     for toggle in ("ENABLE_XRAY", "ENABLE_NGINX_XHTTP", "ENABLE_HYSTERIA", "ENABLE_AMNEZIAWG"):
         assert toggle + "=false" in environment
