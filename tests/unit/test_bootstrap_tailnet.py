@@ -487,6 +487,99 @@ def test_preinstall_truly_empty_kernel_needs_no_nft_binary(controller, monkeypat
     assert probe.empty_firewall_baseline() is True
 
 
+@pytest.mark.parametrize("consumer", ["probe", "adapter"])
+@pytest.mark.parametrize("fault", [None, "enabled", "edited", "duplicate", "status", "substate",
+                                      "missing-template", "unsafe-config", "other-active", "command-failed",
+                                      "replacement-unit", "drop-in", "transient", "reload", "unit-owner",
+                                      "modified-helper", "diversion", "unsafe-helper"])
+def test_packaged_disabled_ufw_oneshot_keeps_foreign_firewall_guards(
+    controller, monkeypatch, tmp_path, consumer, fault,
+):
+    import tailnet_bootstrap_probe as probe
+    import tailnet_firewall as firewall
+
+    content = b"ENABLED=no\n"
+    if fault == "enabled":
+        content = b"ENABLED=yes\n"
+    elif fault == "duplicate":
+        content += b"ENABLED=no\n"
+    packaged_content = content
+    if fault == "edited":
+        content += b"# local change\n"
+    calls = []
+    unit = tmp_path / "usr/lib/systemd/system/ufw.service"
+    unit.parent.mkdir(parents=True)
+    unit.write_bytes(b"[Service]\nType=oneshot\nExecStart=/lib/ufw/ufw-init start quiet\n")
+    (tmp_path / "lib").symlink_to("usr/lib", target_is_directory=True)
+    helper = tmp_path / "usr/lib/ufw/ufw-init"
+    helper.parent.mkdir()
+    helper.write_bytes(b"#!/bin/sh\nexit 0\n")
+    template = tmp_path / "usr/share/ufw/ufw.conf"
+    template.parent.mkdir(parents=True)
+    template.write_bytes(packaged_content)
+    if fault == "replacement-unit":
+        replacement = tmp_path / "etc/systemd/system/ufw.service"
+        replacement.parent.mkdir(parents=True)
+        replacement.write_bytes(unit.read_bytes())
+
+    def read(path, *_):
+        if path == tmp_path / "etc/ufw/ufw.conf":
+            if fault == "unsafe-config":
+                raise probe.ProbeError("unsafe-input")
+            return content
+        if path == helper and fault == "unsafe-helper":
+            raise probe.ProbeError("unsafe-input")
+        return path.read_bytes()
+
+    def command(argv):
+        calls.append(argv)
+        if argv[0] == "systemctl":
+            if "--value" not in argv:
+                properties = {"ActiveState": "active", "SubState": "exited",
+                              "FragmentPath": "/usr/lib/systemd/system/ufw.service",
+                              "DropInPaths": "", "Transient": "no", "NeedDaemonReload": "no"}
+                changes = {"substate": ("SubState", "running"), "transient": ("Transient", "yes"),
+                           "reload": ("NeedDaemonReload", "yes"),
+                           "replacement-unit": ("FragmentPath", "/etc/systemd/system/ufw.service"),
+                           "drop-in": ("DropInPaths", "/etc/systemd/system/ufw.service.d/local.conf")}
+                if fault in changes:
+                    name, value = changes[fault]
+                    properties[name] = value
+                return "".join(f"{name}={value}\n" for name, value in properties.items()).encode()
+            active = argv[2] == "ufw.service" or (fault == "other-active" and argv[2] == "firewalld.service")
+            return b"active\n" if active else b"inactive\n"
+        if argv[0] == "dpkg-query":
+            if fault == "command-failed":
+                raise probe.ProbeError("probe-command-failed")
+            assert argv == ["dpkg-query", "-L", "ufw"]
+            paths = b"/lib/ufw/ufw-init\n"
+            if fault != "unit-owner":
+                paths += b"/lib/systemd/system/ufw.service\n"
+            if fault != "missing-template":
+                paths += b"/usr/share/ufw/ufw.conf\n"
+            return paths
+        if argv[0] == "dpkg-divert":
+            return b"local diversion of /lib/ufw/ufw-init\n" if fault == "diversion" else b""
+        if argv[0] == "dpkg":
+            return b"??5?????? /lib/ufw/ufw-init\n" if fault == "modified-helper" else b""
+        assert argv == ["ufw", "status"]
+        return b"Status: active\n" if fault == "status" else b"Status: inactive\n"
+
+    monkeypatch.setattr(probe, "read", read)
+    if consumer == "probe":
+        operation = lambda: probe.validate_firewall_services(root=tmp_path, runner=command)
+        error = probe.ProbeError
+    else:
+        operation = firewall.Firewall(root=tmp_path, command=command)._preflight
+        error = firewall.domain.Refusal
+    if fault:
+        with pytest.raises(error, match="foreign-firewall"):
+            operation()
+    else:
+        assert operation() is None
+        assert ["ufw", "status"] in calls
+
+
 @pytest.mark.parametrize("address,expected", [
     ("192.0.2.10", "192.0.2.10"),
     ("fd7a:115c:a1e0::10", "fd7a:115c:a1e0::10"),

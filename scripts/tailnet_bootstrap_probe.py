@@ -154,6 +154,58 @@ def preflight_tailnet_commands(package_version):
         raise ProbeError("existing-tailnet-identity")
 
 
+def validate_firewall_services(*, root=Path('/'), runner=None):
+    """Allow a disabled packaged UFW wrapper, never active packet filtering."""
+    runner = runner or command
+    for unit in ('ufw.service', 'firewalld.service', 'netfilter-persistent.service'):
+        state = runner(['systemctl', 'show', unit, '--property=ActiveState', '--value']).decode().strip()
+        if state in {'inactive', ''}:
+            continue
+        if unit == 'ufw.service' and state == 'active':
+            # Ubuntu can keep its disabled UFW oneshot active after it exits.
+            try:
+                names = {'ActiveState', 'SubState', 'FragmentPath', 'DropInPaths', 'Transient', 'NeedDaemonReload'}
+                fields = runner(['systemctl', 'show', unit,
+                                 '--property=ActiveState,SubState,FragmentPath,DropInPaths,Transient,NeedDaemonReload']).decode().splitlines()
+                properties = dict(line.split('=', 1) for line in fields)
+                if (set(properties) != names or len(fields) != len(names)
+                        or properties['ActiveState'] != 'active' or properties['SubState'] != 'exited'
+                        or properties['DropInPaths'] or properties['Transient'] != 'no'
+                        or properties['NeedDaemonReload'] != 'no'
+                        or not Path(properties['FragmentPath']).is_absolute()):
+                    raise ProbeError('foreign-firewall')
+                fragment = (root/properties['FragmentPath'].lstrip('/')).resolve(strict=True)
+                package_files = runner(['dpkg-query', '-L', 'ufw']).decode().splitlines()
+                units = {(root/name.lstrip('/')).resolve(strict=True) for name in package_files
+                         if name.endswith('/systemd/system/ufw.service') and Path(name).is_absolute()}
+                if units != {fragment}:
+                    raise ProbeError('foreign-firewall')
+                read(fragment)
+                package_config = None
+                for name in package_files:
+                    if '/ufw/' in name or name.endswith('/ufw'):
+                        path = (root/name.lstrip('/')).resolve(strict=True)
+                        if path.is_file():
+                            data = read(path)
+                            if name == '/usr/share/ufw/ufw.conf':
+                                package_config = data
+                if (runner(['dpkg-divert', '--list', '*ufw*']).strip()
+                        or runner(['dpkg', '--verify', 'ufw']).strip()):
+                    raise ProbeError('foreign-firewall')
+                content = read(root/'etc/ufw/ufw.conf')
+                # The live file is generated from this template, not a dpkg conffile.
+                enabled = [line.strip() for line in content.splitlines()
+                           if line.strip().startswith(b'ENABLED=')]
+                status = runner(['ufw', 'status']).strip()
+                if (enabled == [b'ENABLED=no']
+                        and content == package_config
+                        and status == b'Status: inactive'):
+                    continue
+            except (OSError, ValueError):
+                raise ProbeError('foreign-firewall') from None
+        raise ProbeError('foreign-firewall')
+
+
 def nftables_empty():
     """Dump table existence through Linux UAPI; no nft binary or guest file needed.
 
@@ -374,10 +426,7 @@ def inspect_legacy_policy(binding, fragment, *, root=Path('/'), parser=parse_pol
         path = root/'proc/net'/name
         if path.exists() and path.read_bytes().strip():
             raise ProbeError('legacy-firewall-present')
-    for unit in ('ufw.service', 'firewalld.service', 'netfilter-persistent.service'):
-        state = command(['systemctl', 'show', unit, '--property=ActiveState', '--value']).decode().strip()
-        if state not in {'inactive', ''}:
-            raise ProbeError('foreign-firewall')
+    validate_firewall_services(root=root)
     for relative in ('var/lib/vpn-tailnet-management/transaction.json', 'var/lib/vpn-tailnet-network', 'var/lib/vpn-network-promotion'):
         path = root/relative
         if os.path.lexists(path) and (not path.is_dir() or any(path.iterdir())):
@@ -588,10 +637,7 @@ def probe(binding, user, address, *, fragment_parser, policy_approval=None, cand
             path = Path("/proc/net") / name
             if path.exists() and path.read_bytes().strip():
                 raise ProbeError("legacy-firewall-present")
-        for name in ("ufw.service", "firewalld.service", "netfilter-persistent.service"):
-            state = command(["systemctl", "show", name, "--property=ActiveState", "--value"]).decode().strip()
-            if state not in {"inactive", ""}:
-                raise ProbeError("foreign-firewall")
+        validate_firewall_services()
         for relative in ("var/lib/vpn-tailnet-management/transaction.json", "var/lib/vpn-tailnet-network", "var/lib/vpn-network-promotion"):
             path = Path("/") / relative
             if os.path.lexists(path) and (not path.is_dir() or any(path.iterdir())):

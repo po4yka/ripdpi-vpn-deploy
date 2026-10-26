@@ -108,6 +108,15 @@ exact four empty daemon tables (`ip/ip6 filter/nat`) may remain as inert
 baseline objects; any chains, rules, sets, maps or extra attributes disqualify
 that exception. Their original state is included in apply and rollback.
 
+An Ubuntu image can report `ufw.service` as `active (exited)` while UFW is
+disabled. Bootstrap accepts this wrapper only when its root-owned configuration
+matches the verified package template, contains exactly one `ENABLED=no` setting, and
+`ufw status` reports inactive. The loaded unit must match the package after
+path resolution, have no overrides, diversions or pending reload, and pass
+package integrity and safe helper-file checks. It leaves that unit unchanged. Active UFW,
+modified configuration and other active firewall services still refuse; kernel
+rule ownership checks remain mandatory.
+
 After login, fresh public and Tailnet SSH and SFTP connections must verify the
 same original host key and real socket addresses. Local status alone cannot
 confirm. A durable confirmation prevents later recovery from logging out the

@@ -40,3 +40,17 @@ The implementation MUST support first deployment through a distinct cloud sentin
 
 - **WHEN** source, target state, sentinel state or pinned access differs before installation or final proof publication
 - **THEN** the controller refuses promotion and publishes no successful proof.
+
+### Requirement: REQ-BCNI-UFW — Disabled packaged firewall wrapper
+
+First enrollment MUST admit inactive UFW when its exited unit, helpers and disabled configuration match the package. Read-only preflight and runtime snapshot MUST share the check and leave UFW unchanged. Active UFW, modified files, unit overrides, diversions, pending reload and foreign kernel rules MUST refuse.
+
+#### Scenario: Disabled provider-image UFW
+
+- **WHEN** the provider image has an active exited UFW unit, intact package files, no overrides, diversions or pending reload, a configuration equal to the package template with exactly one `ENABLED=no`, and inactive UFW status
+- **THEN** bootstrap can proceed through all existing kernel-rule, identity and transaction checks without changing that unit.
+
+#### Scenario: Active or changed UFW
+
+- **WHEN** UFW reports active, its package configuration differs, or its unit has not exited
+- **THEN** bootstrap refuses before enrollment or access writes.
