@@ -127,6 +127,22 @@
       when: _observability_kuma_existing.rc == 0
       no_log: true
 
+    - name: Inspect observer units in check mode
+      ansible.builtin.command:
+        argv: [systemctl, show, "{{ item }}", --property=LoadState, --value]
+      register: _observability_kuma_existing_units
+      changed_when: false
+      check_mode: false
+      failed_when: >-
+        _observability_kuma_existing_units.stdout not in ['loaded', 'not-found'] or
+        _observability_kuma_existing_units.rc not in [0, 1] or
+        (_observability_kuma_existing_units.rc == 1 and
+         _observability_kuma_existing_units.stdout != 'not-found')
+      loop:
+        - observability-kuma.service
+        - observability-kuma-backup.timer
+      when: ansible_check_mode
+
     - name: Inspect backup units before serializing observer convergence
       ansible.builtin.stat:
         path: "/etc/systemd/system/{{ item }}"
@@ -346,6 +362,17 @@
         mode: "0644"
       register: _observability_kuma_unit
 
+    - name: Require planned observer service when check mode lacks it
+      ansible.builtin.assert:
+        that: [_observability_kuma_unit.changed | bool]
+        fail_msg: Check mode found no observer service and no planned installation.
+      when:
+        - ansible_check_mode
+        - >-
+          (_observability_kuma_existing_units.results |
+           selectattr('item', 'equalto', 'observability-kuma.service') |
+           map(attribute='stdout') | first) == 'not-found'
+
     - name: Validate observer systemd unit before activation
       ansible.builtin.command:
         argv:
@@ -382,6 +409,11 @@
         enabled: true
         state: "{{ 'restarted' if _observability_kuma_unit.changed else 'started' }}"
         daemon_reload: true
+      when: >-
+        not ansible_check_mode or
+        (_observability_kuma_existing_units.results |
+         selectattr('item', 'equalto', 'observability-kuma.service') |
+         map(attribute='stdout') | first) == 'loaded'
 
     - name: Install consistent backup units
       ansible.builtin.template:
@@ -394,6 +426,22 @@
         - observability-kuma-backup.service
         - observability-kuma-backup.timer
         - observability-kuma-restore@.service
+      register: _observability_kuma_backup_unit_templates
+
+    - name: Require planned observer backup timer when check mode lacks it
+      ansible.builtin.assert:
+        that:
+          - >-
+            (_observability_kuma_backup_unit_templates.results |
+             selectattr('item', 'equalto', 'observability-kuma-backup.timer') |
+             map(attribute='changed') | first) | bool
+        fail_msg: Check mode found no observer backup timer and no planned installation.
+      when:
+        - ansible_check_mode
+        - >-
+          (_observability_kuma_existing_units.results |
+           selectattr('item', 'equalto', 'observability-kuma-backup.timer') |
+           map(attribute='stdout') | first) == 'not-found'
 
     - name: Validate backup units before activation
       ansible.builtin.command:
@@ -410,6 +458,11 @@
         state: started
         enabled: true
         daemon_reload: true
+      when: >-
+        not ansible_check_mode or
+        (_observability_kuma_existing_units.results |
+         selectattr('item', 'equalto', 'observability-kuma-backup.timer') |
+         map(attribute='stdout') | first) == 'loaded'
 
     - name: Verify loopback observer application responds
       ansible.builtin.uri:

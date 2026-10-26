@@ -94,6 +94,8 @@ Explicit panel-only mode has N+1 node/pipeline monitors and no Telegram authorit
 
 - Container and image inspection must run read-only in check mode. A skipped
   command has no JSON ownership evidence and cannot admit an existing runtime.
+- Fresh check mode defers activation only for absent units whose exact template
+  plans installation. Loaded units retain checks; unknown load state refuses.
 
 - Source tests, API acknowledgement and configured notification credentials do
   not prove human receipt, independent-host admission, VPN performance, or
