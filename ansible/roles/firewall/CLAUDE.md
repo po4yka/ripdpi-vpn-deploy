@@ -85,6 +85,10 @@ Strict output admits untracked IPv6 router solicitation and neighbor discovery o
 managed by `templates/nftables.conf.j2`. ufw is too coarse-grained for the
 multi-profile stack; raw iptables is too easy to leak state.
 
+Provider UFW retirement is shared through `tasks/retire-provider-ufw.yml`.
+A first-enrollment caller must admit the exact fresh host, restrictive provider
+SSH rules and recovery before this slice. It does not establish Tailnet access.
+
 **Allow-list only** — an explicit accept for SSH (effective port, not always 22);
 every other public port is accepted only through the `public_listener_contract`
 loop, never by transport variable name. Default policy drop.
