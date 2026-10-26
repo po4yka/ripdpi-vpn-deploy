@@ -36,6 +36,11 @@ VULTR_API_KEY=... make PROVIDER=vultr ENV=prod init plan
 
 See `terraform/providers/vultr/CLAUDE.md` for design decisions and pitfalls.
 
+Before adopting DNS records, follow the [existing DNS state migration](../../../docs/reference/provider-notes.md#migrate-existing-vultr-dns-state).
+Move a retained legacy binding to the selected `managed` map key instead of
+importing the same remote record twice. Review a plan with no DNS changes for
+adoption before applying endpoint updates.
+
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
 

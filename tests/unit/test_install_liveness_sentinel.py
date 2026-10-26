@@ -518,8 +518,10 @@ def test_lost_launch_is_reconciled_only_from_exact_receipt(setup):
     assert setup["registry"].exists()
 
 
-def test_unknown_keeps_old_assignment_and_retry_needs_no_plaintext(setup):
+@pytest.mark.parametrize("host_key_alias", ["sentinel-a", "[192.0.2.4]:2222"])
+def test_unknown_keeps_old_assignment_and_retry_needs_no_plaintext(setup, host_key_alias):
     s = setup
+    s["config"]["sentinels"][0]["ssh_host_key_alias"] = host_key_alias
     provenance = {"controller_revision": "1" * 40, "runner_sha256": "2" * 64,
                   "client_generation_id": "7f574d16-931e-42b4-a940-853b92f53a14",
                   "public_profile_digest": "3" * 64, "vantage": "external"}
@@ -541,6 +543,21 @@ def test_unknown_keeps_old_assignment_and_retry_needs_no_plaintext(setup):
     s["state"]["unknown"] = False
     assert s["install"]()["status"] == "committed"
     assert all(Path(c[0][0]).name in ("ssh", "audit-log.sh") for c in s["calls"][before:])
+    committed = s["module"]._state(s["registry"], "sentinels")
+    assert committed["sentinels"]["probe-a"]["ssh_host_key_alias"] == host_key_alias
+
+
+@pytest.mark.parametrize("host_key_alias", ["[host]:0", "[host]:-1", "[host]:123456", "host\n", "-oProxyCommand=bad"])
+def test_registry_refuses_malformed_host_key_alias_before_external_calls(setup, host_key_alias):
+    s = setup
+    s["install"]()
+    registry = json.loads(s["registry"].read_text())
+    registry["sentinels"]["probe-a"]["ssh_host_key_alias"] = host_key_alias
+    s["registry"].write_text(json.dumps(registry))
+    before = len(s["calls"])
+    with pytest.raises(s["module"].InstallError, match="invalid-registry"):
+        s["install"]()
+    assert len(s["calls"]) == before
 
 
 def test_reachable_uncommitted_retry_reuses_same_generation(setup):

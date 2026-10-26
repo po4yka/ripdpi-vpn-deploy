@@ -20,7 +20,10 @@ to AMS / FRA / LHR for low-latency RU paths.
 **Secondary IPv4 convergence is provider reboot plus guest proof** — `vultr_instance_ipv4.honeypot` keeps `reboot = true`, then `render-inventory.sh` polls the primary SSH address until the secondary IPv4 is present on a guest interface. Inventory must not publish `honeypot_listen_addr` from API state alone.
 
 **Vultr DNS owns explicitly selected public records** — `managed_dns_records`
-is empty by default. Import retained A, AAAA and CNAME records from `dns_zone`
+is empty by default. Move an existing `public_ipv6_endpoint[0]` state binding
+to its selected map key before planning; do not import a duplicate binding.
+Follow the DNS state migration in `docs/reference/provider-notes.md`.
+Import other retained A, AAAA and CNAME records from `dns_zone`
 before applying; retain provider priority metadata too, including its `-1`
 no-priority value. Do not recreate the existing zone. Cross-root addresses remain
 private operator inputs, so record ownership does not couple server lifecycles.

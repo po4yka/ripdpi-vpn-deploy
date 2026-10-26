@@ -9,6 +9,7 @@ import signal
 import re
 import socket
 import subprocess
+import time
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -107,6 +108,15 @@ def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(
             for name in gateway_units():
                 assert published['nodes']['/etc/systemd/system/' + name] is not None
             assert_xray_generation(previous)
+            # A gateway exit starts bounded whole-generation recovery after rollback.
+            from transport_runtime_accept import fields, read_parameters
+            gateway = gateway_units()[0]
+            os.kill(int(fields(gateway)['MainPID']), signal.SIGKILL)
+            deadline = time.monotonic() + read_parameters()['timeout']
+            while fields(gateway, quiescing=True)['MainPID'] != '0':
+                assert time.monotonic() < deadline, 'native-gateway-exit-not-observed'
+                time.sleep(.05)
+            assert_xray_generation(previous)
             # The next ordinary converge with the newer pin must still be accepted and move the
             # unit, the links and the running process forward again, keeping the rolled-back release as previous.
             assert lab.converge(profile) == 0
@@ -124,15 +134,30 @@ def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(
 
 
 def assert_xray_generation(release):
-    from transport_runtime_accept import fields, gateway_units, unit_binary
+    from transport_runtime_accept import fields, gateway_units, unit_binary, read_parameters
+    from transport_runtime_rollback import RollbackAdapter
     binary = str(Path(release) / 'xray')
-    for name in ['xray.service', *gateway_units()]:
+    units = ['xray.service', *gateway_units()]
+    for name in units:
         text = Path('/etc/systemd/system', name).read_text()
         assert unit_binary(text)[0] == binary
-        observed = fields(name)
-        assert observed['ActiveState'] == 'active' and int(observed['MainPID']) > 0
-        assert os.path.samefile('/proc/' + observed['MainPID'] + '/exe', binary), name
     assert 'Environment=XRAY_RUNTIME_BINARY=' + binary in Path('/etc/systemd/system/xray.service').read_text().splitlines()
+    parameters = read_parameters()
+    deadline = time.monotonic() + parameters['timeout']
+    while True:
+        observed = {name: fields(name, quiescing=True) for name in units}
+        ready = all(row['ActiveState'] == 'active' and int(row['MainPID']) > 0 for row in observed.values())
+        if ready:
+            try:
+                ready = all(os.path.samefile('/proc/' + row['MainPID'] + '/exe', binary) for row in observed.values())
+            except FileNotFoundError:
+                ready = False
+        if ready:
+            break
+        assert time.monotonic() < deadline, 'native-xray-generation-not-ready:' + json.dumps(observed, sort_keys=True)
+        time.sleep(.1)
+    RollbackAdapter([], parameters['probe_url'], parameters['expected_status'],
+                    parameters['timeout'], parameters['clients']).ready()
 
 
 def exercise_gateway_rollback_compensation():

@@ -1,3 +1,4 @@
+# Move legacy state bindings before adoption; see docs/reference/provider-notes.md.
 resource "vultr_dns_record" "managed" {
   for_each = var.managed_dns_records
 
