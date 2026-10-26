@@ -113,6 +113,7 @@
         argv: [/usr/bin/docker, inspect, observability-kuma]
       register: _observability_kuma_existing
       changed_when: false
+      check_mode: false
       failed_when: _observability_kuma_existing.rc not in [0, 1]
       no_log: true
 
@@ -239,6 +240,7 @@
           - "{{ observability_kuma.image_repository }}@{{ observability_kuma.image_digests[ansible_facts['architecture']] }}"
       register: _observability_kuma_image
       changed_when: false
+      check_mode: false
       failed_when: _observability_kuma_image.rc not in [0, 1]
       no_log: true
 
