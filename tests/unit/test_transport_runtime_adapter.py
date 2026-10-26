@@ -20,12 +20,13 @@ spec.loader.exec_module(accept)
 
 
 @pytest.fixture
-def consumer_bootstrap():
+def consumer_bootstrap(request):
     import yaml
     from jinja2 import DictLoader
     from scripts.template_render import template_environment
 
     role = ROOT/'ansible/roles/transport-egress'
+    defaults = yaml.safe_load((role/'defaults/main.yml').read_text())
     tasks = yaml.safe_load((role/'tasks/runtime-acceptance.yml').read_text())
     command = next(task['ansible.builtin.command'] for task in tasks if 'register' in task)
     environment = template_environment(DictLoader({'bootstrap.py.j2': command['argv'][3]}))
@@ -33,14 +34,26 @@ def consumer_bootstrap():
         source = Path(path).read_text()
         return source + ('\n#' + 'x' * 131072 + '\n' if Path(path).name == 'transport_runtime_validate.py' else '')
     environment.globals['lookup'] = lookup
+    watchdog = getattr(request, 'param', {'reality_probe_expected_status': 200})
+    status = yaml.safe_load(environment.from_string(defaults['transport_runtime_probe_expected_status']).render(
+        watchdog_secrets=watchdog))
     variables = {'role_path': str(role), 'transport_egress_libexec_dir': str(LIBRARY),
         'transport_runtime_candidates': [], 'transport_runtime_probe_clients': {},
         'transport_runtime_probe_url': 'https://canary.example.test',
-        'transport_runtime_probe_expected_status': 200, 'transport_runtime_timeout_seconds': 10}
+        'transport_runtime_probe_expected_status': status, 'transport_runtime_timeout_seconds': 10}
     program = environment.get_template('bootstrap.py.j2').render(**variables)
     expression = environment.compile_expression(command['stdin'].strip()[2:-2])
     envelope = json.loads(expression(**variables))
     return program, envelope
+
+
+@pytest.mark.parametrize('consumer_bootstrap,expected', [
+    ({}, 204), ({'reality_probe_expected_status': 200}, 200),
+    ({'reality_probe_expected_status': 204}, 204),
+], indirect=['consumer_bootstrap'])
+def test_consumer_probe_inherits_configured_canary_status(consumer_bootstrap, expected):
+    _program, envelope = consumer_bootstrap
+    assert envelope['request']['expected_status'] == expected
 
 
 @pytest.mark.parametrize('damage', ['none', 'changed-source', 'extra-source'])

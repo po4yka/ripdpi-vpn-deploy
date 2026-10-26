@@ -61,7 +61,7 @@ transport_egress_snapshot_paths:
 
 # Existing owned canary authority is also required for consumer adoption.
 transport_runtime_probe_url: "{{ watchdog_secrets.reality_probe_url | default('') }}"
-transport_runtime_probe_expected_status: 204
+transport_runtime_probe_expected_status: "{{ watchdog_secrets.reality_probe_expected_status | default(204) }}"
 transport_runtime_timeout_seconds: 60
 transport_runtime_probe_clients:
   xray: "{{ watchdog.reality_probe_client | default('watchdog') }}"
