@@ -14,11 +14,14 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.parametrize(
-    "check_mode,helper_changed,refused",
-    [(True, True, True), (True, False, False), (True, False, True), (False, True, False)],
+    "check_mode,helper_changed,refused,invoked,expected_exit",
+    [(True, True, True, False, 0), (True, False, False, True, 0),
+     (True, False, True, True, 2), (False, True, False, True, 0)],
     ids=["fresh-check", "installed-check", "installed-refusal", "ordinary-install"],
 )
-def test_retirement_uses_only_available_current_helpers(tmp_path, check_mode, helper_changed, refused):
+def test_retirement_uses_only_available_current_helpers(
+    tmp_path, check_mode, helper_changed, refused, invoked, expected_exit
+):
     tasks = yaml.safe_load((ROOT / "ansible/roles/amneziawg/tasks/consumer-disable.yml").read_text())
     selected = [task for task in tasks if task["name"] in {
         "Select the complete accepted AWG retirement plan",
@@ -52,8 +55,7 @@ def test_retirement_uses_only_available_current_helpers(tmp_path, check_mode, he
     result = subprocess.run(argv, capture_output=True, text=True, timeout=30,
                             env={**os.environ, "ANSIBLE_CONFIG": str(ROOT / "ansible/ansible.cfg"),
                                  "ANSIBLE_NOCOLOR": "1", "ANSIBLE_STDOUT_CALLBACK": "default"})
-    invoked = not (check_mode and helper_changed)
-    assert (result.returncode == 0) == (not invoked or not refused), result.stdout + result.stderr
+    assert result.returncode == expected_exit, result.stdout + result.stderr
     assert marker.exists() == invoked
     if invoked:
         request = json.loads(marker.read_text())
