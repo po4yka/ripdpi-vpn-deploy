@@ -3,6 +3,10 @@
 # The canonical forward chain remains default-drop when this list is empty.
 firewall_forward_interface_contract: []
 
+# Optional exact Tailnet receiver and senders for private mTLS TCP/9443.
+# This grants no public listener and stays inert on other nodes.
+firewall_tailnet_collector_ingress: {}
+
 # Empty selects the observed IPv6 route, then IPv4 for first IPv6 acquisition.
 firewall_dhcpv6_uplink_interface: ""
 # Exact canonical IPv6 server addresses for legacy unicast; no prefixes.

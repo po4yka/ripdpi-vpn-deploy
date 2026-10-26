@@ -1,0 +1,40 @@
+---
+- name: Validate exact Tailnet collector ingress
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import ipaddress
+        import json
+        import sys
+
+        request = json.load(sys.stdin)
+        policy = request['policy']
+        try:
+            if not isinstance(policy, dict):
+                raise ValueError
+            if policy:
+                if (set(policy) != {'address', 'sources'} or request['enabled'] is not True
+                        or not isinstance(policy['sources'], list)
+                        or not 1 <= len(policy['sources']) <= 10):
+                    raise ValueError
+                network = ipaddress.IPv4Network('100.64.0.0/10')
+                for value in [policy['address'], *policy['sources']]:
+                    if (not isinstance(value, str) or str(ipaddress.IPv4Address(value)) != value
+                            or ipaddress.IPv4Address(value) not in network):
+                        raise ValueError
+                if (len(set(policy['sources'])) != len(policy['sources'])
+                        or policy['address'] != request['local_address']):
+                    raise ValueError
+        except (ValueError, TypeError, KeyError):
+            raise SystemExit('collector-invalid-tailnet-ingress') from None
+    stdin: >-
+      {{ {'policy': firewall_tailnet_collector_ingress | default({}),
+          'enabled': vpn.enable_tailnet_management | default(false) | bool,
+          'local_address': ansible_facts.get('tailscale0', {}).get('ipv4', {}).get('address', '')} | to_json }}
+    stdin_add_newline: false
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  check_mode: false

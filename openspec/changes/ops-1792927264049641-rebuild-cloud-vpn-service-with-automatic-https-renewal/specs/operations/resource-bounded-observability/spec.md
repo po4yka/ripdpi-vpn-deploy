@@ -18,6 +18,11 @@ Source completion MUST require source gates, exact-revision hosted CI and isolat
 - **WHEN** source, hosted and isolated runtime gates pass without external infrastructure
 - **THEN** completion records that scope, keeps live categories not applicable from task creation and states that external deployment/notification acceptance has not occurred; planning, mocks alone and refusal-only behavior do not satisfy completion.
 
+#### Scenario: Private collector ingress survives ordinary convergence
+
+- **WHEN** the approved collector admits remote-write over Tailnet
+- **THEN** the canonical guest firewall permits TCP/9443 only on `tailscale0`, to its observed Tailnet IPv4 address, from at most ten unique exact Tailnet IPv4 senders; invalid scope refuses before mutation in normal and check mode, and other nodes retain the disabled default.
+
 ### Requirement: REQ-IRBO-OBSERVER — Independent observer runtime
 
 The implementation MUST provide a pinned private Uptime Kuma container with bounded resources, distinct monitor credentials, direct node and pipeline producers, restricted verified HTTPS push ingress, private administration, and encrypted quiesced backup with isolated restore. Observer placement MUST be independent of the collector before deployment. Notification-enabled mode MUST include the additional delivery producer and N+2 monitors. Explicit panel-only mode MUST use N+1 node/pipeline monitors, MUST NOT require external bot credentials, and MUST NOT fabricate a delivery heartbeat or message receipt.

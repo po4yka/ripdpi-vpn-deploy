@@ -24,6 +24,9 @@
     # The fixture adds a synthetic IPv6 default after the first fact gather.
     # DHCPv6 remains on the Docker uplink on both idempotence passes.
     firewall_dhcpv6_uplink_interface: eth0
+    firewall_tailnet_collector_ingress:
+      address: 100.64.0.2
+      sources: [100.64.0.3, 100.64.0.4]
     amneziawg:
       listen_port: 51820
     amneziawg_secrets:
@@ -40,6 +43,31 @@
       - {name: hysteria, protocol: udp, port: 443, port_range: null}
       - {name: amneziawg, protocol: udp, port: 51820, port_range: null}
   pre_tasks:
+    - name: Inspect the scenario Tailnet interface
+      ansible.builtin.stat:
+        path: /sys/class/net/tailscale0
+      register: _collector_fixture_interface
+
+    - name: Create the scenario Tailnet interface
+      ansible.builtin.command: ip link add tailscale0 type dummy
+      when: not _collector_fixture_interface.stat.exists
+      changed_when: true
+
+    - name: Set the scenario Tailnet address
+      ansible.builtin.command: ip address add 100.64.0.2/32 dev tailscale0
+      when: not _collector_fixture_interface.stat.exists
+      changed_when: true
+
+    - name: Start the scenario Tailnet interface
+      ansible.builtin.command: ip link set tailscale0 up
+      when: not _collector_fixture_interface.stat.exists
+      changed_when: true
+
+    - name: Refresh the observed Tailnet interface fact
+      ansible.builtin.setup:
+        gather_subset: [network]
+        filter: ansible_tailscale0
+
     - name: Install firewall and SSH fixtures
       ansible.builtin.apt:
         name:

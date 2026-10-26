@@ -55,6 +55,17 @@ with tempfile.TemporaryDirectory(prefix='vpn-p2-nft-') as temporary:
  load('host')
  source=nft('list','set','inet','filter','vpn_tailnet_ssh_v4')
  assert '203.0.113.21' in source and '198.51.100.21' not in source
+ load('collector')
+ rules=json.loads(nft('-j','list','chain','inet','filter','input'))['nftables']
+ rule=next(row['rule'] for row in rules if row.get('rule',{}).get('comment')=='private-collector-ingress')
+ assert rule['expr']==[
+  {'match':{'op':'==','left':{'meta':{'key':'iifname'}},'right':'tailscale0'}},
+  {'match':{'op':'==','left':{'payload':{'protocol':'ip','field':'daddr'}},'right':'100.64.0.2'}},
+  {'match':{'op':'==','left':{'payload':{'protocol':'ip','field':'saddr'}},'right':{'set':['100.64.0.3','100.64.0.4']}}},
+  {'match':{'op':'==','left':{'payload':{'protocol':'tcp','field':'dport'}},'right':9443}},
+  {'accept':None}]
+ load('host')
+ assert 'private-collector-ingress' not in nft('list','chain','inet','filter','input')
  helper=directory/'helper.py'; helper.write_text(PAYLOAD['helper'])
  for address in ['198.51.100.24','2001:db8::24']:
   for operation in ['ban','ban','unban','unban']:
@@ -95,6 +106,10 @@ def test_fresh_reload_timed_sets_static_sources_and_proxy_egress_native():
             ROOT / "ansible/roles/intrusion_prevention/files/vpn-fail2ban-nft.py"
         ).read_text(),
     }
+    variables['firewall_tailnet_collector_ingress'] = {
+        'address': '100.64.0.2', 'sources': ['100.64.0.3', '100.64.0.4']}
+    variants['collector'] = render_template(
+        ROOT / 'ansible/roles/firewall/templates/nftables.conf.j2', variables)
     result = subprocess.run(
         ["unshare", "--net", sys.executable, "-c", NATIVE],
         input=json.dumps(payload),
