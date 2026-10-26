@@ -47,8 +47,10 @@ when their peer claims do not contain a server address or another peer claim.
 MTU resolves instance > technical cohort > role default > 1420, with integer
 bounds 1280–1420. Server, standalone, bundle and liveness use that value.
 Before mutation the exact uplink needs an IPv6 default route with a global
-source; RA routes require per-interface `accept_ra=2`. The role does not adopt
-provider networking authority. Configuration activation retains complete prior
+source. Kernel-owned RA requires per-interface `accept_ra=2`; networkd-owned RA
+requires kernel `accept_ra=0` and matching typed NDisc source and route evidence.
+The host owner must persist explicit networkd RA enablement before forwarding.
+The role does not adopt provider networking authority. Configuration activation retains complete prior
 private configs and active/boot state, compensates failed candidates, and
 retires obsolete recorded instances only after acceptance.
 

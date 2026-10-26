@@ -222,10 +222,13 @@ that 1420 is optimal on every path. Server, standalone, bundle and liveness use
 the same value. A constrained path can explicitly select 1280.
 
 The approved uplink must have a usable IPv6 default route and a global source
-address. An RA-derived route requires `net.ipv6.conf.<uplink>.accept_ra=2` so it
-survives router forwarding mode; establish that through the host's network
-configuration before deployment. The AWG role validates this prerequisite and
-does not rewrite provider routing. NAT and forwarding are scoped to that uplink.
+address. An RA-derived route must have one active owner. Kernel-owned RA requires
+`net.ipv6.conf.<uplink>.accept_ra=2`. For networkd-owned RA, keep that kernel value
+at `0` and set `IPv6AcceptRA=yes` in persistent networkd configuration before
+deployment. Admission matches the exact link, global NDisc source and default
+gateway through networkd's typed state. Mixed or incomplete ownership refuses.
+Verify persistence after a controlled reboot. The AWG role does not rewrite
+provider routing. NAT and forwarding are scoped to that uplink.
 
 Run `make test-awg-dualstack-runtime` only in the explicitly isolated Linux
 root/TUN native lab. Positive Linux results and Android native-core emulator

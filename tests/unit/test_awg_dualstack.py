@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 import copy
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from awg_client import config, enroll, export
 from awg_device_binding import BindingError, allocate_address, resolve_binding
 from awg_uplink import admit
+import awg_uplink
 from liveness_profiles import _awg
 from template_render import merge_render_vars, render_template
 from transport_semantics import awg_errors, effective_awg_instances
@@ -103,6 +106,106 @@ def test_public_dualstack_uplink_admission(version, source):
 def test_missing_private_wrong_family_or_wrong_uplink_refuses(routes):
     with pytest.raises((ValueError, KeyError)):
         admit(routes, 'eth7', 6)
+
+
+@pytest.fixture
+def networkd_state():
+    return {
+        'Name': 'eth7', 'Index': 7, 'AdministrativeState': 'configured',
+        'OperationalState': 'routable', 'AddressState': 'routable',
+        'IPv6AddressState': 'routable',
+        'Addresses': [{
+            'ConfigSource': 'NDisc', 'Family': 10, 'Scope': 0,
+            'ConfigState': 'configured', 'PrefixLength': 64,
+            'Address': [32, 1, 72, 96, 72, 96, 0, 0, 0, 0, 0, 0, 0, 0, 136, 136],
+        }],
+        'Routes': [{
+            'ConfigSource': 'NDisc', 'Family': 10, 'DestinationPrefixLength': 0,
+            'Protocol': 9, 'ConfigState': 'configuring,configured',
+            'LifetimeUSec': 60000000,
+            'Gateway': [254, 128, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        }],
+    }
+
+
+@pytest.fixture
+def selected_ra_route():
+    return {'dev': 'eth7', 'prefsrc': '2001:4860:4860::8888', 'gateway': 'fe80::1'}
+
+
+def test_networkd_owns_selected_ndisc_source_and_default_with_kernel_ra_disabled(
+        networkd_state, selected_ra_route):
+    assert awg_uplink.networkd_ra_owner(networkd_state, 'eth7', 7, selected_ra_route, '0')
+
+
+@pytest.mark.parametrize('accept_ra', ['1', '2', '', 'false'])
+def test_networkd_refuses_a_second_kernel_ra_owner(networkd_state, selected_ra_route, accept_ra):
+    with pytest.raises(ValueError, match='ownership'):
+        awg_uplink.networkd_ra_owner(networkd_state, 'eth7', 7, selected_ra_route, accept_ra)
+
+
+@pytest.mark.parametrize('section,field,value', [
+    (None, 'Name', 'eth8'), (None, 'Index', 8), (None, 'Index', True),
+    (None, 'AdministrativeState', 'configuring'), (None, 'OperationalState', 'degraded'),
+    (None, 'IPv6AddressState', 'degraded'), (None, 'Addresses', {}), (None, 'Routes', None),
+    ('Addresses', 'Family', 2), ('Addresses', 'Family', 10.0),
+    ('Addresses', 'Scope', False), ('Addresses', 'Scope', 253),
+    ('Addresses', 'PrefixLength', 0), ('Addresses', 'PrefixLength', True),
+    ('Addresses', 'ConfigState', 'tentative'), ('Addresses', 'Address', [0] * 16),
+    ('Addresses', 'Address', [32, 1]), ('Addresses', 'Address', [False] * 16),
+    ('Routes', 'Family', 2), ('Routes', 'DestinationPrefixLength', False),
+    ('Routes', 'DestinationPrefixLength', 64), ('Routes', 'Protocol', 9.0),
+    ('Routes', 'Protocol', 4), ('Routes', 'ConfigState', 'configuring'),
+    ('Routes', 'LifetimeUSec', 0), ('Routes', 'LifetimeUSec', 2**64),
+    ('Routes', 'LifetimeUSec', True), ('Routes', 'Gateway', [0] * 16),
+    ('Routes', 'Gateway', [256] * 16), ('Routes', 'ConfigSource', None),
+])
+def test_networkd_refuses_incomplete_malformed_or_foreign_route_authority(
+        networkd_state, selected_ra_route, section, field, value):
+    target = networkd_state if section is None else networkd_state[section][0]
+    target[field] = value
+    with pytest.raises((ValueError, TypeError)):
+        awg_uplink.networkd_ra_owner(networkd_state, 'eth7', 7, selected_ra_route, '0')
+
+
+@pytest.mark.parametrize('section', ['Addresses', 'Routes'])
+def test_networkd_refuses_missing_or_ambiguous_selected_authority(
+        networkd_state, selected_ra_route, section):
+    networkd_state[section] *= 2
+    with pytest.raises(ValueError, match='selected-route'):
+        awg_uplink.networkd_ra_owner(networkd_state, 'eth7', 7, selected_ra_route, '0')
+    networkd_state[section] = []
+    with pytest.raises(ValueError, match='selected-route'):
+        awg_uplink.networkd_ra_owner(networkd_state, 'eth7', 7, selected_ra_route, '0')
+
+
+@pytest.mark.parametrize('active,ndisc,accept_ra,allowed', [
+    ('active', True, '0', True), ('active', True, '2', False),
+    ('active', False, '2', True), ('active', False, '0', False),
+    ('inactive', False, '2', True), ('inactive', False, '0', False),
+    ('activating', False, '2', False), ('failed', False, '2', False),
+])
+def test_ra_owner_admission_selects_one_live_owner(
+        monkeypatch, networkd_state, selected_ra_route, active, ndisc, accept_ra, allowed):
+    calls = []
+    if not ndisc:
+        for row in networkd_state['Addresses'] + networkd_state['Routes']:
+            row['ConfigSource'] = 'static'
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        assert kwargs == {'check': True, 'capture_output': True, 'text': True, 'timeout': 5}
+        return SimpleNamespace(stdout=active if argv[0] == 'systemctl' else json.dumps(networkd_state))
+
+    monkeypatch.setattr(awg_uplink.subprocess, 'run', run)
+    monkeypatch.setattr(awg_uplink.Path, 'read_text', lambda path: '7\n')
+    if allowed:
+        awg_uplink.admit_ra_owner('eth7', selected_ra_route, accept_ra)
+    else:
+        with pytest.raises(ValueError):
+            awg_uplink.admit_ra_owner('eth7', selected_ra_route, accept_ra)
+    assert calls[0] == ['systemctl', 'show', 'systemd-networkd.service', '--property=ActiveState', '--value']
+    assert calls[1:] == ([['networkctl', '--json=short', 'status', 'eth7']] if active == 'active' else [])
 
 
 @pytest.mark.parametrize("tail,safe", [("table inet filter {}\n", True),
