@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import re
+import shlex
 
 import yaml
 
@@ -25,6 +26,17 @@ OLD_CONTEXTS = {
     "yamllint", "secrets-coverage", "templates-render", "jinja snapshot diff",
     "secrets schema (lenient on example)",
 }
+
+
+def test_native_package_pins_use_the_same_immutable_ubuntu_snapshot():
+    job = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]["transport-runtime-acceptance"]
+    commands = [shlex.split(line.strip().rstrip("\\"))
+                for step in job["steps"] for line in step.get("run", "").splitlines()
+                if line.strip().startswith("apt-get ")]
+    assert [command[:4] for command in commands] == [
+        ["apt-get", "--snapshot", "20261026T120000Z", "update"],
+        ["apt-get", "--snapshot", "20261026T120000Z", "install"],
+    ]
 
 
 def test_all_ci_python_consumers_share_the_pinned_cached_install():

@@ -711,8 +711,9 @@ jobs:
           docker cp "$GITHUB_WORKSPACE/." transport-runtime-acceptance:/opt/rta
           docker start transport-runtime-acceptance
           docker exec transport-runtime-acceptance /bin/bash -eu -c '
-            apt-get update
-            apt-get install -y --no-install-recommends \
+            # Package pins require the matching archive, not the moving mirrors.
+            apt-get --snapshot 20261026T120000Z update
+            apt-get --snapshot 20261026T120000Z install -y --no-install-recommends \
               nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 \
               iproute2 openssl curl ca-certificates openssh-server \
               python3-yaml make unzip \
