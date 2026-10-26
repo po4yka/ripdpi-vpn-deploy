@@ -610,7 +610,7 @@ def test_repository_runtime_mode_is_systemd_credentials_only() -> None:
     variables = yaml.safe_load((ROOT / "ansible" / "group_vars" / "all.yml").read_text())
 
     assert variables["observability_contract"] == {
-        "enabled_environments": ["staging"],
+        "enabled_environments": ["staging", "p0-upcloud", "p1-scaleway", "p2-vultr", "observer-upcloud"],
         "schema_version": 1,
         "credential_mode": "systemd",
     }

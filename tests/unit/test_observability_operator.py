@@ -491,8 +491,9 @@ def test_status_is_secretless_read_only_and_redacted(
     assert "observability-primary-canary.service" not in payload
 
 
+@pytest.mark.parametrize("environment", ["prod", "p0-upcloud", "p1-scaleway", "p2-vultr", "observer-upcloud"])
 def test_drill_is_staging_only_and_needs_explicit_notification_confirmation(
-    operator: dict[str, object],
+    operator: dict[str, object], environment: str,
 ) -> None:
     result = _run(operator, "drill")
     assert result.returncode == 2
@@ -501,7 +502,7 @@ def test_drill_is_staging_only_and_needs_explicit_notification_confirmation(
 
     common = operator["common"]
     assert isinstance(common, list)
-    common[common.index("staging")] = "prod"
+    common[common.index("staging")] = environment
     result = _run(operator, "drill", "--confirm-notification")
     assert result.returncode == 2
     assert result.stderr == "observability-operator: drills require staging\n"
@@ -970,6 +971,47 @@ def test_kuma_inventory_failure_domain_must_match_topology(operator):
     host["variables"]["observability_failure_domain"] = "different-domain"
     with pytest.raises(module.OperatorError, match="inventory observer rejected"):
         module._require_inventory_scope(args, host)
+
+
+@pytest.mark.parametrize(
+    ("environment", "component", "alias", "admitted"),
+    [("p0-upcloud", "agent", "node-agent", True),
+     ("p1-scaleway", "control-plane", "node-a", True),
+     ("p2-vultr", "agent", "node-agent", True),
+     ("observer-upcloud", "kuma", "node-observer", True),
+     ("other", "agent", "node-agent", False),
+     ("prod", "control-plane", "node-a", False)],
+)
+def test_custom_environment_keeps_exact_host_and_topology_binding(operator, environment, component, alias, admitted):
+    module = _operator_module()
+    common = list(operator["common"])
+    common[common.index("staging")] = environment
+    common[common.index("control-plane")] = component
+    common[common.index("node-a")] = alias
+    args = module._parser().parse_args(["status", *common])
+    host = module._selected_host(args)
+    host["variables"]["env"] = environment
+    topology = json.loads(base64.b64decode(host["variables"]["observability_topology_b64"]))
+    for node in topology["nodes"]:
+        node["environment"] = environment
+    host["variables"]["observability_topology_b64"] = base64.b64encode(json.dumps(topology).encode()).decode()
+    if admitted:
+        module._require_inventory_scope(args, host)
+    else:
+        with pytest.raises(module.OperatorError, match="environment not admitted"):
+            module._require_inventory_scope(args, host)
+    host["variables"]["env"] = "different"
+    with pytest.raises(module.OperatorError, match="inventory scope rejected"):
+        module._require_inventory_scope(args, host)
+    assert _calls(operator) == []
+
+
+@pytest.mark.parametrize("environment", ["../prod", "prod_other", "prod.other", "", "Prod", "p" * 65])
+def test_invalid_environment_names_refuse_before_host_access(operator, environment):
+    operator["common"][operator["common"].index("staging")] = environment
+    result = _run(operator, "status")
+    assert result.returncode == 2
+    assert _calls(operator) == []
 
 
 def test_host_must_match_explicit_environment_and_component_class(
