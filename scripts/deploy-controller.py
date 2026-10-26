@@ -751,7 +751,8 @@ def controller(mode):
                 site += ["--check", "--diff"]
             elif os.environ.get("DEPLOY_TAGS"):
                 site += ["--tags", os.environ["DEPLOY_TAGS"]]
-            checked(site, environment=site_environment, cwd=directory, timeout=3600, stream=True)
+            # The complete first-convergence graph can exceed one hour on small nodes.
+            checked(site, environment=site_environment, cwd=directory, timeout=7200, stream=True)
             if mode == "deploy":
                 checked(["ansible-playbook", str(playbooks["source-drift"]), *arguments],
                         environment=environment, cwd=directory, timeout=300, stream=True)
