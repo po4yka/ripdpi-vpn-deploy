@@ -123,13 +123,16 @@ SSH_OWNERSHIP_CONFIG="$HOME/.config/vpn-provision/ssh-ownership.json" make migra
 
 The same target accepts `mode: check` for a read-only preview, then
 `mode: deploy` for the bounded transaction. The private input file must be mode 0600
-and contain exactly `schema_version: 1`, `mode`, one `inventory_alias`, absolute
+and contain exactly `schema_version: 2`, `mode`, one `inventory_alias`,
+`inventory_section` (`vpn` or `observability-kuma`), absolute
 `inventory_path`, `known_hosts_path`, `contexts_path`, and the current checkout's
 `source_revision` and `deployable_digest` from `scripts/deploy-source-identity.sh`.
 The contexts file is the same private per-alias JSON used by ordinary deploy.
 Migration requires the installed recovery generation and fresh strict SSH/SFTP
 proof on both public and Tailnet paths before confirmation. It preserves the
 effective SSH policy; the later baseline transaction applies desired hardening.
+The explicit observer section does not add that host to the VPN fleet. Old
+schema-1 inputs are refused; set the section and refresh the source identity.
 Do not manufacture socket contexts to pass deployment readiness. On disposable staging,
 create the cleanup manifest before either installer. Unset the enrollment
 key before ordinary `dry-run`/`deploy`, which now reject it.

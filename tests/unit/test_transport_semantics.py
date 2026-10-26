@@ -322,3 +322,17 @@ def test_native_acme_cannot_supply_realm_pem_authority(realm):
     errors = transport_errors(document, {'vpn': {'enable_hysteria_realm': realm}}, sections=[])
     assert errors == ([('hysteria.acme', 'Realm requires supplied PEM authority; native ACME cannot supply it')]
                       if realm else [])
+
+
+@pytest.mark.parametrize('nginx_enabled,hysteria_enabled', [(False, False), (False, True), (True, False), (True, True)])
+def test_native_acme_listener_conflict_requires_both_active_transports(nginx_enabled, hysteria_enabled):
+    document = {
+        'hysteria': {'server_name': 'h2.example.test', 'masquerade_url': 'https://site.example.test', 'acme': {
+            'domains': ['h2.example.test'], 'email': 'operator@example.test'}},
+        'nginx_xhttp': {'server_name': 'site.example.test', 'acme': {
+            'domains': ['site.example.test'], 'email': 'operator@example.test'}},
+    }
+    errors = transport_errors(document, {'vpn': {
+        'enable_nginx_xhttp': nginx_enabled, 'enable_hysteria': hysteria_enabled}}, sections=['hysteria'])
+    conflict = ('hysteria.acme', 'native HTTP-01 requires its own public TCP/80 listener')
+    assert (conflict in errors) is (nginx_enabled and hysteria_enabled)

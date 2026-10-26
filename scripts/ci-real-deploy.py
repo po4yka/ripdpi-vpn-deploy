@@ -220,7 +220,7 @@ def bootstrap(runtime, config, enrollment, seed, identity, alias, address, sourc
     runtime.environment.update(TAILNET_HANDOFFS=str(handoff), DEPLOY_CI_TAILNET_HANDOFF=str(handoff),
                                DEPLOY_SSH_CONTEXTS_FILE=str(contexts))
     runtime.make("inventory")
-    ownership = {"schema_version": 1, "inventory_alias": alias,
+    ownership = {"schema_version": 2, "inventory_alias": alias, "inventory_section": "vpn",
                  "inventory_path": str(ROOT / "ansible/inventory/generated.ini"), "known_hosts_path": str(pin),
                  "contexts_path": str(contexts), "source_revision": identity[0], "deployable_digest": identity[1]}
     for mode in ("check", "deploy"):

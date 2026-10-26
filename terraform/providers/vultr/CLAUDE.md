@@ -19,10 +19,11 @@ to AMS / FRA / LHR for low-latency RU paths.
 
 **Secondary IPv4 convergence is provider reboot plus guest proof** — `vultr_instance_ipv4.honeypot` keeps `reboot = true`, then `render-inventory.sh` polls the primary SSH address until the secondary IPv4 is present on a guest interface. Inventory must not publish `honeypot_listen_addr` from API state alone.
 
-**Vultr DNS owns the shared public IPv6 record** — the optional
-`vultr_dns_record.public_ipv6_endpoint` publishes a provider-assigned address
-from another fleet root without coupling server lifecycles. It is disabled by
-default and enabled only in the production Vultr workspace.
+**Vultr DNS owns explicitly selected public records** — `managed_dns_records`
+is empty by default. Import retained A, AAAA and CNAME records from `dns_zone`
+before applying; retain provider priority metadata too, including its `-1`
+no-priority value. Do not recreate the existing zone. Cross-root addresses remain
+private operator inputs, so record ownership does not couple server lifecycles.
 
 **Port syntax changes only at the adapter** — canonical ranges and listener
 keys use hyphens; Vultr resources receive colons. Singleton and legacy XHTTP
@@ -71,6 +72,6 @@ off under the restic+age backup contract.
   ACCEPT is not evidence. See `docs/reference/provider-notes.md` → "UDP/443 edge
   reachability".
 - **Secondary IPv4 needs live-provider evidence** — mock-provider tests prove the reboot flag and inventory gate, not Vultr's control-plane/guest timing. A real deploy completes this check when inventory rendering observes the address inside the guest; failure is blocking.
-- **The public IPv6 target is cross-root input** — after replacing the endpoint
-  server, refresh the ignored Vultr tfvars from that provider's `server_ipv6`
-  output before applying DNS. Never copy the address into tracked files.
+- **Public DNS targets are cross-root inputs** — after replacing the endpoint
+  server, refresh the ignored Vultr tfvars from that provider's `server_ipv4` and `server_ipv6`
+  outputs before applying DNS. Never copy the address into tracked files.

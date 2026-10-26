@@ -49,6 +49,8 @@ transaction. Hysteria has native ACME support in its pinned server release.
   reconciles the current lineage so a failed post-renewal activation retries.
   Existing valid supplied-certificate workflows remain distinct supported
   workflows; this is not an alias for old managed authority.
+- Check native ACME listener conflicts against both effective transport toggles.
+  Inactive sibling TLS inputs do not claim a public listener during client issuance.
 - Keep the public article content and routes. Improve layout, navigation and
   the canonical-host response; check rendered output at narrow and wide sizes.
 - Keep the monitoring resource ceilings. Add an explicit panel-only mode with
@@ -56,13 +58,18 @@ transaction. Hysteria has native ACME support in its pinned server release.
   credentials. The owner selected the private panel and provider notifications.
   Production and cloud observer admission remain explicit; no retired dedicated
   collector or old acceptance receipt is reused.
+- SSH ownership schema 2 requires an explicit VPN or observer inventory section.
+  Keep identical source, dual-path and rollback checks for both sections.
 - Use per-provider encrypted operator documents and separate runtime grants.
   The decryption identity has an independently verified vault copy. Temporary
   plaintext identities and operation output are removed when no longer needed.
 
 ## Contracts and ownership
 
-- Terraform: UpCloud and Scaleway roots, policies and matching mock tests.
+- Terraform: UpCloud, Scaleway and Vultr roots, policies and matching mock tests.
+  Vultr uses an explicit zone and stable record map for A, AAAA and CNAME.
+  Import retained record IDs with their current values before changing endpoint
+  addresses. Do not create the zone or keep the old AAAA-only input contract.
 - Ansible: nginx-xhttp ACME tasks, adapter and units; Hysteria ACME inputs and
   cache; listener manifest; protected ingress write-set declaration; current
   bounded observability roles and panel-only admission.

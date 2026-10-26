@@ -257,7 +257,7 @@ class Runtime:
         self.inventory_render(handoff)
         contexts = self.journal.write('contexts.json', canonical({host['name']: proof['contexts']}))
         identity = self.source()
-        ownership = {'schema_version': 1, 'mode': 'deploy', 'inventory_alias': host['name'],
+        ownership = {'schema_version': 2, 'mode': 'deploy', 'inventory_alias': host['name'], 'inventory_section': 'vpn',
             'inventory_path': str(self.inventory), 'known_hosts_path': str(pins),
             'contexts_path': str(contexts), 'source_revision': identity['DEPLOY_SOURCE_REVISION'],
             'deployable_digest': identity['DEPLOYABLE_SOURCE_DIGEST']}

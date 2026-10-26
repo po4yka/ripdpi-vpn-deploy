@@ -1,21 +1,17 @@
-resource "vultr_dns_record" "public_ipv6_endpoint" {
-  count = var.manage_public_ipv6_endpoint ? 1 : 0
+resource "vultr_dns_record" "managed" {
+  for_each = var.managed_dns_records
 
-  domain = var.public_ipv6_endpoint_domain
-  name   = var.public_ipv6_endpoint_name
-  data   = var.public_ipv6_endpoint_address
-  type   = "AAAA"
-  ttl    = var.public_ipv6_endpoint_ttl
+  domain   = var.dns_zone
+  name     = each.value.name
+  data     = each.value.data
+  type     = each.value.type
+  ttl      = each.value.ttl
+  priority = each.value.priority
 
   lifecycle {
     precondition {
-      condition     = trimspace(var.public_ipv6_endpoint_domain) != ""
-      error_message = "public_ipv6_endpoint_domain is required when manage_public_ipv6_endpoint is enabled."
-    }
-
-    precondition {
-      condition     = trimspace(var.public_ipv6_endpoint_address) != ""
-      error_message = "public_ipv6_endpoint_address is required when manage_public_ipv6_endpoint is enabled."
+      condition     = var.dns_zone != ""
+      error_message = "dns_zone is required when managed_dns_records is not empty."
     }
   }
 }

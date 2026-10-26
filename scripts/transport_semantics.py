@@ -914,7 +914,8 @@ def transport_errors(doc: object, context: object = None, *, sections: list[str]
     if "hysteria" in sections:
         errors.extend(hysteria_errors(doc.get("hysteria"), context.get("public_site_canonical_url")))
         if (isinstance(doc.get('hysteria'), dict) and 'acme' in doc['hysteria']
-                and isinstance(vpn, dict) and vpn.get('enable_nginx_xhttp', False)):
+                and isinstance(vpn, dict) and vpn.get('enable_hysteria', False)
+                and vpn.get('enable_nginx_xhttp', False)):
             errors.append(('hysteria.acme', 'native HTTP-01 requires its own public TCP/80 listener'))
     if "egress" in sections:
         errors.extend(egress_errors(doc.get("transport_egress_secrets"), context.get("vpn"),
