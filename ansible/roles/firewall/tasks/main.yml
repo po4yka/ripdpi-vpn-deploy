@@ -2,9 +2,6 @@
 - name: Admit scoped DHCPv6 prerequisites before firewall mutation
   ansible.builtin.import_tasks: dhcpv6-admission.yml
 
-- name: Admit private collector scope before firewall mutation
-  ansible.builtin.import_tasks: collector-admission.yml
-
 - name: Validate provider NAT source-port range before mutation
   ansible.builtin.assert:
     that:
@@ -20,6 +17,9 @@
   vars:
     _nat_ssh_port: "{{ ansible_port | default(22) }}"
   when: terraform_nat_source_port_range | default('') != ''
+
+- name: Admit private collector scope before firewall mutation
+  ansible.builtin.import_tasks: collector-admission.yml
 
 - name: Admit AmneziaWG dual-stack forwarding prerequisites before mutation
   ansible.builtin.import_tasks: awg-uplink.yml

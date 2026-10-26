@@ -40,6 +40,7 @@ def test_real_admission_refuses_unsafe_scope_before_mutation(tmp_path, policy, e
         'hosts': 'localhost', 'connection': 'local', 'gather_facts': False,
         'become': False,
         'vars': {
+            'role_path': str(ROLE),
             'ansible_python_interpreter': sys.executable,
             'ansible_facts': {'tailscale0': {'ipv4': {'address': address}}},
             'vpn': {'enable_tailnet_management': enabled},
@@ -76,8 +77,8 @@ def test_render_is_inert_by_default_and_exact_when_enabled():
 
 def test_collector_admission_precedes_retained_firewall_mutation():
     tasks = yaml.safe_load((ROLE / 'tasks/main.yml').read_text())
-    assert tasks[1]['ansible.builtin.import_tasks'] == 'collector-admission.yml'
     names = [task['name'] for task in tasks]
+    assert names.index('Admit private collector scope before firewall mutation') < names.index('Prepare retained firewall consumer authority')
     assert names.index('Reserve the private collector port') < names.index('Prepare retained firewall consumer authority')
     assert names.index('Reject public listeners on the effective SSH port') < names.index('Prepare retained firewall consumer authority')
 

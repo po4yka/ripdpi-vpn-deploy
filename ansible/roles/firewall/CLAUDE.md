@@ -2,12 +2,12 @@
 
 ## Design decisions
 
-Optional collector ingress admits TCP/9443 only on `tailscale0`, to its observed
-IPv4 address, from at most ten unique exact Tailnet IPv4 sources. Admission
-runs before firewall publication in normal and check mode. SSH port 9443 and
-public TCP listeners or ranges that contain 9443 refuse.
-The empty default adds
-no listener; this private contract never enters the public listener manifest.
+`firewall_tailnet_collector_ingress` contains `{address, sources}` and admits
+TCP/9443 only on `tailscale0`, to its observed IPv4 address, from at most ten
+unique exact Tailnet IPv4 sources. Operator overrides and role admission share
+one validator. Admission precedes mutation in normal and check mode. SSH port
+9443 and public TCP listeners or ranges containing it refuse. The empty default
+adds no listener; private ingress never enters the public listener manifest.
 
 An AWG device revocation shares the runtime operation/digest. Pending policy ownership permits only that exact forward retry, and neither legacy restoration nor consumer compensation may cross its accepted revocation floor. Failure retains the candidate policy and stopped runtime instead of readmitting the removed peer.
 
