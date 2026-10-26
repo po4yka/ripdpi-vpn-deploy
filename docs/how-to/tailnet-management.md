@@ -96,6 +96,10 @@ random mode-`0600` auth file under `/run/vpn-tailnet-management`, uses
 `--auth-key=file:`, and removes and fsyncs it after login. Bootstrap never
 changes provider firewall policy or Tailnet ACLs.
 
+Ansible installation permits three initial connection attempts to the same
+pinned endpoint, as SSH recovery installation does. Remote commands and
+enrollment RPCs are not replayed by this transport setting.
+
 Before changing access, the guest verifies both the enabled early boot
 firewall recovery unit and the late recovery worker, then arms one durable
 generation-, target-, nonce- and snapshot-bound transaction. Its 300-second

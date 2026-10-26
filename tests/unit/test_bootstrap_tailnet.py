@@ -221,7 +221,8 @@ def test_installer_real_ansible_preserves_local_delegation(controller, inputs, m
     playbooks = project / "ansible/playbooks"
     playbooks.mkdir(parents=True)
     (project / "ansible/ansible.cfg").write_text("[defaults]\n")
-    transport = controller.deploy.transport_variables(host, ssh)
+    expected_ssh = ['ConnectionAttempts=3' if value == 'ConnectionAttempts=1' else value for value in ssh]
+    transport = controller.deploy.transport_variables(host, expected_ssh)
     play = [{"hosts": "vpn", "gather_facts": False, "vars": {"expected_transport": transport},
              "tasks": [
                  {"name": "Keep every pinned connection value on the selected node",
@@ -259,6 +260,7 @@ runpy.run_module('ansible.cli.playbook', run_name='__main__')
     monkeypatch.setattr(controller, "_installed", lambda *_: "ready")
 
     controller._install(selected)
+    assert 'ConnectionAttempts=1' in selected.ssh
 
 
 def test_installer_failure_preserves_child_diagnostics_without_enrollment_key(

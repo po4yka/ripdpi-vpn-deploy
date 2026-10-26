@@ -386,7 +386,10 @@ def _install(inputs):
     _require_source(inputs)
     # Extra vars also override localhost during delegation. Scope connection
     # settings to this one-node group so local validation stays local.
-    transport = deploy.transport_variables(inputs.host, inputs.ssh)
+    install_ssh = list(inputs.ssh)
+    # Match SSH recovery's bounded connection setup, without replaying commands.
+    install_ssh[install_ssh.index('ConnectionAttempts=1')] = 'ConnectionAttempts=3'
+    transport = deploy.transport_variables(inputs.host, install_ssh)
     if any(any(char in str(value) for char in "\r\n\x00") for value in transport.values()):
         raise BootstrapError("bootstrap-transport-invalid")
     inventory = "[vpn]\n" + inputs.host["name"] + "\n\n[vpn:vars]\n"
