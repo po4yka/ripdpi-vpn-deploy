@@ -30,6 +30,12 @@
     firewall_site_transaction: false
   when: _firewall_site_enabled | default(false) | bool
 
+- name: Predict fresh AmneziaWG consumer retirement
+  ansible.builtin.debug:
+    msg: Would install the current AWG consumer and accept the complete retirement plan
+  changed_when: true
+  when: ansible_check_mode and _awg_consumer_install.changed
+
 - name: Accept complete AWG retirement with retained runtime compensation
   ansible.builtin.command:
     argv: [python3, -Es, /usr/local/libexec/ripdpi-consumer/amneziawg_consumer.py, apply]
@@ -42,3 +48,4 @@
   changed_when: (_awg_consumer_retirement.stdout | from_json).changed | bool
   check_mode: false
   no_log: true
+  when: not (ansible_check_mode and _awg_consumer_install.changed)
