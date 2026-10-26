@@ -14,6 +14,11 @@ Transport upgrades MUST stage exact pinned runtime bytes, required assets, confi
 - **WHEN** a required asset download or native candidate validation fails after binary staging
 - **THEN** all active links files and running accepted services remain on the preceding generation
 
+#### Scenario: Fresh host has a group-writable system log directory
+
+- **WHEN** Xray converges on a fresh host whose OS-managed `/var/log` permits group writes
+- **THEN** it MUST provision its root-owned log directory at `/var/lib/vpn-xray-logs`, preserve the OS directory permissions, and keep no-follow, owner, single-link and file-mode checks for its logs; rotation, supervision and diagnostics MUST consume the same log path.
+
 #### Scenario: Hysteria staged startup validates actual runtime
 
 - **WHEN** a Hysteria candidate is validated before live publication

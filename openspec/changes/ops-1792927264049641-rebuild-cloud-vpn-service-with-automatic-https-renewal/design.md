@@ -63,6 +63,10 @@ transaction. Hysteria has native ACME support in its pinned server release.
 - Use per-provider encrypted operator documents and separate runtime grants.
   The decryption identity has an independently verified vault copy. Temporary
   plaintext identities and operation output are removed when no longer needed.
+- Store Xray logs at the root-owned `/var/lib/vpn-xray-logs`, outside both the
+  OS-managed group-writable log directory and the runtime user's home. Keep
+  descriptor checks, file modes and all log readers aligned with this path;
+  deployment must not change the shared system log directory to gain admission.
 
 ## Contracts and ownership
 

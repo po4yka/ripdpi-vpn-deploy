@@ -23,7 +23,7 @@ WINDOW_HOURS = 7 * 24
 NOW = dt.datetime.now(tz=dt.timezone.utc)
 SINCE = NOW - dt.timedelta(hours=WINDOW_HOURS)
 
-XRAY_ACCESS = pathlib.Path("/var/log/xray/access.log")
+XRAY_ACCESS = pathlib.Path("/var/lib/vpn-xray-logs/access.log")
 NGINX_ACCESS = pathlib.Path("/var/log/nginx/access.log")
 HONEYPOT_LOG = pathlib.Path("/var/log/honeypot/connections.log")
 TEXTFILE_DIR = pathlib.Path("/var/lib/node_exporter/textfile")

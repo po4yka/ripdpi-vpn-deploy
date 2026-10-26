@@ -35,7 +35,7 @@ LockPersonality=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
 SystemCallArchitectures=native
-ReadWritePaths={{ xray_log_dir | default('/var/log/xray') }} /var/lib/xray /etc/xray
+ReadWritePaths={{ xray_log_dir | default('/var/lib/vpn-xray-logs') }} /var/lib/xray /etc/xray
 
 [Install]
 WantedBy=multi-user.target

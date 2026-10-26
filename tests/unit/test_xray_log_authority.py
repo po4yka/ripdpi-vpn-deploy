@@ -78,3 +78,11 @@ def test_hostile_entry_does_not_repair_target(logs, tmp_path, kind):
 def test_check_mode_does_not_create_missing_logs(logs):
     assert provision(logs, check=True)
     assert not logs.exists()
+
+
+def test_group_writable_parent_is_refused_without_repair(logs):
+    logs.parent.chmod(0o775)
+    with pytest.raises(ValueError, match="unsafe-log-parent"):
+        provision(logs)
+    assert stat.S_IMODE(logs.parent.stat().st_mode) == 0o775
+    assert not logs.exists()

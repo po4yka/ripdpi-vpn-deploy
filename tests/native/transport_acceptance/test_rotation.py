@@ -24,7 +24,7 @@ def test_nonempty_native_log_rotation_recovers_authenticated_xray(tmp_path):
         from transport_runtime_accept import Adapter, fields, read_parameters
 
         parameters = read_parameters()
-        log = Path("/var/log/xray/access.log")
+        log = Path("/var/lib/vpn-xray-logs/access.log")
         assert log.stat().st_size > 0, "real-authenticated-Xray-log-empty"
         before = fields("xray.service")["MainPID"]
         policy = tmp_path / "logrotate.conf"

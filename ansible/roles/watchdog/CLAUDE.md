@@ -99,7 +99,7 @@ the finite oneshot deadline prevent a notification stall from disabling probes.
   read-only credential filesystem to the main service. Production units and
   credential ownership/link/mode checks remain unchanged.
 - **Failure fixtures must provision the real unit's sandbox paths** — the
-  synthetic Xray service does not create `/var/log/xray`. Prepare that mandatory
+  synthetic Xray service does not create `/var/lib/vpn-xray-logs`. Prepare that mandatory
   `ReadWritePaths` directory as root:xray 0750 before enabling the watchdog timer;
   an absent path can reject unit namespace setup before any probe or delivery.
   A failure-only sender wrapper reports loaded credential stat metadata in the

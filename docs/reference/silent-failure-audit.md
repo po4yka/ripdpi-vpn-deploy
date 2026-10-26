@@ -59,7 +59,7 @@ live production effectiveness.
 
 **Current status: RESOLVED by scope correction and executable contract tests.**
 
-**Contract.** The daemon tails `/var/log/xray/access.log` and bans IPs whose lines match `EVENT_RE = (REJECT|rejected|graylist)`. Effectiveness depends on Xray-core emitting one of those substrings for (a) external probers whose REALITY handshake fails, or (b) authenticated clients routed to the `block` blackhole.
+**Contract.** The daemon tails `/var/lib/vpn-xray-logs/access.log` and bans IPs whose lines match `EVENT_RE = (REJECT|rejected|graylist)`. Effectiveness depends on Xray-core emitting one of those substrings for (a) external probers whose REALITY handshake fails, or (b) authenticated clients routed to the `block` blackhole.
 
 **Contract owner.** Xray-core (XTLS/Xray-core). Version is operator-supplied (`ansible/roles/xray/defaults/main.yml` `version: ""`), so the relevant invariant is the access-log *line format*, which has been stable since the v2ray-core fork.
 

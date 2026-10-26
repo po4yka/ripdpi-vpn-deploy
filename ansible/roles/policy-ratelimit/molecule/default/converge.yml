@@ -16,12 +16,12 @@
         group: root
         mode: "0750"
 
-    # The role expects /var/log/xray/access.log; the daemon waits for the
+    # The role expects /var/lib/vpn-xray-logs/access.log; the daemon waits for the
     # file rather than failing, so we just need to ensure the directory
     # exists for service start.
-    - name: Ensure /var/log/xray exists
+    - name: Ensure /var/lib/vpn-xray-logs exists
       ansible.builtin.file:
-        path: /var/log/xray
+        path: /var/lib/vpn-xray-logs
         state: directory
         owner: root
         group: root

@@ -105,6 +105,11 @@ The command appends `--check` only in check mode; normal convergence sends no
 placeholder argument. JSON change reporting is evaluated only after a successful
 helper exit, preserving the helper's original failure result.
 
+The default log root is `/var/lib/vpn-xray-logs`, separate from the runtime user's
+home and the OS-managed `/var/log`. Ubuntu can grant group write on `/var/log`;
+neither that shared ancestor nor the Xray-owned home meets this root-only path
+contract. Keep the descriptor checks and the OS directory permissions unchanged.
+
 Complete frontend authority is staged in the private `transport_runtime_candidates` plan. Native admission selects the staged asset directory; the unit retains the intended served asset directory, which is published with runtime links and config by consumer acceptance. Dedicated probe credentials must belong to the configured acceptance client in every enabled inbound/cohort. The owned canary supplies positive protocol traffic before the accepted receipt advances.
 
 ## What's done well

@@ -309,7 +309,7 @@ def test_rotation_playbook_updates_xhttp_only_xray() -> None:
 
     assert "enable_xray_reality" in xray_task
     assert "enable_nginx_xhttp" in xray_task
-    assert "xray_log_path: /var/log/xray" in playbook
+    assert "xray_log_path: /var/lib/vpn-xray-logs" in playbook
 
 
 def test_xray_activation_has_one_guarded_owner_and_is_inert_in_check_mode() -> None:
