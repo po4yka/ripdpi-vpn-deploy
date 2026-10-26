@@ -8,8 +8,41 @@ import sys
 
 import pytest
 import yaml
+from jinja2 import DictLoader
+from template_render import template_environment
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.mark.parametrize('check,installed,planned,admitted,activate', [
+    (True, False, True, True, False),
+    (True, False, False, False, False),
+    (True, True, False, True, True),
+    (False, False, True, True, True),
+    (False, True, False, True, True),
+])
+def test_fresh_fail2ban_check_requires_install_plan_and_preserves_normal_activation(
+        check, installed, planned, admitted, activate):
+    role = ROOT / 'ansible/roles/intrusion_prevention'
+    tasks = yaml.safe_load((role / 'tasks/enable.yml').read_text())
+    package = next(task for task in tasks if task['name'] == 'Install Fail2Ban')
+    guard = next(task for task in tasks if task['name'] ==
+                 'Require planned Fail2Ban installation when check mode lacks the unit')
+    service = next(task for task in tasks if task['name'] == 'Enable and start Fail2Ban')
+    facts = next(task for task in tasks if 'ansible.builtin.service_facts' in task)
+    assert tasks.index(package) < tasks.index(facts) < tasks.index(guard) < tasks.index(service)
+    environment = template_environment(DictLoader({}))
+    values = {'ansible_check_mode': check,
+              'ansible_facts': {'services': {'fail2ban.service': {}} if installed else {}},
+              package['register']: {'changed': planned}}
+    evaluate = lambda expression: bool(environment.compile_expression(expression)(**values))
+    required = all(evaluate(condition) for condition in guard['when'])
+    assert (not required or evaluate(guard['ansible.builtin.assert']['that'])) is admitted
+    assert evaluate(service['when']) is activate
+    assert service['ansible.builtin.systemd_service'] == {
+        'name': 'fail2ban', 'enabled': True, 'state': 'started'}
+    handler = yaml.safe_load((role / 'handlers/main.yml').read_text())[0]
+    assert evaluate(handler['when']) is (not check)
 
 
 def test_fresh_hysteria_unit_is_planned_before_service_activation():

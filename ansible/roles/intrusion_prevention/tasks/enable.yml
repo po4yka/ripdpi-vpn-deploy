@@ -23,6 +23,18 @@
     update_cache: true
     cache_valid_time: 3600
     install_recommends: false
+  register: intrusion_prevention_packages
+
+- name: Collect installed service facts after package acquisition
+  ansible.builtin.service_facts:
+
+- name: Require planned Fail2Ban installation when check mode lacks the unit
+  ansible.builtin.assert:
+    that: intrusion_prevention_packages.changed
+    fail_msg: Check mode found no Fail2Ban unit and no planned package installation.
+  when:
+    - ansible_check_mode
+    - "'fail2ban.service' not in ansible_facts.services"
 
 - name: Ensure Fail2Ban config directories exist
   ansible.builtin.file:
@@ -128,3 +140,4 @@
     name: fail2ban
     enabled: true
     state: started
+  when: not ansible_check_mode or 'fail2ban.service' in ansible_facts.services
