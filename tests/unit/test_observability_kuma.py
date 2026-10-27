@@ -30,6 +30,83 @@ preflight = importlib.util.module_from_spec(PREFLIGHT_SPEC)
 PREFLIGHT_SPEC.loader.exec_module(preflight)
 
 
+@pytest.mark.parametrize('check', [False, True])
+@pytest.mark.parametrize('state', ['absent', 'owned', 'foreign'])
+def test_container_and_image_discovery_execute_readonly_even_in_check_mode(tmp_path, state, check):
+    tasks = yaml.safe_load((ROLE / 'tasks/main.yml').read_text())
+    enabled = next(task['block'] for task in tasks if task['name'] == 'Converge the admitted independent observer')
+    names = ['Inspect named container before taking lifecycle ownership',
+             'Refuse unrelated container name collision', 'Inspect existing exact architecture image']
+    selected = [task.copy() for task in enabled if task['name'] in names]
+    trace = tmp_path / 'docker-calls'
+    binary = tmp_path / 'docker'
+    binary.write_text(f'''#!{sys.executable}
+import json,sys
+with open({str(trace)!r},'a') as stream:stream.write(sys.argv[1]+'\\n')
+if {state!r}=='absent':raise SystemExit(1)
+print(json.dumps([{{'Config':{{'Labels':{{'vpn-deploy.owner':{'observability-kuma' if state == 'owned' else 'foreign'!r}}}}}}}]))
+''')
+    binary.chmod(0o755)
+    for task in selected:
+        if 'ansible.builtin.command' in task:
+            task['ansible.builtin.command'] = {'argv': [str(binary), *task['ansible.builtin.command']['argv'][1:]]}
+    selected.append({'name': 'Require actual discovery status', 'ansible.builtin.assert': {'that': [
+        f'_observability_kuma_existing.rc == {1 if state == "absent" else 0}',
+        f'_observability_kuma_image.rc == {1 if state == "absent" else 0}']}})
+    play = [{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False, 'become': False,
+             'vars': {'ansible_python_interpreter': sys.executable, 'ansible_facts': {'architecture': 'x86_64'},
+                      'observability_kuma': {'image_repository': 'fixture', 'image_digests': {'x86_64': 'sha256:' + '0' * 64}}},
+             'tasks': selected}]
+    path = tmp_path / 'discovery.yml';path.write_text(yaml.safe_dump(play))
+    result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(path), *(['--check'] if check else [])],
+                            capture_output=True, text=True, timeout=30,
+                            env={**os.environ, 'ANSIBLE_CONFIG': str(ROOT / 'ansible/ansible.cfg')})
+    assert (result.returncode == 0) is (state != 'foreign'), result.stdout + result.stderr
+    assert trace.read_text().splitlines() == (['inspect'] if state == 'foreign' else ['inspect', 'image'])
+
+
+@pytest.mark.parametrize('check', [False, True])
+@pytest.mark.parametrize('service,timer,service_planned,timer_planned,probe_rc,accepted,actions', [
+    ('loaded', 'loaded', False, False, 0, True, 2),
+    ('not-found', 'not-found', True, True, 0, True, 0),
+    ('not-found', 'not-found', False, True, 0, False, 0),
+    ('not-found', 'not-found', True, False, 0, False, 0),
+    ('loaded', 'not-found', False, True, 0, True, 1),
+    ('masked', 'loaded', True, True, 0, False, 0),
+    ('loaded', 'loaded', True, True, 1, False, 0),
+])
+def test_first_check_defers_only_exact_planned_units(tmp_path, check, service, timer, service_planned, timer_planned, probe_rc, accepted, actions):
+    tasks = yaml.safe_load((ROLE / 'tasks/main.yml').read_text())
+    enabled = next(task['block'] for task in tasks if task['name'] == 'Converge the admitted independent observer')
+    names = ['Inspect observer units in check mode', 'Require planned observer service when check mode lacks it',
+             'Activate pinned observer container', 'Require planned observer backup timer when check mode lacks it',
+             'Enable daily quiesced encrypted backup']
+    selected = [task.copy() for task in enabled if task['name'] in names]
+    trace = tmp_path / 'activation-calls';binary = tmp_path / 'systemctl'
+    states = {'observability-kuma.service': service, 'observability-kuma-backup.timer': timer}
+    binary.write_text(f'#!{sys.executable}\nimport sys\nprint({states!r}[sys.argv[2]])\nraise SystemExit({probe_rc})\n')
+    binary.chmod(0o755)
+    for task in selected:
+        if 'ansible.builtin.command' in task:
+            task['ansible.builtin.command'] = {'argv': [str(binary), *task['ansible.builtin.command']['argv'][1:]]}
+        if 'ansible.builtin.systemd_service' in task:
+            # Replace only the privileged manager boundary; evaluate real admission and when conditions.
+            unit = task.pop('ansible.builtin.systemd_service')['name']
+            task['ansible.builtin.command'] = {'argv': [sys.executable, '-c', f'with open({str(trace)!r},"a") as f:f.write({unit!r}+"\\n")']}
+            task['check_mode'] = False;task['changed_when'] = False
+    play = [{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False, 'become': False,
+             'vars': {'ansible_python_interpreter': sys.executable,
+                      '_observability_kuma_unit': {'changed': service_planned},
+                      '_observability_kuma_backup_unit_templates': {'results': [{'item': 'observability-kuma-backup.timer', 'changed': timer_planned}]}},
+             'tasks': selected}]
+    path = tmp_path / 'activation.yml';path.write_text(yaml.safe_dump(play))
+    result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(path), *(['--check'] if check else [])],
+                            capture_output=True, text=True, timeout=30,
+                            env={**os.environ, 'ANSIBLE_CONFIG': str(ROOT / 'ansible/ansible.cfg')})
+    assert (result.returncode == 0) is (accepted if check else True), result.stdout + result.stderr
+    assert (len(trace.read_text().splitlines()) if trace.exists() else 0) == (actions if check else 2)
+
+
 @pytest.fixture
 def backup_runtime(tmp_path, monkeypatch):
     class Destination(type(tmp_path)):
