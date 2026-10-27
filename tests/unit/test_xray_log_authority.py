@@ -108,3 +108,18 @@ def test_retire_logs_unlinks_only_log_entries_and_never_follows_a_replaced_direc
     assert not setup.retire_logs(str(swapped), check=False)
     assert (outside / 'root.log').exists()
     assert not setup.retire_logs(str(tmp_path / 'absent'), check=False)
+
+
+@pytest.mark.parametrize(('directory', 'retired'), [
+    ('/var/log/xray/', False), ('/var/log//xray', False), ('/var/lib/vpn-xray-logs', True),
+])
+def test_retirement_never_targets_the_configured_log_directory(monkeypatch, capsys, directory, retired):
+    calls = []
+    monkeypatch.setattr(setup, 'provision', lambda *args, **kwargs: False)
+    monkeypatch.setattr(setup, 'retire_logs', lambda path, check: calls.append(path) or False)
+    monkeypatch.setattr(setup.pwd, 'getpwnam', lambda name: type('U', (), {'pw_uid': 0})())
+    monkeypatch.setattr(setup.grp, 'getgrnam', lambda name: type('G', (), {'gr_gid': 0})())
+    monkeypatch.setattr('sys.argv', ['x', '--directory', directory, '--user', 'xray', '--group', 'xray',
+                                     '--retire-directory', '/var/log/xray'])
+    setup.main()
+    assert calls == (['/var/log/xray'] if retired else [])
