@@ -89,6 +89,8 @@ def test_actual_ansible_log_task_passes_only_valid_flags_and_keeps_helper_error(
         variables["xray_runtime_user"],
         "--group",
         variables["xray_runtime_group"],
+        "--retire-directory",
+        "/var/log/xray",
     ]
     assert original["cmd"] == expected + (["--check"] if check else [])
     assert original["rc"] == 1

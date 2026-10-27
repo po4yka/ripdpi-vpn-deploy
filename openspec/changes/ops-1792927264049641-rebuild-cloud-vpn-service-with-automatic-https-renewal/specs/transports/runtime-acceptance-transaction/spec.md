@@ -44,3 +44,19 @@ Transport upgrades MUST stage exact pinned runtime bytes, required assets, confi
 
 - **WHEN** ordinary convergence has no explicit fresh cache recovery intent
 - **THEN** it MUST NOT recursively change cache ownership or copy restored bytes, and an incomplete cache recovery journal MUST refuse candidate admission.
+
+## ADDED Requirements
+
+### Requirement: REQ-PROTO-RTA-SITE-SESSION — Bound the complete first-convergence session
+
+The controller MUST allow a 7200-second session for the complete exact-host `dry-run` or `deploy` graph on admitted small nodes. Separate SSH, native validation and transaction deadlines MUST remain in force. Source and input checks, owned-child cancellation and failure reporting MUST remain mandatory.
+
+#### Scenario: Valid cold-node work exceeds one hour
+
+- **WHEN** the complete first-convergence or preview graph continues beyond 3600 seconds
+- **THEN** the controller MUST permit that work within the 7200-second full-site session budget with its normal source, input and runtime gates.
+
+#### Scenario: Full-site session budget expires
+
+- **WHEN** the full-site command exceeds 7200 seconds
+- **THEN** the controller MUST stop its owned session and descendants, reclaim its private snapshots, and report failure; an incomplete preview MUST NOT authorize deployment.

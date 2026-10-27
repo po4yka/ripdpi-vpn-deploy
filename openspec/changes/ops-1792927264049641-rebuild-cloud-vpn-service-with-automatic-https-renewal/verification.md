@@ -31,6 +31,7 @@ artifact_evidence: null
 | REQ-BCNI-UFW | OPS-1792928402362900 | Disabled package wrapper regression added; cloud enrollment pending | required |
 | REQ-MTLS-AUTHORITY | OPS-1792928402860448 | Not yet run | required |
 | REQ-PROTO-RTA-CANDIDATE | OPS-1792928402860448 | Not yet run | required |
+| REQ-PROTO-RTA-SITE-SESSION | OPS-1792928402860448 | Both controller modes use 7200 seconds; 137 controller tests passed; complete live preview pending | required |
 | REQ-MTLS-ACTIVATE | OPS-1792928402860448 | Not yet run | required |
 | REQ-PIS-READ | OPS-1792928403354199 | Not yet run | required |
 | REQ-PIS-BOUNDARY | OPS-1792928403354199 | Not yet run | required |

@@ -760,9 +760,10 @@ Sender replacement checks use the actual pinned vmagent parser and persistent
 queue behavior. Clean and abrupt restart evidence must query pre-restart sample
 timestamps at the collector; queue files, empty buffers and fresh samples alone
 cannot pass. Byte/block drop counters are not interchangeable with sample counts.
-Historical dedicated-host
-selector tests prove staging-only enablement, disabled production, required
-explicit secret scope, and mixed-scope refusal before Terraform or publication.
+Historical dedicated-host selector fixtures prove staging-only enablement.
+The rebuild admits its four exact workspaces while other production names stay
+disabled. Selector and operator tests preserve explicit secret scope, exact
+inventory/topology binding, and mixed-scope refusal before provider access.
 The old global boolean must fail, not become an implicit compatibility path.
 Focused
 unit tests keep the fixed staging row order, exact-host and private-file

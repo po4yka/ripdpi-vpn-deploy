@@ -135,6 +135,7 @@
     argv: >-
       {{ ['python3', '-', '--directory', xray_log_path, '--user',
           xray_runtime_user, '--group', xray_runtime_group]
+         + (['--retire-directory', '/var/log/xray'] if xray_log_path != '/var/log/xray' else [])
          + (['--check'] if ansible_check_mode else []) }}
     stdin: "{{ lookup('ansible.builtin.file', role_path ~ '/files/xray_log_setup.py') }}"
   register: _xray_logs

@@ -455,6 +455,13 @@ def _require_inventory_scope(
                 nodes[0]["failure_domain"] != values.get("observability_failure_domain"),
             )):
                 raise OperatorError("inventory topology binding rejected")
+        specification = importlib.util.spec_from_file_location(
+            "observability_selector", ROOT / "scripts/validate-secrets.py"
+        )
+        selector = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(selector)
+        if not selector._observability_selector_enabled([args.environment]):
+            raise OperatorError("environment not admitted")
     except OperatorError:
         raise
     except (KeyError, TypeError, ValueError, binascii.Error):
@@ -1140,11 +1147,17 @@ def _require_retained_generation(
         raise OperatorError("retained rollback generation rejected")
 
 
+def _environment_name(value: str) -> str:
+    if re.fullmatch(r"[a-z][a-z0-9-]{0,63}", value) is None:
+        raise argparse.ArgumentTypeError("invalid environment name")
+    return value
+
+
 def _parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--inventory", type=Path, required=True)
     common.add_argument("--host", required=True)
-    common.add_argument("--environment", choices=("staging", "prod"), required=True)
+    common.add_argument("--environment", type=_environment_name, required=True)
     common.add_argument("--component", choices=tuple(COMPONENTS), required=True)
     common.add_argument("--known-hosts", type=Path, required=True)
     common.add_argument("--secrets", type=Path)

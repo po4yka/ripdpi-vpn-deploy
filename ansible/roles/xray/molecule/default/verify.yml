@@ -109,6 +109,12 @@
             (xray_short_ids.stdout_lines | map('length') | select('odd') | list | length) == 0
         fail_msg: "REALITY shortIds must all have even length. Got: {{ xray_short_ids.stdout_lines }}"
 
+    - name: Logs at the previous default log root are retired
+      ansible.builtin.shell:
+        cmd: test -z "$(find /var/log/xray -type f)"
+        executable: /bin/bash
+      changed_when: false
+
     - name: Xray runtime can append logs but cannot replace directory entries
       ansible.builtin.shell:
         cmd: |

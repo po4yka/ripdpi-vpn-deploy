@@ -711,8 +711,26 @@ jobs:
           docker cp "$GITHUB_WORKSPACE/." transport-runtime-acceptance:/opt/rta
           docker start transport-runtime-acceptance
           docker exec transport-runtime-acceptance /bin/bash -eu -c '
-            apt-get update
-            apt-get install -y --no-install-recommends \
+            # Package pins require the matching archive, not the moving mirrors.
+            # Package pins prefer the matching archive snapshot. Its mirror has multi-minute 5xx outages
+            # and update exits 0 on them, so fail it explicitly and fall back to the live archive: the
+            # exact version pins below still refuse any package that is not the reviewed build.
+            apt_options=(-o Acquire::Retries=5)
+            snapshot_ok=0
+            for attempt in 1 2 3; do
+              if apt-get "${apt_options[@]}" -o APT::Update::Error-Mode=any --snapshot 20261026T120000Z update; then
+                snapshot_ok=1
+                break
+              fi
+              sleep $((attempt * 10))
+            done
+            if [ "$snapshot_ok" = 1 ]; then
+              apt_options+=(--snapshot 20261026T120000Z)
+            else
+              echo "::warning::Ubuntu snapshot mirror unavailable; using the live archive with exact version pins"
+              apt-get "${apt_options[@]}" update
+            fi
+            apt-get "${apt_options[@]}" install -y --no-install-recommends \
               nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 \
               iproute2 openssl curl ca-certificates openssh-server \
               python3-yaml make unzip \

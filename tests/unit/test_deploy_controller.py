@@ -225,6 +225,32 @@ def assert_bootstrap_readiness(entry, address):
     assert "/var/lib/cloud-init-vpn-bootstrap.done" in remote
 
 
+@pytest.mark.parametrize("target", ["dry-run", "deploy"])
+def test_full_site_has_a_bounded_two_hour_session(workspace, target):
+    record = workspace["root"].parent / "site-session-budget.json"
+    binary = Path(workspace["env"]["PATH"].split(os.pathsep)[0])
+    write(binary / "python3", f"""#!{sys.executable}
+import json, os, pathlib, runpy, sys
+if len(sys.argv) > 1 and sys.argv[1] == 'scripts/deploy-controller.py':
+    sys.argv = sys.argv[1:]
+    sys.path.insert(0, str(pathlib.Path(sys.argv[0]).resolve().parent))
+    namespace = runpy.run_path(sys.argv[0])
+    globals_ = namespace['controller'].__globals__
+    original = globals_['checked']
+    def record_site(command, **options):
+        if command[0] == 'ansible-playbook' and pathlib.Path(command[1]).name.endswith('-site.json'):
+            pathlib.Path({str(record)!r}).write_text(json.dumps({{
+                'timeout': options['timeout'], 'stream': options['stream']}}))
+        return original(command, **options)
+    globals_['checked'] = record_site
+    raise SystemExit(namespace['main']())
+os.execv({sys.executable!r}, [{sys.executable!r}, *sys.argv[1:]])
+""", 0o700)
+    result = invoke(workspace, target=target, limit="node-one")
+    assert result.returncode == 0, result.stderr
+    assert json.loads(record.read_text()) == {"timeout": 7200, "stream": True}
+
+
 def test_restore_runtime_secrets_reach_the_first_tagged_deploy(workspace):
     """Real Make/decrypt/controller; only SOPS, checks and transport are fixtures."""
     import hashlib

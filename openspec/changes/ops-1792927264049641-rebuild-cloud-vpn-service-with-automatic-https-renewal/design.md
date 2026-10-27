@@ -60,6 +60,9 @@ transaction. Hysteria has native ACME support in its pinned server release.
   collector or old acceptance receipt is reused.
 - SSH ownership schema 2 requires an explicit VPN or observer inventory section.
   Keep identical source, dual-path and rollback checks for both sections.
+- Allow 7200 seconds for a complete first-convergence or preview session on
+  admitted small nodes. Keep the separate SSH, native validation and transaction
+  deadlines, owned-child cancellation and failed-preflight refusal.
 - Use per-provider encrypted operator documents and separate runtime grants.
   The decryption identity has an independently verified vault copy. Temporary
   plaintext identities and operation output are removed when no longer needed.

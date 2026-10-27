@@ -27,6 +27,17 @@ OLD_CONTEXTS = {
 }
 
 
+def test_native_package_pins_use_the_immutable_ubuntu_snapshot_with_exact_version_fallback():
+    job = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]["transport-runtime-acceptance"]
+    script = next(step["run"] for step in job["steps"] if "apt-get" in step.get("run", ""))
+    assert script.count("--snapshot 20261026T120000Z") == 2
+    assert "APT::Update::Error-Mode=any" in script
+    assert "Acquire::Retries=5" in script
+    for pin in ("nftables=1.0.9-1ubuntu0.1", "libnftables1=1.0.9-1ubuntu0.1",
+                "nginx=1.24.0-2ubuntu7.18", "nginx-common=1.24.0-2ubuntu7.18"):
+        assert pin in script
+
+
 def test_all_ci_python_consumers_share_the_pinned_cached_install():
     jobs = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
     disposable_steps = yaml.safe_load(

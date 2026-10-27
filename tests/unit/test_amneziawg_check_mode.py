@@ -1,10 +1,73 @@
 """AmneziaWG source-pin attestation must remain active in check mode."""
 
+import json
+import os
 from pathlib import Path
+import re
+import subprocess
+import sys
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.mark.parametrize(
+    "check_mode,helper_changed,refused,invoked,expected_exit",
+    [(True, True, True, False, 0), (True, False, False, True, 0),
+     (True, False, True, True, 2), (False, True, False, True, 0)],
+    ids=["fresh-check", "installed-check", "installed-refusal", "ordinary-install"],
+)
+def test_retirement_uses_only_available_current_helpers(
+    tmp_path, check_mode, helper_changed, refused, invoked, expected_exit
+):
+    tasks = yaml.safe_load((ROOT / "ansible/roles/amneziawg/tasks/consumer-disable.yml").read_text())
+    selected = [task for task in tasks if task["name"] in {
+        "Select the complete accepted AWG retirement plan",
+        "Predict fresh AmneziaWG consumer retirement",
+        "Accept complete AWG retirement with retained runtime compensation",
+    }]
+    marker = tmp_path / "consumer-request.json"
+    binaries = tmp_path / "bin"
+    binaries.mkdir()
+    consumer = binaries / "python3"
+    consumer.write_text(
+        f"#!{sys.executable}\n"
+        "import json,sys\nfrom pathlib import Path\n"
+        "assert sys.argv[1:] == ['-Es', '/usr/local/libexec/ripdpi-consumer/amneziawg_consumer.py', 'apply']\n"
+        f"Path({str(marker)!r}).write_text(json.dumps(json.load(sys.stdin)))\n"
+        "print(json.dumps({'changed': False}))\n"
+        f"raise SystemExit({65 if refused else 0})\n"
+    )
+    consumer.chmod(0o755)
+    play = tmp_path / "retirement.yml"
+    play.write_text(yaml.safe_dump([{
+        "hosts": "localhost", "connection": "local", "gather_facts": False, "become": False,
+        "environment": {"PATH": str(binaries) + ":" + os.environ["PATH"]},
+        "vars": {"ansible_python_interpreter": sys.executable,
+                 "_awg_consumer_install": {"changed": helper_changed}},
+        "tasks": selected,
+    }]))
+    argv = ["ansible-playbook", "-i", "localhost,", str(play)]
+    if check_mode:
+        argv.append("--check")
+    result = subprocess.run(argv, capture_output=True, text=True, timeout=30,
+                            env={**os.environ, "ANSIBLE_CONFIG": str(ROOT / "ansible/ansible.cfg"),
+                                 "ANSIBLE_NOCOLOR": "1", "ANSIBLE_STDOUT_CALLBACK": "default"})
+    assert result.returncode == expected_exit, result.stdout + result.stderr
+    assert marker.exists() == invoked
+    if invoked:
+        request = json.loads(marker.read_text())
+        assert request["check"] is check_mode
+        assert request["candidates"] == [
+            {"path": "/etc/systemd/system/awg-quick@.service", "absent": True},
+            {"path": "/etc/systemd/system/awg-quick.target", "absent": True},
+            {"path": "/var/lib/ripdpi/amneziawg/instances.json", "absent": True},
+        ]
+    else:
+        recap = re.search(r"localhost\s+:.*changed=(\d+)", result.stdout)
+        assert recap and recap.group(1) == "1"
 
 
 def test_commit_resolution_is_normal_mode_attestation_only():

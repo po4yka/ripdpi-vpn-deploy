@@ -8,10 +8,14 @@ existing host. The observer is not a Terraform fleet node. No new server,
 volume, paid monitoring account, public DNS or public monitoring listener is
 part of this workflow.
 
-The tracked `observability_contract.enabled_environments` still contains only
-`staging`; production is not implicitly enabled. Inventory derives scope from
-`HOSTS` and rejects mixed enabled/disabled environments before provider access.
-Strict secret checks require explicit `--environment` values.
+The tracked `observability_contract.enabled_environments` admits `staging` and
+the approved rebuild workspaces `p0-upcloud`, `p1-scaleway`, `p2-vultr` and
+`observer-upcloud`. Other environments, including the generic `prod` name, stay
+disabled. Inventory derives scope from `HOSTS` and rejects mixed enabled/disabled
+environments before provider access. Strict secret checks require explicit
+`--environment` values. The operator keeps each exact workspace name and checks
+its inventory and topology binding; notification drills remain staging-only.
+Retire installed components before removing their workspace from this allowlist.
 
 This runbook does not authorize host access, deployment, new credentials,
 service interruptions or cutover. Preserve any working old alarm route until
