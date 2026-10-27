@@ -86,3 +86,25 @@ def test_group_writable_parent_is_refused_without_repair(logs):
         provision(logs)
     assert stat.S_IMODE(logs.parent.stat().st_mode) == 0o775
     assert not logs.exists()
+
+
+def test_retire_logs_unlinks_only_log_entries_and_never_follows_a_replaced_directory(tmp_path):
+    legacy = tmp_path / 'legacy'
+    legacy.mkdir()
+    for name in ('access.log', 'error.log.1', 'keep.conf'):
+        (legacy / name).write_text('x')
+    (legacy / 'link.log').symlink_to(tmp_path / 'legacy' / 'keep.conf')
+    assert setup.retire_logs(str(legacy), check=True)
+    assert (legacy / 'access.log').exists()
+    assert setup.retire_logs(str(legacy), check=False)
+    assert sorted(path.name for path in legacy.iterdir()) == ['keep.conf', 'link.log']
+    assert not setup.retire_logs(str(legacy), check=False)
+
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    (outside / 'root.log').write_text('x')
+    swapped = tmp_path / 'swapped'
+    swapped.symlink_to(outside)
+    assert not setup.retire_logs(str(swapped), check=False)
+    assert (outside / 'root.log').exists()
+    assert not setup.retire_logs(str(tmp_path / 'absent'), check=False)
