@@ -180,7 +180,7 @@ def validate_nginx(text: str, label: str) -> str | None:
         return f"{prefix}{port}"
 
     stripped = _re.sub(
-        r"(\blisten\s+(?:\[::\]:)?)(\d+)\b",
+        r"(\blisten\s+(?:\[[0-9a-fA-F:]+\]:|[\w.-]+:)?)(\d+)(?=[\s;])",
         _lift_port,
         stripped,
     )
@@ -196,6 +196,11 @@ def validate_nginx(text: str, label: str) -> str | None:
             "http {\n"
             "    access_log logs/access.log;\n"
             "    error_log  logs/error.log warn;\n"
+            "    client_body_temp_path body;\n"
+            "    proxy_temp_path proxy;\n"
+            "    fastcgi_temp_path fastcgi;\n"
+            "    uwsgi_temp_path uwsgi;\n"
+            "    scgi_temp_path scgi;\n"
             f"{stripped}\n"
             "}\n"
         )
@@ -241,6 +246,11 @@ def main() -> int:
         rel = tpl.relative_to(REPO_ROOT)
         render_vars = dict(vars_)
         render_vars.update(TEMPLATE_RENDER_VARS.get(rel, {}))
+        if tpl.parent.parent.name == "observability_kuma":
+            # The syntax runner does not own the fixture's Tailnet address.
+            render_vars["observability_kuma"] = {
+                **vars_["observability_kuma"], "bind_address": "127.0.0.1"
+            }
         try:
             output = render_template(tpl, render_vars)
         except UndefinedError as exc:
@@ -266,7 +276,10 @@ def main() -> int:
                 err = validate_xray(output, str(rel), xray_log_dir)
                 if err:
                     failures.append(err)
-        elif "nginx" in tpl.parent.parent.name and tpl.name.endswith(".conf.j2"):
+        elif tpl.name.endswith(".conf.j2") and (
+            "nginx" in tpl.parent.parent.name
+            or tpl.parent.parent.name == "observability_kuma"
+        ):
             err = validate_nginx(output, str(rel))
             if err:
                 failures.append(err)
