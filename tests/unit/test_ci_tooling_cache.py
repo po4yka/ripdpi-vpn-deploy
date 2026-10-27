@@ -33,10 +33,13 @@ def test_native_package_pins_use_the_same_immutable_ubuntu_snapshot():
     commands = [shlex.split(line.strip().rstrip("\\"))
                 for step in job["steps"] for line in step.get("run", "").splitlines()
                 if line.strip().startswith("apt-get ")]
-    assert [command[:6] for command in commands] == [
-        ["apt-get", "-o", "Acquire::Retries=5", "--snapshot", "20261026T120000Z", "update"],
-        ["apt-get", "-o", "Acquire::Retries=5", "--snapshot", "20261026T120000Z", "install"],
+    assert [(next(word for word in ("update", "install") if word in command),
+             command[command.index("--snapshot") + 1]) for command in commands] == [
+        ("update", "20261026T120000Z"),
+        ("install", "20261026T120000Z"),
     ]
+    assert all("Acquire::Retries=5" in command for command in commands)
+    assert "APT::Update::Error-Mode=any" in commands[0]
 
 
 def test_all_ci_python_consumers_share_the_pinned_cached_install():

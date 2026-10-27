@@ -712,7 +712,12 @@ jobs:
           docker start transport-runtime-acceptance
           docker exec transport-runtime-acceptance /bin/bash -eu -c '
             # Package pins require the matching archive, not the moving mirrors.
-            apt-get -o Acquire::Retries=5 --snapshot 20261026T120000Z update
+            # The snapshot mirror returns 5xx for a minute at a time; update exits 0 on that unless told otherwise.
+            for attempt in 1 2 3 4 5; do
+              apt-get -o Acquire::Retries=5 -o APT::Update::Error-Mode=any --snapshot 20261026T120000Z update && break
+              [ "$attempt" -lt 5 ] || exit 1
+              sleep $((attempt * 20))
+            done
             apt-get -o Acquire::Retries=5 --snapshot 20261026T120000Z install -y --no-install-recommends \
               nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 \
               iproute2 openssl curl ca-certificates openssh-server \
