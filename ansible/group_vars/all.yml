@@ -247,10 +247,10 @@ network_exposure_gate:
   authorized_hosts: []
 
 # Versioned observability configuration accepts systemd credentials only.
-# Runtime role enablement remains separate. Only staging inventory and secret
-# validation are enabled; production cutover requires an explicit change.
+# Admit the reviewed rebuild workspaces. Runtime role enablement, exact-host
+# capacity, private-path and backup admission remain separate.
 observability_contract:
-  enabled_environments: [staging]
+  enabled_environments: [staging, p0-upcloud, p1-scaleway, p2-vultr, observer-upcloud]
   schema_version: 1
   credential_mode: systemd
 
