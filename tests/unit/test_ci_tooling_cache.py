@@ -28,18 +28,15 @@ OLD_CONTEXTS = {
 }
 
 
-def test_native_package_pins_use_the_same_immutable_ubuntu_snapshot():
+def test_native_package_pins_use_the_immutable_ubuntu_snapshot_with_exact_version_fallback():
     job = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]["transport-runtime-acceptance"]
-    commands = [shlex.split(line.strip().rstrip("\\"))
-                for step in job["steps"] for line in step.get("run", "").splitlines()
-                if line.strip().startswith("apt-get ")]
-    assert [(next(word for word in ("update", "install") if word in command),
-             command[command.index("--snapshot") + 1]) for command in commands] == [
-        ("update", "20261026T120000Z"),
-        ("install", "20261026T120000Z"),
-    ]
-    assert all("Acquire::Retries=5" in command for command in commands)
-    assert "APT::Update::Error-Mode=any" in commands[0]
+    script = next(step["run"] for step in job["steps"] if "apt-get" in step.get("run", ""))
+    assert script.count("--snapshot 20261026T120000Z") == 2
+    assert "APT::Update::Error-Mode=any" in script
+    assert "Acquire::Retries=5" in script
+    for pin in ("nftables=1.0.9-1ubuntu0.1", "libnftables1=1.0.9-1ubuntu0.1",
+                "nginx=1.24.0-2ubuntu7.18", "nginx-common=1.24.0-2ubuntu7.18"):
+        assert pin in script
 
 
 def test_all_ci_python_consumers_share_the_pinned_cached_install():
