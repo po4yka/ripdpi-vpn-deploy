@@ -12,3 +12,16 @@
         state: directory
         owner: root
         mode: '0775'
+
+    - name: Create the previous default log root
+      ansible.builtin.file:
+        path: /var/log/xray
+        state: directory
+        mode: '0755'
+
+    - name: Seed logs at the previous default log root
+      ansible.builtin.copy:
+        dest: "/var/log/xray/{{ item }}"
+        content: "legacy\n"
+        mode: '0640'
+      loop: [access.log, error.log.1]
