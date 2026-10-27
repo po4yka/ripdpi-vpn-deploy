@@ -712,8 +712,8 @@ jobs:
           docker start transport-runtime-acceptance
           docker exec transport-runtime-acceptance /bin/bash -eu -c '
             # Package pins require the matching archive, not the moving mirrors.
-            apt-get --snapshot 20261026T120000Z update
-            apt-get --snapshot 20261026T120000Z install -y --no-install-recommends \
+            apt-get -o Acquire::Retries=5 --snapshot 20261026T120000Z update
+            apt-get -o Acquire::Retries=5 --snapshot 20261026T120000Z install -y --no-install-recommends \
               nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 \
               iproute2 openssl curl ca-certificates openssh-server \
               python3-yaml make unzip \
