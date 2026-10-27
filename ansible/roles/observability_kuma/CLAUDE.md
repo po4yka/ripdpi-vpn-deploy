@@ -92,6 +92,9 @@ Explicit panel-only mode has N+1 node/pipeline monitors and no Telegram authorit
 
 ## Pitfalls
 
+- Quote the push location regex: nginx treats unquoted quantifier braces as
+  configuration delimiters. The shared template check runs its native parser.
+
 - Container and image inspection must run read-only in check mode. A skipped
   command has no JSON ownership evidence and cannot admit an existing runtime.
 - Fresh check mode defers activation only for absent units whose exact template

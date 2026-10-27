@@ -21,7 +21,7 @@ server {
     allow {{ source }};
 {% endfor %}
     deny all;
-    location ~ ^/api/push/[A-Za-z0-9_-]{20,128}$ {
+    location ~ "^/api/push/[A-Za-z0-9_-]{20,128}$" {
         limit_except GET { deny all; }
         if ($args != "") { return 400; }
         proxy_pass http://127.0.0.1:{{ observability_kuma.admin_port }};
