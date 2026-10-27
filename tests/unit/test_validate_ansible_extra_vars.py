@@ -43,6 +43,25 @@ def test_accepts_management_path_and_forwarding_overrides(tmp_path: Path) -> Non
     validator.validate(path)
 
 
+@pytest.mark.parametrize('policy,accepted', [
+    ({}, True),
+    ({'address': '100.64.0.2', 'sources': ['100.64.0.3']}, True),
+    ({'address': '100.64.0.2', 'sources': ['0.0.0.0/0']}, False),
+    ({'address': '192.0.2.2', 'sources': ['100.64.0.3']}, False),
+    ({'address': '100.64.0.2', 'sources': []}, False),
+    ({'address': '100.64.0.2', 'sources': ['100.64.0.3'] * 2}, False),
+    ({'address': '100.64.0.2', 'sources': ['100.64.0.3'], 'port': 443}, False),
+    ('100.64.0.2', False),
+])
+def test_collector_override_uses_bounded_private_contract(tmp_path, policy, accepted):
+    path = write_yaml(tmp_path, {'firewall_tailnet_collector_ingress': policy})
+    if accepted:
+        validator.validate(path)
+    else:
+        with pytest.raises(ValueError, match='collector-invalid-tailnet-ingress'):
+            validator.validate(path)
+
+
 @pytest.mark.parametrize('root,snapshot,accepted', [
     ('/run/vpn-acme-restore-a1b2c3d4', 'a'*64, True),
     ('/etc', 'a'*64, False), ('/run/vpn-acme-restore-a1b2c3d4/../other', 'a'*64, False),

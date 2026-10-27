@@ -1,0 +1,15 @@
+---
+- name: Validate exact Tailnet collector ingress
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ role_path }}/../../../scripts/firewall_collector_ingress.py"
+    stdin: >-
+      {{ {'policy': firewall_tailnet_collector_ingress | default({}),
+          'enabled': vpn.enable_tailnet_management | default(false) | bool,
+          'local_address': ansible_facts.get('tailscale0', {}).get('ipv4', {}).get('address', '')} | to_json }}
+    stdin_add_newline: false
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  check_mode: false

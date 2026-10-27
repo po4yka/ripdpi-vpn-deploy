@@ -164,7 +164,9 @@ table inet filter {
     tcp dport {{ ssh_port }} ip6 saddr { {{ ssh_v6_cidrs | join(", ") }} } accept
 {% endif %}
 
-{% for listener in public_listener_contract | default([]) %}
+{% if firewall_tailnet_collector_ingress | default({}) %}
+    iifname "tailscale0" ip daddr {{ firewall_tailnet_collector_ingress.address }} ip saddr { {{ firewall_tailnet_collector_ingress.sources | join(', ') }} } tcp dport 9443 accept comment "private-collector-ingress"
+{% endif %}{% for listener in public_listener_contract | default([]) %}
 {% set listener_target = listener.port if listener.port is not none else listener.port_range %}
     # Public listener contract: {{ listener.name }} ({{ listener.protocol }}/{{ listener_target }})
 {% if listener.name == 'cdn-front' and (cdn_front.origin_firewall | default(true)) %}

@@ -37,7 +37,8 @@ def workspace(tmp_path):
     (root / "Makefile").write_bytes((ROOT / "Makefile").read_bytes())
     for name in ("fleet_inspection.py", "deploy-source-identity.sh", "sshd_bundle_source.py", "sshd_contexts.py",
                  "sshd_transaction_limits.py",
-                 "validate-ansible-extra-vars.py", "transport_semantics.py", "deploy-controller.py", "bootstrap_readiness.py",
+                 "validate-ansible-extra-vars.py", "firewall_collector_ingress.py", "transport_semantics.py",
+                 "deploy-controller.py", "bootstrap_readiness.py",
                  "network-exposure-gate.py", "ci_deployment.py", "tailnet_management.py"):
         source = ROOT / "scripts" / name
         if source.exists():

@@ -18,9 +18,8 @@
     _nat_ssh_port: "{{ ansible_port | default(22) }}"
   when: terraform_nat_source_port_range | default('') != ''
 
-- name: Prepare retained firewall consumer authority
-  ansible.builtin.import_tasks: consumer-prepare.yml
-  when: (firewall_site_transaction | default(false) | bool) or (firewall_stage_candidate | default(false) | bool)
+- name: Admit private collector scope before firewall mutation
+  ansible.builtin.import_tasks: collector-admission.yml
 
 - name: Admit AmneziaWG dual-stack forwarding prerequisites before mutation
   ansible.builtin.import_tasks: awg-uplink.yml
@@ -111,6 +110,23 @@
         or firewall_effective_ssh_ports[0] | int > (terraform_nat_source_port_range.split('-')[1] | int))
     fail_msg: "sshd -T must expose exactly one valid listener port before firewall convergence."
 
+- name: Reserve the private collector port
+  vars:
+    _collector_public_overlaps: >-
+      {%- set ns = namespace(names=[]) -%}
+      {%- for listener in public_listener_contract | default([]) if listener.protocol | trim | lower == 'tcp' -%}
+      {%-   set bounds = ((listener.port ~ '-' ~ listener.port) if listener.port is not none else listener.port_range).split('-') -%}
+      {%-   if bounds[0] | int <= 9443 <= bounds[1] | int -%}
+      {%-     set ns.names = ns.names + [listener.name] -%}
+      {%-   endif -%}
+      {%- endfor -%}
+      {{ ns.names }}
+  ansible.builtin.assert:
+    that:
+      - not (firewall_tailnet_collector_ingress | default({})) or firewall_effective_ssh_ports[0] | int != 9443
+      - not (firewall_tailnet_collector_ingress | default({})) or _collector_public_overlaps | length == 0
+    fail_msg: collector-ingress-port-overlap
+
 # The contract loop in nftables.conf.j2 accepts listener ports without the
 # SSH source restriction, so a TCP listener on the SSH port would bypass
 # allowed_ssh_cidrs. Not allowlistable: that accept is the defect itself.
@@ -134,6 +150,10 @@
       claim the effective SSH port tcp/{{ firewall_effective_ssh_ports[0] }}.
       Move them to another port; the firewall would otherwise accept SSH from
       sources outside allowed_ssh_cidrs.
+
+- name: Prepare retained firewall consumer authority
+  ansible.builtin.import_tasks: consumer-prepare.yml
+  when: (firewall_site_transaction | default(false) | bool) or (firewall_stage_candidate | default(false) | bool)
 
 - name: Disable provider-image UFW firewall
   ansible.builtin.import_tasks: retire-provider-ufw.yml

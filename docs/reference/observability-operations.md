@@ -111,6 +111,13 @@ Kuma token per monitor.
 `observability_kuma_secrets` holds observer TLS, N+2 monitor bindings, a distinct
 secondary Telegram credential, and the existing backup recipient.
 
+Before collector installation, converge `firewall_tailnet_collector_ingress`
+through the ordinary full-site dry-run and deployment. Its private override
+contains `address` (the observed collector Tailnet IPv4) and `sources` (one to
+ten unique exact Tailnet IPv4 senders). The rule admits only TCP/9443 on
+`tailscale0`; SSH and public TCP port ownership conflicts refuse before mutation.
+Component lifecycle commands do not change the canonical guest firewall.
+
 The controller binds capabilities, provider/environment and source revision to
 the canonical topology. It isolates one literal host and disables ambient
 Ansible discovery, SSH configuration/proxies/multiplexing, debug and diff.

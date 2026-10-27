@@ -3,6 +3,25 @@
   hosts: all
   become: true
   tasks:
+    - name: Verify private collector rule in the loaded kernel policy
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, subprocess
+            rows = json.loads(subprocess.check_output(['nft', '-j', 'list', 'chain', 'inet', 'filter', 'input']))['nftables']
+            matches = [row['rule'] for row in rows if row.get('rule', {}).get('comment') == 'private-collector-ingress']
+            assert len(matches) == 1
+            assert matches[0]['expr'] == [
+                {'match': {'op': '==', 'left': {'meta': {'key': 'iifname'}}, 'right': 'tailscale0'}},
+                {'match': {'op': '==', 'left': {'payload': {'protocol': 'ip', 'field': 'daddr'}}, 'right': '100.64.0.2'}},
+                {'match': {'op': '==', 'left': {'payload': {'protocol': 'ip', 'field': 'saddr'}},
+                           'right': {'set': ['100.64.0.3', '100.64.0.4']}}},
+                {'match': {'op': '==', 'left': {'payload': {'protocol': 'tcp', 'field': 'dport'}}, 'right': 9443}},
+                {'accept': None}]
+      changed_when: false
+
     - name: Provider-image UFW is inactive after converge
       ansible.builtin.command: ufw status
       register: _firewall_verify_ufw

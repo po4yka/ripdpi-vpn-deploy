@@ -11,11 +11,13 @@ from pathlib import Path
 import yaml
 
 from transport_semantics import origin_valid
+from firewall_collector_ingress import validate as validate_collector_ingress
 
 ALLOWED_KEYS = {
     "ansible_host",
     "ansible_port",
     "firewall_forward_interface_contract",
+    "firewall_tailnet_collector_ingress",
     "public_site_canonical_url",
     "network_exposure_gate",
     "vpn_device_revocation",
@@ -137,6 +139,9 @@ def validate(path: Path) -> None:
         url = document["public_site_canonical_url"]
         if not origin_valid(url):
             raise ValueError("public_site_canonical_url must be a canonical HTTPS origin")
+
+    if "firewall_tailnet_collector_ingress" in document:
+        validate_collector_ingress(document['firewall_tailnet_collector_ingress'])
 
     if "firewall_forward_interface_contract" in document:
         contracts = document["firewall_forward_interface_contract"]
