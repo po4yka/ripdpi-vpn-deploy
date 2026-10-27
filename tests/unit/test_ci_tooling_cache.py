@@ -2,7 +2,6 @@
 
 from pathlib import Path
 import re
-import shlex
 
 import yaml
 
