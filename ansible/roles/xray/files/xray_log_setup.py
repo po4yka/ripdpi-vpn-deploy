@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 from contextlib import contextmanager
 import grp
 import json
@@ -116,11 +117,43 @@ def provision(directory: str, uid: int, gid: int, *, check: bool = False) -> boo
                 return changed
 
 
+def retire_logs(directory, check):
+    """Unlink log files from a legacy directory through a no-follow descriptor."""
+    current = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for name in [part for part in directory.split("/") if part]:
+            try:
+                child = os.open(
+                    name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=current
+                )
+            except (FileNotFoundError, NotADirectoryError):
+                return False
+            except OSError as error:
+                if error.errno == errno.ELOOP:
+                    return False
+                raise
+            os.close(current)
+            current = child
+        changed = False
+        for name in os.listdir(current):
+            if not (name.endswith(".log") or ".log." in name):
+                continue
+            if not stat.S_ISREG(os.stat(name, dir_fd=current, follow_symlinks=False).st_mode):
+                continue
+            changed = True
+            if not check:
+                os.unlink(name, dir_fd=current)
+        return changed
+    finally:
+        os.close(current)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--directory", required=True)
     parser.add_argument("--user", required=True)
     parser.add_argument("--group", required=True)
+    parser.add_argument("--retire-directory")
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     try:
@@ -132,6 +165,8 @@ def main() -> None:
                 raise
             uid, gid = -1, -1
         changed = provision(args.directory, uid, gid, check=args.check)
+        if args.retire_directory:
+            changed = retire_logs(args.retire_directory, args.check) or changed
     except (OSError, ValueError, KeyError):
         raise SystemExit(
             "Xray log provisioning refused unsafe or unavailable state"
