@@ -165,7 +165,9 @@ def main() -> None:
                 raise
             uid, gid = -1, -1
         changed = provision(args.directory, uid, gid, check=args.check)
-        if args.retire_directory:
+        if args.retire_directory and (
+            os.path.normpath(args.retire_directory) != os.path.normpath(args.directory)
+        ):
             changed = retire_logs(args.retire_directory, args.check) or changed
     except (OSError, ValueError, KeyError):
         raise SystemExit(
