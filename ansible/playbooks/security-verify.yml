@@ -164,6 +164,13 @@
       ansible.builtin.set_fact:
         public_listener_contract: "{{ terraform_public_listeners_b64 | b64decode | from_json }}"
 
+    - name: Gather network facts for DHCPv6 scope verification
+      ansible.builtin.setup:
+        gather_subset: ['!all', '!min', network]
+
+    - name: Admit DHCPv6 scope before listener verification
+      ansible.builtin.import_tasks: ../roles/firewall/tasks/dhcpv6-admission.yml
+
     - name: Public listeners match enabled profile manifest
       ansible.builtin.script:
         cmd: >-
@@ -172,6 +179,8 @@
               playbook_dir ~ '/../../scripts/verify-public-listeners.py',
               '--contract-b64', terraform_public_listeners_b64,
               '--ssh-port', security_effective_ssh_ports[0] | string,
+              '--dhcpv6-uplink', firewall_effective_dhcpv6_uplink_interface,
+              '--dhcpv6-servers-b64', firewall_effective_dhcpv6_server_addresses | to_json | b64encode,
               '--tailnet-sources-b64',
               (
                 tailnet_management.approved_sources | default([])

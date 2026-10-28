@@ -117,6 +117,28 @@ def _nft_for_contract(contract: list[dict]) -> str:
     return _nft_document(*rules)
 
 
+def _dhcpv6_reply(source=None, *, interface="uplink0") -> dict:
+    rule = _nft_rule("udp", 546, input_interface=interface)
+    rule["rule"]["expr"][-1:-1] = [
+        {"match": {"op": "==", "left": {"payload": {"protocol": "ip6", "field": "saddr"}},
+                   "right": source if source is not None else {"prefix": {"addr": "fe80::", "len": 10}}}},
+        {"match": {"op": "==", "left": {"fib": {"result": "type", "flags": ["daddr"]}}, "right": "local"}},
+        {"match": {"op": "==", "left": {"payload": {"protocol": "udp", "field": "sport"}}, "right": 547}},
+        {"counter": {"packets": 0, "bytes": 0}},
+    ]
+    return rule
+
+
+def _dhcpv6_deny() -> dict:
+    rule = _nft_rule('udp', 546, verdict='drop')
+    rule['rule']['expr'][-1:-1] = [
+        {'match': {'op': '==', 'left': {'meta': {'key': 'nfproto'}}, 'right': 'ipv6'}},
+        {'match': {'op': '==', 'left': {'payload': {'protocol': 'udp', 'field': 'sport'}}, 'right': 547}},
+        {'counter': {'packets': 0, 'bytes': 0}},
+    ]
+    return rule
+
+
 def _verify_listeners(
     tmp_path: Path,
     contract: list[dict],
@@ -127,6 +149,9 @@ def _verify_listeners(
     tailnet_sources: list[str] | None = None,
     include_tailnet_drop: bool = True,
     native_acme: bool = False,
+    dhcpv6_rules: list[dict] | None = None,
+    dhcpv6_servers=None,
+    dhcpv6_uplink: str = "uplink0",
 ) -> subprocess.CompletedProcess[str]:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir(exist_ok=True)
@@ -141,6 +166,9 @@ def _verify_listeners(
         json.dumps(tailnet_sources or []).encode()
     ).decode()
     resolved_nft = nft_output if nft_output is not None else _nft_for_contract(contract)
+    document = json.loads(resolved_nft)
+    document["nftables"][0:0] = [_dhcpv6_reply(), _dhcpv6_deny()] if dhcpv6_rules is None else dhcpv6_rules
+    resolved_nft = json.dumps(document)
     if include_tailnet_drop:
         document = json.loads(resolved_nft)
         drop = _nft_rule("tcp", ssh_port, input_interface="tailscale0", verdict="drop")
@@ -162,6 +190,10 @@ def _verify_listeners(
             str(ssh_port),
             "--tailnet-sources-b64",
             encoded_tailnet,
+            "--dhcpv6-uplink", dhcpv6_uplink,
+            "--dhcpv6-servers-b64", base64.b64encode(json.dumps(
+                [] if dhcpv6_servers is None else dhcpv6_servers
+            ).encode()).decode(),
         ] + (["--native-acme"] if native_acme else []),
         capture_output=True,
         env=env,
@@ -211,6 +243,11 @@ def test_playbook_runs_repository_listener_verifier() -> None:
     assert "--tailnet-sources-b64" in task["ansible.builtin.script"]["cmd"]
     assert "vpn.enable_tailnet_management" in task["ansible.builtin.script"]["cmd"]
     assert task["failed_when"] == "security_unexpected_public_listeners.rc != 0"
+    gather = next(t for t in play['tasks'] if t['name'] == 'Gather network facts for DHCPv6 scope verification')
+    admission = next(t for t in play['tasks'] if t['name'] == 'Admit DHCPv6 scope before listener verification')
+    assert gather['ansible.builtin.setup']['gather_subset'] == ['!all', '!min', 'network']
+    assert admission['ansible.builtin.import_tasks'] == '../roles/firewall/tasks/dhcpv6-admission.yml'
+    assert play['tasks'].index(gather) < play['tasks'].index(admission) < play['tasks'].index(task)
 
 
 @pytest.mark.parametrize('enabled,native,subscription_only,expected', [
@@ -241,12 +278,15 @@ def test_security_playbook_declares_transience_only_for_enabled_native_acme(
         'security_effective_ssh_ports': [2202],
         'vpn': {'enable_hysteria': enabled, 'enable_tailnet_management': tailnet_enabled},
         'tailnet_management': {'approved_sources': ['100.64.0.2']},
+        'firewall_effective_dhcpv6_uplink_interface': 'uplink0',
+        'firewall_effective_dhcpv6_server_addresses': ['2001:db8::20'],
         'vpn_subscription_only': subscription_only, 'hysteria': {'acme': {}} if native else {},
     })
     result = subprocess.run(['/bin/sh', '-c', command], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     assert json.loads(result.stdout) == [
         '--contract-b64', 'W10=', '--ssh-port', '2202',
+        '--dhcpv6-uplink', 'uplink0', '--dhcpv6-servers-b64', 'WyIyMDAxOmRiODo6MjAiXQ==',
         '--tailnet-sources-b64', 'WyIxMDAuNjQuMC4yIl0=' if tailnet_enabled else 'W10=',
     ] + (['--native-acme'] if expected else [])
 
@@ -753,6 +793,141 @@ def test_baseline_loopback_conntrack_and_icmp_accepts_are_allowed(
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize('servers,source', [
+    (['2001:db8::20'], '2001:db8::20'),
+    (['2001:db8::20'], {'set': ['2001:db8::20']}),
+    (['2001:db8::20', '2001:db8::21'], {'set': ['2001:db8::21', '2001:db8::20']}),
+])
+def test_exact_dhcpv6_server_authority_is_not_a_public_listener(tmp_path, servers, source):
+    result = _verify_listeners(tmp_path, [], '', dhcpv6_servers=servers,
+        dhcpv6_rules=[_dhcpv6_reply(), _dhcpv6_reply(source), _dhcpv6_deny()])
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize('path,replacement', [
+    ((1,), None),
+    ((1, 'match', 'right'), 'other0'),
+    ((1, 'match', 'right'), {'set': ['uplink0', 'other0']}),
+    ((2,), None),
+    ((2, 'match', 'left', 'payload', 'protocol'), 'ip'),
+    ((2, 'match', 'right'), {'prefix': {'addr': '::', 'len': 0}}),
+    ((2, 'match', 'right'), {'prefix': {'addr': 'fe80::', 'len': 10.0}}),
+    ((2, 'match', 'right'), '2001:db8::20'),
+    ((3,), None),
+    ((3, 'match', 'right'), 'unicast'),
+    ((3, 'match', 'left', 'fib', 'flags'), ['saddr']),
+    ((4,), None),
+    ((4, 'match', 'right'), 548),
+    ((4, 'match', 'right'), 547.0),
+    ((0, 'match', 'right'), {'range': [546, 547]}),
+    ((5,), {'unknown': None}),
+    ((5,), {'match': {'op': '==', 'left': {'meta': {'key': 'iifname'}}, 'right': 'uplink0'}}),
+])
+def test_dhcpv6_reply_requires_every_exact_scope_predicate(tmp_path, path, replacement):
+    rule = _dhcpv6_reply()
+    rule['rule']['comment'] = 'dhcpv6-client-reply'
+    expressions = rule['rule']['expr']
+    if len(path) == 1 and replacement is None:
+        del expressions[path[0]]
+    else:
+        target = expressions
+        for key in path[:-1]:
+            target = target[key]
+        target[path[-1]] = replacement
+    result = _verify_listeners(tmp_path, [], '', dhcpv6_rules=[rule, _dhcpv6_deny()])
+    assert result.returncode == 1, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize('rules,servers', [
+    ([], []),
+    ([_dhcpv6_reply(), _dhcpv6_reply()], []),
+    ([_dhcpv6_reply()], ['2001:db8::20']),
+    ([_dhcpv6_reply(), _dhcpv6_reply('2001:db8::20')], []),
+    ([_dhcpv6_reply(), _dhcpv6_reply('2001:db8::21')], ['2001:db8::20']),
+    ([_dhcpv6_reply(), _dhcpv6_reply('2001:db8::20'), _dhcpv6_reply('2001:db8::20')], ['2001:db8::20']),
+])
+def test_dhcpv6_rule_coverage_is_exact(tmp_path, rules, servers):
+    result = _verify_listeners(tmp_path, [], '', dhcpv6_rules=[*rules, _dhcpv6_deny()], dhcpv6_servers=servers)
+    assert result.returncode == 1, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize('rules', [
+    [_dhcpv6_reply()],
+    [_dhcpv6_reply(), _dhcpv6_deny(), _dhcpv6_deny()],
+])
+def test_dhcpv6_requires_one_exact_deny(tmp_path, rules):
+    result = _verify_listeners(tmp_path, [], '', dhcpv6_rules=rules)
+    assert result.returncode == 1
+    assert 'invalid DHCPv6 reply deny rule count' in result.stdout
+
+
+@pytest.mark.parametrize('path,replacement', [
+    ((1,), None),
+    ((1, 'match', 'right'), 'ipv4'),
+    ((2,), None),
+    ((2, 'match', 'right'), 548),
+    ((0, 'match', 'right'), {'range': [546, 547]}),
+    ((3,), {'match': {'op': '==', 'left': {'meta': {'key': 'iifname'}}, 'right': 'uplink0'}}),
+    ((4,), None),
+])
+def test_dhcpv6_deny_cannot_be_widened_or_narrowed(tmp_path, path, replacement):
+    rule = _dhcpv6_deny()
+    target = rule['rule']['expr']
+    if len(path) == 1 and replacement is None:
+        del target[path[0]]
+    else:
+        for key in path[:-1]:
+            target = target[key]
+        target[path[-1]] = replacement
+    result = _verify_listeners(tmp_path, [], '', dhcpv6_rules=[_dhcpv6_reply(), rule])
+    assert result.returncode == 1
+    assert 'invalid DHCPv6 reply deny rule count' in result.stdout
+
+
+@pytest.mark.parametrize('order,accepted', [
+    (['reply', 'deny', 'established'], True),
+    (['established', 'reply', 'deny'], False),
+    (['reply', 'established', 'deny'], False),
+    (['deny', 'reply', 'established'], False),
+    (['established', 'reply', 'deny', 'established'], False),
+])
+def test_dhcpv6_scope_precedes_conntrack_acceptance(tmp_path, order, accepted):
+    established = _nft_rule()
+    established['rule']['expr'].insert(0, {'match': {
+        'op': 'in', 'left': {'ct': {'key': 'state'}},
+        'right': {'set': ['established', 'related']},
+    }})
+    rules = {'reply': _dhcpv6_reply(), 'deny': _dhcpv6_deny(), 'established': established}
+    result = _verify_listeners(tmp_path, [], '', dhcpv6_rules=[rules[name] for name in order])
+    assert result.returncode == (0 if accepted else 1), result.stdout + result.stderr
+    if not accepted:
+        assert 'invalid DHCPv6 reply rule ordering' in result.stdout
+
+
+@pytest.mark.parametrize('servers', [
+    '2001:db8::20', [True], ['::'], ['::1'], ['::/0'], ['ff02::1:2'],
+    ['192.0.2.2'], ['::ffff:c000:202'], ['fe80::20%uplink0'], ['2001:DB8::20'],
+    ['2001:db8::20', '2001:db8::20'], [f'2001:db8::{i:x}' for i in range(17)],
+])
+def test_dhcpv6_server_authority_rejects_noncanonical_or_unbounded_values(tmp_path, servers):
+    result = _verify_listeners(tmp_path, [], '', dhcpv6_servers=servers)
+    assert result.returncode == 2
+    assert 'DHCPv6 servers' in result.stderr
+
+
+@pytest.mark.parametrize('predicate', [
+    {'match': {'op': '==', 'left': {'payload': {'protocol': 'udp', 'field': 'sport'}}, 'right': 547}},
+    {'match': {'op': '==', 'left': {'fib': {'result': 'type', 'flags': ['daddr']}}, 'right': 'local'}},
+])
+def test_dhcpv6_predicates_do_not_relax_public_service_rules(tmp_path, predicate):
+    rule = _nft_rule('udp', 443)
+    rule['rule']['expr'].insert(0, predicate)
+    result = _verify_listeners(tmp_path, [_listener('hysteria', 'udp', port=443)],
+        _ss_line('udp', '0.0.0.0:443'), nft_output=_nft_document(rule))
+    assert result.returncode == 1
+    assert 'restricted or unsupported firewall udp 443' in result.stdout
 
 
 def test_nft_port_set_is_rejected_fail_closed(tmp_path: Path) -> None:

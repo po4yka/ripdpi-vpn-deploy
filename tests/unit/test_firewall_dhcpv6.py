@@ -87,7 +87,10 @@ def test_real_ansible_admission_refuses_before_mutation(tmp_path, override, fact
         },
         "tasks": [
             {"name": "Admit real DHCPv6 inputs", "ansible.builtin.import_tasks": str(ROLE / "tasks/dhcpv6-admission.yml")},
-            {"name": "Observe mutation boundary", "ansible.builtin.copy": {"dest": str(marker), "content": "admitted", "mode": "0600"}},
+            {"name": "Observe mutation boundary", "ansible.builtin.copy": {
+                "dest": str(marker), "mode": "0600",
+                "content": "{{ {'uplink': firewall_effective_dhcpv6_uplink_interface, 'servers': firewall_effective_dhcpv6_server_addresses} | to_json }}",
+            }},
         ],
     }]
     path = tmp_path / "admission.yml"
@@ -99,6 +102,9 @@ def test_real_ansible_admission_refuses_before_mutation(tmp_path, override, fact
         env={**os.environ, "ANSIBLE_CONFIG": str(ROOT / "ansible/ansible.cfg")})
     assert (result.returncode == 0) is accepted, result.stdout + result.stderr
     assert marker.exists() is (accepted and not check)
+    if accepted and not check:
+        import json
+        assert json.loads(marker.read_text()) == {"uplink": "up0", "servers": servers}
     if not accepted:
         assert "dhcpv6-invalid-" in result.stdout
 
