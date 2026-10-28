@@ -206,10 +206,8 @@ def test_playbook_runs_repository_listener_verifier() -> None:
 
     assert "ansible.builtin.script" in task
     assert "scripts/verify-public-listeners.py" in task["ansible.builtin.script"]["cmd"]
-    assert (
-        "--ssh-port {{ security_effective_ssh_ports[0] }}"
-        in task["ansible.builtin.script"]["cmd"]
-    )
+    assert "--ssh-port" in task["ansible.builtin.script"]["cmd"]
+    assert "security_effective_ssh_ports[0]" in task["ansible.builtin.script"]["cmd"]
     assert "--tailnet-sources-b64" in task["ansible.builtin.script"]["cmd"]
     assert "vpn.enable_tailnet_management" in task["ansible.builtin.script"]["cmd"]
     assert task["failed_when"] == "security_unexpected_public_listeners.rc != 0"
@@ -219,18 +217,38 @@ def test_playbook_runs_repository_listener_verifier() -> None:
     (True, True, False, True), (True, False, False, False),
     (False, True, False, False), (True, True, True, False),
 ])
-def test_security_playbook_declares_transience_only_for_enabled_native_acme(enabled, native, subscription_only, expected):
-    import shlex
+@pytest.mark.parametrize('tailnet_enabled', [False, True])
+@pytest.mark.parametrize('path_with_spaces', [False, True])
+def test_security_playbook_declares_transience_only_for_enabled_native_acme(
+    tmp_path, enabled, native, subscription_only, expected,
+    tailnet_enabled, path_with_spaces,
+):
     from scripts.template_render import render_fragment
 
     play = yaml.safe_load(PLAYBOOK.read_text())[0]
     task = next(task for task in play['tasks'] if task['name'] == 'Public listeners match enabled profile manifest')
+    root = tmp_path / ('command path' if path_with_spaces else 'command-path')
+    script = root / 'scripts' / 'verify-public-listeners.py'
+    script.parent.mkdir(parents=True)
+    script.write_text(
+        '#!/usr/bin/env python3\nimport json, sys\nprint(json.dumps(sys.argv[1:]))\n'
+    )
+    script.chmod(0o755)
+    playbook_dir = root / 'ansible' / 'playbooks'
+    playbook_dir.mkdir(parents=True)
     command = render_fragment('security-command.sh.j2', task['ansible.builtin.script']['cmd'], {
-        'playbook_dir': str(PLAYBOOK.parent), 'terraform_public_listeners_b64': 'W10=',
-        'security_effective_ssh_ports': [22], 'vpn': {'enable_hysteria': enabled},
+        'playbook_dir': str(playbook_dir), 'terraform_public_listeners_b64': 'W10=',
+        'security_effective_ssh_ports': [2202],
+        'vpn': {'enable_hysteria': enabled, 'enable_tailnet_management': tailnet_enabled},
+        'tailnet_management': {'approved_sources': ['100.64.0.2']},
         'vpn_subscription_only': subscription_only, 'hysteria': {'acme': {}} if native else {},
     })
-    assert ('--native-acme' in shlex.split(command)) is expected
+    result = subprocess.run(['/bin/sh', '-c', command], capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout) == [
+        '--contract-b64', 'W10=', '--ssh-port', '2202',
+        '--tailnet-sources-b64', 'WyIxMDAuNjQuMC4yIl0=' if tailnet_enabled else 'W10=',
+    ] + (['--native-acme'] if expected else [])
 
     tailnet_check = next(
         item
