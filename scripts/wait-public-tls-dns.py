@@ -69,6 +69,7 @@ def configuration(value):
             raise Refusal("missing Terraform-owned public address")
         address = ipaddress.ip_address(text)
         if (address.version != version or str(address) != text or not address.is_global
+                or "%" in text or getattr(address, "is_site_local", False)
                 or address.is_multicast or getattr(address, "ipv4_mapped", None) is not None):
             raise Refusal("invalid Terraform-owned public address")
         expected[family] = frozenset({str(address)})

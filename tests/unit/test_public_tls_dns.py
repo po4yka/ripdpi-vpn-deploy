@@ -146,6 +146,7 @@ def test_dnssec_metadata_does_not_add_address_authority():
     ("ipv4", "100.64.0.1"), ("ipv4", "127.0.0.1"), ("ipv4", "224.0.0.1"),
     ("ipv4", "2606:4700:4700::1111"), ("ipv6", ""), ("ipv6", "fe80::1"),
     ("ipv6", "::ffff:808:808"), ("ipv6", "2606:4700:4700:0:0:0:0:1111"),
+    ("ipv6", "2606:4700:4700::1111%eth0"), ("ipv6", "fec0::1"),
 ])
 def test_invalid_authority_refuses_before_network(monkeypatch, key, value):
     def unexpected(*args):
