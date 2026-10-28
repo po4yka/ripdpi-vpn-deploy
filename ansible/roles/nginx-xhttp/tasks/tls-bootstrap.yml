@@ -11,6 +11,18 @@
   no_log: true
   when: not ansible_check_mode
 
+- name: Wait for stable public DNS before requesting the managed certificate
+  ansible.builtin.command:
+    argv: [python3, '{{ role_path }}/../../../scripts/wait-public-tls-dns.py']
+    stdin: >-
+      {{ {'domains': nginx_xhttp.acme.domains, 'canonical_domain': nginx_xhttp.server_name,
+          'ipv4': vpn_service_address, 'ipv6': server_ipv6 | default(none)} | to_json }}
+    stdin_add_newline: false
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  when: not ansible_check_mode
+
 - name: Issue validate and publish the exact trusted certificate under one lock
   ansible.builtin.command:
     argv: [python3, /usr/local/libexec/vpn-public-tls, --issue, --config-stdin]

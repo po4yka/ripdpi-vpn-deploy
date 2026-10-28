@@ -40,6 +40,18 @@ transaction. Hysteria has native ACME support in its pinned server release.
   existing helper. Managed TLS files belong only to this owner; the application
   owner must not write them. Parent compensation covers the accepted TLS owner
   together with the application owners.
+- Keep the full deployment alive and owned between HTTP preparation and CA
+  issuance. A controller wait allows at most 600 seconds for three consecutive
+  equal samples from two public DNS resolver views. Every managed name must
+  resolve to the exact Terraform-owned IPv4 and optional IPv6. Auxiliary names
+  may alias the canonical name; unrelated aliases and stale addresses refuse.
+  The operator verifies the real HTTP 301 and canonical Location from a cloud
+  host before the separate reviewed DNS apply. Timeout, DNS child interruption
+  or CA failure enters normal host compensation. Controller cancellation or
+  loss can retain the journal for ordinary interrupted-transaction recovery.
+  DNS can remain changed after later CA failure; preserve that outcome and
+  retry the ordinary full deployment. No partial graph, interactive pause or
+  manual certificate-helper invocation is introduced.
 - Use the official OS Certbot package, a role-owned hardened persistent timer
   and a small activation adapter. Validate SAN, key match and remaining validity
   before giving the complete HTTP/certificate write set to the shared publication helper.

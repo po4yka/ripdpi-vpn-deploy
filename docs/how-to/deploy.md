@@ -390,6 +390,37 @@ discovery. Do not weaken or skip the gate. Confirm the failure matches the
 record in [../explanation/deployment-status.md](../reference/deployment-status.md#snapshot-operator-limitations)
 and fix the source before treating `make dry-run` as green.
 
+### Managed public TLS during DNS cutover
+
+The ordinary full deployment prepares the real nginx HTTP-01 vhost, then waits
+up to 600 seconds for public DNS before it requests a certificate. Keep that
+deployment running. Do not start another deployment or publisher for the host.
+
+From an independent cloud host, request the new public address with the intended
+HTTP Host header. Require the prepared vhost's HTTP 301 and exact canonical
+HTTPS Location on each allocated address family. This proves basic HTTP
+readiness, not a trusted certificate. Only then apply the separately reviewed
+DNS plan and verify its outcome. Do not write a synthetic challenge or start a
+second HTTP server.
+
+The wait requires three consecutive matching samples from two public resolver
+views. Each certificate name must resolve to exactly the Terraform-owned IPv4
+and optional IPv6 from canonical inventory; an old or extra AAAA refuses.
+An auxiliary certificate name can be a CNAME to the canonical name. External
+aliases and longer chains refuse. DNSSEC metadata does not add address authority.
+Check mode makes no DNS or CA request.
+
+Timeout, DNS child interruption or CA failure uses normal protected
+ingress/firewall compensation. Controller cancellation or loss can retain the
+owned journal because the Ansible process cannot complete rescue. Recover it
+through the ordinary full-deploy procedure for an interrupted transaction;
+do not assume that HTTP or firewall state was restored after cancellation.
+DNS is a separate Terraform operation and can remain changed after host
+compensation. Preserve that outcome and use the ordinary full deployment to
+retry; do not delete the journal or bypass admission. Successful
+HTTPS, automatic renewal and authenticated protocol traffic still need their
+separate acceptance checks.
+
 ## Re-deploy after a Terraform change (instance type, zone, firewall)
 
 ```bash

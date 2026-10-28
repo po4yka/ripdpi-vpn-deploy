@@ -4,6 +4,15 @@
   vars:
     transport_input_sections: [xhttp]
 
+- name: Require Terraform-owned public address authority for managed TLS
+  ansible.builtin.assert:
+    that:
+      - vpn_service_address is defined
+      - vpn_service_address is string
+      - vpn_service_address | length > 0
+      - server_ipv6 | default('') is string
+    fail_msg: Managed public TLS requires the Terraform-owned service addresses from canonical inventory.
+
 - name: Require the qualified Certbot package platform
   ansible.builtin.assert:
     that:
