@@ -390,7 +390,8 @@ def inventory_selection(inventory, limit, directory):
     except (UnicodeError, ValueError, fleet_inspection.InspectionError):
         raise DeployError("invalid canonical inventory") from None
     memberships = {name: sorted(group for group, members in groups.items()
-                                if group.startswith("vpn-") and name in members) for name in names}
+                                if group.startswith("vpn-") and group != "vpn-observability-control"
+                                and name in members) for name in names}
     data = "[vpn]\n" + "\n".join(rows[name] for name in names) + "\n"
     for group in sorted(groups):
         members = [name for name in names if group in memberships[name]]
