@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Hysteria probe clients use lazy SOCKS startup because an active server PID can precede initial ACME issuance. Live ACME acceptance still requires system trust, the exact SNI, authentication and canary traffic within the original deadline.
+
 Explicit fresh ACME recovery keeps its directory-commit journal outside accepted runtime authority. Its warm probe uses the unchanged ACME policy and a PID1-owned disposable cache bind mount, then proves system trust, SNI and authenticated forwarding. A pending restore blocks ordinary Hysteria candidate admission.
 
 Standalone frontend retirement passes its exact revocation authority to outer-route completion. Full protected retirement closes through the shared production egress finish task after every staged consumer and owned route has retired.

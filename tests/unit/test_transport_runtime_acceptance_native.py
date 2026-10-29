@@ -59,6 +59,7 @@ def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(
         previous = os.readlink(root / 'current')
         if profile == 'hysteria':
             lab.assert_hysteria_hopping()
+            assert_hysteria_probe_startup(lab)
         # The accepted receipt exists and parses before the upgrade.
         json.loads(Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_text())
         lab.upgrade(profile)
@@ -70,6 +71,7 @@ def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(
             observed = fields('hysteria-server.service')
             assert os.path.samefile('/proc/' + observed['MainPID'] + '/exe', str(root / 'current' / 'hysteria'))
             lab.assert_hysteria_hopping()
+            assert_hysteria_probe_startup(lab)
         receipt = Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_bytes()
         assert not Path('/var/lib/ripdpi/transport-runtime/pending.json').exists()
         assert lab.converge(profile) == 0
@@ -131,6 +133,13 @@ def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(
         assert not Path('/var/lib/ripdpi/transport-runtime/outer.json').exists()
         assert lab.converge(profile) == 0
         assert Path(retired_unit).is_file()
+
+
+def assert_hysteria_probe_startup(lab):
+    fixture.command(['ip', 'netns', 'exec', lab.namespace, sys.executable,
+        str(ROOT / 'tests/integration/transport_runtime_acceptance/hysteria_probe_startup.py'),
+        str(fixture.LIBRARY), '/usr/local/bin/hysteria',
+        lab.context['transport_runtime_probe_url'], str(lab.private)], timeout=120)
 
 
 def assert_xray_generation(release):
