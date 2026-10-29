@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import base64
+import copy
 import importlib.util
+import ipaddress
 import json
 import os
 import subprocess
@@ -594,3 +596,186 @@ def test_revocation_retirement_cleanup_check_is_readonly_and_resume_is_exact(con
     c.awg.operate('recover', {'revocation': authority})
     assert c.awg.operate('apply', resumed)['status'] == 'accepted'
     assert not marker.exists() and not c.cfg.exists() and not c.record.exists()
+
+
+@pytest.fixture
+def ssh_rotation(context, monkeypatch):
+    c = context
+    before = c.fw.HEADER + b'table inet filter {\n chain input {\n  tcp dport 22 ip saddr { 1.1.1.1/32, 9.9.9.9/32 } accept\n }\n}\n'
+    put(c.fw.CONFIG, before, 0o644)
+    c.fw.STATE.mkdir(mode=0o700)
+    with c.tx.Transaction(c.fw.STATE, uid=os.geteuid()) as active:
+        active.record('accepted.json', {'schema': 1, 'nodes': {str(c.fw.CONFIG): c.tx.node(c.fw.CONFIG, os.geteuid())}, 'previous': None, 'units': {}})
+    rule = {'family': 'inet', 'table': 'filter', 'chain': 'input', 'handle': 7, 'expr': [
+        {'match': {'op': '==', 'left': {'payload': {'protocol': 'tcp', 'field': 'dport'}}, 'right': 22}},
+        {'match': {'op': '==', 'left': {'payload': {'protocol': 'ip', 'field': 'saddr'}}, 'right': {'set': ['1.1.1.1', '9.9.9.9']}}},
+        {'accept': None}]}
+    c.kernel['nftables'] = [
+        {'set': {'family': 'inet', 'table': 'filter', 'name': 'f2b_sshd4', 'type': 'ipv4_addr', 'flags': ['timeout'], 'elem': ['8.8.4.4']}},
+        {'rule': rule},
+        {'rule': {'family': 'inet', 'table': 'foreign', 'chain': 'input', 'handle': 12, 'expr': [{'drop': None}]}}]
+    c.kernel['calls'] = []
+    def nft(argv, *, data=None):
+        c.kernel['calls'].append(argv)
+        if argv == ['nft', '-j', 'list', 'ruleset']:
+            return json.dumps({'nftables': c.kernel['nftables']}).encode()
+        if argv == ['nft', '-c', '-f', '-']:
+            return b''
+        if argv == ['nft', '-j', '-f', '-']:
+            replacement = json.loads(data)['nftables'][0]['replace']['rule']
+            selected = [row for row in c.kernel['nftables'] if row.get('rule', {}).get('handle') == replacement['handle']]
+            assert len(selected) == 1
+            selected[0]['rule'] = replacement
+            for item in replacement['expr']:
+                right = item.get('match', {}).get('right')
+                if isinstance(right, dict) and set(right) == {'set'}:
+                    right['set'].sort(key=lambda address: int(ipaddress.IPv4Address(address)))
+            return b''
+        raise AssertionError('rotation must never reload a complete table: ' + repr(argv))
+    monkeypatch.setattr(c.fw, 'command', nft)
+    c.rotation_request = {'old_source': '1.1.1.1', 'new_source': '8.8.8.8', 'port': 22}
+    c.rotation_before = before
+    c.policy_before = copy.deepcopy(c.kernel['nftables'])
+    return c
+
+
+def begin_ssh_rotation(c):
+    checked = c.fw.operate('rotate-ssh', {**c.rotation_request, 'check': True})
+    assert checked['changed'] is True
+    result = c.fw.operate('rotate-ssh', {**c.rotation_request, 'plan': checked['plan']})
+    assert result['status'] == 'accepted'
+    return checked
+
+
+@pytest.mark.parametrize('new_source', ['8.8.8.8', '208.67.222.222'])
+def test_ssh_rotation_preserves_live_timed_sets_and_foreign_tables_on_apply_and_restore(ssh_rotation, new_source):
+    c = ssh_rotation
+    c.rotation_request['new_source'] = new_source
+    checked = c.fw.operate('rotate-ssh', {**c.rotation_request, 'check': True})
+    assert c.fw.CONFIG.read_bytes() == c.rotation_before
+    assert not (c.fw.STATE / 'ssh-rotation.json').exists()
+    begin_ssh_rotation(c)
+    assert c.fw.CONFIG.read_bytes() == c.rotation_before.replace(b'1.1.1.1', new_source.encode())
+    assert c.kernel['nftables'][0] == c.policy_before[0]
+    assert c.kernel['nftables'][2] == c.policy_before[2]
+    with pytest.raises(c.tx.Refusal, match='firewall-ssh-recovery-required'):
+        c.fw.operate('apply', {'data': base64.b64encode(c.rotation_before).decode()})
+    assert c.fw.operate('restore', {'owner': 'site'})['changed'] is True
+    assert c.fw.CONFIG.read_bytes() == c.rotation_before
+    assert c.kernel['nftables'] == c.policy_before
+    assert not (c.fw.STATE / 'ssh-rotation.json').exists()
+    with c.tx.Transaction(c.fw.STATE, uid=os.geteuid(), check=True) as active:
+        assert active.accepted()['nodes'][str(c.fw.CONFIG)] == c.tx.node(c.fw.CONFIG, os.geteuid())
+    assert checked['plan']
+
+
+@pytest.mark.parametrize('changed', ['rule', 'set', 'file', 'owner'])
+def test_ssh_rotation_refuses_foreign_drift_before_restore(ssh_rotation, changed):
+    c = ssh_rotation
+    begin_ssh_rotation(c)
+    if changed == 'rule':
+        c.kernel['nftables'].append({'rule': {'family': 'inet', 'table': 'filter', 'chain': 'input', 'handle': 90, 'expr': [{'accept': None}]}})
+    elif changed == 'set':
+        c.kernel['nftables'][0]['set']['elem'].append('8.8.8.8')
+    elif changed == 'file':
+        put(c.fw.CONFIG, c.fw.CONFIG.read_bytes() + b'# foreign\n', 0o644)
+    else:
+        path = c.fw.STATE / 'consumer.json'
+        value = json.loads(path.read_bytes())
+        value['before'] = None
+        put(path, json.dumps(value))
+    before = c.fw.CONFIG.read_bytes(), copy.deepcopy(c.kernel['nftables'])
+    calls = len(c.kernel['calls'])
+    with pytest.raises(c.tx.Refusal, match='firewall-ssh-'):
+        c.fw.operate('restore', {'owner': 'site'})
+    assert (c.fw.CONFIG.read_bytes(), c.kernel['nftables']) == before
+    assert ['nft', '-j', '-f', '-'] not in c.kernel['calls'][calls:]
+    assert (c.fw.STATE / 'ssh-rotation.json').exists()
+
+
+def test_ssh_rotation_finish_resumes_lost_marker_removal_ack(ssh_rotation, monkeypatch):
+    c = ssh_rotation
+    begin_ssh_rotation(c)
+    original = Path.unlink
+    def interrupted(path, *args, **kwargs):
+        original(path, *args, **kwargs)
+        if path == c.fw.STATE / 'consumer.json':
+            raise SystemExit('lost finish acknowledgement')
+    with monkeypatch.context() as scoped:
+        scoped.setattr(Path, 'unlink', interrupted)
+        with pytest.raises(SystemExit):
+            c.fw.operate('finish', {'owner': 'site'})
+    assert not (c.fw.STATE / 'consumer.json').exists()
+    with pytest.raises(c.tx.Refusal, match='firewall-commit-recovery-required'):
+        c.fw.operate('restore', {'owner': 'site'})
+    assert c.fw.operate('finish', {'owner': 'site'})['changed'] is False
+    assert not (c.fw.STATE / 'ssh-rotation.json').exists()
+    assert c.kernel['nftables'][0] == c.policy_before[0]
+    assert c.fw.CONFIG.read_bytes() == c.rotation_before.replace(b'1.1.1.1', b'8.8.8.8')
+
+
+@pytest.mark.parametrize('after_effect', [False, True])
+def test_ssh_rotation_reconciles_interrupted_rule_publication(ssh_rotation, monkeypatch, after_effect):
+    c = ssh_rotation
+    checked = c.fw.operate('rotate-ssh', {**c.rotation_request, 'check': True})
+    original = c.fw.command
+    def interrupted(argv, *, data=None):
+        if argv == ['nft', '-j', '-f', '-']:
+            if after_effect:
+                original(argv, data=data)
+            raise SystemExit('lost nft acknowledgement')
+        return original(argv, data=data)
+    with monkeypatch.context() as scoped:
+        scoped.setattr(c.fw, 'command', interrupted)
+        with pytest.raises(SystemExit):
+            c.fw.operate('rotate-ssh', {**c.rotation_request, 'plan': checked['plan']})
+    c.fw.operate('restore', {'owner': 'site'})
+    assert c.fw.CONFIG.read_bytes() == c.rotation_before
+    assert c.kernel['nftables'] == c.policy_before
+    assert not (c.fw.STATE / 'ssh-rotation.json').exists()
+
+
+@pytest.mark.parametrize('change', ['source-op', 'port', 'extra-predicate', 'foreign-rule-after-check'])
+def test_ssh_rotation_rejects_wrong_rule_or_changed_reviewed_plan(ssh_rotation, change):
+    c = ssh_rotation
+    checked = c.fw.operate('rotate-ssh', {**c.rotation_request, 'check': True})
+    rule = c.kernel['nftables'][1]['rule']
+    if change == 'source-op':
+        rule['expr'][1]['match']['op'] = '!='
+    elif change == 'port':
+        rule['expr'][0]['match']['right'] = 2222
+    elif change == 'extra-predicate':
+        rule['expr'].insert(0, {'match': {'op': '==', 'left': {'meta': {'key': 'iifname'}}, 'right': 'eth0'}})
+    else:
+        c.kernel['nftables'].append({'rule': {'family': 'inet', 'table': 'foreign', 'chain': 'input', 'handle': 13, 'expr': [{'drop': None}]}})
+    with pytest.raises(c.tx.Refusal, match='firewall-ssh-'):
+        c.fw.operate('rotate-ssh', {**c.rotation_request, 'plan': checked['plan']})
+    assert c.fw.CONFIG.read_bytes() == c.rotation_before
+    assert not (c.fw.STATE / 'ssh-rotation.json').exists()
+
+
+@pytest.mark.parametrize('field', ['phase', 'after', 'policy_after'])
+def test_ssh_rotation_corrupt_intent_refuses_without_mutation(ssh_rotation, field):
+    c = ssh_rotation
+    begin_ssh_rotation(c)
+    path = c.fw.STATE / 'ssh-rotation.json'
+    value = json.loads(path.read_bytes())
+    value[field] = {'phase': 'committing', 'after': base64.b64encode(b'foreign').decode(), 'policy_after': {}}[field]
+    put(path, json.dumps(value))
+    before = c.fw.CONFIG.read_bytes(), copy.deepcopy(c.kernel['nftables'])
+    calls = len(c.kernel['calls'])
+    with pytest.raises(c.tx.Refusal, match='firewall-ssh-rotation-invalid'):
+        c.fw.operate('restore', {'owner': 'site'})
+    assert (c.fw.CONFIG.read_bytes(), c.kernel['nftables']) == before
+    assert len(c.kernel['calls']) == calls
+
+
+def test_ssh_rotation_binds_durable_source_membership_and_rule_order(ssh_rotation):
+    c = ssh_rotation
+    changed = c.rotation_before.replace(b'9.9.9.9/32', b'9.9.9.8/32')
+    put(c.fw.CONFIG, changed, 0o644)
+    with c.tx.Transaction(c.fw.STATE, uid=os.geteuid()) as active:
+        active.record('accepted.json', {'schema': 1, 'nodes': {str(c.fw.CONFIG): c.tx.node(c.fw.CONFIG, os.geteuid())}, 'previous': None, 'units': {}})
+    with pytest.raises(c.tx.Refusal, match='firewall-ssh-durable-runtime-mismatch'):
+        c.fw.operate('rotate-ssh', {**c.rotation_request, 'check': True})
+    assert not (c.fw.STATE / 'ssh-rotation.json').exists()

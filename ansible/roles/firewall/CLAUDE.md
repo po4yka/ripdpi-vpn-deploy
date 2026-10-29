@@ -2,6 +2,12 @@
 
 ## Design decisions
 
+`firewall_consumer.py rotate-ssh` changes one exact IPv4 source in the accepted
+SSH rule. It uses a retained single-rule adapter for apply and restore, so a
+complete nft reload cannot remove dynamic timed sets. The reviewed plan binds
+the complete policy, file and accepted generation. Foreign drift refuses before
+compensation. A committing rotation must finish; it cannot roll back.
+
 `firewall_tailnet_collector_ingress` contains `{address, sources}` and admits
 TCP/9443 only on `tailscale0`, to its observed IPv4 address, from at most ten
 unique exact Tailnet IPv4 sources. Operator overrides and role admission share

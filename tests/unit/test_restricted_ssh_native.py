@@ -41,7 +41,13 @@ def test_explicit_account_authenticates_only_the_forced_key_command():
     base.mkdir(mode=0o755)
     process = None
     created = False
+    privsep = Path('/run/sshd')
+    created_privsep = False
     try:
+        # This case must also run before the system SSH service has started.
+        if not privsep.exists():
+            run('install', '-d', '-m', '0755', str(privsep))
+            created_privsep = True
         home = base / "home"
         run(
             "useradd",
@@ -168,3 +174,5 @@ def test_explicit_account_authenticates_only_the_forced_key_command():
         if created:
             run("userdel", user, check=False)
         shutil.rmtree(base)
+        if created_privsep:
+            privsep.rmdir()

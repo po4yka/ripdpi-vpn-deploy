@@ -25,6 +25,7 @@ artifact_evidence: null
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
 | REQ-BCNI-SIZE | OPS-1792928402362900 | Not yet run | required |
+| REQ-BCNI-SSH-ROTATION | OPS-1792928402362900 | Portable real-file apply, restore, foreign-state refusal and interrupted publication tests pass; native and live acceptance pending | required |
 | REQ-BCNI-DNS | OPS-1792928402362900 | Focused mock suite passed; record adoption and cutover pending | required |
 | REQ-BCNI-OBSERVER | OPS-1792928402362900 | Not yet run | required |
 | REQ-BCNI-PROMOTION | OPS-1792928404361547 | Focused cloud-scope and native-onboarding checks pass; live protocol acceptance pending | required |

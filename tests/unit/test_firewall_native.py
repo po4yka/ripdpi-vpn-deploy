@@ -179,3 +179,59 @@ def test_strict_ipv6_neighbor_resolution_survives_empty_caches():
     result = subprocess.run(["unshare", "--net", sys.executable, "-c", IPV6_CONTROL],
                             input=json.dumps(rendered), capture_output=True, text=True, timeout=40)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+SSH_ROTATION = r'''
+import base64,json,os,pathlib,subprocess,sys,time,types
+p=json.load(sys.stdin)
+for name in ('transport_runtime_transaction','firewall_consumer'):
+ module=types.ModuleType(name);module.__file__=str(pathlib.Path(p['root'])/(name+'.py'));sys.modules[name]=module
+ exec(compile(p[name],module.__file__,'exec'),module.__dict__)
+tx=sys.modules['transport_runtime_transaction'];fw=sys.modules['firewall_consumer']
+root=pathlib.Path(p['root']);fw.STATE=root/'state';fw.STATE.mkdir(mode=0o700);fw.CONFIG=root/'candidate.nft'
+before=fw.HEADER+b'table inet filter;\nflush table inet filter\ndestroy set inet filter f2b_sshd4\ntable inet filter {\n chain input {\n  type filter hook input priority 0; policy drop;\n  tcp dport 22 ip saddr { 1.1.1.1/32, 9.9.9.9/32 } accept\n }\n}\n'
+fw.CONFIG.write_bytes(before);fw.CONFIG.chmod(0o644)
+subprocess.run(['nft','-f',str(fw.CONFIG)],check=True)
+subprocess.run(['nft','add','set','inet','filter','f2b_sshd4','{','type','ipv4_addr',';','flags','timeout',';','}'],check=True)
+subprocess.run(['nft','add','element','inet','filter','f2b_sshd4','{','8.8.4.4','timeout','90s','}'],check=True)
+subprocess.run(['nft','add','table','inet','foreign'],check=True)
+def timed():
+ data=json.loads(subprocess.check_output(['nft','-j','list','set','inet','filter','f2b_sshd4']))
+ value=next(v['set'] for v in data['nftables'] if 'set' in v)
+ entry=value['elem'][0]['elem'];assert entry['val']=='8.8.4.4'
+ return value['handle'],entry['expires']
+handle,remaining=timed()
+with tx.Transaction(fw.STATE,uid=0) as active:
+ active.record('accepted.json',{'schema':1,'nodes':{str(fw.CONFIG):tx.node(fw.CONFIG,0)},'previous':None,'units':{}})
+request={'old_source':'1.1.1.1','new_source':'208.67.222.222','port':22}
+plan=fw.operate('rotate-ssh',{**request,'check':True})['plan']
+time.sleep(1.1)
+fw.operate('rotate-ssh',{**request,'plan':plan})
+assert fw.CONFIG.read_bytes()==before.replace(b'1.1.1.1',b'208.67.222.222')
+current,expiry=timed();assert current==handle and 0<expiry<remaining
+fw.operate('restore',{'owner':'site'})
+assert fw.CONFIG.read_bytes()==before
+current,expiry=timed();assert current==handle and 0<expiry<remaining
+assert any(row.get('table',{}).get('name')=='foreign' for row in fw.live_policy()['nftables'])
+plan=fw.operate('rotate-ssh',{**request,'check':True})['plan']
+fw.operate('rotate-ssh',{**request,'plan':plan})
+fw.operate('finish',{'owner':'site'})
+assert not (fw.STATE/'consumer.json').exists() and not (fw.STATE/'ssh-rotation.json').exists()
+assert timed()[0]==handle
+print(json.dumps({'native_single_rule_apply_restore':True,'timed_set_identity_and_expiry_preserved':True,'foreign_table_preserved':True,'finish':True}))
+'''
+
+
+def test_exact_ssh_rotation_preserves_native_timed_sets(private_authority_path):
+    assert os.geteuid() == 0
+    payload = {'root': str(private_authority_path)}
+    for name, path in (
+        ('transport_runtime_transaction', 'runtime-release/files/transport_runtime_transaction.py'),
+        ('firewall_consumer', 'firewall/files/firewall_consumer.py'),
+    ):
+        payload[name] = (ROOT / 'ansible/roles' / path).read_text()
+    result = subprocess.run(
+        ['unshare', '--net', sys.executable, '-c', SSH_ROTATION],
+        input=json.dumps(payload), text=True, capture_output=True, timeout=45,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

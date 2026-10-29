@@ -4,6 +4,29 @@ Provision current small cloud nodes with explicit storage, purpose and network o
 
 ## ADDED Requirements
 
+### Requirement: REQ-BCNI-SSH-ROTATION — Exact management source replacement
+
+An approved public IPv4 SSH source replacement MUST bind the complete accepted
+file and live policy. Activation and compensation MUST replace only the selected
+rule and preserve other sources, ordered rules, foreign tables and timed sets.
+A changed plan or foreign mutation MUST refuse before publication or recovery.
+The operation MUST retain its native recovery type until management acceptance.
+
+#### Scenario: Retain dynamic sets
+
+- **WHEN** the current file would remove dynamic timed sets on a full reload
+- **THEN** source rotation changes only the exact SSH source and preserves all set definitions and members during activation and compensation.
+
+#### Scenario: Interrupted source replacement
+
+- **WHEN** publication stops before or after the native rule replacement
+- **THEN** the existing transaction restores the exact file and rule through the retained adapter, or refuses with its journal when foreign state is present.
+
+#### Scenario: Lost finish acknowledgement
+
+- **WHEN** the commit decision is durable but the consumer marker removal acknowledgement is lost
+- **THEN** finish can resume against the exact accepted generation and policy, while restore refuses rollback.
+
 ### Requirement: REQ-BCNI-SIZE — Exact current plan and disk
 
 The implementation MUST admit the selected small Starter plans and explicit site root volume size and class. It MUST reject unsupported plan identifiers, undersized disks and implicit unbounded storage. A reviewed saved plan MUST precede creation.
