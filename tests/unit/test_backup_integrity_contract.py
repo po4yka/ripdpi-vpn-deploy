@@ -279,13 +279,67 @@ def test_configuration_requires_one_exact_real_inventory_host(configure, tmp_pat
             configure.select_target(str(inventory), alias)
 
 
-def test_rclone_package_slice_never_refreshes_or_upgrades():
+def test_rclone_package_pin_and_package_manager_ownership():
     import yaml
     root = Path(__file__).resolve().parents[2]
+    defaults = yaml.safe_load((root / "ansible/roles/backup/defaults/main.yml").read_text())
+    assert defaults["backup_rclone_version"] == "1.75.2"
+    assert defaults["backup_rclone_packages"] == {
+        "amd64": {"url": "https://downloads.rclone.org/v1.75.2/rclone-v1.75.2-linux-amd64.deb",
+                  "sha256": "efbfe852181f7191eb3c9043ed1ab49c9b2d0ba045c61c926a5da111c939ec5c"},
+        "arm64": {"url": "https://downloads.rclone.org/v1.75.2/rclone-v1.75.2-linux-arm64.deb",
+                  "sha256": "b8ba161d5c837206fad79ff1aabf0a81aa02a5fb164cdbc0ff5db4160aecd278"},
+    }
     tasks = yaml.safe_load((root / "ansible/roles/backup/tasks/install-rclone.yml").read_text())
-    assert len(tasks) == 1
-    assert tasks[0]["ansible.builtin.apt"] == {"name": "rclone", "state": "present", "update_cache": False}
-    assert "notify" not in tasks[0]
+    installation = next(task for task in tasks[0]["block"] if "block" in task)
+    assert "not ansible_check_mode" in installation["when"]
+    package = next(task["ansible.builtin.apt"] for task in installation["block"] if "ansible.builtin.apt" in task)
+    assert package == {"deb": "{{ _backup_rclone_staging.path }}/rclone.deb", "update_cache": False,
+                       "allow_downgrade": True, "policy_rc_d": 101}
+    download = next(task["ansible.builtin.get_url"] for task in installation["block"] if "ansible.builtin.get_url" in task)
+    assert download["checksum"] == "sha256:{{ backup_rclone_packages[_backup_rclone_arch.stdout].sha256 }}"
+    assert installation["always"][0]["ansible.builtin.file"]["state"] == "absent"
+
+
+@pytest.mark.parametrize(("architecture", "installed", "changed", "success"), [
+    ("amd64", None, True, True),
+    ("amd64", "install ok installed\t1.60.1\tamd64", True, True),
+    ("arm64", "install ok installed\t1.75.2\tarm64", False, True),
+    ("amd64", "deinstall ok config-files\t1.75.2\tamd64", True, True),
+    ("s390x", None, False, False),
+])
+def test_real_rclone_check_mode_without_facts_or_package_writes(tmp_path, architecture, installed, changed, success):
+    import re
+    import subprocess
+    import sys
+    import yaml
+    root = Path(__file__).resolve().parents[2]
+    binaries = tmp_path / "bin"
+    binaries.mkdir()
+    calls = tmp_path / "calls"
+    # Only the external Debian commands are fake; execute the real Ansible tasks.
+    for name, output, status in (("dpkg", architecture, 0), ("dpkg-query", installed or "", 0 if installed else 1)):
+        binary = binaries / name
+        binary.write_text(f"#!{sys.executable}\nfrom pathlib import Path\n"
+                          f"with Path({str(calls)!r}).open('a') as stream: stream.write({name!r} + '\\n')\n"
+                          f"print({output!r}, end='')\nraise SystemExit({status})\n")
+        binary.chmod(0o700)
+    variables = yaml.safe_load((root / "ansible/roles/backup/defaults/main.yml").read_text())
+    variables["backup"] = {"remote": {"enabled": True}}
+    play = tmp_path / "play.json"
+    play.write_text(json.dumps([{"hosts": "all", "connection": "local", "gather_facts": False, "become": False,
+        "vars": variables, "environment": {"PATH": str(binaries) + os.pathsep + os.environ["PATH"]},
+        "tasks": [{"ansible.builtin.include_tasks": str(root / "ansible/roles/backup/tasks/install-rclone.yml")}]}]))
+    result = subprocess.run(["ansible-playbook", "-i", "localhost,", str(play), "--check"],
+                            capture_output=True, text=True, timeout=45,
+                            env={**os.environ, "ANSIBLE_CONFIG": str(root / "ansible/ansible.cfg"),
+                                 "ANSIBLE_STDOUT_CALLBACK": "default", "ANSIBLE_NOCOLOR": "1"})
+    assert (result.returncode == 0) is success, result.stdout + result.stderr
+    assert calls.read_text().splitlines() == (["dpkg", "dpkg-query"] if success else ["dpkg"])
+    if success:
+        assert re.search(rf"changed={int(changed)}\s", result.stdout), result.stdout
+    else:
+        assert "No pinned rclone package" in result.stdout
 
 
 def test_canonical_temporary_secret_path_is_pinned_before_validators(configure, monkeypatch):

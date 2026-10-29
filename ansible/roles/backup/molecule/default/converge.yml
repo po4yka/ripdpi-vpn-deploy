@@ -10,6 +10,45 @@
       enable_amneziawg: false
       enable_watchdog: false
   pre_tasks:
+    - name: Read rclone package state before fresh check mode
+      ansible.builtin.command:
+        argv: [dpkg-query, -W, '-f=${Status}\t${Version}', rclone]
+        expand_argument_vars: false
+      register: backup_check_before
+      changed_when: false
+      failed_when: backup_check_before.rc not in [0, 1]
+      check_mode: false
+      when:
+        - ansible_check_mode
+        - backup.remote.enabled
+
+    - name: Exercise the real package installer in fresh check mode
+      ansible.builtin.include_role:
+        name: backup
+        tasks_from: install-rclone
+      when: ansible_check_mode
+
+    - name: Read rclone package state after fresh check mode
+      ansible.builtin.command:
+        argv: [dpkg-query, -W, '-f=${Status}\t${Version}', rclone]
+        expand_argument_vars: false
+      register: backup_check_after
+      changed_when: false
+      failed_when: backup_check_after.rc not in [0, 1]
+      check_mode: false
+      when:
+        - ansible_check_mode
+        - backup.remote.enabled
+
+    - name: Require check mode to preserve package absence or identity
+      ansible.builtin.assert:
+        that:
+          - backup_check_before.rc == backup_check_after.rc
+          - backup_check_before.stdout == backup_check_after.stdout
+      when:
+        - ansible_check_mode
+        - backup.remote.enabled
+
     - name: Ensure backup input directories exist
       ansible.builtin.file:
         path: "{{ item }}"

@@ -76,6 +76,9 @@ transaction. Hysteria has native ACME support in its pinned server release.
   admitted small nodes. Keep the separate SSH, native validation and transaction
   deadlines, owned-child cancellation and failed-preflight refusal.
 - Use per-provider encrypted operator documents and separate runtime grants.
+  Remote backups use the checksum-pinned official rclone Debian package with
+  B2 API v4 authorization. Keep dpkg ownership and the existing narrow grants;
+  both backup entrypoints use one installer and check mode does not download.
   The decryption identity has an independently verified vault copy. Temporary
   plaintext identities and operation output are removed when no longer needed.
 - Store Xray logs at the root-owned `/var/lib/vpn-xray-logs`, outside both the

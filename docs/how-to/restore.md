@@ -245,8 +245,10 @@ rendering; they do not import or execute AWG tasks or handlers.
 
 The command runs strict secret/certificate and optional extra-vars validation,
 requires the existing canonical `/var/backups/vpn-restic` repository and units,
-and installs only rclone when missing (`apt state=present`, no cache refresh or
-package upgrades requested). Package installation still has ordinary dpkg
+and converges only the checksum-pinned official rclone Debian package for the
+host architecture. This can replace an older or newer rclone package; it does
+not refresh the package index or request unrelated upgrades. dpkg remains the
+sole owner of `/usr/bin/rclone`. Package installation still has ordinary dpkg
 effects; this is not a promise of zero host writes. It stages and validates
 `/etc/rclone/rclone.conf` and both backup scripts, then replaces them atomically
 per file in config/backup/drill order. It does not invoke backup, prune, sync,

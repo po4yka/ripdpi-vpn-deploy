@@ -22,3 +22,13 @@ backup_restore_drill_randomized_delay: 2h
 backup_snapshot_max_age_hours: 36
 
 backup_role_enabled: true
+
+# Modern bucket-restricted B2 keys require API v4 authorization.
+backup_rclone_version: "1.75.2"
+backup_rclone_packages:
+  amd64:
+    url: https://downloads.rclone.org/v1.75.2/rclone-v1.75.2-linux-amd64.deb
+    sha256: efbfe852181f7191eb3c9043ed1ab49c9b2d0ba045c61c926a5da111c939ec5c
+  arm64:
+    url: https://downloads.rclone.org/v1.75.2/rclone-v1.75.2-linux-arm64.deb
+    sha256: b8ba161d5c837206fad79ff1aabf0a81aa02a5fb164cdbc0ff5db4160aecd278
