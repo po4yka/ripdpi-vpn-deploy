@@ -24,6 +24,9 @@
       - |-
         import hashlib, io, json, sys, types
         bindings = {
+            'transport_semantics': ({{ (transport_egress_libexec_dir ~ '/transport_semantics.py') | to_json }},
+                {{ lookup('ansible.builtin.file',
+                    role_path ~ '/../../../scripts/transport_semantics.py', rstrip=False) | hash('sha256') | to_json }}),
         {% for helper in ['transport_runtime_transaction', 'transport_runtime_probe',
                           'transport_runtime_validate', 'transport_runtime_accept'] %}
             {{ helper | to_json }}: ({{ (transport_egress_libexec_dir ~ '/' ~ helper ~ '.py') | to_json }},
@@ -74,6 +77,8 @@
       - "{{ '--check' if ansible_check_mode else '--apply' }}"
     stdin: >-
       {{ {'sources': {
+            'transport_semantics': lookup('ansible.builtin.file',
+                role_path ~ '/../../../scripts/transport_semantics.py', rstrip=False),
             'transport_runtime_transaction': lookup('ansible.builtin.file',
                 role_path ~ '/../runtime-release/files/transport_runtime_transaction.py', rstrip=False),
             'transport_runtime_probe': lookup('ansible.builtin.file',
