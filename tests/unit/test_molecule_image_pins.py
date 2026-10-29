@@ -25,8 +25,12 @@ EXPECTED_DIGESTS = {
 def test_molecule_base_images_use_the_verified_scan_clean_digests() -> None:
     observed = {name: set() for name in EXPECTED_DIGESTS}
 
-    for molecule_file in (ROOT / "ansible").glob("**/molecule.yml"):
-        for match in MOLECULE_IMAGE.finditer(molecule_file.read_text()):
+    consumers = [
+        *(ROOT / "ansible").glob("**/molecule.yml"),
+        *(ROOT / ".github/workflows").glob("*.yml"),
+    ]
+    for consumer in consumers:
+        for match in MOLECULE_IMAGE.finditer(consumer.read_text()):
             observed[match.group("name")].add(match.group("digest"))
 
     assert observed == EXPECTED_DIGESTS
