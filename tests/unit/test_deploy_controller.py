@@ -327,13 +327,17 @@ with pathlib.Path({str(workspace['calls'])!r}).open('a') as stream:
         missing.stdout + missing.stderr + decrypted.stdout + decrypted.stderr + result.stdout + result.stderr)
 
 
+@pytest.mark.parametrize("cohosted_collector", [False, True])
 @pytest.mark.parametrize("limit,expected", [
     ("", ["100.64.0.1", "100.64.0.2"]),
     ("node-one", ["100.64.0.1"]),
     ("vpn-p1p2", ["100.64.0.2"]),
     ("vpn-p0,node-two", ["100.64.0.1", "100.64.0.2"]),
 ])
-def test_make_waits_for_exact_inventory_subset_before_ansible(workspace, limit, expected):
+def test_make_waits_for_exact_inventory_subset_before_ansible(workspace, limit, expected, cohosted_collector):
+    if cohosted_collector:
+        with workspace["inventory"].open("a") as stream:
+            stream.write("[vpn-observability-control]\nnode-two\n")
     result = invoke(workspace, limit=limit)
     assert result.returncode == 0, result.stderr
     observed = calls(workspace)

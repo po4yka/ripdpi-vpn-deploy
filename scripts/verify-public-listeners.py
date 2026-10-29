@@ -42,6 +42,7 @@ class FirewallAcceptRule:
     source_addresses: frozenset[str]
     input_interfaces: frozenset[str]
     unknown_predicate: bool
+    dhcpv6_kind: str | None
 
 
 def _selector(protocol: object, port: object, port_range: object) -> PortSelector:
@@ -131,6 +132,99 @@ def _run(*command: str) -> str:
     return result.stdout
 
 
+def _uplink(value: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,14}", value) or value in {"lo", "tailscale0"}:
+        raise argparse.ArgumentTypeError("DHCPv6 uplink must be a concrete interface")
+    return value
+
+
+def _decode_dhcpv6_servers(encoded: str) -> frozenset[str]:
+    try:
+        values = json.loads(base64.b64decode(encoded, validate=True))
+        if not isinstance(values, list) or len(values) > 16:
+            raise ValueError
+        result = set()
+        for value in values:
+            if not isinstance(value, str) or '%' in value:
+                raise ValueError
+            address = ipaddress.IPv6Address(value)
+            if (str(address) != value or address.is_unspecified or address.is_multicast
+                    or address.is_loopback or address.ipv4_mapped is not None or value in result):
+                raise ValueError
+            result.add(value)
+        return frozenset(result)
+    except (ValueError, TypeError, UnicodeDecodeError, binascii.Error) as exc:
+        raise ValueError("DHCPv6 servers must be bounded unique canonical IPv6 addresses") from exc
+
+
+def _dhcpv6_rule_kind(
+    expressions: list, uplink: str, servers: frozenset[str]
+) -> str | None:
+    matches = []
+    verdicts = []
+    for expression in expressions:
+        if not isinstance(expression, dict):
+            return None
+        if expression == {"accept": None}:
+            verdicts.append('accept')
+        elif expression == {"drop": None}:
+            verdicts.append('drop')
+        elif set(expression) == {"counter"}:
+            continue
+        elif set(expression) == {"match"}:
+            match = expression['match']
+            if (not isinstance(match, dict) or set(match) != {'op', 'left', 'right'}
+                    or match['op'] not in {'==', 'in'}):
+                return None
+            matches.append(match)
+        else:
+            return None
+    if len(verdicts) != 1:
+        return None
+    expected = [
+        ({'payload': {'protocol': 'udp', 'field': 'sport'}}, 547),
+        ({'payload': {'protocol': 'udp', 'field': 'dport'}}, 546),
+    ]
+    if verdicts[0] == 'drop':
+        expected.append(({'meta': {'key': 'nfproto'}}, 'ipv6'))
+        if len(matches) != 3:
+            return None
+    else:
+        expected.extend([
+            ({'meta': {'key': 'iifname'}}, uplink),
+            ({'fib': {'result': 'type', 'flags': ['daddr']}}, 'local'),
+        ])
+        if len(matches) != 5:
+            return None
+    for left, right in expected:
+        found = [m for m in matches if m['left'] == left
+                 and type(m['right']) is type(right) and m['right'] == right]
+        if len(found) != 1:
+            return None
+        matches.remove(found[0])
+    if verdicts[0] == 'drop':
+        return 'deny'
+    source = matches[0]
+    if source['left'] != {'payload': {'protocol': 'ip6', 'field': 'saddr'}}:
+        return None
+    right = source['right']
+    if right == 'fe80::/10' or (
+        right == {'prefix': {'addr': 'fe80::', 'len': 10}}
+        and type(right['prefix']['len']) is int
+    ):
+        return 'link-local'
+    if isinstance(right, str):
+        values = [right]
+    elif isinstance(right, dict) and set(right) == {'set'} and isinstance(right['set'], list):
+        values = right['set']
+    else:
+        return None
+    if (servers and all(isinstance(value, str) for value in values)
+            and len(values) == len(servers) and frozenset(values) == servers):
+        return 'approved-server'
+    return None
+
+
 def _right_values(value: object) -> set[object]:
     if isinstance(value, dict):
         if isinstance(value.get("set"), list):
@@ -165,7 +259,9 @@ def _dport_selector(protocol: str, value: object) -> PortSelector:
     raise ValueError(f"unsupported nftables {protocol} dport expression")
 
 
-def _firewall_rules(nft_output: str) -> list[FirewallAcceptRule]:
+def _firewall_rules(
+    nft_output: str, dhcpv6_uplink: str, dhcpv6_servers: frozenset[str]
+) -> list[FirewallAcceptRule]:
     try:
         document = json.loads(nft_output)
     except json.JSONDecodeError as exc:
@@ -315,6 +411,7 @@ def _firewall_rules(nft_output: str) -> list[FirewallAcceptRule]:
                 source_addresses=frozenset(source_addresses),
                 input_interfaces=frozenset(input_interfaces),
                 unknown_predicate=unknown_predicate,
+                dhcpv6_kind=_dhcpv6_rule_kind(expressions, dhcpv6_uplink, dhcpv6_servers),
             )
         )
     return accepted
@@ -377,6 +474,7 @@ def _violations(
     sockets: set[tuple[str, int]],
     ssh_port: int,
     tailnet_sources: frozenset[str],
+    dhcpv6_servers: frozenset[str],
     native_acme: bool = False,
 ) -> list[str]:
     violations: list[str] = []
@@ -386,9 +484,15 @@ def _violations(
     tailnet_accept_positions: list[int] = []
     tailnet_drop_positions: list[int] = []
     public_ssh_positions: list[int] = []
+    dhcpv6_counts = {'link-local': 0, 'approved-server': 0}
+    dhcpv6_accept_positions: list[int] = []
+    dhcpv6_deny_positions: list[int] = []
+    established_positions = [r.position for r in firewall if r.verdict == 'accept' and r.established_only]
     for rule in firewall:
         selector = rule.selector
         if rule.verdict == "drop":
+            if rule.dhcpv6_kind == 'deny':
+                dhcpv6_deny_positions.append(rule.position)
             if (
                 selector == ssh
                 and not rule.source_restricted
@@ -397,6 +501,10 @@ def _violations(
                 and not rule.unknown_predicate
             ):
                 tailnet_drop_positions.append(rule.position)
+            continue
+        if rule.dhcpv6_kind is not None:
+            dhcpv6_counts[rule.dhcpv6_kind] += 1
+            dhcpv6_accept_positions.append(rule.position)
             continue
         if selector is None:
             if rule.loopback_only or rule.established_only:
@@ -446,6 +554,17 @@ def _violations(
             continue
         conforming[selector] += 1
 
+    if dhcpv6_counts['link-local'] != 1:
+        violations.append('invalid DHCPv6 link-local reply rule count')
+    if dhcpv6_counts['approved-server'] != int(bool(dhcpv6_servers)):
+        violations.append('invalid DHCPv6 approved-server reply rule count')
+    if len(dhcpv6_deny_positions) != 1:
+        violations.append('invalid DHCPv6 reply deny rule count')
+    else:
+        deny = dhcpv6_deny_positions[0]
+        if (any(position >= deny for position in dhcpv6_accept_positions)
+                or any(position <= deny for position in established_positions)):
+            violations.append('invalid DHCPv6 reply rule ordering')
     for selector, count in sorted(conforming.items()):
         expected_count = 2 if expected[selector] == "cdn-front" else 1
         if count < expected_count:
@@ -488,19 +607,26 @@ def main() -> int:
     parser.add_argument("--contract-b64", required=True)
     parser.add_argument("--ssh-port", required=True, type=_port)
     parser.add_argument("--tailnet-sources-b64", required=True)
+    parser.add_argument("--dhcpv6-uplink", required=True, type=_uplink)
+    parser.add_argument("--dhcpv6-servers-b64", required=True)
     parser.add_argument("--native-acme", action="store_true")
     args = parser.parse_args()
     try:
         expected = _decode_contract(args.contract_b64)
         tailnet_sources = _decode_tailnet_sources(args.tailnet_sources_b64)
-        firewall = _firewall_rules(_run("nft", "-j", "list", "table", "inet", "filter"))
+        dhcpv6_servers = _decode_dhcpv6_servers(args.dhcpv6_servers_b64)
+        firewall = _firewall_rules(
+            _run("nft", "-j", "list", "table", "inet", "filter"),
+            args.dhcpv6_uplink, dhcpv6_servers,
+        )
         sockets = _public_socket_ports(_run("ss", "-H", "-lntu"))
     except (ValueError, subprocess.CalledProcessError) as exc:
         print(f"verify-public-listeners: {exc}", file=sys.stderr)
         return 2
 
     violations = _violations(
-        expected, firewall, sockets, args.ssh_port, tailnet_sources, args.native_acme
+        expected, firewall, sockets, args.ssh_port, tailnet_sources, dhcpv6_servers,
+        args.native_acme,
     )
     if violations:
         print("\n".join(violations))

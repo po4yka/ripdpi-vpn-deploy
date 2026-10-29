@@ -345,6 +345,85 @@ def _run(root, tags=None, check=False):
     return subprocess.run(argv, env=env, capture_output=True, text=True, timeout=90)
 
 
+def _managed_tls_fixture(tmp_path, failure):
+    root, context = _fixture(tmp_path, failure)
+    tasks = yaml.safe_load((ROOT / 'ansible/roles/nginx-xhttp/tasks/tls-bootstrap.yml').read_text())
+    # Keep the production DNS wait and Ansible ordering. Replace only the
+    # privileged publisher/CA and public resolver boundaries of this local test.
+    tasks[0]['ansible.builtin.command'] = {
+        'argv': [sys.executable, str(root / 'ingress_driver.py'), str(root), 'publish', str(HELPER), 'public-tls']}
+    tasks[0]['changed_when'] = False
+    dns_driver = root / 'dns_driver.py'
+    dns_driver.write_text('''import importlib.util,json,sys
+from pathlib import Path
+from types import SimpleNamespace
+spec=importlib.util.spec_from_file_location('dns',sys.argv[1]);dns=importlib.util.module_from_spec(spec);spec.loader.exec_module(dns)
+root=Path(sys.argv[2]);failure=sys.argv[3]
+if (root/'ingress/public-tls.conf').read_bytes()!=b'changed ingress' or not (root/'nginx-state/nginx.service/site.json').exists():
+ raise RuntimeError('DNS wait requires owned prepared HTTP')
+clock=SimpleNamespace(now=0)
+dns.time=SimpleNamespace(monotonic=lambda:clock.now,sleep=lambda seconds:setattr(clock,'now',clock.now+seconds))
+def query(resolver,name,family,timeout):
+ if failure=='tls-child-interrupted':raise KeyboardInterrupt
+ alias=name=='www.site.example'
+ rows=[dict(name=name,type=5,data='site.example')] if alias else []
+ address='8.8.8.8' if family==1 else ('2606:4700:4700::1001' if failure=='tls-dns' else '2606:4700:4700::1111')
+ rows.append(dict(name='site.example' if alias else name,type=family,data=address))
+ return dict(Status=0,TC=False,Question=[dict(name=name,type=family)],Answer=rows)
+dns.query=query
+code=dns.main()
+if code==0:
+ with (root/'events').open('a') as stream:stream.write('tls-dns-ready\\n')
+raise SystemExit(code)
+''')
+    tasks[1]['ansible.builtin.command']['argv'] = [sys.executable, str(dns_driver),
+        str(ROOT / 'scripts/wait-public-tls-dns.py'), str(root), '{{ failure }}']
+    tasks[2]['ansible.builtin.command'] = {'argv': [sys.executable, '-c',
+        'from pathlib import Path;import sys;p=Path(sys.argv[1]);p.write_text(p.read_text()+"tls-issue\\n");raise SystemExit(1 if sys.argv[2]=="tls-ca" else 0)',
+        str(root / 'events'), '{{ failure }}']}
+    tasks[2]['changed_when'] = False
+    _write(root / 'roles/nginx-xhttp/tasks/tls-bootstrap.yml', tasks)
+    play = yaml.safe_load((root / 'play.yml').read_text())
+    play[0]['vars'].update(vpn_service_address='8.8.8.8', server_ipv6='2606:4700:4700::1111',
+        nginx_xhttp={'server_name': 'site.example', 'acme': {'domains': ['site.example', 'www.site.example']}})
+    _write(root / 'play.yml', play)
+    return root, context
+
+
+@pytest.mark.parametrize('failure', ['tls-dns', 'tls-child-interrupted', 'tls-ca'])
+def test_managed_tls_failure_compensates_http_and_firewall_before_frontend_staging(tmp_path, failure):
+    root, context = _managed_tls_fixture(tmp_path, failure)
+    result = _run(root)
+    assert result.returncode != 0 and 'Protected transport staging failed' in result.stdout
+    assert (root / 'frontend.conf').read_bytes() == b'accepted frontend'
+    assert (root / 'state').read_text() == 'accepted-running'
+    assert (root / 'firewall-policy').read_bytes() == b'accepted firewall'
+    assert all(Path(owner['paths'][0]).read_bytes() == b'accepted ingress' for owner in context['owners'])
+    events = (root / 'events').read_text().splitlines()
+    assert events.index('ingress-restore') < events.index('firewall-restore')
+    assert ('tls-issue' in events) is (failure == 'tls-ca')
+    assert not {'stage', 'activate', 'resume'}.intersection(events)
+    assert not (root / 'nginx-state/nginx.service/site.json').exists()
+    assert not (root / 'firewall-owner').exists()
+
+
+def test_managed_tls_ca_failure_retries_through_the_ordinary_full_graph(tmp_path):
+    root, context = _managed_tls_fixture(tmp_path, 'tls-ca')
+    failed = _run(root)
+    assert failed.returncode != 0
+    play = yaml.safe_load((root / 'play.yml').read_text())
+    play[0]['vars']['failure'] = 'none'
+    _write(root / 'play.yml', play)
+    result = _run(root)
+    assert result.returncode == 0, result.stdout + result.stderr
+    events = (root / 'events').read_text().splitlines()
+    successful = events[events.index('firewall-restore') + 1:]
+    assert successful.index('tls-dns-ready') < successful.index('tls-issue') < successful.index('activate') < successful.index('ingress-commit')
+    assert all(Path(owner['paths'][0]).read_bytes() == b'changed ingress' for owner in context['owners'])
+    assert not (root / 'nginx-state/nginx.service/site.json').exists()
+    assert not (root / 'firewall-owner').exists()
+
+
 def _outer_state(root):
     """The egress outer route's private state directory under the harness ancestry, with explicit modes under any umask."""
     for path in (root / 'ripdpi-state', root / 'ripdpi-state/transport-runtime'):

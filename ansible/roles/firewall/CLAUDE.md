@@ -20,7 +20,8 @@ local multicast group or a link-local server. Multicast replies do not depend
 on reverse conntrack matching. A bounded exact canonical IPv6 server list adds
 legacy unicast authority; prefixes and broad global UDP accepts are refused.
 Set overrides in reviewed cohort `group_vars`; they are not live CLI overrides.
-The default uses observed facts and needs no new operator input.
+The default uses observed facts and needs no new operator input. Read-only
+verification consumes the same admitted uplink and server facts.
 
 DHCPv6 scope applies before generic conntrack acceptance. After invalid-state
 refusal, scoped replies and strict-output requests pass their exact rules; the

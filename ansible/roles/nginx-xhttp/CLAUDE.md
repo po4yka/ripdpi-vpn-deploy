@@ -4,6 +4,8 @@
 
 Managed HTTP-01 uses a separate public-tls transaction owner for the HTTP vhost and certificate pair. Its timer refuses an open ingress journal under the same unit lock. A durable issuer lease blocks every publisher and site action after coordinator death. Recovery requires a stopped unit with no queued job; an uncertain launch with no unit requires a new boot. Certbot lineage and account authority remain on the server; renewal always reconciles activation, even after a prior activation failure. Supplied and managed TLS authorities cannot overlap.
 
+The full deployment keeps its ingress owner while a bounded controller DNS wait follows real HTTP preparation. Three consecutive samples from both public resolver views must match the Terraform-owned IPv4 and optional IPv6 for every certificate name. An auxiliary name may alias only the canonical name. Timeout uses ordinary ingress/firewall compensation; a separately applied DNS change remains operator-owned.
+
 The renewal coordinator requires `CAP_SYS_PTRACE` to inspect executable identities of nginx workers under another UID. The isolated Certbot issuer retains an empty capability set.
 
 The durable committing decision retains the revocation operation/digest alongside its egress and firewall finish choices. Recovery requires the same request authority and passes it privately to outer-route completion; an absent or different authority cannot close that decision.
