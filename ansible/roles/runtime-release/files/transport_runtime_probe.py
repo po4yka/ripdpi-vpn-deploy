@@ -203,7 +203,9 @@ def hysteria_client(document, port, ca, client_name, *, tls_server_name=None):
     host = '127.0.0.1' if host in ('', '0.0.0.0', '[::]') else host
     sni = tls_server_name or (document['acme']['domains'][0] if 'acme' in document
                              else urlsplit(document['masquerade']['proxy']['url']).hostname)
-    client = {'server': host + ':' + server_port, 'auth': name + ':' + password,
+    # ACME startup can outlast the client's first dial. Keep SOCKS alive while
+    # request() checks real TLS, authentication and traffic under one deadline.
+    client = {'server': host + ':' + server_port, 'auth': name + ':' + password, 'lazy': True,
               'tls': {'sni': sni, 'insecure': False},
               'socks5': {'listen': '127.0.0.1:' + str(port)}}
     if ca is not None:

@@ -257,10 +257,50 @@ def test_native_acme_projection_uses_only_the_owned_lease_and_expected_identity(
     certificate = x509.load_pem_x509_certificate((tmp_path / 'server.fullchain.pem').read_bytes())
     assert certificate.extensions.get_extension_for_class(x509.SubjectAlternativeName).value.get_values_for_type(x509.DNSName) == [name]
     client = probe.hysteria_client(document, 1080, document['tls']['cert'], 'probe', tls_server_name=name)
+    assert client['lazy'] is True
     assert client['tls'] == {'sni': name, 'ca': document['tls']['cert'], 'insecure': False}
     live = {'acme': policy, **{key: value for key, value in document.items() if key != 'tls'}}
     live_client = probe.hysteria_client(live, 1080, None, 'probe')
+    assert live_client['lazy'] is True
     assert live_client['tls'] == {'sni': name, 'insecure': False}
+
+
+@pytest.mark.parametrize('category', [
+    'authenticated-traffic-refused', 'client-exited',
+    'native-cleanup-unconfirmed', 'native-command-output-limit',
+])
+def test_native_startup_fixture_does_not_accept_infrastructure_refusals(tmp_path, monkeypatch, category):
+    spec = importlib.util.spec_from_file_location('hysteria_startup_fixture',
+        ROOT / 'tests/integration/transport_runtime_acceptance/hysteria_probe_startup.py')
+    helper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper)
+    monkeypatch.setattr(sys, 'argv', ['fixture', str(LIBRARY), '/fixture/hysteria',
+        'http://127.0.0.1/', str(tmp_path)])
+    monkeypatch.setattr(sys, 'path', sys.path.copy())
+    original_popen = helper.subprocess.Popen
+    children = []
+    def start(_argv, **options):
+        child = original_popen([sys.executable, '-c', 'import time; time.sleep(10)'], **options)
+        children.append(child)
+        return child
+    def certificate(argv, **_options):
+        for flag in ('-out', '-keyout'):
+            Path(argv[argv.index(flag) + 1]).write_text('external certificate fixture')
+    calls = []
+    def native_probe(*_args, **_options):
+        calls.append(True)
+        if len(calls) > 1:
+            raise probe.ProbeRefused(category)
+    monkeypatch.setattr(helper.subprocess, 'Popen', start)
+    monkeypatch.setattr(helper.subprocess, 'run', certificate)
+    monkeypatch.setattr(probe, 'probe', native_probe)
+    if category in {'authenticated-traffic-refused', 'client-exited'}:
+        helper.main()
+        assert len(calls) == 5
+    else:
+        with pytest.raises(probe.ProbeRefused, match=category):
+            helper.main()
+    assert len(children) == 1 and children[0].poll() is not None
 
 
 @pytest.mark.parametrize('case', ['both', 'neither', 'ca', 'cache', 'type', 'domains', 'bytes'])
