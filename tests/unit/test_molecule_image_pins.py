@@ -17,7 +17,7 @@ EXPECTED_DIGESTS = {
         "b3f2db18b8a6f53891196f7a166e36896f9200357d453a0129be09fa9bf94e84"
     },
     "ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-ubuntu2404": {
-        "e287225b506f48360e5cb185c9ef8d8af690ad07da5b3856a2ea4c7656febe7a"
+        "c9277039a651a9a211ab0d1676c7001c78cf95a5ea83d46e1542c386cfe6f040"
     },
 }
 
@@ -25,8 +25,12 @@ EXPECTED_DIGESTS = {
 def test_molecule_base_images_use_the_verified_scan_clean_digests() -> None:
     observed = {name: set() for name in EXPECTED_DIGESTS}
 
-    for molecule_file in (ROOT / "ansible").glob("**/molecule.yml"):
-        for match in MOLECULE_IMAGE.finditer(molecule_file.read_text()):
+    consumers = [
+        *(ROOT / "ansible").glob("**/molecule.yml"),
+        *(ROOT / ".github/workflows").glob("*.yml"),
+    ]
+    for consumer in consumers:
+        for match in MOLECULE_IMAGE.finditer(consumer.read_text()):
             observed[match.group("name")].add(match.group("digest"))
 
     assert observed == EXPECTED_DIGESTS

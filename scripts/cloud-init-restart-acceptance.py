@@ -404,7 +404,7 @@ _IMAGE_REFERENCES = {
     ),
     "ubuntu2404": (
         "ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-ubuntu2404"
-        "@sha256:e287225b506f48360e5cb185c9ef8d8af690ad07da5b3856a2ea4c7656febe7a"
+        "@sha256:c9277039a651a9a211ab0d1676c7001c78cf95a5ea83d46e1542c386cfe6f040"
     ),
 }
 
