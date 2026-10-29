@@ -200,8 +200,10 @@ def test_public_dns_transport_is_bounded_and_has_no_operator_proxy(monkeypatch, 
 
     monkeypatch.setattr(dns.urllib.request, "build_opener", build)
     if kind == "normal":
-        assert dns.query("https://dns.google/resolve", "site.example", 1, 3) == answer()
-        assert isinstance(observed.pop("redirect_handler"), dns.RefuseRedirects)
+        result = dns.query("https://dns.google/resolve", "site.example", 1, 3)
+        redirect_handler = observed.pop("redirect_handler")
+        assert result == answer()
+        assert isinstance(redirect_handler, dns.RefuseRedirects)
         assert observed == {"proxies": {}, "timeout": 3, "accept": "application/dns-json",
                             "url": "https://dns.google/resolve?name=site.example&type=1&do=false&cd=false&edns_client_subnet=0.0.0.0%2F0"}
     else:
