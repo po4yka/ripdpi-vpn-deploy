@@ -152,6 +152,7 @@ def _verify_listeners(
     dhcpv6_rules: list[dict] | None = None,
     dhcpv6_servers=None,
     dhcpv6_uplink: str = "uplink0",
+    collector_ingress=None,
 ) -> subprocess.CompletedProcess[str]:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir(exist_ok=True)
@@ -190,6 +191,10 @@ def _verify_listeners(
             str(ssh_port),
             "--tailnet-sources-b64",
             encoded_tailnet,
+            "--collector-ingress-b64",
+            base64.b64encode(json.dumps(
+                {} if collector_ingress is None else collector_ingress
+            ).encode()).decode(),
             "--dhcpv6-uplink", dhcpv6_uplink,
             "--dhcpv6-servers-b64", base64.b64encode(json.dumps(
                 [] if dhcpv6_servers is None else dhcpv6_servers
@@ -287,6 +292,7 @@ def test_security_playbook_declares_transience_only_for_enabled_native_acme(
     assert json.loads(result.stdout) == [
         '--contract-b64', 'W10=', '--ssh-port', '2202',
         '--dhcpv6-uplink', 'uplink0', '--dhcpv6-servers-b64', 'WyIyMDAxOmRiODo6MjAiXQ==',
+        '--collector-ingress-b64', 'e30=',
         '--tailnet-sources-b64', 'WyIxMDAuNjQuMC4yIl0=' if tailnet_enabled else 'W10=',
     ] + (['--native-acme'] if expected else [])
 
@@ -1004,3 +1010,100 @@ def test_unrecognized_accept_expression_is_rejected_fail_closed(tmp_path: Path) 
 
     assert result.returncode == 1
     assert "restricted or unsupported firewall tcp 443" in result.stdout
+
+
+def _collector_rule(sources):
+    rule = _nft_rule('tcp', 9443, input_interface='tailscale0')
+    rule['rule']['expr'][-1:-1] = [
+        {'match': {'op': '==', 'left': {'payload': {'protocol': 'ip', 'field': 'daddr'}},
+                   'right': '100.64.0.2'}},
+        {'match': {'op': '==', 'left': {'payload': {'protocol': 'ip', 'field': 'saddr'}},
+                   'right': {'set': sources}}},
+        {'counter': {'packets': 0, 'bytes': 0}},
+    ]
+    return rule
+
+
+@pytest.mark.parametrize('sources', [['100.64.0.3'], ['100.64.0.2', '100.64.0.3', '100.64.0.4']])
+def test_exact_private_collector_rule_is_not_public_exposure(tmp_path, sources):
+    result = _verify_listeners(
+        tmp_path, [], _ss_line('tcp', '100.64.0.2:9443'),
+        nft_output=_nft_document(_collector_rule(sources)),
+        collector_ingress={'address': '100.64.0.2', 'sources': sources},
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize('mutation', [
+    'interface', 'destination', 'source-extra', 'source-missing', 'source-prefix',
+    'source-malformed', 'source-duplicate', 'port', 'negation', 'extra-predicate',
+    'missing-predicate', 'missing-rule', 'duplicate-rule', 'undeclared',
+])
+def test_collector_exception_rejects_changed_or_undeclared_scope(tmp_path, mutation):
+    sources = ['100.64.0.3', '100.64.0.4']
+    rule = _collector_rule(sources.copy())
+    expressions = rule['rule']['expr']
+    matches = [item['match'] for item in expressions if 'match' in item]
+    if mutation == 'interface': matches[1]['right'] = 'eth0'
+    elif mutation == 'destination': matches[2]['right'] = '100.64.0.9'
+    elif mutation == 'source-extra': matches[3]['right']['set'].append('100.64.0.5')
+    elif mutation == 'source-missing': matches[3]['right']['set'].pop()
+    elif mutation == 'source-prefix': matches[3]['right'] = {'prefix': {'addr': '100.64.0.0', 'len': 10}}
+    elif mutation == 'source-malformed': matches[3]['right']['set'].append({'unknown': 'ignored'})
+    elif mutation == 'source-duplicate': matches[3]['right']['set'].append(sources[0])
+    elif mutation == 'port': matches[0]['right'] = 9444
+    elif mutation == 'negation': matches[3]['op'] = '!='
+    elif mutation == 'extra-predicate': expressions.insert(0, {'match': {'op': '==', 'left': {'meta': {'key': 'mark'}}, 'right': 1}})
+    elif mutation == 'missing-predicate': expressions.pop(1)
+    rules = [] if mutation == 'missing-rule' else [rule]
+    if mutation == 'duplicate-rule': rules.append(rule)
+    result = _verify_listeners(
+        tmp_path, [], '', nft_output=_nft_document(*rules),
+        collector_ingress={} if mutation == 'undeclared' else {'address': '100.64.0.2', 'sources': sources},
+    )
+    assert result.returncode != 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize('predicate', range(4))
+def test_collector_exception_rejects_noncanonical_operators(tmp_path, predicate):
+    sources = ['100.64.0.3']
+    rule = _collector_rule(sources)
+    matches = [item['match'] for item in rule['rule']['expr'] if 'match' in item]
+    matches[predicate]['op'] = 'in'
+    result = _verify_listeners(tmp_path, [], '', nft_output=_nft_document(rule),
+        collector_ingress={'address': '100.64.0.2', 'sources': sources})
+    assert result.returncode != 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize('address', ['0.0.0.0:9443', '[::]:9443', '8.8.8.8:9443'])
+def test_private_collector_contract_rejects_public_socket(tmp_path, address):
+    sources = ['100.64.0.3']
+    result = _verify_listeners(tmp_path, [], _ss_line('tcp', address),
+        nft_output=_nft_document(_collector_rule(sources)),
+        collector_ingress={'address': '100.64.0.2', 'sources': sources})
+    assert result.returncode == 1 and 'public Tailnet collector socket' in result.stdout
+
+
+@pytest.mark.parametrize('policy', [
+    None, [], {'address': '100.64.0.2', 'sources': []},
+    {'address': '100.64.0.2', 'sources': ['100.64.0.3'] * 2},
+    {'address': '8.8.8.8', 'sources': ['100.64.0.3']},
+    {'address': '100.64.0.2', 'sources': ['0.0.0.0/0']},
+    {'address': '100.64.0.2', 'sources': ['fd7a:115c:a1e0::1']},
+    {'address': '100.64.0.2', 'sources': ['100.64.0.3'], 'extra': True},
+    {'address': '100.64.0.2', 'sources': [f'100.64.0.{n}' for n in range(3, 14)]},
+])
+def test_malformed_collector_contract_fails_closed(tmp_path, policy):
+    # None uses an explicit invalid scalar; the fixture default means disabled.
+    result = _verify_listeners(tmp_path, [], '', collector_ingress=False if policy is None else policy)
+    assert result.returncode == 2 and 'collector ingress contract' in result.stderr
+
+
+@pytest.mark.parametrize('ssh,contract', [
+    (9443, []), (22, [_listener('public', 'tcp', port=9443)]),
+    (22, [_listener('public', 'tcp', port_range='9400-9500')]),
+])
+def test_collector_port_cannot_overlap_public_or_ssh_contract(tmp_path, ssh, contract):
+    result = _verify_listeners(tmp_path, contract, '', ssh_port=ssh,
+        collector_ingress={'address': '100.64.0.2', 'sources': ['100.64.0.3']})
+    assert result.returncode == 2 and 'overlaps' in result.stderr
