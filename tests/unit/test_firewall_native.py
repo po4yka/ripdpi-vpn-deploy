@@ -203,11 +203,11 @@ def timed():
 handle,remaining=timed()
 with tx.Transaction(fw.STATE,uid=0) as active:
  active.record('accepted.json',{'schema':1,'nodes':{str(fw.CONFIG):tx.node(fw.CONFIG,0)},'previous':None,'units':{}})
-request={'old_source':'1.1.1.1','new_source':'8.8.8.8','port':22}
+request={'old_source':'1.1.1.1','new_source':'208.67.222.222','port':22}
 plan=fw.operate('rotate-ssh',{**request,'check':True})['plan']
 time.sleep(1.1)
 fw.operate('rotate-ssh',{**request,'plan':plan})
-assert fw.CONFIG.read_bytes()==before.replace(b'1.1.1.1',b'8.8.8.8')
+assert fw.CONFIG.read_bytes()==before.replace(b'1.1.1.1',b'208.67.222.222')
 current,expiry=timed();assert current==handle and 0<expiry<remaining
 fw.operate('restore',{'owner':'site'})
 assert fw.CONFIG.read_bytes()==before

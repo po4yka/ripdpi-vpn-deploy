@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import copy
 import importlib.util
+import ipaddress
 import json
 import os
 import subprocess
@@ -625,6 +626,10 @@ def ssh_rotation(context, monkeypatch):
             selected = [row for row in c.kernel['nftables'] if row.get('rule', {}).get('handle') == replacement['handle']]
             assert len(selected) == 1
             selected[0]['rule'] = replacement
+            for item in replacement['expr']:
+                right = item.get('match', {}).get('right')
+                if isinstance(right, dict) and set(right) == {'set'}:
+                    right['set'].sort(key=lambda address: int(ipaddress.IPv4Address(address)))
             return b''
         raise AssertionError('rotation must never reload a complete table: ' + repr(argv))
     monkeypatch.setattr(c.fw, 'command', nft)
@@ -642,13 +647,15 @@ def begin_ssh_rotation(c):
     return checked
 
 
-def test_ssh_rotation_preserves_live_timed_sets_and_foreign_tables_on_apply_and_restore(ssh_rotation):
+@pytest.mark.parametrize('new_source', ['8.8.8.8', '208.67.222.222'])
+def test_ssh_rotation_preserves_live_timed_sets_and_foreign_tables_on_apply_and_restore(ssh_rotation, new_source):
     c = ssh_rotation
+    c.rotation_request['new_source'] = new_source
     checked = c.fw.operate('rotate-ssh', {**c.rotation_request, 'check': True})
     assert c.fw.CONFIG.read_bytes() == c.rotation_before
     assert not (c.fw.STATE / 'ssh-rotation.json').exists()
     begin_ssh_rotation(c)
-    assert c.fw.CONFIG.read_bytes() == c.rotation_before.replace(b'1.1.1.1', b'8.8.8.8')
+    assert c.fw.CONFIG.read_bytes() == c.rotation_before.replace(b'1.1.1.1', new_source.encode())
     assert c.kernel['nftables'][0] == c.policy_before[0]
     assert c.kernel['nftables'][2] == c.policy_before[2]
     with pytest.raises(c.tx.Refusal, match='firewall-ssh-recovery-required'):

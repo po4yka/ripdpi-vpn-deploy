@@ -210,8 +210,9 @@ class SSHRotation(Firewall):
         if observed == desired:
             return
         prior = self.value['rule_after' if side == 'before' else 'rule_before']
+        identity = policy({'nftables': [{'rule': prior}]})
         candidates = [row['rule'] for row in raw['nftables'] if 'rule' in row
-                      and {key: item for key, item in row['rule'].items() if key != 'handle'} == prior]
+                      and policy({'nftables': [row]}) == identity]
         if len(candidates) != 1 or type(candidates[0].get('handle')) is not int:
             raise Refusal('firewall-ssh-rule-identity')
         replacement = {**self.value['rule_' + side], 'handle': candidates[0]['handle']}
