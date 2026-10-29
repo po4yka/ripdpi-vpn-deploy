@@ -243,6 +243,9 @@ class Adapter:
                 after = fields(unit)
                 if after.get('MainPID', '0') != '0' or after['ActiveState'] == 'active':
                     raise Refusal('unit-stop-unconfirmed')
+                if unit == CONTROLLER:
+                    # Clear boot links before rollback can remove a new unit.
+                    run(['/usr/bin/systemctl', 'disable', unit], self.timeout)
         # Disable only declared retirement units while their known original
         # files still exist. Their prior enablement is already journaled.
         for unit in UNITS:
@@ -264,6 +267,8 @@ class Adapter:
             return
         run(['/usr/bin/systemctl', 'daemon-reload'], self.timeout)
         run(['/usr/bin/systemctl', 'enable', CONTROLLER], self.timeout)
+        if fields(CONTROLLER)['UnitFileState'] != 'enabled':
+            raise Refusal('unit-enable-unconfirmed')
         run(['/usr/bin/systemctl', 'restart', CONTROLLER], self.timeout)
 
     def ensure(self):
@@ -272,7 +277,8 @@ class Adapter:
             self.start()
             return any(item['ActiveState'] == 'active' or item['UnitFileState'] == 'enabled'
                        for item in before.values())
-        if fields(CONTROLLER)['ActiveState'] != 'active':
+        current = fields(CONTROLLER)
+        if current['ActiveState'] != 'active' or current['UnitFileState'] != 'enabled':
             self.start()
             return True
         return False
@@ -290,7 +296,7 @@ class Adapter:
             prior = units[unit]
             if prior['LoadState'] != 'loaded':
                 continue
-            if prior['UnitFileState'] in {'enabled', 'disabled'}:
+            if prior['UnitFileState'] in {'enabled', 'disabled', 'static'}:
                 action = 'enable' if prior['UnitFileState'] == 'enabled' else 'disable'
                 run(['/usr/bin/systemctl', action, unit], self.timeout)
         # The controller owns normal frontend startup. Restore an independently

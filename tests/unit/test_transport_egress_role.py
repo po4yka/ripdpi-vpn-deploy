@@ -1,6 +1,7 @@
 """Executable private role helper contracts; native systemd proof is separate."""
 from __future__ import annotations
 import base64
+import configparser
 import importlib.util
 import json
 from pathlib import Path
@@ -622,6 +623,9 @@ def test_native_gateway_credential_preserves_json_parser_format():
 
 def test_generation_controller_retains_uid_drop_without_changing_recipient_capabilities():
     unit = (ROLE / 'templates/generation.service.j2').read_text()
+    configuration = configparser.ConfigParser(interpolation=None, strict=False)
+    configuration.read_string(unit)
+    assert configuration['Install']['WantedBy'].split() == ['multi-user.target']
     assert [line for line in unit.splitlines() if line.startswith('AmbientCapabilities=')] == [
         'AmbientCapabilities=CAP_SETUID']
     for value in ['User=root', 'NoNewPrivileges=true', 'ProtectSystem=strict',
@@ -923,18 +927,25 @@ def test_generation_runtime_unit_query_uses_validated_topology(monkeypatch, caps
     assert capsys.readouterr().out == ''
 
 
-def test_gateway_units_have_one_publication_lane():
+def test_generation_units_have_one_publication_lane():
     stage = yaml.safe_load((ROLE / 'tasks/stage.yml').read_text())[-1]['block']
+    authority = next(task['ansible.builtin.set_fact'] for task in stage if task['name'] == 'Retain immutable runtime and candidate authority')
+    assert authority['_transport_egress_runtime_unit_candidates'] == [{
+        'path': '/etc/systemd/system/ripdpi-transport-generation.service', 'mode': '0644',
+        'content': '{{ lookup("ansible.builtin.template", "generation.service.j2") }}'}]
+    files = next(task['loop'] for task in stage
+                 if task['name'] == 'Render fixed private candidate files without remote publication')
+    assert not any(item['path'].endswith('/ripdpi-transport-generation.service') for item in files)
     render = next(task['ansible.builtin.set_fact'] for task in stage if task['name'] == 'Render gateway credentials and units into private candidates')
     assert 'gateway.service.j2' not in render['_transport_egress_candidate_files']
-    assert 'gateway.service.j2' in render['_transport_egress_gateway_candidates']
-    select = next(task for task in stage if task['name'] == 'Select gateway units for the sole runtime publisher')
-    assert select['loop'] == '{{ _transport_egress_gateway_candidates }}'
+    assert 'gateway.service.j2' in render['_transport_egress_runtime_unit_candidates']
+    select = next(task for task in stage if task['name'] == 'Select generation units for the sole runtime publisher')
+    assert select['loop'] == '{{ _transport_egress_runtime_unit_candidates }}'
     assert 'transport_runtime_candidates' in select['ansible.builtin.set_fact']
     publish = next(task for task in stage if task['name'] == 'Validate and publish changed private candidates')['block']
     live = next(task for task in publish if task['name'] == 'Publish the complete validated candidate')
     assert live['loop'] == '{{ _transport_egress_candidate_files }}'
-    assert next(task for task in publish if task['name'] == 'Stage release-bound gateway units for syntax validation only')['ansible.builtin.copy']['dest'].startswith('{{ _transport_egress_candidate_dir.path }}')
+    assert next(task for task in publish if task['name'] == 'Stage release-bound generation units for syntax validation only')['ansible.builtin.copy']['dest'].startswith('{{ _transport_egress_candidate_dir.path }}')
     names = [task['name'] for task in publish]
     assert names.index('Publish the complete validated candidate') < names.index('Verify actual published unit syntax')
     verify = next(task for task in publish if task['name'] == 'Verify actual published unit syntax')

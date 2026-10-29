@@ -28,3 +28,6 @@ RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 ReadWritePaths={{ transport_egress_state_dir }} /run
 TasksMax=32
 LimitNOFILE=256
+
+[Install]
+WantedBy=multi-user.target

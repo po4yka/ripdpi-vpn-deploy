@@ -19,6 +19,16 @@ spec.loader.exec_module(fixture)
 pytestmark = pytest.mark.native_runtime
 
 
+def assert_controller_boot_authority():
+    controller = 'ripdpi-transport-generation.service'
+    result = subprocess.run(['systemctl', 'is-enabled', controller],
+                            capture_output=True, text=True, check=True, timeout=10)
+    assert result.stdout.strip() == 'enabled'
+    unit = Path('/etc/systemd/system') / controller
+    link = unit.parent / 'multi-user.target.wants' / controller
+    assert link.is_symlink() and link.resolve() == unit
+
+
 @pytest.mark.parametrize('profile', ['xray', 'hysteria'])
 def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(profile):
     with fixture.Lab() as lab:
@@ -45,6 +55,8 @@ def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(
         assert not Path('/var/lib/ripdpi/transport-runtime/accepted.json').exists()
         assert not os.path.lexists(Path('/etc/systemd/system/multi-user.target.wants') /
             ('xray.service' if profile == 'xray' else 'hysteria-server.service'))
+        assert not os.path.lexists(Path('/etc/systemd/system/multi-user.target.wants') /
+                                  'ripdpi-transport-generation.service')
         if profile == 'xray':
             lab.context['xray']['target'] = original
         else:
@@ -55,6 +67,7 @@ def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(
         for name in ('pending.json', 'preparation.json', 'compensating.json', 'outer.json', 'validation.json'):
             assert not (state / name).exists()
         assert lab.converge(profile) == 0
+        assert_controller_boot_authority()
         root = Path('/opt/xray' if profile == 'xray' else '/opt/hysteria')
         previous = os.readlink(root / 'current')
         if profile == 'hysteria':
@@ -64,6 +77,7 @@ def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(
         json.loads(Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_text())
         lab.upgrade(profile)
         assert lab.converge(profile) == 0
+        assert_controller_boot_authority()
         assert os.readlink(root / 'current') != previous
         assert os.readlink(root / 'previous') == previous
         if profile == 'hysteria':
@@ -75,6 +89,7 @@ def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(
         receipt = Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_bytes()
         assert not Path('/var/lib/ripdpi/transport-runtime/pending.json').exists()
         assert lab.converge(profile) == 0
+        assert_controller_boot_authority()
         assert Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_bytes() == receipt
         assert os.readlink(root / 'previous') == previous
         assert lab.converge(profile, check=True) == 0
