@@ -118,9 +118,55 @@ def state(active='inactive', enabled='disabled', loaded='loaded'):
             'MainPID': '10' if active == 'active' else '0'}
 
 
+@pytest.mark.parametrize('active,enabled,after_enable,changed,refused', [
+    ('active', 'enabled', 'enabled', False, False),
+    ('inactive', 'enabled', 'enabled', True, False),
+    ('active', 'disabled', 'enabled', True, False),
+    ('active', 'static', 'enabled', True, False),
+    ('inactive', 'static', 'static', True, True),
+])
+def test_controller_requires_persistent_boot_enablement(
+        tmp_path, monkeypatch, active, enabled, after_enable, changed, refused):
+    directory = tmp_path / 'etc/systemd/system'
+    directory.mkdir(parents=True)
+    (directory / 'hysteria-server.service').write_text('[Service]\nExecStart=/owned/hysteria\n')
+    monkeypatch.setattr(accept, 'Path', lambda path: tmp_path / str(path).lstrip('/'))
+    actual = state(active, enabled)
+    calls = []
+
+    def run(argv, _timeout):
+        calls.append(argv)
+        if argv[1] == 'enable':
+            actual['UnitFileState'] = after_enable
+        elif argv[1] == 'restart':
+            actual['ActiveState'] = 'active'
+        return b''
+
+    monkeypatch.setattr(accept, 'run', run)
+    monkeypatch.setattr(accept, 'fields', lambda _unit: actual.copy())
+    adapter = accept.Adapter([], 'http://owned.example/', 204, 10,
+                             {'xray': 'probe', 'hysteria': 'probe'})
+    if refused:
+        with pytest.raises(core.Refusal, match='unit-enable-unconfirmed'):
+            adapter.ensure()
+        assert not any(argv[1] == 'restart' for argv in calls)
+    else:
+        result = adapter.ensure()
+        assert result is changed
+        assert actual['ActiveState'] == 'active'
+        assert actual['UnitFileState'] == 'enabled'
+        if changed:
+            assert ['/usr/bin/systemctl', 'enable', accept.CONTROLLER] in calls
+            assert ['/usr/bin/systemctl', 'restart', accept.CONTROLLER] in calls
+        else:
+            assert not calls
+    assert not any(argv[-1] in accept.UNITS for argv in calls)
+
+
 @pytest.mark.parametrize('controller_active', [True, False])
-def test_restore_preserves_disabled_controller_and_exact_frontend_activity(monkeypatch, controller_active):
-    wanted = {accept.CONTROLLER: state('active' if controller_active else 'inactive'),
+@pytest.mark.parametrize('controller_enablement', ['disabled', 'static'])
+def test_restore_preserves_boot_authority_and_exact_frontend_activity(monkeypatch, controller_active, controller_enablement):
+    wanted = {accept.CONTROLLER: state('active' if controller_active else 'inactive', controller_enablement),
               accept.UNITS[0]: state('active', 'enabled'), accept.UNITS[1]: state()}
     actual = {unit: state(enabled='enabled') for unit in wanted}
     calls = []
@@ -129,7 +175,7 @@ def test_restore_preserves_disabled_controller_and_exact_frontend_activity(monke
         if argv[1] != 'daemon-reload':
             action, unit = argv[1:]
             if action in {'enable', 'disable'}:
-                actual[unit]['UnitFileState'] = action + 'd'
+                actual[unit]['UnitFileState'] = (controller_enablement if unit == accept.CONTROLLER and action == 'disable' else action + 'd')
             elif action in {'start', 'stop'}:
                 actual[unit]['ActiveState'] = 'active' if action == 'start' else 'inactive'
         return b''
@@ -143,7 +189,7 @@ def test_restore_preserves_disabled_controller_and_exact_frontend_activity(monke
     adapter.restore(wanted)
     if controller_active:
         assert not any(argv[1] in {'start', 'stop'} and argv[2] in accept.UNITS for argv in calls)
-    assert actual[accept.CONTROLLER]['UnitFileState'] == 'disabled'
+    assert actual[accept.CONTROLLER]['UnitFileState'] == controller_enablement
     assert actual[accept.CONTROLLER]['ActiveState'] == wanted[accept.CONTROLLER]['ActiveState']
     assert actual[accept.UNITS[0]]['ActiveState'] == 'active'
     assert actual[accept.UNITS[1]]['ActiveState'] == 'inactive'
@@ -234,6 +280,122 @@ def parameter_area(tmp_path, monkeypatch):
     monkeypatch.setattr(accept, 'STATE', state_root)
     monkeypatch.setattr(accept, 'PARAMETERS', actual)
     return root, state_root, actual, os.getuid(), os.getgid()
+
+
+@pytest.mark.parametrize('baseline,interrupted', [
+    ('static', False), ('static', True), ('absent', False), ('enabled', False),
+])
+def test_controller_publication_restores_boot_links_with_exact_unit_authority(
+        parameter_area, monkeypatch, baseline, interrupted):
+    root, state_root, _parameters_path, uid, gid = parameter_area
+    directory = root / 'units'
+    directory.mkdir(mode=0o755)
+    controller = directory / accept.CONTROLLER
+    link = directory / 'multi-user.target.wants' / accept.CONTROLLER
+    link.parent.mkdir(mode=0o755)
+    legacy = b'[Service]\nExecStart=/owned/controller\n'
+    desired = legacy + b'\n[Install]\nWantedBy=multi-user.target\n'
+    if baseline != 'absent':
+        controller.write_bytes(legacy)
+        controller.chmod(0o644)
+    frontend = directory / accept.UNITS[0]
+    frontend.write_text('ExecStart=/owned/xray run -config /owned/config.json\n')
+    frontend.chmod(0o644)
+    original_path = Path
+    monkeypatch.setattr(accept, 'Path', lambda raw:
+        directory if str(raw) == '/etc/systemd/system' else original_path(raw))
+    monkeypatch.setattr(accept, 'read_parameters', lambda: parameters('boot'))
+    monkeypatch.setattr(accept.os.path, 'samefile', lambda *_args: True)
+    running = {unit: baseline != 'absent' and unit != accept.UNITS[1]
+               for unit in (accept.CONTROLLER, *accept.UNITS)}
+
+    def fields(unit, **_options):
+        path = directory / unit
+        if not path.exists():
+            return state(enabled='', loaded='not-found')
+        enabled = ('enabled' if link.is_symlink() else
+                   'disabled' if b'[Install]' in path.read_bytes() else 'static')
+        return state('active' if running[unit] else 'inactive',
+                     enabled if unit == accept.CONTROLLER else 'disabled')
+
+    def run(argv, _timeout):
+        if argv[0] != '/usr/bin/systemctl' or argv[1] == 'daemon-reload':
+            return b''
+        action, unit = argv[1:]
+        if action == 'enable' and unit == accept.CONTROLLER:
+            if b'[Install]' in controller.read_bytes() and not link.is_symlink():
+                link.symlink_to(controller)
+        elif action == 'disable' and unit == accept.CONTROLLER:
+            link.unlink(missing_ok=True)
+        elif action in {'stop', 'start', 'restart'}:
+            running[unit] = action != 'stop'
+            if unit == accept.CONTROLLER and action != 'stop':
+                running[accept.UNITS[0]] = True
+        return b''
+
+    reject = False
+
+    def probe(*_args, **_options):
+        nonlocal reject
+        if reject:
+            reject = False
+            raise RuntimeError('owned-canary-refused')
+
+    monkeypatch.setattr(accept, 'fields', fields)
+    monkeypatch.setattr(accept, 'run', run)
+    monkeypatch.setattr(accept, 'probe', probe)
+    owner = accept.Adapter([], 'https://boot.example/canary', 204, 10,
+                           {'xray': 'boot', 'hysteria': 'boot-h'})
+    fixture_path = root / 'retained-config'
+    fixture_path.write_bytes(b'accepted')
+    fixture_path.chmod(0o600)
+    with core.Transaction(state_root, uid=uid) as tx:
+        if baseline != 'absent':
+            tx.record('accepted.json', {'schema': 1,
+                'nodes': {str(fixture_path): core.node(fixture_path, uid)},
+                'previous': None, 'units': owner.inspect()})
+        before = tx.accepted()
+    plan = [{'path': str(controller), 'data': base64.b64encode(desired).decode(),
+             'mode': 0o644, 'gid': gid}]
+    if baseline == 'enabled':
+        # A legacy receipt has no controller claim even if the bytes match.
+        controller.write_bytes(desired)
+        with core.Transaction(state_root, uid=uid) as tx:
+            assert tx.apply(plan, owner)['published']
+            before = tx.accepted()
+            assert before['units'][accept.CONTROLLER]['UnitFileState'] == 'enabled'
+            assert not tx.apply(plan, owner)['published']
+            assert tx.accepted() == before
+        plan = [{**plan[0], 'data': base64.b64encode(desired + b'# candidate\n').decode()}]
+    retained = (controller.read_bytes(), controller.stat().st_ino) if controller.exists() else None
+    if interrupted:
+        def checkpoint(stage):
+            if stage == 'adopted':
+                raise SystemExit(99)
+        with core.Transaction(state_root, uid=uid) as tx:
+            with pytest.raises(SystemExit):
+                tx.apply(plan, owner, checkpoint=checkpoint)
+        with core.Transaction(state_root, uid=uid) as tx:
+            assert tx.recover(owner, restore_only=True)['status'] == 'restored-awaiting-outer-owner'
+        assert (state_root / 'pending.json').exists()
+        assert not link.is_symlink()
+        with core.Transaction(state_root, uid=uid) as tx:
+            assert tx.recover(owner)
+    else:
+        reject = True
+        with core.Transaction(state_root, uid=uid) as tx:
+            with pytest.raises(core.Refusal, match='candidate-refused'):
+                tx.apply(plan, owner)
+    with core.Transaction(state_root, uid=uid) as tx:
+        assert tx.accepted() == before
+    assert ((controller.read_bytes(), controller.stat().st_ino)
+            if controller.exists() else None) == retained
+    assert link.is_symlink() is (baseline == 'enabled')
+    assert not os.path.lexists(link) if baseline != 'enabled' else link.resolve() == controller
+    for name in ('pending.json', 'preparation.json', 'compensating.json'):
+        assert not (state_root / name).exists()
+    if before:
+        assert owner.inspect()[accept.CONTROLLER] == before['units'][accept.CONTROLLER]
 
 
 def test_actual_parameters_precede_bootstrap_intent_and_missing_authority_refuses(parameter_area):
