@@ -211,7 +211,19 @@
         - name: Verify rclone was installed by the configuration intent
           ansible.builtin.command:
             argv: [rclone, version]
+          register: backup_rclone_reinstalled
           changed_when: false
+
+        - name: Require the current B2-capable rclone pin
+          ansible.builtin.assert:
+            that: backup_rclone_reinstalled.stdout_lines[0] == 'rclone v1.75.2'
+
+        - name: Require dpkg ownership of the rclone executable
+          ansible.builtin.command:
+            argv: [dpkg-query, -S, /usr/bin/rclone]
+          register: backup_rclone_owner
+          changed_when: false
+          failed_when: "backup_rclone_owner.stdout != 'rclone: /usr/bin/rclone'"
 
         - name: Configure the same files again to prove idempotent publication
           ansible.builtin.include_role:

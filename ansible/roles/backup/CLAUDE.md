@@ -14,10 +14,16 @@ restic password remains separate from the SOPS/age recovery key.
 **Configuration is a separate intent** — `make backup-configure` selects one
 exact host and shares configuration rendering with the normal role, but never
 imports repository initialization, password writes, units, or timer handlers.
-Only the existing rclone package may be installed. A disabled-timer/inactive-service
+Only the declared pinned rclone package may be installed or replaced. A disabled-timer/inactive-service
 window belongs to the operator; the command never creates or releases that window.
 The controller isolates inventory/plugins and loads tracked AWG defaults as data,
 then all/vpn/cohort vars and SOPS. External host_vars are outside this intent.
+
+**Remote client pin** — both entrypoints use the same checksum-pinned official
+Debian package for amd64 or arm64. dpkg owns `/usr/bin/rclone`; runtime-release
+does not publish a second executable. Modern restricted B2 keys need API v4,
+which the distribution package does not provide. Check mode reads dpkg identity
+without gathered facts and predicts replacement without download or byte proof.
 
 **Server only backs up its own state** — `/etc/xray`, `/etc/nginx`,
 `/var/lib/<service>/` configs and small data. Not logs (`monitoring` has

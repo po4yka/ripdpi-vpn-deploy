@@ -1,7 +1,89 @@
 ---
-- name: Install rclone (remote sync only)
-  ansible.builtin.apt:
-    name: rclone
-    state: present
-    update_cache: false
+- name: Converge the pinned remote backup package
   when: backup.remote.enabled | default(false)
+  block:
+    - name: Read the Debian package architecture without gathered facts
+      ansible.builtin.command:
+        argv: [dpkg, --print-architecture]
+      register: _backup_rclone_arch
+      changed_when: false
+      check_mode: false
+
+    - name: Require a supported rclone package architecture
+      ansible.builtin.assert:
+        that: _backup_rclone_arch.stdout in backup_rclone_packages
+        fail_msg: No pinned rclone package for this Debian architecture
+
+    - name: Read the installed rclone package identity
+      ansible.builtin.command:
+        argv: [dpkg-query, -W, '-f=${Status}\t${Version}\t${Architecture}', rclone]
+        expand_argument_vars: false
+      register: _backup_rclone_installed
+      changed_when: false
+      failed_when: >-
+        _backup_rclone_installed.rc not in [0, 1] or
+        (_backup_rclone_installed.rc == 1 and _backup_rclone_installed.stdout != '')
+      check_mode: false
+
+    - name: Select exact rclone package convergence
+      ansible.builtin.set_fact:
+        _backup_rclone_expected: "install ok installed\t{{ backup_rclone_version }}\t{{ _backup_rclone_arch.stdout }}"
+
+    - name: Predict pinned rclone installation without downloading bytes
+      ansible.builtin.debug:
+        msg: Pinned rclone package installation required
+      changed_when: _backup_rclone_installed.stdout != _backup_rclone_expected
+      when: ansible_check_mode
+
+    - name: Install the checksum-pinned official Debian package
+      when:
+        - not ansible_check_mode
+        - _backup_rclone_installed.stdout != _backup_rclone_expected
+      block:
+        - name: Create private rclone package staging
+          ansible.builtin.tempfile:
+            state: directory
+            prefix: vpn-backup-rclone-
+          register: _backup_rclone_staging
+
+        - name: Download the pinned rclone package
+          ansible.builtin.get_url:
+            url: "{{ backup_rclone_packages[_backup_rclone_arch.stdout].url }}"
+            checksum: "sha256:{{ backup_rclone_packages[_backup_rclone_arch.stdout].sha256 }}"
+            dest: "{{ _backup_rclone_staging.path }}/rclone.deb"
+            mode: "0600"
+
+        - name: Read the verified package control fields
+          ansible.builtin.command:
+            argv: [dpkg-deb, --field, "{{ _backup_rclone_staging.path }}/rclone.deb", Package, Version, Architecture]
+          register: _backup_rclone_candidate
+          changed_when: false
+
+        - name: Require the selected package identity before installation
+          ansible.builtin.assert:
+            that:
+              - >-
+                _backup_rclone_candidate.stdout_lines ==
+                ['Package: rclone', 'Version: ' ~ backup_rclone_version,
+                 'Architecture: ' ~ _backup_rclone_arch.stdout]
+
+        - name: Install rclone with dpkg as the sole executable owner
+          ansible.builtin.apt:
+            deb: "{{ _backup_rclone_staging.path }}/rclone.deb"
+            update_cache: false
+            allow_downgrade: true
+            policy_rc_d: 101
+
+        - name: Verify the installed rclone package identity
+          ansible.builtin.command:
+            argv: [dpkg-query, -W, '-f=${Status}\t${Version}\t${Architecture}', rclone]
+            expand_argument_vars: false
+          register: _backup_rclone_final
+          changed_when: false
+          failed_when: _backup_rclone_final.stdout != _backup_rclone_expected
+      always:
+        - name: Remove private rclone package staging
+          ansible.builtin.file:
+            path: "{{ _backup_rclone_staging.path }}"
+            state: absent
+          when: _backup_rclone_staging.path is defined

@@ -57,7 +57,7 @@
             executable: /usr/bin/python3
           changed_when: false
 
-        - name: Install only the already-declared rclone dependency when absent
+        - name: Converge only the declared pinned rclone dependency
           ansible.builtin.include_tasks: install-rclone.yml
 
         - name: Publish all files with rollback on publication or postcheck failure
