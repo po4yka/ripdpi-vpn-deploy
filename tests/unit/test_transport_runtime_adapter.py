@@ -56,7 +56,7 @@ def test_consumer_probe_inherits_configured_canary_status(consumer_bootstrap, ex
     assert envelope['request']['expected_status'] == expected
 
 
-@pytest.mark.parametrize('damage', ['none', 'changed-source', 'extra-source'])
+@pytest.mark.parametrize('damage', ['none', 'changed-source', 'changed-semantic-source', 'missing-semantic-source', 'extra-source'])
 def test_consumer_bootstrap_streams_large_sources_and_checks_pinned_bytes(consumer_bootstrap, damage):
     import subprocess
 
@@ -67,6 +67,8 @@ def test_consumer_bootstrap_streams_large_sources_and_checks_pinned_bytes(consum
         'asset_dir': None, 'expected_status': 200, 'timeout': 10, 'revocation': None}
     envelope['request'] = {'private-marker': 'must-not-be-logged'}
     if damage == 'changed-source': envelope['sources']['transport_runtime_validate'] += '\nraise SystemExit(99)\n'
+    elif damage == 'changed-semantic-source': envelope['sources']['transport_semantics'] += '\nraise SystemExit(99)\n'
+    elif damage == 'missing-semantic-source': del envelope['sources']['transport_semantics']
     elif damage == 'extra-source': envelope['sources']['untrusted'] = 'raise SystemExit(99)'
     result = subprocess.run([sys.executable, '-Es', '-c', program, '--apply', '--check'],
         input=json.dumps(envelope), text=True, capture_output=True, timeout=10)
@@ -74,6 +76,36 @@ def test_consumer_bootstrap_streams_large_sources_and_checks_pinned_bytes(consum
     assert result.returncode == 1 and result.stdout == ''
     assert 'transport-runtime-refused:' + category in result.stderr
     assert 'must-not-be-logged' not in result.stderr and 'untrusted' not in result.stderr
+
+
+@pytest.mark.parametrize('ambient_module', [False, True])
+def test_consumer_bootstrap_projects_native_acme_without_ambient_imports(consumer_bootstrap, tmp_path, ambient_module):
+    import subprocess
+
+    program, envelope = consumer_bootstrap
+    envelope['request'] = {'private-marker': 'must-not-be-logged'}
+    if ambient_module:
+        (tmp_path / 'transport_semantics.py').write_text("raise RuntimeError('ambient-module-loaded')\n")
+    harness = f'''import json, sys
+from pathlib import Path
+from cryptography import x509
+try:
+    exec(compile({program!r}, 'consumer-bootstrap', 'exec'))
+except SystemExit as error:
+    assert error.code == 1
+document = {{'acme': {{'domains': ['h2.example.test'], 'email': 'operator@example.test',
+    'ca': 'letsencrypt', 'dir': '/var/lib/hysteria/acme', 'type': 'http', 'http': {{'altPort': 80}}}}}}
+name = sys.modules['transport_runtime_validate'].project_hysteria_tls(document, Path.cwd(), None, None)
+certificate = x509.load_pem_x509_certificate(Path('server.fullchain.pem').read_bytes())
+names = certificate.extensions.get_extension_for_class(x509.SubjectAlternativeName).value.get_values_for_type(x509.DNSName)
+print(json.dumps({{'name': name, 'certificate_names': names, 'native_acme_projected': 'acme' not in document}}))
+'''
+    result = subprocess.run([sys.executable, '-Es', '-c', harness, '--apply', '--check'],
+        input=json.dumps(envelope), text=True, capture_output=True, cwd=tmp_path, timeout=15)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {'name': 'h2.example.test',
+        'certificate_names': ['h2.example.test'], 'native_acme_projected': True}
+    assert 'must-not-be-logged' not in result.stderr
 
 
 @pytest.fixture

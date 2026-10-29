@@ -122,7 +122,9 @@ def descendant_program(marker, *, wait):
         "import json,os,pathlib,subprocess,sys\n"
         f"child=subprocess.Popen([sys.executable,'-c',{loop!r}], stdin=subprocess.DEVNULL, "
         "stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n"
-        f"pathlib.Path({str(marker)!r}).write_text(json.dumps([os.getpid(),os.getppid(),child.pid]))\n"
+        f"marker=pathlib.Path({str(marker)!r}); pending=marker.with_suffix('.pending')\n"
+        "pending.write_text(json.dumps([os.getpid(),os.getppid(),child.pid]))\n"
+        "pending.replace(marker)\n"
         + (command_wait if wait else "sys.exit(0)\n")
     )
     return program, stop
