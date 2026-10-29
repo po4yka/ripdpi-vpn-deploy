@@ -43,6 +43,13 @@ class FirewallAcceptRule:
     input_interfaces: frozenset[str]
     unknown_predicate: bool
     dhcpv6_kind: str | None
+    collector_ingress: bool
+
+
+@dataclass(frozen=True)
+class CollectorIngress:
+    address: str
+    sources: frozenset[str]
 
 
 def _selector(protocol: object, port: object, port_range: object) -> PortSelector:
@@ -106,6 +113,10 @@ def _decode_tailnet_sources(encoded: str) -> frozenset[str]:
         document = json.loads(raw)
     except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError("Tailnet sources must be valid base64-encoded JSON") from exc
+    return _tailnet_addresses(document)
+
+
+def _tailnet_addresses(document: object) -> frozenset[str]:
     if not isinstance(document, list):
         raise ValueError("Tailnet sources must be a JSON array")
     result: set[str] = set()
@@ -125,6 +136,24 @@ def _decode_tailnet_sources(encoded: str) -> frozenset[str]:
             )
         result.add(value)
     return frozenset(result)
+
+
+def _decode_collector_ingress(encoded: str) -> CollectorIngress | None:
+    try:
+        policy = json.loads(base64.b64decode(encoded, validate=True))
+        if policy == {}:
+            return None
+        if (not isinstance(policy, dict) or set(policy) != {"address", "sources"}
+                or not isinstance(policy["sources"], list)
+                or not 1 <= len(policy["sources"]) <= 10):
+            raise ValueError
+        address = next(iter(_tailnet_addresses([policy["address"]])))
+        sources = _tailnet_addresses(policy["sources"])
+        for value in (address, *sources):
+            ipaddress.IPv4Address(value)
+        return CollectorIngress(address, sources)
+    except (ValueError, TypeError, UnicodeDecodeError, binascii.Error) as exc:
+        raise ValueError("invalid Tailnet collector ingress contract") from exc
 
 
 def _run(*command: str) -> str:
@@ -157,9 +186,7 @@ def _decode_dhcpv6_servers(encoded: str) -> frozenset[str]:
         raise ValueError("DHCPv6 servers must be bounded unique canonical IPv6 addresses") from exc
 
 
-def _dhcpv6_rule_kind(
-    expressions: list, uplink: str, servers: frozenset[str]
-) -> str | None:
+def _rule_matches(expressions: list) -> tuple[str, list[dict]] | None:
     matches = []
     verdicts = []
     for expression in expressions:
@@ -181,11 +208,50 @@ def _dhcpv6_rule_kind(
             return None
     if len(verdicts) != 1:
         return None
+    return verdicts[0], matches
+
+
+def _collector_rule(expressions: list, collector: CollectorIngress | None) -> bool:
+    parsed = _rule_matches(expressions)
+    if collector is None or parsed is None:
+        return False
+    verdict, matches = parsed
+    if verdict != "accept" or len(matches) != 4 or any(match["op"] != "==" for match in matches):
+        return False
+    required = [
+        ({"meta": {"key": "iifname"}}, {"tailscale0"}),
+        ({"payload": {"protocol": "ip", "field": "daddr"}}, {collector.address}),
+        ({"payload": {"protocol": "ip", "field": "saddr"}}, set(collector.sources)),
+        ({"payload": {"protocol": "tcp", "field": "dport"}}, {9443}),
+    ]
+    for left, expected in required:
+        found = [match for match in matches if match["left"] == left]
+        if len(found) != 1:
+            return False
+        value = found[0]["right"]
+        if isinstance(value, dict):
+            if set(value) != {"set"} or not isinstance(value["set"], list):
+                return False
+            value = value["set"]
+        values = value if isinstance(value, list) else [value]
+        if (any(type(item) is not type(next(iter(expected))) for item in values)
+                or len(values) != len(expected) or set(values) != expected):
+            return False
+    return True
+
+
+def _dhcpv6_rule_kind(
+    expressions: list, uplink: str, servers: frozenset[str]
+) -> str | None:
+    parsed = _rule_matches(expressions)
+    if parsed is None:
+        return None
+    verdict, matches = parsed
     expected = [
         ({'payload': {'protocol': 'udp', 'field': 'sport'}}, 547),
         ({'payload': {'protocol': 'udp', 'field': 'dport'}}, 546),
     ]
-    if verdicts[0] == 'drop':
+    if verdict == 'drop':
         expected.append(({'meta': {'key': 'nfproto'}}, 'ipv6'))
         if len(matches) != 3:
             return None
@@ -202,7 +268,7 @@ def _dhcpv6_rule_kind(
         if len(found) != 1:
             return None
         matches.remove(found[0])
-    if verdicts[0] == 'drop':
+    if verdict == 'drop':
         return 'deny'
     source = matches[0]
     if source['left'] != {'payload': {'protocol': 'ip6', 'field': 'saddr'}}:
@@ -260,7 +326,8 @@ def _dport_selector(protocol: str, value: object) -> PortSelector:
 
 
 def _firewall_rules(
-    nft_output: str, dhcpv6_uplink: str, dhcpv6_servers: frozenset[str]
+    nft_output: str, dhcpv6_uplink: str, dhcpv6_servers: frozenset[str],
+    collector: CollectorIngress | None,
 ) -> list[FirewallAcceptRule]:
     try:
         document = json.loads(nft_output)
@@ -412,6 +479,7 @@ def _firewall_rules(
                 input_interfaces=frozenset(input_interfaces),
                 unknown_predicate=unknown_predicate,
                 dhcpv6_kind=_dhcpv6_rule_kind(expressions, dhcpv6_uplink, dhcpv6_servers),
+                collector_ingress=_collector_rule(expressions, collector),
             )
         )
     return accepted
@@ -475,6 +543,7 @@ def _violations(
     ssh_port: int,
     tailnet_sources: frozenset[str],
     dhcpv6_servers: frozenset[str],
+    collector: CollectorIngress | None,
     native_acme: bool = False,
 ) -> list[str]:
     violations: list[str] = []
@@ -487,6 +556,7 @@ def _violations(
     dhcpv6_counts = {'link-local': 0, 'approved-server': 0}
     dhcpv6_accept_positions: list[int] = []
     dhcpv6_deny_positions: list[int] = []
+    collector_seen = 0
     established_positions = [r.position for r in firewall if r.verdict == 'accept' and r.established_only]
     for rule in firewall:
         selector = rule.selector
@@ -501,6 +571,9 @@ def _violations(
                 and not rule.unknown_predicate
             ):
                 tailnet_drop_positions.append(rule.position)
+            continue
+        if rule.collector_ingress:
+            collector_seen += 1
             continue
         if rule.dhcpv6_kind is not None:
             dhcpv6_counts[rule.dhcpv6_kind] += 1
@@ -554,6 +627,11 @@ def _violations(
             continue
         conforming[selector] += 1
 
+    if collector is not None:
+        if collector_seen != 1:
+            violations.append("invalid Tailnet collector ingress rule count")
+        if ("tcp", 9443) in sockets:
+            violations.append("public Tailnet collector socket tcp 9443")
     if dhcpv6_counts['link-local'] != 1:
         violations.append('invalid DHCPv6 link-local reply rule count')
     if dhcpv6_counts['approved-server'] != int(bool(dhcpv6_servers)):
@@ -607,6 +685,7 @@ def main() -> int:
     parser.add_argument("--contract-b64", required=True)
     parser.add_argument("--ssh-port", required=True, type=_port)
     parser.add_argument("--tailnet-sources-b64", required=True)
+    parser.add_argument("--collector-ingress-b64", required=True)
     parser.add_argument("--dhcpv6-uplink", required=True, type=_uplink)
     parser.add_argument("--dhcpv6-servers-b64", required=True)
     parser.add_argument("--native-acme", action="store_true")
@@ -614,10 +693,16 @@ def main() -> int:
     try:
         expected = _decode_contract(args.contract_b64)
         tailnet_sources = _decode_tailnet_sources(args.tailnet_sources_b64)
+        collector = _decode_collector_ingress(args.collector_ingress_b64)
+        if collector is not None and (args.ssh_port == 9443 or any(
+            selector.protocol == "tcp" and selector.start <= 9443 <= selector.end
+            for selector in expected
+        )):
+            raise ValueError("Tailnet collector port overlaps a public or SSH listener")
         dhcpv6_servers = _decode_dhcpv6_servers(args.dhcpv6_servers_b64)
         firewall = _firewall_rules(
             _run("nft", "-j", "list", "table", "inet", "filter"),
-            args.dhcpv6_uplink, dhcpv6_servers,
+            args.dhcpv6_uplink, dhcpv6_servers, collector,
         )
         sockets = _public_socket_ports(_run("ss", "-H", "-lntu"))
     except (ValueError, subprocess.CalledProcessError) as exc:
@@ -625,7 +710,7 @@ def main() -> int:
         return 2
 
     violations = _violations(
-        expected, firewall, sockets, args.ssh_port, tailnet_sources, dhcpv6_servers,
+        expected, firewall, sockets, args.ssh_port, tailnet_sources, dhcpv6_servers, collector,
         args.native_acme,
     )
     if violations:

@@ -181,6 +181,7 @@
               '--ssh-port', security_effective_ssh_ports[0] | string,
               '--dhcpv6-uplink', firewall_effective_dhcpv6_uplink_interface,
               '--dhcpv6-servers-b64', firewall_effective_dhcpv6_server_addresses | to_json | b64encode,
+              '--collector-ingress-b64', firewall_tailnet_collector_ingress | default({}) | to_json | b64encode,
               '--tailnet-sources-b64',
               (
                 tailnet_management.approved_sources | default([])
