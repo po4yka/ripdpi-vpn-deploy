@@ -17,6 +17,13 @@ transaction. Hysteria has native ACME support in its pinned server release.
 
 ## Decisions
 
+- Rotate an approved exact public IPv4 SSH source through the existing firewall
+  transaction. Bind the accepted file and complete live policy in the reviewed
+  plan. Replace one native rule for both activation and compensation; do not
+  reload a table or clear timed sets. Retain the operation type until fresh
+  public and Tailnet management proofs permit finish. A durable committing
+  decision resumes forward after a lost acknowledgement. Foreign changes
+  refuse recovery before any file or kernel write.
 - Keep three transport hosts and a separate observer. Size the observer from
   existing memory, data and free-space admission rules, not only image size.
   All provider IDs, exact costs and private host inputs stay in the operator kit.
