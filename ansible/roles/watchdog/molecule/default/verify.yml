@@ -93,6 +93,7 @@
               enable_xray_reality: true
             xray:
               reality_public_key: "molecule-public-key"
+              xhttp_path: "/7c2e9a41d05b3f68"
               server_names: ["canary.example.test"]
               clients:
                 - name: phone
