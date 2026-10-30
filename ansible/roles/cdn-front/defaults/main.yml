@@ -25,7 +25,7 @@ cdn_front:
   server_name: "{{ nginx_xhttp.server_name }}"
   upstream_addr: "127.0.0.1"
   upstream_port: "{{ nginx_xhttp_port }}"
-  xhttp_path: "{{ xray.xhttp_path | default('/app-sync') }}"
+  xhttp_path: "{{ xray.xhttp_path }}"
   cf_prefix_dir: /etc/cdn-front
   origin_firewall: true
   # Optional Cloudflare Authenticated Origin Pulls (AOP). When the

@@ -152,12 +152,25 @@ both runtime and provider declarations explicit when retaining an alternate;
 removing a live listener requires an authorized coordinated rollout and refreshed
 recipient profiles.
 
+## REALITY client clock window
+
+Every REALITY inbound sets `maxTimeDiff` from `xray_reality_max_time_diff_ms`,
+which defaults to 90000 ms. Without it, Xray accepts a captured ClientHello at
+any later time. A replayed hello then takes the authenticated REALITY path
+instead of the borrowed target's handshake, and that difference can identify the
+node. A device whose clock is more than 90 s off fails P0 silently: it receives
+the target's certificate and no tunnel. Fix the device clock (automatic network
+time); do not widen the window to compensate. The role refuses zero, which
+disables the check.
+
 ## uTLS fingerprint + the "TLS frozen" failover caveat (domestic-AS cascade only)
 
 The client uTLS fingerprint for the REALITY and XHTTP outbounds is configurable
 per profile via `xray_utls_fingerprint` (xray role default `chrome`; override in
 group_vars, or `UTLS_FINGERPRINT=firefox make emit-singbox CLIENT=name` for a
 single run). Hysteria2's QUIC TLS has no uTLS knob, so this does not apply to it.
+The watchdog and smoke-test REALITY clients, and the watchdog XHTTP client, send
+the same configured value, so they verify the fingerprint that recipients use.
 
 **Honest scope — not active on the baseline.** This matters only under the
 June-2026 three-condition TLS pattern, whose Condition 1 requires the

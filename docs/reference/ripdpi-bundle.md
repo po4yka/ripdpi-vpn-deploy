@@ -368,16 +368,17 @@ direct one rather than mis-modelling a dual-role flow.
 }
 ```
 
-`split_hop_egress` is sourced from `vpn.enable_split_hop_ingress`: that role
-runs on the client-facing Node A whose upstream path exits through Node B.
+`split_hop_egress` is `false` for every emitted bundle. The split-hop ingress
+responder routes only the research probe runtimes through Node B; the family
+transports on that host still exit from the entry IP, so the flag must not claim
+otherwise until a family transport is routed through Node B.
 `hysteria_realm` remains explicit `vpn.hysteria_realm` metadata because the
 enable toggle alone does not define a stable realm identifier. Both default to
 the direct-deployment values (`false` / `null`). Pure egress roles (e.g.
 `warp-outbound`) are server-side only and intentionally absent — the client has
 no half to play there. Multi-host emission aggregates every entry rather than
-trusting `HOSTS` order: any ingress host makes `split_hop_egress=true`, the
-first non-null realm identifier is retained, and conflicting non-null realm
-identifiers fail closed.
+trusting `HOSTS` order: the first non-null realm identifier is retained, and
+conflicting non-null realm identifiers fail closed.
 
 ## `ripdpi.expires`
 

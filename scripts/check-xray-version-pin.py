@@ -3,7 +3,8 @@
 
 Extracts the "current" pinned version asserted in docs/reference/xray-release-line.md
 (the heading marked "(repository pin)") and compares it to the canonical
-in-repo pin at secrets/prod.secrets.example.yaml → xray.version.
+in-repo pin at secrets/prod.secrets.example.yaml → xray.version. The pin must
+also be in the xray-runtime production allowlist that deploys enforce.
 
 Source-of-truth table (from CLAUDE.md):
   Xray version pin | ansible/roles/xray/defaults/main.yml | docs/reference/xray-release-line.md
@@ -23,6 +24,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RELEASE_LINE_DOC = REPO_ROOT / "docs/reference/xray-release-line.md"
 EXAMPLE_PIN_FILE = REPO_ROOT / "secrets" / "prod.secrets.example.yaml"
+PRODUCTION_ALLOWLIST_FILE = REPO_ROOT / "ansible/roles/xray-runtime/defaults/main.yml"
 
 # Matches a version heading that is marked as the repository pin, e.g.:
 #   ## v26.3.27 — ~2026-03-27 (repository pin)
@@ -72,6 +74,16 @@ def main() -> int:
     if pin_version is None:
         print(
             f"could not find xray.version in {EXAMPLE_PIN_FILE}",
+            file=sys.stderr,
+        )
+        return 1
+
+    allowlist = (yaml.safe_load(PRODUCTION_ALLOWLIST_FILE.read_text(encoding="utf-8")) or {}).get(
+        "xray_runtime_production_versions")
+    if not isinstance(allowlist, list) or doc_version not in allowlist:
+        print(
+            f"repository pin {doc_version} is missing from xray_runtime_production_versions "
+            f"in {PRODUCTION_ALLOWLIST_FILE}",
             file=sys.stderr,
         )
         return 1

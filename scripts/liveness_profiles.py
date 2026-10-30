@@ -302,8 +302,7 @@ def build_profiles(standard_doc, ripdpi_doc, secrets_doc, client, required_profi
                     raise ProfileError("wrong-xhttp-mode-or-tuning")
                 metadata["endpoint"] = "alternate" if alternate else "primary"
                 metadata["mode"] = mode
-                expected_path = secrets_doc["xray"].get("xhttp_path")
-                if transport["path"] != (expected_path if expected_path is not None else "/app-sync"):
+                if transport["path"] != secrets_doc["xray"].get("xhttp_path"):
                     raise ProfileError("wrong-xhttp-path")
                 proxy_port = 18181 + len(xray["inbounds"])
                 inbound_tag = f"probe-xhttp-{index}"

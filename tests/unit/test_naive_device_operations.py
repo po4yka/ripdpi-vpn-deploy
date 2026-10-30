@@ -36,7 +36,7 @@ def encrypted(tmp_path, monkeypatch):
     document = {
         "unrelated": {"keep": "fixture-private-marker"},
         "naive_secrets": {"server_name": "proxy.example.test", "clients": []},
-        "xray": {"clients": []},
+        "xray": {"xhttp_path": "/4b8e2c1d", "clients": []},
         "hysteria": {"masquerade_type": "proxy", "masquerade_url": "https://owned.example", "clients": []},
         "amneziawg_secrets": {"instances": [{"wire_profile": "awg-3.1-ranges-v1", "name": "awg0", "listen_port": 51820, "address_v4": "10.66.66.1/24", "address_v6": "fd42:42:42::1/64", "server_private_key": base64.b64encode(bytes([8]) * 32).decode(),
                               "jc": 4, "jmin": 40, "jmax": 70, "s1": 50, "s2": 100,

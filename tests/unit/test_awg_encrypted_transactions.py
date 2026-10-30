@@ -25,7 +25,7 @@ def encrypted(tmp_path, monkeypatch):
     monkeypatch.setenv('AUDIT_LOG_FILE', str(tmp_path / 'audit.log.age'))
     monkeypatch.setenv('AUDIT_ACTOR', 'fixture')
     original = document()
-    original.update(unrelated={'private': 'must-stay-encrypted'}, xray={'clients': [{'name': 'keep', 'uuid': '00000000-0000-4000-8000-000000000099', 'short_id': 'aabbccdd'}]})
+    original.update(unrelated={'private': 'must-stay-encrypted'}, xray={'xhttp_path': '/4b8e2c1d', 'clients': [{'name': 'keep', 'uuid': '00000000-0000-4000-8000-000000000099', 'short_id': 'aabbccdd'}]})
     ciphertext = subprocess.run(['sops', '--encrypt', '--age', recipient, '--input-type', 'json', '--output-type', 'yaml', '/dev/stdin'],
                                 input=json.dumps(original).encode(), check=True, capture_output=True).stdout
     path = tmp_path / 'devices.sops.yaml'
@@ -331,51 +331,6 @@ def test_dash_prefixed_names_are_real_enrollments(encrypted, name, surface):
                                 cwd=root, env=environment, capture_output=True, timeout=30)
         assert result.returncode == 0, result.stderr
         assert decrypt(path)['client_registry'][name]['awg_binding'] is None
-
-
-@pytest.mark.parametrize('fault', ['none', 'encoder', 'authority'])
-@pytest.mark.parametrize('surface', ['script', 'make'])
-def test_uri_qr_uses_private_uri_and_preserves_committed_failure(encrypted, fault, surface):
-    path, _ = encrypted
-    publisher.operate(path, lambda doc: ({**doc, 'hysteria': {'clients': [], 'masquerade_type': 'proxy', 'masquerade_url': 'https://owned.example'}}, {}))
-    root = Path(__file__).resolve().parents[2]
-    binaries = path.parent / 'bin'; binaries.mkdir(mode=0o700)
-    encoder = binaries / 'qrencode'
-    # This boundary probe records exactly what the existing QR codec receives.
-    encoder.write_text('#!' + sys.executable + '\nimport os,pathlib,sys\npayload=sys.stdin.buffer.read()\nif os.environ.get("QR_FAILURE"): raise SystemExit(7)\nassert payload.startswith(b"vless://") and b"hysteria2://" not in payload\npathlib.Path(sys.argv[sys.argv.index("-o")+1]).write_bytes(payload)\n')
-    encoder.chmod(0o700)
-    output = path.parent / 'recipient.png'
-    environment = {**os.environ, 'PATH': str(binaries) + os.pathsep + os.environ['PATH'],
-                   'SOPS_FILE': str(path), 'AWG_INSTANCE': 'awg0', 'COHORT': '',
-                   'HOME': str(path.parent), 'TMPDIR': str(path.parent), 'PROVIDER': 'upcloud', 'ENV': 'fixture'}
-    before = path.read_bytes()
-    if fault == 'authority':
-        path.chmod(0o640)
-    if fault == 'encoder':
-        environment['QR_FAILURE'] = '1'
-    command = (['bash', str(root / 'scripts/emit-qr.sh'), 'qr-device', '--type', 'uri', '--out', str(output)]
-               if surface == 'script' else ['make', 'emit-qr', 'CLIENT=qr-device', 'TYPE=uri', f'OUT={output}', f'SOPS_FILE={path}'])
-    result = subprocess.run(command, cwd=root,
-                            env=environment, capture_output=True, timeout=30)
-    assert (result.returncode == 0) == (fault == 'none'), result.stderr
-    stages = list(path.parent.glob('vpn-qr.*'))
-    if fault == 'authority':
-        assert path.read_bytes() == before and not stages
-        return
-    source = decrypt(path)
-    selected = next(item for item in source['xray']['clients'] if item['name'] == 'qr-device')
-    assert selected['uuid'].encode() not in result.stdout + result.stderr
-    if fault == 'encoder':
-        assert len(stages) == 1
-        recipient = stages[0] / 'recipient.uris'
-        assert selected['uuid'] in recipient.read_text()
-        assert recipient.stat().st_mode & 0o777 == 0o600
-        assert stages[0].stat().st_mode & 0o777 == 0o700
-        assert b'private URI recipient retained' in result.stderr
-    else:
-        assert selected['uuid'] in output.read_text()
-        assert output.stat().st_mode & 0o777 == 0o600
-        assert not stages
 
 
 @pytest.mark.parametrize('target', ['awg1', '0awg', 'awg.0'])

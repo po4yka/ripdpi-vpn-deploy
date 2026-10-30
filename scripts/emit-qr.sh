@@ -6,12 +6,12 @@
 #
 # Usage:
 #   scripts/emit-qr.sh phone                          # default: sing-box JSON, PNG to phone.qr.png
-#   scripts/emit-qr.sh phone --type uri               # VLESS+REALITY URI form
+#   scripts/emit-qr.sh phone --type uri               # VLESS+REALITY share URI of one endpoint
 #   scripts/emit-qr.sh phone --out laptop.png
 #   scripts/emit-qr.sh phone --stdout | img2sixel
 #
-# Picks up the same PROVIDER / ENV / HOSTS env vars as emit-singbox.sh
-# and new-client.sh.
+# Picks up the same PROVIDER / ENV / HOSTS / COHORTS env vars as emit-singbox.sh.
+# Both types are read-only for an existing device; issue devices with new-client.sh.
 set -euo pipefail
 
 # QR payloads contain credentials; create them owner-only.
@@ -49,25 +49,7 @@ case "$TYPE" in
     payload="$("${REPO_ROOT}/scripts/emit-singbox.sh" "$CLIENT")"
     ;;
   uri)
-    uri_dir="$(mktemp -d "${TMPDIR:-/tmp}/vpn-qr.XXXXXX")"
-    uri_dir="$(cd "$uri_dir" && pwd -P)"
-    uri_file="${uri_dir}/recipient.uris"
-    cleanup_uri() {
-      local code=$?
-      if (( code != 0 )) && [[ -s "$uri_file" ]]; then
-        printf 'private URI recipient retained: %s\n' "$uri_file" >&2
-      else
-        rm -f -- "$uri_file"
-        rmdir -- "$uri_dir"
-      fi
-      return "$code"
-    }
-    trap cleanup_uri EXIT
-    OUTPUT="$uri_file" SOPS_FILE="${SOPS_FILE:-${HOME}/.config/vpn-provision/${ENV:-prod}.secrets.sops.yaml}" \
-      "${REPO_ROOT}/scripts/new-client.sh" --emit-uri "$CLIENT" > /dev/null
-    IFS= read -r payload < "$uri_file"
-    uri_scheme=vless
-    [[ "$payload" == "${uri_scheme}://"* ]] || { echo 'missing VLESS URI recipient' >&2; exit 1; }
+    payload="$("${REPO_ROOT}/scripts/emit-singbox.sh" "$CLIENT" --share-uri)"
     ;;
   *)
     echo "unknown --type: $TYPE (expected singbox|uri)" >&2

@@ -76,7 +76,7 @@
         argv: >-
           {{ ['/usr/bin/curl', '--silent', '--insecure', '--noproxy', '*', '--resolve',
               'cdn.example.test:8443:127.0.0.1', '--output', '/dev/null', '--write-out', '%{http_code}']
-             + item.credentials + ['https://cdn.example.test:8443/app-sync'] }}
+             + item.credentials + ['https://cdn.example.test:8443/7c2e9a41d05b3f68'] }}
       loop:
         - name: authenticated
           credentials: [--cert, /etc/nginx/tls/aop-client.crt, --key, /etc/nginx/tls/aop-client.key]

@@ -107,7 +107,7 @@ def render_profiles(document, cohort, client, host, endpoint, *, include_disable
                 native(stream, flow=shape["client_flow"], mux=shape["client_mux"])
         if toggles.get("enable_nginx_xhttp", True):
             for target in xhttp_endpoints(document, settings):
-                transport = {"host": target["host"], "path": xray.get("xhttp_path", "/app-sync"),
+                transport = {"host": target["host"], "path": xray["xhttp_path"],
                              "mode": xray.get("xhttp_mode", "auto")}
                 tuning = xhttp_tuning(xray)
                 if tuning:

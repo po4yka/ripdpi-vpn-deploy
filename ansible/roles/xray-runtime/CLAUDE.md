@@ -28,6 +28,10 @@ the Xray install root. The geodata role remains the sole owner of
 
 Protected callers use `xray_runtime_stage_only` for archive, source and bundled asset acquisition. Candidate immutable paths are exposed for complete native validation; selecting current/public/previous links belongs to consumer acceptance. Standalone runtime users retain their acquisition-only lifecycle.
 
+Production acquisition admits only `xray_runtime_production_versions`, checked
+before download. Upstream Xray prereleases use plain tags, so tag shape cannot
+gate them; the pin checker keeps the release-line repository pin in the list.
+
 ## What's done well
 
 - Release selection remains driven by the existing SOPS `xray.version` and architecture checksums.

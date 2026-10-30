@@ -34,7 +34,7 @@ from transport_semantics import transport_errors, xhttp_endpoints
 def authority():
     value = awg_document()
     value.update(xray={"clients": [{"name": "device0", "uuid": "00d9c096-7ff5-4fb2-aead-b4a6cba22bbd", "short_id": "aabbccdd"}],
-                       "server_names": ["localhost"], "reality_public_key": "a" * 43},
+                       "server_names": ["localhost"], "reality_public_key": "a" * 43, "xhttp_path": "/9d4b2e7a"},
                  nginx_xhttp={"server_name": "localhost", "fallback_enabled": True},
                  hysteria={"clients": [{"name": "device0", "password": "private-hy-password"}], "server_name": "localhost",
                            "bandwidth_up": "100 mbps", "bandwidth_down": "200 mbps"},

@@ -311,7 +311,7 @@ def test_managed_public_tls_has_one_bounded_authority(case):
         frontend['acme']['email'] = 'private-marker'
     elif case == 'ca':
         frontend['acme']['ca'] = 'private-marker'
-    errors = xhttp_errors({'nginx_xhttp': frontend}, {})
+    errors = xhttp_errors({'xray': {'xhttp_path': '/4b8e2c1d'}, 'nginx_xhttp': frontend}, {})
     assert bool(errors) is (case != 'valid')
     assert 'private-marker' not in json.dumps(errors)
 

@@ -232,6 +232,7 @@ def test_installed_ansible_rotation_uses_shared_shape_from_playbook_context(
                         "xray_api_listen": "127.0.0.1:10086",
                         "xray_port": 2444,
                         "xray_fallback_port": 0,
+                        "xray_reality_max_time_diff_ms": 90000,
                         "nginx_xhttp_port": 10085,
                         "p0_reality_flow_mode": "vision",
                         "p0_reality_shapes": {
@@ -346,3 +347,56 @@ def test_consumers_do_not_reimplement_the_shape_table() -> None:
     smoke = SMOKE.read_text(encoding="utf-8")
     assert "p0_reality_shape_template" in smoke
     assert "_smoke_shape_name" not in smoke
+
+
+def test_every_reality_inbound_bounds_the_client_time_window() -> None:
+    variables = merge_render_vars()
+    names = [client["name"] for client in variables["xray"]["clients"]]
+    variables["xray"]["cohorts"] = [
+        {"name": "primary", "port": 443, "clients": names[:1]},
+        {"name": "alternate", "port": 2053, "clients": names[1:]},
+    ]
+
+    inbounds = json.loads(render_template(XRAY, variables))["inbounds"]
+
+    reality = [i for i in inbounds if i.get("streamSettings", {}).get("security") == "reality"]
+    assert [i["port"] for i in reality] == [443, 2053]
+    assert {i["streamSettings"]["realitySettings"]["maxTimeDiff"] for i in reality} == {90000}
+
+
+@pytest.mark.parametrize(("value", "admitted"), [(90000, True), (1, True), (0, False), (-1, False), ("90000", False)])
+def test_replay_window_preflight_refuses_disabled_or_untyped_values(value: object, admitted: bool) -> None:
+    from ansible.parsing.dataloader import DataLoader
+    from ansible.template import Templar, trust_as_template
+
+    tasks = yaml.safe_load((ROOT / "ansible/roles/xray/tasks/enable.yml").read_text())
+    task = next(t for t in tasks if t["name"] == "Pre-flight — REALITY replay window must be bounded")
+    templar = Templar(loader=DataLoader(), variables={"xray_reality_max_time_diff_ms": value})
+
+    assert all(templar.template(trust_as_template("{{ " + c + " }}"))
+               for c in task["ansible.builtin.assert"]["that"]) is admitted
+
+
+def test_probes_present_the_configured_recipient_fingerprint() -> None:
+    from ansible.parsing.dataloader import DataLoader
+    from ansible.plugins.loader import init_plugin_loader
+    from ansible.template import Templar, trust_as_template
+
+    init_plugin_loader()
+    variables = merge_render_vars()
+    variables["vpn_service_address"] = "192.0.2.50"
+    variables["xray_utls_fingerprint"] = "firefox"
+    probe = json.loads(render_template(WATCHDOG, variables))
+    fingerprints = [o["streamSettings"].get("realitySettings", o["streamSettings"].get("tlsSettings"))["fingerprint"]
+                    for o in probe["outbounds"]]
+    assert sorted(o["streamSettings"]["security"] for o in probe["outbounds"]) == ["reality", "tls"]
+    assert fingerprints == ["firefox", "firefox"]
+
+    tasks = yaml.safe_load((ROOT / "ansible/playbooks/tasks/smoke-reality.yml").read_text())
+    render = next(t for t in tasks[0]["block"] if t["name"] == "Render Xray client config (REALITY)")
+    client = variables["xray"]["clients"][0]
+    variables.update(smoketest_reality_cohort={"name": "", "port": 443, "clients": [client["name"]]},
+                     smoketest_client=client, smoketest_dir="/unused")
+    smoke = json.loads(Templar(loader=DataLoader(), variables=variables).template(
+        trust_as_template(render["ansible.builtin.copy"]["content"])))
+    assert smoke["outbounds"][0]["streamSettings"]["realitySettings"]["fingerprint"] == "firefox"

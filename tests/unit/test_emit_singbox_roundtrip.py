@@ -922,3 +922,36 @@ def test_snell_empty_consumed_credentials_refuse_without_partial_output(tmp_path
     assert result.returncode != 0
     assert not result.stdout
     assert 'materialization refused' in result.stderr
+
+
+@pytest.mark.parametrize("hosts", ["", "upcloud:prod,vultr:prod"], ids=["one-endpoint", "ambiguous"])
+def test_uri_qr_encodes_one_complete_share_uri_without_changing_secrets(tmp_path, hosts):
+    secrets_json = _secrets_as_json(tmp_path)
+    env = _build_env(tmp_path, secrets_json)
+    if hosts:
+        env["HOSTS"] = hosts
+    before = secrets_json.read_bytes()
+    # Boundary probe: record exactly what the QR codec receives.
+    encoder = tmp_path / "bin" / "qrencode"
+    encoder.write_text('#!/bin/sh\ncat > "$QR_PAYLOAD"\n')
+    encoder.chmod(0o700)
+    env["QR_PAYLOAD"] = str(tmp_path / "payload")
+
+    result = subprocess.run(
+        ["bash", str(REPO_ROOT / "scripts/emit-qr.sh"), "laptop", "--type", "uri", "--stdout"],
+        capture_output=True, text=True, env=env, cwd=str(REPO_ROOT),
+    )
+
+    assert secrets_json.read_bytes() == before
+    if hosts:
+        assert result.returncode != 0
+        assert "exactly one REALITY endpoint" in result.stderr
+        assert not (tmp_path / "payload").exists()
+        return
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "payload").read_text() == (
+        "vless://abcdef12-3456-4789-8abc-def012345678@198.51.100.10:443"
+        "?encryption=none&security=reality&type=tcp&sni=cdn.example.com&fp=chrome"
+        "&pbk=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&sid=11223344&flow=xtls-rprx-vision"
+        "#p0-reality-upcloud-prod\n"
+    )
