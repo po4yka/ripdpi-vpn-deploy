@@ -35,6 +35,15 @@
       changed_when: false
       failed_when: "'node_exporter_textfile' not in node_exporter_groups.stdout.split()"
 
+    - name: Textfile ancestor permits traversal without shared writer authority
+      ansible.builtin.stat:
+        path: /var/lib/node_exporter
+      register: textfile_parent
+      failed_when: >-
+        textfile_parent.stat.pw_name != 'root' or
+        textfile_parent.stat.gr_name != 'root' or
+        textfile_parent.stat.mode != '0755'
+
     - name: Textfile directory preserves honeypot write access
       ansible.builtin.stat:
         path: /var/lib/node_exporter/textfile
