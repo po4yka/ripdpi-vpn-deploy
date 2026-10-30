@@ -44,7 +44,7 @@ _seed() {
 import base64, json, os
 print(json.dumps({
   "unrelated": {"retain": "synthetic-private-marker"},
-  "xray": {"clients": []},
+  "xray": {"xhttp_path": "/4b8e2c1d", "clients": []},
   "hysteria": {"clients": [], "masquerade_type": "proxy", "masquerade_url": "https://owned.example"},
   "amneziawg_secrets": {"instances": [{"name": "awg0", "listen_port": 51820,
     "address_v4": "10.66.66.1/24", "address_v6": "fd42:42:42::1/64",
