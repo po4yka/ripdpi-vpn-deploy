@@ -48,12 +48,12 @@ Both direct XHTTP locations MUST intercept upstream responses with status 404, 5
 
 ### Requirement: REQ-TMD-REALITY-CONSISTENCY — REALITY identity is checked for consistency
 
-`reality_target_validation.py` MUST negotiate the TLS probe with X25519 only and report `x25519_unavailable` when the target cannot, MUST report `sni_resolves_elsewhere` when a configured name resolves to no address of the probed endpoint, and the self-steal role MUST refuse a hostname shared with nginx-xhttp unless both roles carry the same certificate.
+`reality_target_validation.py` MUST negotiate the TLS probe with X25519 only and report `x25519_unavailable` when the target cannot, MUST report `owned_name_resolution` in `owned-public` mode as `matches`, `elsewhere` or `unresolved` against the public endpoint's addresses (`not_applicable` for a borrowed target, which fails that comparison by construction), and the self-steal role MUST refuse a hostname shared with nginx-xhttp unless both roles carry the same certificate.
 
-#### Scenario: Borrowed target whose name resolves elsewhere
+#### Scenario: Owned name that resolves elsewhere
 
-- **WHEN** a configured server name resolves to addresses disjoint from the target's
-- **THEN** the report contains `sni_resolves_elsewhere` and hygiene is failed; no name or address is printed.
+- **WHEN** the owned name resolves to addresses disjoint from the public endpoint's
+- **THEN** the report carries `owned_name_resolution: elsewhere`; no name or address is printed.
 
 #### Scenario: Shared hostname with distinct certificates
 
@@ -62,9 +62,14 @@ Both direct XHTTP locations MUST intercept upstream responses with status 404, 5
 
 ### Requirement: REQ-TMD-CLIENT-CADENCE — Bounded client latency probing
 
-The emitted sing-box `urltest` group MUST use a 30-minute interval.
+The standard sing-box artifact's `urltest` group MUST use a 30-minute interval. The RIPDPI bundle MUST keep the cadence of the vendored contract fixtures until the paired client change lands.
 
 #### Scenario: Standard artifact
 
 - **WHEN** a sing-box document is emitted with at least one proxy outbound
 - **THEN** its `auto` outbound has `interval` equal to `30m`.
+
+#### Scenario: RIPDPI bundle
+
+- **WHEN** a RIPDPI bundle is emitted
+- **THEN** it stays byte-identical to the contract examples that the client vendors.

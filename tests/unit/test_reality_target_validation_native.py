@@ -50,7 +50,9 @@ def test_owned_public_path_uses_explicit_endpoint_and_preserves_private_target(t
             str(ROOT / "scripts/reality_target_validation.py"), "validate"],
             env=environment, capture_output=True, text=True, timeout=15)
         assert result.returncode == 0, result.stdout
-        assert json.loads(result.stdout)["hygiene"] == "passed"
+        report = json.loads(result.stdout)
+        assert report["hygiene"] == "passed"
+        assert report["owned_name_resolution"] == "matches"
         assert "owned.example" not in result.stdout and "93.184.216.34" not in result.stdout
         assert (certificate.read_bytes(), key.read_bytes()) == before
         assert not command(["ip", "-n", namespace, "route", "show", "default"]).stdout

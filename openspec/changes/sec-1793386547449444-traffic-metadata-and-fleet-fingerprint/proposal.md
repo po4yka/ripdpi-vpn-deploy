@@ -22,8 +22,8 @@ to the same address every five minutes through a well-known third-party URL.
 - BREAKING: production (`env: prod`) nginx-xhttp hosts must supply an operator-owned static site tree through `nginx_xhttp_public_site_dir`; the repository-bundled decoy remains available for staging, lab and Molecule hosts only.
 - The committed secrets example no longer carries a deployable XHTTP path; strict validation refuses the placeholder.
 - Both direct XHTTP locations intercept upstream errors and answer them with the decoy's ordinary 404, so a probe sees one site identity whether or not Xray is running.
-- REALITY target validation requires X25519 and reports when a configured SNI name resolves to addresses outside the target's (borrowed) or outside the public endpoint (owned-public); self-steal refuses a shared hostname with a different certificate than nginx-xhttp.
-- Emitted sing-box selectors test latency every 30 minutes instead of every 5.
+- REALITY target validation requires X25519 and reports whether the owned name resolves to the public endpoint (`owned_name_resolution`); self-steal refuses a shared hostname with a different certificate than nginx-xhttp.
+- Standard sing-box artifacts test latency every 30 minutes instead of every 5; the RIPDPI bundle keeps the vendored contract cadence until the paired client change.
 
 ## Capabilities
 

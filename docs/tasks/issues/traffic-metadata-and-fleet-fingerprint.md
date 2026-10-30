@@ -25,5 +25,5 @@ A default node keeps no per-connection device, address or destination record (Xr
 - Rendered Xray configuration carries `"access": "none"` for every profile with `enable_policy_ratelimit: false`, and the Hysteria unit carries `HYSTERIA_LOG_LEVEL=warn`.
 - nginx-xhttp refuses `env: prod` without `nginx_xhttp_public_site_dir`, publishes an operator tree at the same relative paths, and both XHTTP locations answer 404/502/503/504 upstream results with status 404 and `/404.html`.
 - `make validate-secrets` in strict mode refuses the example `xhttp_path` placeholder.
-- The validator reports `x25519_unavailable` and `sni_resolves_elsewhere` from real fixtures without printing names; self-steal fails on a shared hostname with distinct certificates.
+- The validator reports `x25519_unavailable` and `owned_name_resolution` from real fixtures without printing names; self-steal fails on a shared hostname with distinct certificates.
 - Emitted sing-box `auto` outbound uses `interval: 30m`; snapshot goldens and `make check` pass; CI is green at the pull-request head.

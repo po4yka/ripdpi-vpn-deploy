@@ -346,12 +346,12 @@ def test_actual_target_without_x25519_key_share_refuses(tls_site):
     assert [seen[0] for seen in tls_site[2]].count('TLSv1.3') >= 1  # the unrestricted retry proves the target itself is up
 
 
-@pytest.mark.parametrize('owned, reasons', [
-    (['198.51.100.7'], []),
-    (['198.51.100.8'], ['owned_sni_resolves_elsewhere']),
-    (None, ['owned_sni_unresolved']),
+@pytest.mark.parametrize('owned, resolution', [
+    (['198.51.100.7'], 'matches'),
+    (['198.51.100.8'], 'elsewhere'),
+    (None, 'unresolved'),
 ])
-def test_owned_name_must_resolve_to_the_public_endpoint(monkeypatch, owned, reasons):
+def test_owned_name_resolution_is_reported_against_the_public_endpoint(monkeypatch, owned, resolution):
     stages = []
     def worker(_budget, stage, payload):
         stages.append((stage, payload.get('host')))
@@ -363,8 +363,9 @@ def test_owned_name_must_resolve_to_the_public_endpoint(monkeypatch, owned, reas
     monkeypatch.setattr(validator, 'call_worker', worker)
     monkeypatch.setattr(validator, 'http', lambda *_args, **_kwargs: '200')
     monkeypatch.setattr(validator, 'pinned_client', lambda: None)
-    found, observations, _ = validator.collect(None, 'owned-public', '198.51.100.7', 443, ['owned.example'])
-    assert found == reasons
+    found, observations, _, reported = validator.collect(None, 'owned-public', '198.51.100.7', 443, ['owned.example'])
+    assert found == []
+    assert reported == resolution
     assert ('dns', 'owned.example') in stages
     assert observations == [('198.51.100.7', '', '', 1, 0)]
 
@@ -377,8 +378,9 @@ def test_borrowed_names_are_not_resolved(monkeypatch):
     monkeypatch.setattr(validator, 'call_worker', worker)
     monkeypatch.setattr(validator, 'http', lambda *_args, **_kwargs: '200')
     monkeypatch.setattr(validator, 'pinned_client', lambda: None)
-    reasons, _, _ = validator.collect(None, 'borrowed', 'target.example', 443, ['borrowed.example'])
+    reasons, _, _, reported = validator.collect(None, 'borrowed', 'target.example', 443, ['borrowed.example'])
     assert reasons == []
+    assert reported == 'not_applicable'
     assert [stage for stage in stages if stage[0] == 'dns'] == [('dns', 'target.example')]
 
 
@@ -435,7 +437,7 @@ def test_http_failure_retains_successful_tls_observation(monkeypatch):
     monkeypatch.setattr(validator, "call_worker", worker)
     monkeypatch.setattr(validator, "http", rejected_http)
     monkeypatch.setattr(validator, "pinned_client", lambda: None)
-    reasons, observations, compatibility = validator.collect(None, "borrowed", "example.com", 443, ["example.com"])
+    reasons, observations, compatibility, _ = validator.collect(None, "borrowed", "example.com", 443, ["example.com"])
     assert stages == ["dns", "tls"]
     assert reasons == ["https_timeout"]
     assert observations == [("192.0.2.1", "", "", 1, 1)]

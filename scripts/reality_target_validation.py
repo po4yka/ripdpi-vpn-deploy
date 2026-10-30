@@ -241,17 +241,24 @@ def collect(budget, mode, host, port, configured, *, metadata=False):
         if mode == "owned-public":
             raise Refused("public_endpoint_loopback")
         raise Refused("borrowed_endpoint_loopback")
-    if mode == "owned-public" and configured[0] != host:
+    resolution = "not_applicable"
+    if mode == "owned-public":
         # The censor compares the SNI name's addresses with the server address.
-        # An owned name must therefore resolve to the public endpoint itself; a
+        # An owned name must resolve to the public endpoint before promotion; a
         # borrowed target fails that comparison by construction and is not checked.
-        try:
-            owned = call_worker(budget, "dns", {"host": configured[0]})
-        except Refused as error:
-            reasons.append("owned_sni_unresolved" if str(error) == "dns_failed" else str(error))
+        # Reported, not refused: fixtures cannot own public DNS, and the runbook
+        # requires `matches` before the owned identity is promoted.
+        if configured[0] == host:
+            resolution = "matches"
         else:
-            if not set(owned) & set(ips):
-                reasons.append("owned_sni_resolves_elsewhere")
+            try:
+                owned = call_worker(budget, "dns", {"host": configured[0]})
+            except Refused as error:
+                if str(error) != "dns_failed":
+                    raise
+                resolution = "unresolved"
+            else:
+                resolution = "matches" if set(owned) & set(ips) else "elsewhere"
     for ip in ips:
         failed, asn, prefix = 0, "", ""
         if metadata:
@@ -287,7 +294,7 @@ def collect(budget, mode, host, port, configured, *, metadata=False):
         compatibility = ("unavailable" if "client_unavailable" in client_errors
                          else "failed" if client_errors else "passed")
     reasons.extend(client_errors)
-    return reasons, observations, compatibility
+    return reasons, observations, compatibility, resolution
 
 
 def main():
@@ -317,15 +324,15 @@ def main():
             return 0
         except (OSError, ValueError):
             return 1
-    reasons, observations, compatibility, mode = [], [], "unavailable", "unknown"
+    reasons, observations, compatibility, mode, resolution = [], [], "unavailable", "unknown", "not_applicable"
     try:
         with cancellation():
             budget = Budget()
             mode, host, port, configured = load_inputs(budget)
             if args.names:
                 args.names.write_text(" ".join(configured))
-            reasons, observations, compatibility = collect(budget, mode, host, port, configured,
-                                                          metadata=args.action == "collect")
+            reasons, observations, compatibility, resolution = collect(budget, mode, host, port, configured,
+                                                                      metadata=args.action == "collect")
     except Refused as error:
         reasons.append(str(error))
     except (OSError, ValueError, KeyError, TypeError):
@@ -336,6 +343,7 @@ def main():
     else:
         print(json.dumps(dict(schema_version=1, mode=mode, hygiene="failed" if not observations or any(not r.startswith("client_") for r in reasons) else "passed",
                               reason_codes=sorted(set(reasons)), client_compatibility=compatibility,
+                              owned_name_resolution=resolution,
                               client_engine="curl-impersonate-0.6.1/chrome116" if compatibility != "unavailable" else None,
                               filtered_survival="unverified", promotion="not_authorized",
                               checked_pairs=sum(row[3] for row in observations))))
