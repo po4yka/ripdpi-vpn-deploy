@@ -2,7 +2,7 @@
 id: SEC-1793385377599445
 title: Harden REALITY admission and repair client delivery defects
 kind: feature
-status: doing
+status: review
 area: security
 priority: high
 risk: high
