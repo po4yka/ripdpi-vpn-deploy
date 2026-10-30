@@ -276,6 +276,12 @@ to stderr; non-zero exit reads as `error` to orchestrators. Emit `unknown`
 
 **Protocol liveness is a two-part module** — `vpn-protocol-liveness.py` runs on a managed client-path sentinel and emits only redacted JSON; `protocol-liveness.py` pulls those reports over strict SSH and evaluates quorum. Only a fresh `blocked` result with a successful direct control may contribute to rotation. `unknown`, local dependency errors, authentication errors, stale output, and malformed output inhibit rotation.
 
+The collector uses `bootstrap_readiness` owned sessions for SSH and bound
+executor commands. Its signal scope covers INT, TERM, HUP and QUIT, including
+parallel workers. Cancellation reclaims each session before the collector exits;
+an interrupted collection cannot publish successful evidence. Keep the same
+output limit, private environment and SSH trust options when changing this path.
+
 **Promotion liveness is exact-node schema two** — every positive report binds
 the exact inventory alias, canonical public-service-address digest, deployed
 manifest digest, required profile set, source, runner and public profile. All
