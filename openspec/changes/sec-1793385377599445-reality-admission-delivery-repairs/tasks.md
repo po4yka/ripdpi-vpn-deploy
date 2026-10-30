@@ -10,13 +10,13 @@ Single serialized lane. Ansible: `roles/xray`, `roles/xray-runtime`, `roles/watc
 
 ## Execution
 
-- [ ] SEC-1793385515086119 Bound REALITY maxTimeDiff in the xray template with preflight admission and goldens #feature !high @item:SEC-1793385377599445
-- [ ] SEC-1793385515749582 Refuse unreviewed production Xray pins in xray-runtime and check allowlist parity #feature !high @item:SEC-1793385377599445
-- [ ] SEC-1793385516458547 Use the configured recipient uTLS fingerprint in watchdog and smoke probes #feature !high @item:SEC-1793385377599445
-- [ ] SEC-1793385517096983 Make emit-qr URI output read-only and complete via client_payload --share-uri #feature !high @item:SEC-1793385377599445
-- [ ] SEC-1793385517743702 Stop claiming split-hop egress for family outbounds in RIPDPI bundles #feature !high @item:SEC-1793385377599445
-- [ ] SEC-1793385518379176 Generate 128-bit XHTTP paths and refuse absent or published /app-sync paths #feature !high @item:SEC-1793385377599445
-- [ ] SEC-1793385519027248 Update docs, role notes and run the full local gate #feature !high @item:SEC-1793385377599445
+- [x] SEC-1793385515086119 Bound REALITY maxTimeDiff in the xray template with preflight admission and goldens #feature !high @item:SEC-1793385377599445
+- [x] SEC-1793385515749582 Refuse unreviewed production Xray pins in xray-runtime and check allowlist parity #feature !high @item:SEC-1793385377599445
+- [x] SEC-1793385516458547 Use the configured recipient uTLS fingerprint in watchdog and smoke probes #feature !high @item:SEC-1793385377599445
+- [x] SEC-1793385517096983 Make emit-qr URI output read-only and complete via client_payload --share-uri #feature !high @item:SEC-1793385377599445
+- [x] SEC-1793385517743702 Stop claiming split-hop egress for family outbounds in RIPDPI bundles #feature !high @item:SEC-1793385377599445
+- [x] SEC-1793385518379176 Generate 128-bit XHTTP paths and refuse absent or published /app-sync paths #feature !high @item:SEC-1793385377599445
+- [x] SEC-1793385519027248 Update docs, role notes and run the full local gate #feature !high @item:SEC-1793385377599445
 
 ## Verification
 
