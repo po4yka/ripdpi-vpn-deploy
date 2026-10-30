@@ -149,6 +149,14 @@ tailnet_management:
     - 100.116.80.32
     - fd7a:115c:a1e0::4701:50a4
 public_site_canonical_url: "https://vpn.example.com:8443"
+# Operator-owned static site served by nginx-xhttp instead of the bundled
+# decoy. A controller-local directory holding at least 404.html; every regular
+# file below it is published at the same relative path. The bundled pages are
+# committed in a public repository, so every deployment that keeps them serves
+# one byte-identical identity; production hosts (inventory env: prod) refuse
+# convergence while this is empty. Supply it in the same private extra-vars
+# file as public_site_canonical_url.
+nginx_xhttp_public_site_dir: ""
 # Explicit public listener collision exceptions. Keep empty for normal hosts.
 # Each item is either "tcp/8443" or a mapping like {protocol: udp, range: "20000-40000", reason: "..."}.
 listener_collision_allowlist: []

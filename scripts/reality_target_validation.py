@@ -119,14 +119,26 @@ def worker(kind, payload):
         rows = socket.getaddrinfo(payload["host"], None, type=socket.SOCK_STREAM)
         print(json.dumps(sorted({row[4][0] for row in rows})))
     else:
-        context = ssl.create_default_context(cafile=os.environ.get("REALITY_CA_FILE"))
-        context.hostname_checks_common_name = False
-        context.minimum_version = ssl.TLSVersion.TLSv1_3
-        context.set_alpn_protocols(["h2", "http/1.1"])
-        try:
+        def handshake(x25519_only):
+            context = ssl.create_default_context(cafile=os.environ.get("REALITY_CA_FILE"))
+            context.hostname_checks_common_name = False
+            context.minimum_version = ssl.TLSVersion.TLSv1_3
+            context.set_alpn_protocols(["h2", "http/1.1"])
+            if x25519_only:
+                # REALITY clients offer only X25519; a target that cannot take
+                # that key share answers the real client with a different handshake.
+                context.set_ecdh_curve("X25519")
             with socket.create_connection((payload["ip"], payload["port"])) as raw:
                 with context.wrap_socket(raw, server_hostname=payload["sni"]) as conn:
-                    print(json.dumps({"h2": conn.selected_alpn_protocol() == "h2"}))
+                    return conn.selected_alpn_protocol() == "h2"
+        try:
+            try:
+                print(json.dumps({"h2": handshake(True)}))
+            except ssl.SSLCertVerificationError:
+                raise
+            except ssl.SSLError:
+                handshake(False)
+                print(json.dumps({"error": "x25519_unavailable"}))
         except ssl.SSLCertVerificationError:
             print(json.dumps({"error": "certificate_validation_failed"}))
 
@@ -229,6 +241,17 @@ def collect(budget, mode, host, port, configured, *, metadata=False):
         if mode == "owned-public":
             raise Refused("public_endpoint_loopback")
         raise Refused("borrowed_endpoint_loopback")
+    if mode == "owned-public" and configured[0] != host:
+        # The censor compares the SNI name's addresses with the server address.
+        # An owned name must therefore resolve to the public endpoint itself; a
+        # borrowed target fails that comparison by construction and is not checked.
+        try:
+            owned = call_worker(budget, "dns", {"host": configured[0]})
+        except Refused as error:
+            reasons.append("owned_sni_unresolved" if str(error) == "dns_failed" else str(error))
+        else:
+            if not set(owned) & set(ips):
+                reasons.append("owned_sni_resolves_elsewhere")
     for ip in ips:
         failed, asn, prefix = 0, "", ""
         if metadata:

@@ -23,6 +23,11 @@ def test_owned_public_path_uses_explicit_endpoint_and_preserves_private_target(t
              "-out", str(certificate), "-subj", "/CN=owned.example", "-addext", "subjectAltName=DNS:owned.example", "-days", "1"])
     before = certificate.read_bytes(), key.read_bytes()
     command(["ip", "netns", "add", namespace])
+    # `ip netns exec` bind-mounts /etc/netns/<name>/hosts over /etc/hosts, so the
+    # owned name resolves to the simulated public address inside the namespace only.
+    hosts_dir = Path("/etc/netns") / namespace
+    hosts_dir.mkdir(parents=True)
+    (hosts_dir / "hosts").write_text("93.184.216.34 owned.example\n")
     server = None
     try:
         command(["ip", "-n", namespace, "link", "set", "lo", "up"])
@@ -57,3 +62,5 @@ def test_owned_public_path_uses_explicit_endpoint_and_preserves_private_target(t
             except subprocess.TimeoutExpired:
                 server.kill(); server.wait(timeout=2)
         command(["ip", "netns", "delete", namespace])
+        (hosts_dir / "hosts").unlink()
+        hosts_dir.rmdir()

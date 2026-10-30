@@ -361,7 +361,7 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
         out.append(dict(type='selector', tag='snell-evaluation', outbounds=snell, default=snell[0], interrupt_exist_connections=False))
     out.append(dict(type='selector', tag='select', outbounds=automatic + (['auto'] if automatic else ['direct']) + (['snell-evaluation'] if snell else []), default='auto' if automatic else 'direct', interrupt_exist_connections=False))
     if automatic:
-        out.append(dict(type='urltest', tag='auto', outbounds=automatic, url='https://www.gstatic.com/generate_204', interval='5m', tolerance=50))
+        out.append(dict(type='urltest', tag='auto', outbounds=automatic, url='https://www.gstatic.com/generate_204', interval='30m', tolerance=50))
     out += [dict(type='direct', tag='direct'), dict(type='block', tag='block')]
     rules = [dict(package_name=list(filter(None, value.split(','))), action='route', outbound=target)
              for value, target in ((per_app_bypass, 'direct'), (per_app_via_tun, 'select')) if value]

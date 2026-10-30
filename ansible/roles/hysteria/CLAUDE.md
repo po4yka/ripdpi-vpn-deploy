@@ -39,6 +39,9 @@ nondefault HTTPS port. Scoped hosts resolution changes only the hostname lookup;
 it never drops the port or changes global NSS authority.
 
 
+**The unit runs at `HYSTERIA_LOG_LEVEL=warn`** — the default `info` level
+writes `client connected addr=… id=…` for every session into journald.
+
 **Port hopping keeps one unprivileged socket** — the config always binds `hysteria_port`; firewall-owned NAT redirects `hysteria_port_range` onto it. Do not pass a port union to Hysteria or grant it `CAP_NET_ADMIN`.
 
 **Config validation is role-specific** — Hysteria exposes no safe

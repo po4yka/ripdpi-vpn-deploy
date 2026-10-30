@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-30
+goal: SEC-1793386547449444 Close traffic-metadata retention and
+  fleet-fingerprint audit findings

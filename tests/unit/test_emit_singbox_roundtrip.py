@@ -577,6 +577,8 @@ def test_emit_singbox_json_structure(tmp_path):
     tags = {ob.get("tag") for ob in outbounds}
     assert "select" in tags, "'select' outbound missing"
     assert "auto" in tags, "'auto' (urltest) outbound missing"
+    auto = next(ob for ob in outbounds if ob.get("tag") == "auto")
+    assert auto["interval"] == "30m", "latency probing must stay a half-hour cadence"
     assert "direct" in tags, "'direct' outbound missing"
     assert "block" in tags, "'block' outbound missing"
 

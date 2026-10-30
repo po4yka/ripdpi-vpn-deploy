@@ -98,6 +98,70 @@
     group: root
     mode: "0750"
 
+- name: Pre-flight — production hosts serve an operator-owned public site
+  ansible.builtin.assert:
+    that:
+      - (nginx_xhttp_public_site_dir | default('') | length > 0) or ((env | default('')) != 'prod')
+    fail_msg: >-
+      Production hosts refuse the repository-bundled decoy site: set
+      nginx_xhttp_public_site_dir to a controller-local directory holding the
+      operator-owned static site (at least 404.html).
+
+- name: Enumerate the operator-owned public site tree on the controller
+  ansible.builtin.find:
+    paths: ['{{ nginx_xhttp_public_site_dir }}']
+    recurse: true
+    file_type: file
+  register: _nginx_operator_site_tree
+  delegate_to: localhost
+  become: false
+  when: nginx_xhttp_public_site_dir | default('') | length > 0
+
+- name: Enumerate the operator-owned public site directories on the controller
+  ansible.builtin.find:
+    paths: ['{{ nginx_xhttp_public_site_dir }}']
+    recurse: true
+    file_type: directory
+  register: _nginx_operator_site_dirs
+  delegate_to: localhost
+  become: false
+  when: nginx_xhttp_public_site_dir | default('') | length > 0
+
+- name: Resolve the published public site layout
+  ansible.builtin.set_fact:
+    _nginx_operator_site_paths: >-
+      {{ (_nginx_operator_site_tree.files | default([]))
+         | map(attribute='path') | map('relpath', nginx_xhttp_public_site_dir | default('/')) | list
+         if (nginx_xhttp_public_site_dir | default('') | length > 0) else [] }}
+    _nginx_bundled_site_assets: [favicon.svg, logo.svg, 404.html, assets/site.css]
+    _nginx_bundled_site_pages:
+      - {src: index.html.j2, dest: index.html}
+      - {src: about.html.j2, dest: about.html}
+      - {src: methodology.html.j2, dest: methodology.html}
+      - {src: updates.html.j2, dest: updates.html}
+      - {src: reading-benchmark-results.html.j2, dest: notes/reading-benchmark-results.html}
+      - {src: latency-throughput-context.html.j2, dest: notes/latency-throughput-context.html}
+      - {src: repeatable-model-comparisons.html.j2, dest: notes/repeatable-model-comparisons.html}
+      - {src: feed.xml.j2, dest: feed.xml}
+      - {src: robots.txt.j2, dest: robots.txt}
+      - {src: sitemap.xml.j2, dest: sitemap.xml}
+
+- name: Require the operator-owned tree to carry the ordinary error page
+  ansible.builtin.assert:
+    that:
+      - "'404.html' in _nginx_operator_site_paths"
+      - _nginx_operator_site_paths | select('search', '(^|/)\.\.(/|$)') | list | length == 0
+    fail_msg: nginx_xhttp_public_site_dir must contain 404.html and only paths below itself.
+  when: nginx_xhttp_public_site_dir | default('') | length > 0
+
+- name: Resolve the public asset parent directories to prepare
+  ansible.builtin.set_fact:
+    _nginx_public_site_parents: >-
+      {{ ((_nginx_operator_site_dirs.files | default([])) | map(attribute='path')
+          | map('relpath', nginx_xhttp_public_site_dir | default('/'))
+          | map('regex_replace', '^', '/var/www/public-site/') | list)
+         if (_nginx_operator_site_paths | length > 0) else ['/var/www/public-site/assets', '/var/www/public-site/notes'] }}
+
 - name: Inspect the public candidate root before any file publication
   ansible.builtin.stat:
     path: /var/www/public-site
@@ -126,9 +190,7 @@
   ansible.builtin.stat:
     path: '{{ item }}'
     follow: false
-  loop:
-    - /var/www/public-site/assets
-    - /var/www/public-site/notes
+  loop: '{{ _nginx_public_site_parents }}'
   register: _nginx_public_site_directories
 
 - name: Require public asset parents to retain owned safe directory authority
@@ -202,11 +264,8 @@
       {{ nginx_transaction_files + [{'path': '/var/www/public-site/' ~ item,
           'kind': 'file', 'content_b64': lookup('ansible.builtin.file', role_path ~ '/files/public-site/' ~ item, rstrip=false) | b64encode,
           'mode': '0644', 'uid': 0, 'gid': 0}] }}
-  loop:
-    - favicon.svg
-    - logo.svg
-    - 404.html
-    - assets/site.css
+  loop: '{{ _nginx_bundled_site_assets }}'
+  when: _nginx_operator_site_paths | length == 0
   no_log: true
   diff: false
 
@@ -216,17 +275,29 @@
       {{ nginx_transaction_files + [{'path': '/var/www/public-site/' ~ item.dest,
           'kind': 'file', 'content_b64': lookup('ansible.builtin.template', 'public-site/' ~ item.src) | b64encode,
           'mode': '0644', 'uid': 0, 'gid': 0}] }}
-  loop:
-    - {src: index.html.j2, dest: index.html}
-    - {src: about.html.j2, dest: about.html}
-    - {src: methodology.html.j2, dest: methodology.html}
-    - {src: updates.html.j2, dest: updates.html}
-    - {src: reading-benchmark-results.html.j2, dest: notes/reading-benchmark-results.html}
-    - {src: latency-throughput-context.html.j2, dest: notes/latency-throughput-context.html}
-    - {src: repeatable-model-comparisons.html.j2, dest: notes/repeatable-model-comparisons.html}
-    - {src: feed.xml.j2, dest: feed.xml}
-    - {src: robots.txt.j2, dest: robots.txt}
-    - {src: sitemap.xml.j2, dest: sitemap.xml}
+  loop: '{{ _nginx_bundled_site_pages }}'
+  when: _nginx_operator_site_paths | length == 0
+  no_log: true
+  diff: false
+
+- name: Stage the operator-owned public site in the same compensated publication
+  ansible.builtin.set_fact:
+    nginx_transaction_files: >-
+      {{ nginx_transaction_files + [{'path': '/var/www/public-site/' ~ (item.path | relpath(nginx_xhttp_public_site_dir)),
+          'kind': 'file', 'content_b64': lookup('ansible.builtin.pipe', 'base64 < ' ~ (item.path | quote) ~ ' | tr -d "\n"'),
+          'mode': '0644', 'uid': 0, 'gid': 0}] }}
+  loop: '{{ _nginx_operator_site_tree.files | default([]) }}'
+  when: _nginx_operator_site_paths | length > 0
+  no_log: true
+  diff: false
+
+- name: Stage retirement of bundled pages the operator-owned tree does not provide
+  ansible.builtin.set_fact:
+    nginx_transaction_files: >-
+      {{ nginx_transaction_files + [{'path': '/var/www/public-site/' ~ item, 'kind': 'absent'}] }}
+  loop: >-
+    {{ (_nginx_bundled_site_assets + (_nginx_bundled_site_pages | map(attribute='dest') | list))
+       | difference(_nginx_operator_site_paths) if (_nginx_operator_site_paths | length > 0) else [] }}
   no_log: true
   diff: false
 

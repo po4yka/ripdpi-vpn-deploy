@@ -24,6 +24,11 @@ outbound (BitTorrent / QUIC-443 / RFC1918) or `rejected` at the VLESS layer —
 both access-log-visible regardless of loglevel (access messages bypass
 severity filtering).
 
+**Enabling the role turns the access log on** — the xray role renders
+`log.access: none` unless `vpn.enable_policy_ratelimit` is true, so this daemon
+is the only reason a per-connection ledger exists on the node; keep the
+monitoring role on for its rotation.
+
 **Network-layer drop, not Xray policy** — Xray exposes no runtime graylist
 API, so offenders go into the nftables `policy_offenders` set (firewall role
 owns it) for an early drop.

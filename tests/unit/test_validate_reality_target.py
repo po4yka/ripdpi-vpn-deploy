@@ -52,6 +52,8 @@ def tls_site(tmp_path, request):
     context.load_cert_chain(ca, private)
     context.minimum_version = ssl.TLSVersion.TLSv1_3
     context.set_alpn_protocols(['http/1.1'] if variant == 'no-h2' else ['h2', 'http/1.1'])
+    if variant == 'no-x25519':
+        context.set_ecdh_curve('prime256v1')
     # UDP connect selects a local ingress address without sending a packet.
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as route:
         route.connect(('192.0.2.1', 9))
@@ -334,6 +336,50 @@ def test_actual_missing_san_expiry_and_alpn_refuse(tls_site, request):
     result, report = run_site(tls_site, SERVER_NAMES='cn-only.example' if variant == 'no-san' else 'exact.example')
     assert result.returncode != 0
     assert ('h2_unavailable' if variant == 'no-h2' else 'certificate_validation_failed') in report['reason_codes']
+
+
+@pytest.mark.parametrize('tls_site', ['no-x25519'], indirect=True)
+def test_actual_target_without_x25519_key_share_refuses(tls_site):
+    result, report = run_site(tls_site)
+    assert result.returncode != 0
+    assert report['reason_codes'] == ['x25519_unavailable']
+    assert [seen[0] for seen in tls_site[2]].count('TLSv1.3') >= 1  # the unrestricted retry proves the target itself is up
+
+
+@pytest.mark.parametrize('owned, reasons', [
+    (['198.51.100.7'], []),
+    (['198.51.100.8'], ['owned_sni_resolves_elsewhere']),
+    (None, ['owned_sni_unresolved']),
+])
+def test_owned_name_must_resolve_to_the_public_endpoint(monkeypatch, owned, reasons):
+    stages = []
+    def worker(_budget, stage, payload):
+        stages.append((stage, payload.get('host')))
+        if stage == 'dns' and payload['host'] == 'owned.example':
+            if owned is None:
+                raise validator.Refused('dns_failed')
+            return owned
+        return ['198.51.100.7'] if stage == 'dns' else {'h2': True}
+    monkeypatch.setattr(validator, 'call_worker', worker)
+    monkeypatch.setattr(validator, 'http', lambda *_args, **_kwargs: '200')
+    monkeypatch.setattr(validator, 'pinned_client', lambda: None)
+    found, observations, _ = validator.collect(None, 'owned-public', '198.51.100.7', 443, ['owned.example'])
+    assert found == reasons
+    assert ('dns', 'owned.example') in stages
+    assert observations == [('198.51.100.7', '', '', 1, 0)]
+
+
+def test_borrowed_names_are_not_resolved(monkeypatch):
+    stages = []
+    def worker(_budget, stage, payload):
+        stages.append((stage, payload.get('host')))
+        return ['192.0.2.1'] if stage == 'dns' else {'h2': True}
+    monkeypatch.setattr(validator, 'call_worker', worker)
+    monkeypatch.setattr(validator, 'http', lambda *_args, **_kwargs: '200')
+    monkeypatch.setattr(validator, 'pinned_client', lambda: None)
+    reasons, _, _ = validator.collect(None, 'borrowed', 'target.example', 443, ['borrowed.example'])
+    assert reasons == []
+    assert [stage for stage in stages if stage[0] == 'dns'] == [('dns', 'target.example')]
 
 
 @pytest.mark.parametrize('tls_site', ['large-certificate'], indirect=True)

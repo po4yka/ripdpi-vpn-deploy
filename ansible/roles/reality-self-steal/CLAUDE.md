@@ -24,6 +24,7 @@ Operator target hygiene selects `--mode owned-public` with an explicit public en
 
 - Enabling the role without first changing `xray.target` to the exact loopback listener is intentionally rejected.
 - `server_names` must contain only the owned certificate hostname; borrowed fallback names defeat the same-ASN design.
+- A hostname shared with nginx-xhttp must carry the same `cert_pem` in both roles; one name presenting two certificates on two ports is a correlation signal. Distinct names are fine. `make validate-target` in `owned-public` mode also reports `owned_sni_resolves_elsewhere` or `owned_sni_unresolved` when the owned name does not resolve to the public endpoint, the comparison a censor makes before trusting an SNI.
 - Do not add a public nginx listener here. Public HTTP behavior requires a separate Terraform/firewall/listener-contract change.
 - The loopback site is its own decoy identity. For new decoy surfaces the
   canonical scaffold is `ansible/roles/nginx-xhttp/templates/public-site/`

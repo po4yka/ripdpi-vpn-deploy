@@ -26,6 +26,13 @@ xray_api_listen: "127.0.0.1:10086"
 # fingerprint surface). See roles/xray/README.md.
 xray_block_quic_outbound: true
 
+# Per-connection access log. OFF by default: each access line records the
+# client address, the sniffed destination name and the device identity
+# (`email`), a browsing ledger that outlives the connection. The only consumer
+# is the opt-in policy-ratelimit daemon, so the log follows that toggle.
+# error.log and the local StatsService aggregates are unaffected.
+xray_access_log_enabled: "{{ vpn.enable_policy_ratelimit | default(false) | bool }}"
+
 # Client uTLS (browser-mimic) fingerprint emitted into sing-box client bundles
 # for the REALITY and XHTTP outbounds. CLIENT-side only — the server has no uTLS
 # knob — but declared here as the canonical per-profile default; override in
