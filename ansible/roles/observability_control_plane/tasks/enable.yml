@@ -190,6 +190,11 @@
 - name: Publish validated collector runtime outside check mode
   when: not ansible_check_mode
   block:
+    - name: Converge the monitoring-owned textfile ancestor
+      ansible.builtin.include_role:
+        name: monitoring
+        tasks_from: textfile-parent
+
     - name: Create dedicated control-plane account
       ansible.builtin.group:
         name: "{{ observability_control_plane.service_group }}"

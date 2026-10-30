@@ -81,6 +81,9 @@
   changed_when: false
   when: _monitoring_honeypot_writer_group.changed | default(false)
 
+- name: Converge the trusted textfile ancestor before its shared child
+  ansible.builtin.import_tasks: textfile-parent.yml
+
 - name: Ensure node_exporter textfile collector directory
   ansible.builtin.file:
     path: "{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}"

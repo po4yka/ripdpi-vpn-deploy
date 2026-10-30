@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Monitoring owns the root-only writable textfile ancestor as well as its shared child. Standalone sender and collector convergence use that same task before publishing metrics; recursive directory creation must not give the ancestor shared-writer permissions.
+
 Alerting opt-out stops the Telegram and silence services before deleting their exact owned credentials. Unsafe retained paths refuse retirement; unrelated collector and node credentials remain intact.
 
 Opt-out retirement runs after ready Prometheus activation commits. Failed candidate startup or readiness retains the previous unit's credential authority for rollback; later retirement failure leaves the ready collector running and reports incomplete cleanup.

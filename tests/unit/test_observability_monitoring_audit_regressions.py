@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 from scripts.template_render import merge_render_vars, render_template
 from tests.unit import test_observability_agent_health_adapter as health
@@ -718,3 +719,48 @@ def test_alert_rule_template_uses_coverage_recognized_local_bindings():
     )
     actual = checker.extract_toplevel_vars(template.read_text())
     assert not ({"adapter", "node", "role", "enabled"} & actual)
+
+
+def test_textfile_ancestor_stays_outside_shared_writer_authority() -> None:
+    roles = ROOT / "ansible/roles"
+    tasks = yaml.safe_load((roles / "monitoring/tasks/textfile-parent.yml").read_text())
+    assert len(tasks) == 1
+    assert tasks[0]["ansible.builtin.file"] == {
+        "path": "/var/lib/node_exporter",
+        "state": "directory",
+        "follow": False,
+        "owner": "root",
+        "group": "root",
+        "mode": "0755",
+    }
+    assert "== '/var/lib/node_exporter/textfile'" in tasks[0]["when"]
+    monitoring = yaml.safe_load((roles / "monitoring/tasks/enable.yml").read_text())
+    parent_index = next(
+        i
+        for i, t in enumerate(monitoring)
+        if t.get("ansible.builtin.import_tasks") == "textfile-parent.yml"
+    )
+    child_index = next(
+        i
+        for i, t in enumerate(monitoring)
+        if t.get("ansible.builtin.file", {}).get("mode") == "3775"
+    )
+    assert parent_index < child_index
+    for role, filename in (
+        ("observability_agent", "main.yml"),
+        ("observability_control_plane", "enable.yml"),
+    ):
+        tree = yaml.safe_load((roles / role / "tasks" / filename).read_text())
+
+        def walk(items):
+            for task in items:
+                yield task
+                for key in ("block", "rescue", "always"):
+                    yield from walk(task.get(key, []))
+
+        includes = [
+            t["ansible.builtin.include_role"]
+            for t in walk(tree)
+            if "ansible.builtin.include_role" in t
+        ]
+        assert {"name": "monitoring", "tasks_from": "textfile-parent"} in includes

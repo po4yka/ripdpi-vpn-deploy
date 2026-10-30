@@ -1,0 +1,12 @@
+---
+- name: Keep the shared textfile ancestor outside the writer boundary
+  ansible.builtin.file:
+    path: /var/lib/node_exporter
+    state: directory
+    follow: false
+    owner: root
+    group: root
+    mode: "0755"
+  when: >-
+    (monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile'))
+    == '/var/lib/node_exporter/textfile'

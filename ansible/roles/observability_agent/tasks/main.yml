@@ -273,6 +273,11 @@
         - name: Apply aggregate sender and producer boundary before runtime mutation
           ansible.builtin.include_tasks: resource-boundary.yml
 
+        - name: Converge the monitoring-owned textfile ancestor
+          ansible.builtin.include_role:
+            name: monitoring
+            tasks_from: textfile-parent
+
         - name: Create observability agent runtime account
           ansible.builtin.user:
             name: observability-agent
