@@ -536,6 +536,7 @@ def test_collector_reclaims_probe_sessions_and_quiet_children(tmp_path, interrup
             try:
                 os.killpg(group, signal.SIGKILL)
             except ProcessLookupError:
+                # The collector already reclaimed this owned test session.
                 pass
         process.stdout.close()
         process.stderr.close()
