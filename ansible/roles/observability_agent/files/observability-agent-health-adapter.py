@@ -624,7 +624,11 @@ _LIMITS = {"alerts": 0, "restarts": 0}
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--node-id", required=True)
-    parser.add_argument("--watchdog-state", type=Path, required=True)
+    parser.add_argument(
+        "--watchdog-state",
+        type=Path,
+        help="State file for an enabled watchdog; omit when disabled.",
+    )
     parser.add_argument("--watchdog-fail-threshold", type=int, required=True)
     parser.add_argument("--watchdog-alert-limit", type=int, required=True)
     parser.add_argument("--watchdog-restart-limit", type=int, required=True)
@@ -657,14 +661,15 @@ def main(argv: list[str] | None = None) -> int:
     _LIMITS["restarts"] = args.watchdog_restart_limit
     now = int(time.time())
     failed = False
-    try:
-        watchdog = _parse_watchdog(
-            args.watchdog_state, args.watchdog_max_age_seconds, now
-        )
-        failed |= not watchdog.fresh
-    except HealthAdapterError:
-        watchdog = None
-        failed = True
+    watchdog = None
+    if args.watchdog_state is not None:
+        try:
+            watchdog = _parse_watchdog(
+                args.watchdog_state, args.watchdog_max_age_seconds, now
+            )
+            failed |= not watchdog.fresh
+        except HealthAdapterError:
+            failed = True
     try:
         backup = _parse_backup_stage(
             args.backup_stage, args.backup_stage_max_age_seconds, now
@@ -692,11 +697,15 @@ def main(argv: list[str] | None = None) -> int:
     lines = [
         "# Managed by observability-agent-health-adapter.",
         *_deadline(args.node_id, "health-adapter", now, 180),
-        *_deadline(
-            args.node_id,
-            "watchdog",
-            watchdog.observed_at if watchdog else None,
-            args.watchdog_max_age_seconds,
+        *(
+            _deadline(
+                args.node_id,
+                "watchdog",
+                watchdog.observed_at if watchdog else None,
+                args.watchdog_max_age_seconds,
+            )
+            if args.watchdog_state is not None
+            else []
         ),
         *_deadline(
             args.node_id,
@@ -722,7 +731,11 @@ def main(argv: list[str] | None = None) -> int:
             )
             for role in args.required_service
         ],
-        *_render_watchdog(args.node_id, watchdog),
+        *(
+            _render_watchdog(args.node_id, watchdog)
+            if args.watchdog_state is not None
+            else []
+        ),
         *_render_backup_stage(args.node_id, backup),
         *_render_restore(args.node_id, restore),
         *_render_certificate(args.node_id, certificate_expiry),

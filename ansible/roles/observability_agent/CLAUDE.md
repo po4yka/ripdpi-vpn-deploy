@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+The health adapter follows the effective watchdog toggle. A disabled producer has no state argument, metrics, or freshness deadline; enabled but missing or stale state still fails collection. Expected-target inventory must name an enabled producer.
+
 Monitoring owns the root-only writable textfile ancestor as well as its shared child. Standalone sender and collector convergence use that same task before publishing metrics; recursive directory creation must not give the ancestor shared-writer permissions.
 
 Sender release ancestry uses the shared scoped directory traversal. The ancestry
