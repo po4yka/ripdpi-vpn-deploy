@@ -44,7 +44,7 @@
         "network": "raw",
         "security": "reality",
         "realitySettings": {
-          "fingerprint": "chrome",
+          "fingerprint": {{ xray_utls_fingerprint | default('chrome') | to_json }},
           "serverName": "{{ xray.server_names[0] }}",
           "publicKey": "{{ xray.reality_public_key }}",
           "shortId": "{{ _client.short_id }}"
@@ -60,9 +60,10 @@
      "settings": {"vnext": [{"address": {{ vpn_service_address | to_json }}, "port": {{ port }},
        "users": [{"id": {{ _client.uuid | to_json }}, "encryption": "none"}]}]},
      "streamSettings": {"network": "xhttp", "security": "tls",
-       "tlsSettings": {"serverName": {{ _sni | to_json }}, "allowInsecure": false},
+       "tlsSettings": {"serverName": {{ _sni | to_json }}, "allowInsecure": false,
+         "fingerprint": {{ xray_utls_fingerprint | default('chrome') | to_json }}},
        "xhttpSettings": {"host": {{ _sni | to_json }},
-         "path": {{ xray.xhttp_path | default('/app-sync') | to_json }}, "mode": {{ xray.xhttp_mode | default('auto') | to_json }}{% if xray.xhttp_tuning is defined %},
+         "path": {{ xray.xhttp_path | to_json }}, "mode": {{ xray.xhttp_mode | default('auto') | to_json }}{% if xray.xhttp_tuning is defined %},
          "xmux": {"maxConnections": {{ xray.xhttp_tuning.max_connections }},
            "hMaxRequestTimes": 0, "hMaxReusableSecs": 0, "cMaxReuseTimes": 0}{% endif %} }}}
     {%- endfor %}

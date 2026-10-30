@@ -87,7 +87,7 @@ def test_cdn_scenario_generated_authority_accepts_only_signed_client():
                 "aop_cert_path": str(base / "cloudflare-aop.pem"),
                 "upstream_addr": "127.0.0.1",
                 "upstream_port": backend,
-                "xhttp_path": "/app-sync",
+                "xhttp_path": "/7c2e9a41d05b3f68",
             }
         }
         site = render_template(
@@ -124,7 +124,7 @@ def test_cdn_scenario_generated_authority_accepts_only_signed_client():
                 )
             with pytest.raises(urllib.error.HTTPError) as error:
                 urllib.request.urlopen(
-                    f"https://127.0.0.1:{port}/app-sync", context=context, timeout=3
+                    f"https://127.0.0.1:{port}/7c2e9a41d05b3f68", context=context, timeout=3
                 )
             assert error.value.code == status
     finally:

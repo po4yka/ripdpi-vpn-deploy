@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-30
+goal: SEC-1793385377599445 Harden REALITY admission and repair client delivery
+  defects

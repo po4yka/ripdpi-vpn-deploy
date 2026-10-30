@@ -45,6 +45,16 @@
   loop: "{{ xray.cohorts | default([]) }}"
   when: vpn.enable_xray_reality | default(true) | bool
 
+- name: Pre-flight — REALITY replay window must be bounded
+  ansible.builtin.assert:
+    that:
+      - xray_reality_max_time_diff_ms | type_debug == 'int'
+      - xray_reality_max_time_diff_ms > 0
+    fail_msg: >-
+      xray_reality_max_time_diff_ms must be a positive integer number of
+      milliseconds; 0 disables the REALITY client time check.
+  when: vpn.enable_xray_reality | default(true) | bool
+
 - name: Pre-flight — Xray StatsService must remain loopback-only
   ansible.builtin.assert:
     that:

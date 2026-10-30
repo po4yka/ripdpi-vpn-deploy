@@ -178,7 +178,12 @@ guards:
 ## Production rollout policy
 
 1. Bump `xray.version` in the secrets schema and SOPS files only when
-   the target tag is GitHub-tagged Latest, not Pre-release.
+   the target tag is GitHub-tagged Latest, not Pre-release. Production
+   deploys refuse any version outside `xray_runtime_production_versions`
+   (`ansible/roles/xray-runtime/defaults/main.yml`) before download. Upstream
+   prereleases carry plain tags, so this reviewed list, not the tag shape,
+   is the machine gate. Add a version only after its staging soak, and keep
+   the repository pin in it (`scripts/check-xray-version-pin.py` checks this).
 2. Run `make ci-fast` — it executes `check-xray-breaking-changes.py`,
    which derives version-aware config migrations from this release line.
 3. Run on a staging cohort for ≥48 hours before fleet rollout.

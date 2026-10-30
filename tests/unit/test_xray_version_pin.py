@@ -15,6 +15,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CHECK_SCRIPT = REPO_ROOT / "scripts" / "check-xray-version-pin.py"
 
@@ -64,3 +67,42 @@ def test_actual_cli_refuses_mismatch_and_duplicate_marker(tmp_path, monkeypatch)
     assert module.main() == 1
     document.write_text("## v26.3.27 (repository pin)\n## v26.3.27 (repository pin)\n")
     assert module.main() == 1
+
+
+def test_actual_cli_refuses_repository_pin_outside_production_allowlist(tmp_path, monkeypatch):
+    module = checker()
+    document = tmp_path / "release.md"
+    example = tmp_path / "example.yaml"
+    allowlist = tmp_path / "defaults.yml"
+    document.write_text("## v26.3.27 (repository pin)\n")
+    example.write_text('xray: {version: "v26.3.27"}\n')
+    monkeypatch.setattr(module, "RELEASE_LINE_DOC", document)
+    monkeypatch.setattr(module, "EXAMPLE_PIN_FILE", example)
+    monkeypatch.setattr(module, "PRODUCTION_ALLOWLIST_FILE", allowlist)
+    allowlist.write_text("xray_runtime_production_versions: [v26.2.6]\n")
+    assert module.main() == 1
+    allowlist.write_text("xray_runtime_production_versions: [v26.2.6, v26.3.27]\n")
+    assert module.main() == 0
+
+
+@pytest.mark.parametrize(
+    ("variables", "admitted"),
+    [
+        ({"env": "prod", "xray": {"version": "v26.3.27"}}, True),
+        # Upstream prereleases carry plain tags, so a tag-shape check cannot refuse them.
+        ({"env": "prod", "xray": {"version": "v26.10.17"}}, False),
+        ({"env": "staging", "xray": {"version": "v26.10.17"}}, True),
+    ],
+)
+def test_runtime_acquisition_admits_only_reviewed_production_pins(variables, admitted):
+    from ansible.parsing.dataloader import DataLoader
+    from ansible.template import Templar, trust_as_template
+
+    tasks = yaml.safe_load((REPO_ROOT / "ansible/roles/xray-runtime/tasks/main.yml").read_text())
+    task = next(t for t in tasks if t["name"] == "Assert production Xray pin was reviewed for production")
+    defaults = yaml.safe_load((REPO_ROOT / "ansible/roles/xray-runtime/defaults/main.yml").read_text())
+    templar = Templar(loader=DataLoader(), variables={
+        "xray_runtime_production_versions": defaults["xray_runtime_production_versions"], **variables})
+
+    assert all(templar.template(trust_as_template("{{ " + c + " }}"))
+               for c in task["ansible.builtin.assert"]["that"]) is admitted

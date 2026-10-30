@@ -216,7 +216,7 @@ def test_actual_xray_profile_issue_revoke_and_last_device(native_tools, owned_or
     user = {"id": client["uuid"], "email": "device0"}
     if shape == "vision":
         user["flow"] = "xtls-rprx-vision"
-    stream = ({"network": "xhttp", "security": "tls", "xhttpSettings": {"path": "/app-sync", "mode": "auto"},
+    stream = ({"network": "xhttp", "security": "tls", "xhttpSettings": {"path": source["xray"]["xhttp_path"], "mode": "auto"},
                "tlsSettings": {"certificates": [{"certificateFile": str(cert), "keyFile": str(key)}]}}
               if shape == "xhttp" else {"network": "raw", "security": "reality", "realitySettings": {
                   "target": ADDRESS + ":" + str(origin.server.server_port), "serverNames": ["localhost"],

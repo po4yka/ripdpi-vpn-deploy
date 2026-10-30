@@ -19,7 +19,7 @@
       server_name: cdn.example.test
       upstream_addr: "127.0.0.1"
       upstream_port: 10085
-      xhttp_path: "/app-sync"
+      xhttp_path: "/7c2e9a41d05b3f68"
       cf_prefix_dir: /etc/cdn-front
       origin_firewall: true
       aop_cert_path: ""

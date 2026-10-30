@@ -151,8 +151,9 @@ def test_bundle_uses_feature_host_and_emits_ingress_topology(
     assert bundle["ripdpi"]["amneziawg"][0]["peer"]["endpoint"] == (
         "198.51.100.20:51820"
     )
+    # The research responder routes only probe runtimes through Node B.
     assert bundle["ripdpi"]["topology"] == {
-        "split_hop_egress": True,
+        "split_hop_egress": False,
         "hysteria_realm": None,
     }
 

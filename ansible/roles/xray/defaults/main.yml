@@ -37,6 +37,10 @@ xray_block_quic_outbound: true
 # docs/reference/client-notes.md. Do NOT rotate it automatically; see the failover caveat.
 xray_utls_fingerprint: "chrome"
 
+# Maximum REALITY client clock skew in milliseconds. Xray treats 0 as "no
+# check", which lets a captured ClientHello be replayed at any later time.
+xray_reality_max_time_diff_ms: 90000
+
 # Version sentinel — must be overridden in secrets/group_vars.
 # The role asserts this is non-empty at task start.
 xray:
