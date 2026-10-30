@@ -82,6 +82,9 @@ transaction. Hysteria has native ACME support in its pinned server release.
 - Allow 7200 seconds for a complete first-convergence or preview session on
   admitted small nodes. Keep the separate SSH, native validation and transaction
   deadlines, owned-child cancellation and failed-preflight refusal.
+  Final protocol collection uses the same owned-session supervisor for every
+  SSH worker. INT, TERM, HUP and QUIT must reclaim probe sessions before the
+  collector exits or releases the fleet verification locks.
 - Use per-provider encrypted operator documents and separate runtime grants.
   Remote backups use the checksum-pinned official rclone Debian package with
   B2 API v4 authorization. Keep dpkg ownership and the existing narrow grants;

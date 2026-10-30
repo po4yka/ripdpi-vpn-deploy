@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import os
 import runpy
+import signal
 import stat
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -474,6 +476,115 @@ def test_pull_report_bounds_output_and_redacts_stderr(tmp_path, monkeypatch, str
     sid, raw, error = module["pull_report"]({"id": "probe", "ssh_target": "alias"}, 1, 2)
     assert sid == "probe" and raw == "" and error
     assert "secret-marker" not in error
+
+
+@pytest.mark.parametrize("interruption", [None, signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT])
+def test_collector_reclaims_probe_sessions_and_quiet_children(tmp_path, interruption):
+    config = _config(tmp_path)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    ssh = bin_dir / "ssh"
+    reports = {"sentinel-a": _report("tls-freeze-a", _all("ok")),
+               "sentinel-b": _report("udp-filtered-b", _all("ok"))}
+    (tmp_path / "reports.json").write_text(json.dumps(reports))
+    ssh.write_text(
+        "#!/usr/bin/env python3\nimport json,os,pathlib,signal,subprocess,sys,time\n"
+        "root=pathlib.Path(__file__).parent.parent\n"
+        "reports=json.loads((root/'reports.json').read_text())\n"
+        "target=next(arg for arg in sys.argv if arg in reports)\n"
+        "child=subprocess.Popen([sys.executable,'-c',"
+        "'import signal,time;signal.signal(signal.SIGTERM,signal.SIG_IGN);time.sleep(60)'],"
+        "stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)\n"
+        "marker=root/(target+'.json');pending=marker.with_suffix('.pending')\n"
+        "pending.write_text(json.dumps([os.getpid(),os.getpgrp(),child.pid]));pending.replace(marker)\n"
+        + ("while True:time.sleep(1)\n" if interruption else "print(json.dumps(reports[target]))\n")
+    )
+    ssh.chmod(0o700)
+    env = {**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"]}
+    process = subprocess.Popen([sys.executable, str(SCRIPT), "--config", str(config)],
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                               env=env, start_new_session=True)
+    records = []
+    try:
+        deadline = time.monotonic() + 15
+        markers = [tmp_path / (target + ".json") for target in reports]
+        while not all(path.exists() for path in markers) and time.monotonic() < deadline:
+            assert process.poll() is None, "collector exited before both probes started"
+            time.sleep(.01)
+        assert all(path.exists() for path in markers)
+        records = [json.loads(path.read_text()) for path in markers]
+        assert all(group != process.pid for _, group, _ in records)
+        if interruption:
+            process.send_signal(interruption)
+        stdout, stderr = process.communicate(timeout=10)
+        if interruption:
+            assert process.returncode == 128 + interruption
+            assert stdout == "" and "Traceback" not in stderr
+        else:
+            assert process.returncode == 0, stderr
+            assert json.loads(stdout)["decision"] == "healthy"
+        for parent, _, child in records:
+            for pid in (parent, child):
+                state = subprocess.run(["ps", "-p", str(pid), "-o", "stat="],
+                                       capture_output=True, text=True, check=False).stdout.strip()
+                assert not state or state.startswith("Z"), "probe process escaped collector cleanup"
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=5)
+        for _, group, _ in records:
+            try:
+                os.killpg(group, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        process.stdout.close()
+        process.stderr.close()
+
+
+@pytest.mark.parametrize("persistent", [False, True])
+def test_cancel_after_collection_does_not_publish_or_update_state(tmp_path, monkeypatch, capsys, persistent):
+    import bootstrap_readiness as readiness
+
+    config = _config(tmp_path)
+    state_dir = tmp_path / "state"
+    if persistent:
+        state_dir.mkdir()
+        (state_dir / "state.json").write_text("{}\n")
+        (state_dir / "last-evidence.json").write_text("{}\n")
+    module = runpy.run_path(str(SCRIPT))
+    reports = {"sentinel-a": _report("tls-freeze-a", _all("ok")),
+               "sentinel-b": _report("udp-filtered-b", _all("ok"))}
+
+    def fake_probe(command, **_kwargs):
+        return json.dumps(reports[next(value for value in command if value in reports)]).encode()
+
+    aggregate = module["aggregate"]
+
+    def interrupt_after_collection(*args):
+        payload = aggregate(*args)
+        assert payload["decision"] == "healthy"
+        os.kill(os.getpid(), signal.SIGTERM)
+        return payload
+
+    monkeypatch.setitem(module["main"].__globals__, "bounded_command", fake_probe)
+    monkeypatch.setitem(module["main"].__globals__, "aggregate", interrupt_after_collection)
+    argv = [str(SCRIPT), "--config", str(config)]
+    if persistent:
+        argv += ["--state-dir", str(state_dir)]
+    monkeypatch.setattr(sys, "argv", argv)
+    try:
+        with pytest.raises(SystemExit) as error, readiness.cancellation():
+            module["main"]()
+        assert error.value.code == 128 + signal.SIGTERM
+        assert capsys.readouterr().out == ""
+        if persistent:
+            assert (state_dir / "state.json").read_text() == "{}\n"
+            assert (state_dir / "last-evidence.json").read_text() == "{}\n"
+        else:
+            assert not state_dir.exists()
+    finally:
+        with readiness.cancellation():
+            pass
 
 
 @pytest.mark.parametrize(

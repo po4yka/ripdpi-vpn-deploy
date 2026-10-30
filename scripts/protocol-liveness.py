@@ -16,6 +16,7 @@ import json
 import os
 import re
 import shlex
+import signal
 import sys
 import tempfile
 import time
@@ -25,7 +26,8 @@ from urllib.parse import urlparse
 from uuid import UUID
 
 import yaml
-from fleet_inspection import InspectionError, bounded_command
+from fleet_inspection import InspectionError
+from bootstrap_readiness import ReadinessError, cancellation, check_cancelled, run_command
 from liveness_generation import probe_deadline
 from disposable_liveness_executor import ExecutorError, executor_command, load_bound_executor, verify_report_binding
 
@@ -163,6 +165,18 @@ def ssh_options(sentinel: dict, connect_timeout: int) -> list[str]:
     if transport_host:
         values.extend([f"HostName={transport_host}", f"HostKeyAlias={sentinel['ssh_host_key_alias']}"])
     return [argument for value in values for argument in ("-o", value)]
+
+
+def bounded_command(command, *, timeout, environment, limit=1048576):
+    """Keep each probe session owned until cancellation and child cleanup finish."""
+    try:
+        status, output = run_command(command, timeout=timeout, environment=environment,
+                                     capture=True, output_limit=limit)
+    except ReadinessError:
+        raise InspectionError("probe-command-unavailable") from None
+    if status:
+        raise InspectionError("probe-command-failed")
+    return output
 
 
 def pull_report(sentinel: dict, connect_timeout: int, command_timeout: int,
@@ -527,10 +541,14 @@ def main() -> int:
         }
     )
     if args.state_dir:
+        check_cancelled()
         record_state(payload, config, args.config, args.state_dir)
+    check_cancelled()
     print(json.dumps(payload, sort_keys=True))
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    with cancellation((signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT)):
+        result = main()
+    raise SystemExit(result)
