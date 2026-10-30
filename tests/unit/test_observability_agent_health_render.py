@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import yaml
+import pytest
+
+from scripts.template_render import merge_render_vars, render_template
 
 ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / "ansible" / "roles" / "observability_agent"
@@ -39,7 +42,9 @@ def test_role_installs_starts_and_convergently_removes_health_adapter() -> None:
     tasks = (ROLE / "tasks/main.yml").read_text()
 
     install = tasks.index("Install watchdog and backup health adapter")
-    units = tasks.index("Install observability agent adapter units after sender acceptance")
+    units = tasks.index(
+        "Install observability agent adapter units after sender acceptance"
+    )
     start = tasks.index("Enable and start observability agent health adapter timer")
     assert install < units < start
     for path in (
@@ -122,3 +127,17 @@ def test_enabled_molecule_uses_root_private_fixtures_and_proves_redaction() -> N
         "'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'" in verify
     )
     assert "not in (observability_health_output.content | b64decode)" in verify
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_rendered_watchdog_input_follows_the_effective_profile(enabled: bool) -> None:
+    values = merge_render_vars()
+    values["vpn"]["enable_watchdog"] = enabled
+    service = render_template(
+        ROLE / "templates/observability-agent-health-adapter.service.j2", values
+    )
+    assert ("--watchdog-state " in service) is enabled
+    assert ("ReadOnlyPaths=-/var/lib/vpn-watchdog/state" in service) is enabled
+    assert "--backup-stage " in service
+    assert "--restore-drill " in service
+    assert "--certificate " in service

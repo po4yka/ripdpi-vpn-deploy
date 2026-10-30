@@ -160,42 +160,47 @@ def _run(
     root: Path,
     *,
     watchdog: str | None = None,
+    watchdog_enabled: bool = True,
     stage: dict[str, object] | str | None = None,
     restore: dict[str, object] | str | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], str, tuple[Path, Path, Path, Path]]:
     paths = _write_inputs(root, watchdog=watchdog, stage=stage, restore=restore)
     watchdog_path, stage_path, restore_path, output = paths
+    command = [
+        sys.executable,
+        str(ADAPTER),
+        "--node-id",
+        "edge-prod",
+        "--watchdog-state",
+        str(watchdog_path),
+        "--watchdog-fail-threshold",
+        "3",
+        "--watchdog-alert-limit",
+        "4",
+        "--watchdog-restart-limit",
+        "3",
+        "--watchdog-max-age-seconds",
+        "900",
+        "--backup-stage",
+        str(stage_path),
+        "--backup-stage-max-age-seconds",
+        "129600",
+        "--restore-drill",
+        str(restore_path),
+        "--restore-drill-max-age-seconds",
+        "3024000",
+        "--backup-snapshot-max-age-seconds",
+        "129600",
+        "--certificate",
+        str(root / "credentials" / "client.crt"),
+        "--output",
+        str(output),
+    ]
+    if not watchdog_enabled:
+        offset = command.index("--watchdog-state")
+        del command[offset : offset + 2]
     result = subprocess.run(
-        [
-            sys.executable,
-            str(ADAPTER),
-            "--node-id",
-            "edge-prod",
-            "--watchdog-state",
-            str(watchdog_path),
-            "--watchdog-fail-threshold",
-            "3",
-            "--watchdog-alert-limit",
-            "4",
-            "--watchdog-restart-limit",
-            "3",
-            "--watchdog-max-age-seconds",
-            "900",
-            "--backup-stage",
-            str(stage_path),
-            "--backup-stage-max-age-seconds",
-            "129600",
-            "--restore-drill",
-            str(restore_path),
-            "--restore-drill-max-age-seconds",
-            "3024000",
-            "--backup-snapshot-max-age-seconds",
-            "129600",
-            "--certificate",
-            str(root / "credentials" / "client.crt"),
-            "--output",
-            str(output),
-        ],
+        command,
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -301,7 +306,13 @@ def test_watchdog_failure_restart_rate_limit_and_recovery_are_bounded(
         _watchdog_state(consecutive_fails=-1),
         _watchdog_state().replace("alerts_this_hour=0", "alerts_this_hour=secret"),
     ],
-    ids=["missing-fields", "unknown-field", "duplicate-field", "negative-count", "nonnumeric-count"],
+    ids=[
+        "missing-fields",
+        "unknown-field",
+        "duplicate-field",
+        "negative-count",
+        "nonnumeric-count",
+    ],
 )
 def test_watchdog_malformed_state_fails_closed_without_raw_content(
     tmp_path: Path, watchdog: str
@@ -644,3 +655,26 @@ def test_atomic_health_output_refuses_unsafe_existing_destination(
 
     assert target.read_text() == "producer-owned\n"
     assert not list(tmp_path.glob(".health.prom.*.tmp"))
+
+
+def test_disabled_watchdog_does_not_read_state_or_retain_old_metrics(
+    tmp_path: Path,
+) -> None:
+    before, metrics, _ = _run(tmp_path)
+    assert before.returncode == 0
+    assert "vpn_watchdog_collection_success" in metrics
+
+    result, metrics, _ = _run(
+        tmp_path, watchdog="invalid producer state", watchdog_enabled=False
+    )
+    assert result.returncode == 0, result.stderr
+    assert "vpn_watchdog_" not in metrics
+    assert 'role="watchdog"' not in metrics
+    assert (
+        'vpn_backup_collection_success{node="edge-prod",role="stage-status"} 1'
+        in metrics
+    )
+    assert (
+        'vpn_certificate_collection_success{node="edge-prod",role="observability-sender"} 1'
+        in metrics
+    )
