@@ -93,7 +93,7 @@ Permissions/Referrer/nosniff set at server scope in both public vhosts.
 `proxy_read_timeout` and `proxy_send_timeout`; the public root vhost uses
 defaults. Don't mix these — XHTTP needs long-lived streams.
 
-**Both XHTTP locations suppress access logging** — primary and fallback transport paths keep request/session identifiers out of public-site logs; ordinary site requests retain their access logs in the `vpn_public` format, which keeps the combined field layout but writes `-` for the client address, referer and user agent, so status-column tooling still works while no visitor identity is retained. The watchdog's 403 counter reads nginx's stock main log, not these vhost logs; `tests/unit/test_watchdog_templates.py` still runs its `awk` over lines built from `vpn_public`, so a layout change must move with that test.
+**Both XHTTP locations suppress access logging** — primary and fallback transport paths keep request/session identifiers out of public-site logs; ordinary site requests retain their access logs in the `vpn_public` format, which keeps the combined field layout but writes `-` for the client address, referer and user agent, so status-column tooling still works while no visitor identity is retained. The watchdog's 403 counter and `scripts/probing-summary-remote.py` read these vhost logs (not nginx's stock main log, which no role-managed vhost writes to); `tests/unit/test_watchdog_templates.py` runs the rendered detector over lines built from `vpn_public`, so a layout change must move with that test.
 
 The shared publisher journals complete prior/desired rows, exact boot/running
 state and a versioned phase before each live boundary. Recognized interruption

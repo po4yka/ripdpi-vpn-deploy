@@ -2,7 +2,7 @@
 id: MON-1793445381777509
 title: Point the nginx 403 detectors at the decoy vhost logs
 kind: bug
-status: backlog
+status: review
 area: monitoring
 priority: medium
 risk: standard
@@ -13,8 +13,8 @@ spec_mode: required
 openspec_change: mon-1793445381777509-point-the-nginx-403-detectors-at-the-decoy-vhost-logs
 created: 2026-10-31
 updated: 2026-10-31
-related_tasks:
-  - SEC-1793428368283759
+related_tasks: [SEC-1793428368283759]
+status_detail: Implementation and local gates complete; pull request pending
 ---
 
 ## Goal
