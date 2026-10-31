@@ -53,7 +53,7 @@ tiers:
   # TACTICAL — opt-in, situational, default-off
   policy-ratelimit: tactical # routing-blackhole abuse limiter (see README)
   honeypot: tactical        # active-probing canary listener
-  cdn-front: tactical       # CF-fronted XHTTP; NOT the RU baseline (CDN-DECISION)
+  cdn-front: tactical       # CF-fronted XHTTP; NOT the filtered-path baseline (CDN-DECISION)
   naive: tactical           # NaiveProxy; xcaddy from-source build
   warp-outbound: tactical   # Cloudflare WARP egress; changes ASN
   subscription-host: tactical # self-service config pull; v1 default is scp

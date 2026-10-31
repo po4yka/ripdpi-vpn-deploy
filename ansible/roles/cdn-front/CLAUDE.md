@@ -6,13 +6,16 @@
 
 
 **Off by default** — `vpn.enable_cdn_front: false`. Rationale lives in
-`docs/decisions/0001-cdn-not-filtered-path-baseline.md`: as of 2026-04, RU traffic to Cloudflare egresses via
-RU PoPs (DME/KJA/LED) which carry TSPU, with a 16KB byte-threshold curtain
+`docs/decisions/0001-cdn-not-filtered-path-baseline.md`: as of 2026-04, filtered-path traffic to Cloudflare egresses via
+in-path PoPs that carry the path DPI, with a 16KB byte-threshold curtain
 applied to non-`/cdn-cgi/trace` traffic.
 
-**Independent of `nginx-xhttp`** — when `cdn-front` is on, the public 443
-listener gains Cloudflare real-IP restoration (`set_real_ip_from` for CF
-ranges, `CF-Connecting-IP`), Origin CA cert, and Authenticated Origin Pulls.
+**Independent of `nginx-xhttp`** — when `cdn-front` is on, its own server block
+on `cdn_front.port` gains Cloudflare real-IP restoration (`set_real_ip_from`
+for CF ranges, `CF-Connecting-IP`) and, when `aop_cert_path` is set,
+Authenticated Origin Pulls. It reuses the TLS pair in
+`/etc/nginx/tls/<server_name>`; no task issues an Origin CA certificate or
+distributes the AOP CA.
 `nginx-xhttp` keeps doing its direct thing on its own port.
 
 **Cold start is explicit** — a stopped nginx is seeded with `--seed-only`,
@@ -29,8 +32,6 @@ public logs so failed requests cannot disclose the bearer endpoint or session.
 
 ## What's done well
 
-- **Origin CA is generated locally, not pulled from CF** — avoids a
-  trust-on-first-use moment.
 - **`real_ip_recursive on`** — proper handling of multi-proxy chains.
 - **Prefix refresh is transactional** — every CIDR is parsed with the expected address family, nginx candidates are syntax-checked, and both nftables sets are replaced in one checked batch before caches are published.
 
@@ -38,9 +39,9 @@ public logs so failed requests cannot disclose the bearer endpoint or session.
 
 - **Candidate HTTP temp paths stay private** — every standalone Nginx validation HTTP temp directory is beneath the refresh workspace. Omitting them lets Nginx’s default worker identity chown shared distro temp directories under the strict sandbox. Full deployed-config validation remains required; the unit floor and writable paths are unchanged.
 
-- **Do not enable this for the RU baseline** — re-read the ADR. Use it only
+- **Do not enable this for the filtered-path baseline** — re-read the ADR. Use it only
   when the failure shape is "TLS handshake never completes from this network,
-  completes from elsewhere" and a non-RU CDN PoP is reachable.
+  completes from elsewhere" and a CDN PoP outside the filtered path is reachable.
 - **CF ranges drift** — the server refreshes them itself:
   `cdn-front-prefix-refresh.timer` runs `refresh-cf-prefixes.sh` daily at
   06:25 (up to 45 min jitter) into `cdn_front.cf_prefix_dir`. 06:25 keeps the

@@ -61,7 +61,7 @@ state must not invoke provider detach.
 - **Floating IP is region-scoped** — moving a host across regions invalidates
   any attached FIP; plan blue-green carefully.
 - **AS24940 is in the Avoid tier** — `docs/reference/provider-notes.md` records the
-  datacenter-ASN TCP freeze (~14-25 KB) on filtered mobile paths. Use this
+  datacenter-ASN TCP freeze (~14-25 KB) on some filtered paths. Use this
   root for development and unaffected cohorts, and rotate IPs more often than
   on UpCloud.
 - **UDP/443 edge rule ≠ UDP delivery** — UDP/443 is opened by the typed

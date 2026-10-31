@@ -1,6 +1,6 @@
 """Assert nginx relay template rendering in CDN-off vs CDN-on configurations.
 
-The RU baseline (vpn.enable_cdn_front: false) uses the nginx-xhttp role's
+The filtered-path baseline (vpn.enable_cdn_front: false) uses the nginx-xhttp role's
 site.conf.j2 — a direct vhost with no CDN real-IP restoration, no
 CF-Connecting-IP header handling, and no Cloudflare AOP cert directives.
 
@@ -103,7 +103,7 @@ def _render(template_path: Path, extra_vars: dict | None = None) -> str:
 
 
 # ---------------------------------------------------------------------------
-# CDN OFF — nginx-xhttp direct vhost (RU baseline)
+# CDN OFF — nginx-xhttp direct vhost (filtered-path baseline)
 # ---------------------------------------------------------------------------
 
 
