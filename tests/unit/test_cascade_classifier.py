@@ -27,7 +27,7 @@ def _field(number: int, payload: bytes) -> bytes:
 
 
 def _synthetic_geoip_dat() -> bytes:
-    # Hand-built GeoIPList protobuf: RU contains one documentation-only IPv4 /24.
+    # Hand-built GeoIPList protobuf: the domestic country entry contains one documentation-only IPv4 /24.
     cidr = _field(1, bytes([192, 0, 2, 0])) + _varint(2 << 3) + _varint(24)
     geoip = _field(1, b"RU") + _field(2, cidr)
     return _field(1, geoip)

@@ -189,7 +189,7 @@
         executable: /bin/bash
       changed_when: false
 
-    - name: Site has no Cloudflare-specific real_ip directives (RU baseline)
+    - name: Site has no Cloudflare-specific real_ip directives (filtered-path baseline)
       ansible.builtin.shell:
         cmd: |
           set -o pipefail

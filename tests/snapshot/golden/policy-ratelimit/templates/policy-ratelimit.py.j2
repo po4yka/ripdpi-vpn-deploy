@@ -23,8 +23,8 @@ the *error* log. That path:
 (The verbose per-IP REALITY trace is fmt.Printf gated behind `config.Show`,
 off in production.) Surfacing probers would require bumping the error log to
 `info`, which dumps every client's connection metadata (destinations,
-sniffed SNIs) into a persistent corpus — rejected under the RU/TSPU threat
-model. So prober IPs are intentionally unobservable here; external probing is
+sniffed SNIs) into a persistent corpus — rejected under the filtered-path
+threat model. So prober IPs are intentionally unobservable here; external probing is
 mitigated at other layers (REALITY camouflage, firewall scanner-ASN denylist,
 honeypot, non-443 fallback), not by this daemon.
 

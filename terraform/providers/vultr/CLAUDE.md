@@ -15,7 +15,7 @@ inventory and cloud-init waiting use the provider-declared listener rather
 than assuming TCP/22.
 
 **Plan + region constraints** — `vc2-1c-1gb` / `vhf-1c-1gb` only; restricted
-to AMS / FRA / LHR for low-latency RU paths.
+to AMS / FRA / LHR for low-latency filtered paths.
 
 **Secondary IPv4 convergence is provider reboot plus guest proof** — `vultr_instance_ipv4.honeypot` keeps `reboot = true`, then `render-inventory.sh` polls the primary SSH address until the secondary IPv4 is present on a guest interface. Inventory must not publish `honeypot_listen_addr` from API state alone.
 

@@ -6,7 +6,7 @@
 # Value-add depends on topology:
 #   * Same IP as real REALITY listener — observes scanners that
 #     enumerate ports on suspicious IPs. Useful but partial.
-#   * Separate IP (UpCloud floating IP, etc.) — observes TSPU's own
+#   * Separate IP (UpCloud floating IP, etc.) — observes the path DPI's own
 #     IP-discovery probes. Strongly recommended; default is same-IP
 #     because that's what the v1 single-VPS deploy supports.
 #

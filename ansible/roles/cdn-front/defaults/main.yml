@@ -1,8 +1,8 @@
 ---
 # Tactical Cloudflare-fronted nginx vhost. ADR docs/decisions/0001-cdn-not-filtered-path-baseline.md
-# is the boundary: CDN is NOT the RU baseline. This role exists for
-# operators who deliberately want browser-shaped XHTTP via a non-RU
-# CDN PoP, accepting the trade-offs that ADR documents.
+# is the boundary: CDN is NOT the filtered-path baseline. This role exists for
+# operators who deliberately want browser-shaped XHTTP via a CDN PoP
+# outside the filtered path, accepting the trade-offs that ADR documents.
 #
 # Posture:
 #   * separate nginx server block on cdn_front.port (default 8443).

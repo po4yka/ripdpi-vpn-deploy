@@ -313,6 +313,7 @@ jobs:
           - xray honeypot observability_control_plane intrusion_prevention
           - firewall monitoring split-hop-egress package_updates
           - backup warp-outbound nginx-xhttp watchdog
+          - snell split-hop-ingress probe-matrix-target policy-ratelimit reality-self-steal
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -965,8 +966,9 @@ jobs:
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['molecule-failure-scenarios'] }}
     # Non-default Molecule scenarios that exercise red-path / failure
-    # injection, shared TLS permissions, and paired cascade classifiers. Both populated
-    # and forced-empty are required; happy-path alone is not promotion evidence.
+    # injection, shared TLS permissions, paired cascade classifiers, the alternate
+    # XHTTP listener and disabled self-steal. Both populated and forced-empty are
+    # required; happy-path alone is not promotion evidence.
     name: molecule failure (${{ matrix.role }})
     runs-on: ubuntu-24.04
     env:
@@ -991,6 +993,10 @@ jobs:
             scenario: shared-tls
           - role: cdn-front
             scenario: cdn-on
+          - role: nginx-xhttp
+            scenario: fallback-on
+          - role: reality-self-steal
+            scenario: disabled
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:

@@ -1,6 +1,6 @@
 ---
 # P1 transport: nginx fronts a configurable public TCP port and proxies a path to the Xray XHTTP
-# inbound on 127.0.0.1:{{ nginx_xhttp_port }}. RU baseline = direct foreign
+# inbound on 127.0.0.1:{{ nginx_xhttp_port }}. Filtered-path baseline = direct foreign
 # VPS, no CDN. See docs/decisions/0001-cdn-not-filtered-path-baseline.md.
 
 - name: Preflight direct XHTTP endpoint semantics

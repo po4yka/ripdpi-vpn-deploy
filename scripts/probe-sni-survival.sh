@@ -1,25 +1,24 @@
 #!/usr/bin/env bash
-# SNI-variant TSPU-survival probe for REALITY target selection.
+# SNI-variant survival probe for REALITY target selection.
 #
 # For each REALITY server_name, probes BOTH the bare and the `www.`-prefixed
 # SNI variant against the exit IP with a TLS ClientHello and records which
-# variant survives. Per the censorship-bypass KB concept
-# `sni-exact-match-vs-suffix-classification-2026`, TSPU on several non-CF
-# paths matches the SNI by EXACT dot-component string, not by suffix: the bare
+# variant survives. On several filtered non-CF paths the DPI classifier
+# matches the SNI by EXACT dot-component string, not by suffix: the bare
 # `foo.com` and `www.foo.com` forms of the same name can have very different
 # survival, in either direction. The "topologically equivalent" variants are
 # NOT equivalent to the classifier.
 #
-# CRITICAL — VANTAGE MATTERS. The asymmetry is observable ONLY from inside an
-# RU TSPU path. Run this from the FILTERED vantage you want to characterise.
-# From a non-RU / unfiltered vantage every variant will "survive" and the
+# CRITICAL — VANTAGE MATTERS. The asymmetry is observable ONLY from inside a
+# filtered path. Run this from the FILTERED vantage you want to characterise.
+# From an unfiltered vantage every variant will "survive" and the
 # result is a reachability/hygiene baseline ONLY — never a survival verdict.
 # The decision of which variant to put in `xray.server_names` MUST come from a
-# filtered RU-vantage run of this probe (see docs/how-to/transport-reachability-matrix.md).
+# filtered-vantage run of this probe (see docs/how-to/transport-reachability-matrix.md).
 #
 # This is the survival counterpart to `scripts/validate-reality-target.sh`,
 # which can only test TLS/cert hygiene locally and explicitly does NOT decide
-# RU survival.
+# filtered-path survival.
 #
 # Usage:
 #   scripts/probe-sni-survival.sh <exit-ip> [options]
@@ -37,11 +36,11 @@
 #
 # Verdicts per variant:
 #   survived — TLS ServerHello / certificate came back: the ClientHello reached
-#              the endpoint and was answered. (From an RU vantage this means the
+#              the endpoint and was answered. (From a filtered vantage this means the
 #              SNI string is NOT on the exact-match drop table for this path.)
 #   blocked  — TCP connected but the TLS handshake was dropped past ClientHello
-#              (reset / silent stall → timeout). The TSPU SNI-drop signature.
-#   error    — could not even establish TCP (port closed / DNS) — not a TSPU
+#              (reset / silent stall → timeout). The DPI SNI-drop signature.
+#   error    — could not even establish TCP (port closed / DNS) — not a DPI
 #              signal; the probe could not measure this variant.
 set -euo pipefail
 
@@ -115,7 +114,7 @@ fi
 
 echo "SNI-variant survival probe → ${EXIT_IP}:${PORT}  (vantage: ${VANTAGE})"
 if [[ "$VANTAGE" == "unfiltered" ]]; then
-  echo "NOTE: vantage=unfiltered — results are a reachability baseline, NOT an RU-survival verdict." >&2
+  echo "NOTE: vantage=unfiltered — results are a reachability baseline, NOT a filtered-path survival verdict." >&2
 fi
 
 # Deduplicated (bare, www.) variants for a name. Strips a single leading www.

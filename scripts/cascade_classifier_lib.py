@@ -103,14 +103,14 @@ def load_ru_networks(path: Path) -> list[IPNetwork]:
             if country == "RU":
                 found = True
                 if inverse:
-                    raise DatasetUnavailable("inverse RU dataset is unsupported")
+                    raise DatasetUnavailable("inverse domestic dataset is unsupported")
                 networks.extend(entries)
     except (UnicodeDecodeError, ValueError) as exc:
         if isinstance(exc, DatasetUnavailable):
             raise
         raise DatasetUnavailable(f"dataset malformed: {exc}") from exc
     if not found or not networks:
-        raise DatasetUnavailable("dataset contains no usable RU classification entries")
+        raise DatasetUnavailable("dataset contains no usable domestic classification entries")
     return networks
 
 
