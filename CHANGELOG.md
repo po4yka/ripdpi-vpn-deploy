@@ -5,6 +5,53 @@ Do not edit by hand — write [Conventional Commits](https://www.conventionalcom
 on `main` and the next merge of the auto-generated release PR will populate
 this file.
 
+## [4.0.0](https://github.com/po4yka/ripdpi-vpn-deploy/compare/vpnd-v3.0.0...vpnd-v4.0.0) (2026-10-31)
+
+
+### ⚠ BREAKING CHANGES
+
+* **baseline:** encrypt host resolver traffic with strict DNS over TLS ([#433](https://github.com/po4yka/ripdpi-vpn-deploy/issues/433))
+* **security:** resolve recipient names over DoH and watch borrowed identities ([#432](https://github.com/po4yka/ripdpi-vpn-deploy/issues/432))
+* **xray:** bound REALITY replay and repair client delivery ([#427](https://github.com/po4yka/ripdpi-vpn-deploy/issues/427))
+* production (env: prod) nginx-xhttp hosts refuse the repository-bundled decoy site; set nginx_xhttp_public_site_dir to an operator-owned static tree before the next deploy.
+* **scripts:** admit fresh nodes through cloud probes ([#405](https://github.com/po4yka/ripdpi-vpn-deploy/issues/405))
+
+### Features
+
+* **baseline:** encrypt host resolver traffic with strict DNS over TLS ([#433](https://github.com/po4yka/ripdpi-vpn-deploy/issues/433)) ([2251fe4](https://github.com/po4yka/ripdpi-vpn-deploy/commit/2251fe4e7dadd1687ea9914c19242ee2c6cec06b))
+* **firewall:** rotate accepted SSH sources without reloading ([#418](https://github.com/po4yka/ripdpi-vpn-deploy/issues/418)) ([461eb9a](https://github.com/po4yka/ripdpi-vpn-deploy/commit/461eb9a3d3a3017884dccd4a04f61b0585d1d4ac))
+* rebuild cloud service with managed HTTPS ([#403](https://github.com/po4yka/ripdpi-vpn-deploy/issues/403)) ([80b3565](https://github.com/po4yka/ripdpi-vpn-deploy/commit/80b356502d37237521de622357995ec961e3d9c1))
+* **scripts:** admit fresh nodes through cloud probes ([#405](https://github.com/po4yka/ripdpi-vpn-deploy/issues/405)) ([03ab08b](https://github.com/po4yka/ripdpi-vpn-deploy/commit/03ab08b10be83c281f4703996cec29adb6899c4f))
+* **xray:** bound REALITY replay and repair client delivery ([#427](https://github.com/po4yka/ripdpi-vpn-deploy/issues/427)) ([3e2e825](https://github.com/po4yka/ripdpi-vpn-deploy/commit/3e2e825b37a469dcc73232b239552317a3bc050f))
+
+
+### Bug Fixes
+
+* **ansible:** anonymize decoy-site nginx access logs ([#431](https://github.com/po4yka/ripdpi-vpn-deploy/issues/431)) ([62f758d](https://github.com/po4yka/ripdpi-vpn-deploy/commit/62f758d335e6b5a0d0ea8ffab4c6ed0f1a7da4c5))
+* **backup:** use pinned rclone for B2 API v4 ([#415](https://github.com/po4yka/ripdpi-vpn-deploy/issues/415)) ([3248dc0](https://github.com/po4yka/ripdpi-vpn-deploy/commit/3248dc001039bd8eab2e6d07fb2d4b955695f8ad))
+* **deploy:** complete bounded fresh-node preflight ([#407](https://github.com/po4yka/ripdpi-vpn-deploy/issues/407)) ([8b1050e](https://github.com/po4yka/ripdpi-vpn-deploy/commit/8b1050e5be33bf77d1edb7f600e5728b1c7dd491))
+* **deploy:** unblock full public TLS rollout ([#414](https://github.com/po4yka/ripdpi-vpn-deploy/issues/414)) ([9668659](https://github.com/po4yka/ripdpi-vpn-deploy/commit/966865928f759db63f889d028ca9404976975f40))
+* **firewall:** admit bounded Tailnet collector ingress ([#410](https://github.com/po4yka/ripdpi-vpn-deploy/issues/410)) ([0a3d58f](https://github.com/po4yka/ripdpi-vpn-deploy/commit/0a3d58f330dd0aa1248069d35066e901de5dc9c6))
+* **hysteria:** keep native probes alive during ACME startup ([#420](https://github.com/po4yka/ripdpi-vpn-deploy/issues/420)) ([ab6c191](https://github.com/po4yka/ripdpi-vpn-deploy/commit/ab6c19197c74a1ff67aa58fde8df045aaafbc125))
+* **hysteria:** load semantic rules in isolated acceptance ([#419](https://github.com/po4yka/ripdpi-vpn-deploy/issues/419)) ([b0eeeb1](https://github.com/po4yka/ripdpi-vpn-deploy/commit/b0eeeb114661560959e1cd5315fdf9b605b6d401))
+* **liveness:** reclaim probe sessions on cancellation ([#422](https://github.com/po4yka/ripdpi-vpn-deploy/issues/422)) ([96bb17d](https://github.com/po4yka/ripdpi-vpn-deploy/commit/96bb17d5a4da82a086e977f26213a07bf9c3650e))
+* **monitoring:** keep textfile ancestors outside writer authority ([#423](https://github.com/po4yka/ripdpi-vpn-deploy/issues/423)) ([4d8decc](https://github.com/po4yka/ripdpi-vpn-deploy/commit/4d8decc66c5616c8c7fdf16d3293d050a0b8d004))
+* name filtered paths by signature and host every Molecule scenario ([#429](https://github.com/po4yka/ripdpi-vpn-deploy/issues/429)) ([d445031](https://github.com/po4yka/ripdpi-vpn-deploy/commit/d4450315b4b75c49a72b373afce7fe7c9c06bcf8))
+* **observability:** honor disabled watchdog profiles ([#424](https://github.com/po4yka/ripdpi-vpn-deploy/issues/424)) ([6297d20](https://github.com/po4yka/ripdpi-vpn-deploy/commit/6297d20707dcf5c2ab1299b85dc687716bed12c5))
+* **observability:** validate private Kuma ingress syntax ([#412](https://github.com/po4yka/ripdpi-vpn-deploy/issues/412)) ([4d5c9cc](https://github.com/po4yka/ripdpi-vpn-deploy/commit/4d5c9cca9f3591b1fe32868d8433a293c9771243))
+* retain no traffic metadata and refuse shared fleet fingerprints ([#426](https://github.com/po4yka/ripdpi-vpn-deploy/issues/426)) ([61c0988](https://github.com/po4yka/ripdpi-vpn-deploy/commit/61c0988342f38b5138273de39dfadb3e7dcf2b8c))
+* **scripts:** probe latency every 30 minutes in the RIPDPI bundle too ([#430](https://github.com/po4yka/ripdpi-vpn-deploy/issues/430)) ([05a96c0](https://github.com/po4yka/ripdpi-vpn-deploy/commit/05a96c0e5c62d6dc4180524fb745d067661dbde8))
+* **scripts:** verify exact private collector ingress ([#417](https://github.com/po4yka/ripdpi-vpn-deploy/issues/417)) ([4d9c158](https://github.com/po4yka/ripdpi-vpn-deploy/commit/4d9c158527e175a3103b333771cfa33b9b03a30a))
+* **security:** resolve recipient names over DoH and watch borrowed identities ([#432](https://github.com/po4yka/ripdpi-vpn-deploy/issues/432)) ([4aa9ba3](https://github.com/po4yka/ripdpi-vpn-deploy/commit/4aa9ba3e9bc4d0815657ab3123f783b349e86bf6))
+* **transport-egress:** persist controller boot state ([#421](https://github.com/po4yka/ripdpi-vpn-deploy/issues/421)) ([3f3fd56](https://github.com/po4yka/ripdpi-vpn-deploy/commit/3f3fd565c7d96f640d7c7b3f5fedd43e61700938))
+* **xray:** isolate logs from shared system directories ([#406](https://github.com/po4yka/ripdpi-vpn-deploy/issues/406)) ([a2f44af](https://github.com/po4yka/ripdpi-vpn-deploy/commit/a2f44af88aaaec137a0e03686bba673084ed993a))
+
+
+### Documentation
+
+* **tasks:** propose protected-ref gate for done closure ([#436](https://github.com/po4yka/ripdpi-vpn-deploy/issues/436)) ([ab47c7f](https://github.com/po4yka/ripdpi-vpn-deploy/commit/ab47c7fdd34689d8cecf77ac88a81e51b8ce66ed))
+* **tasks:** require separate merges for review, terminal and purge commits ([#434](https://github.com/po4yka/ripdpi-vpn-deploy/issues/434)) ([28d8d6e](https://github.com/po4yka/ripdpi-vpn-deploy/commit/28d8d6e089f361f44ba287ee0ebe43a127980fdf))
+
 ## [3.0.0](https://github.com/po4yka/ripdpi-vpn-deploy/compare/vpnd-v2.0.0...vpnd-v3.0.0) (2026-10-25)
 
 
