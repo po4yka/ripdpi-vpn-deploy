@@ -2,7 +2,7 @@
 id: SEC-1793428673775693
 title: Close the remaining traffic-privacy audit findings on resolver privacy, decoy logs and identity checks
 kind: bug
-status: doing
+status: review
 area: security
 priority: high
 risk: high
