@@ -1,11 +1,11 @@
 ---
 task_id: CIC-1792911952227614
 change: repository-rulesets
-commit_sha: 9fd8b7c3f31313c373139804e37288c4ffec828d
+commit_sha: bdde127d49c620987ed1146113a5b180613d72de
 local: passed
 local_evidence: Targeted policy, title, dependency, aggregate, and CI selection checks passed. The full build-gated make -k -j 4 check ran all targets; it initially reported the ambient sing-box version mismatch, 24 portable failures, and one vpnd failure. With the pinned sing-box 1.14.3 and two workers, 16 failed portable cases and the vpnd case passed. After the owner authorized stopping a pre-existing orphan pytest Xray fixture on port 18181, the remaining eight cases passed. The original run also passed 10378 portable cases, 45 subtests, 453 vpnd cases, and every other gate component. No assertion, timeout, or source implementation changed between that run and its focused reruns. No full-gate exit-zero is claimed; the make -k component rerun rule applies. Actionlint, Zizmor, YAML lint, OpenSpec, task validation, docs links, and commit hooks passed.
-remote_ci: required
-remote_ci_evidence: PR 396 is open. Its PR title job passed on the source revision; final published-head hosted CI remains pending.
+remote_ci: passed
+remote_ci_evidence: "Pull request 396 was squash-merged as bdde127d49c620987ed1146113a5b180613d72de on 2026-10-25; the main push run 40174238688 on that exact commit succeeded with every job and the required-checks aggregate green, including PR title, task-contract and the protective-workflow tests."
 dry_run: not_applicable
 dry_run_evidence: No infrastructure deployment.
 staging: not_applicable
