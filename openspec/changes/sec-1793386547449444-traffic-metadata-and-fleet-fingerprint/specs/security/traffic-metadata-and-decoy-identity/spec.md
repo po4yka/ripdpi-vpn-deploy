@@ -62,7 +62,7 @@ Both direct XHTTP locations MUST intercept upstream responses with status 404, 5
 
 ### Requirement: REQ-TMD-CLIENT-CADENCE — Bounded client latency probing
 
-The standard sing-box artifact's `urltest` group MUST use a 30-minute interval. The RIPDPI bundle MUST keep the cadence of the vendored contract fixtures until the paired client change lands.
+The standard sing-box artifact's `urltest` group MUST use a 30-minute interval. The RIPDPI bundle MUST stay byte-identical to the vendored contract fixtures; `SEC-1793428392418058` aligns its cadence together with the paired client change.
 
 #### Scenario: Standard artifact
 
