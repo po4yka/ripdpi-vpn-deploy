@@ -167,24 +167,31 @@ def test_dns_stub_transition_preserves_or_migrates_resolver_before_restart(
         resolver.write_text("nameserver 127.0.0.53\n")
     else:
         resolver.symlink_to(stub)
+    resolvectl = tmp_path / "resolvectl"
+    resolvectl.write_text("#!/bin/sh\nexit 0\n")
+    resolvectl.chmod(0o755)
     selected = relocate(
         tasks("roles/baseline/tasks/resolver.yml"),
         {
             "/etc/": str(etc) + "/",
             "/run/systemd/resolve/": str(run) + "/",
+            "resolvectl": str(resolvectl),
         },
     )
-    restart = next(row for row in selected if row.get("name") == "Apply the resolver transition before dependent roles run")
-    restart.pop("ansible.builtin.systemd_service")
     marker = tmp_path / "restart"
-    restart["ansible.builtin.command"] = {
-        "argv": [
-            sys.executable,
-            "-c",
-            f"from pathlib import Path; Path({str(marker)!r}).touch()",
-        ]
-    }
-    restart["changed_when"] = True
+    for restart in [row for row in selected if "ansible.builtin.systemd_service" in row] + [
+        row for block in selected for section in ("block", "rescue") for row in block.get(section, [])
+        if "ansible.builtin.systemd_service" in row
+    ]:
+        restart.pop("ansible.builtin.systemd_service")
+        restart["ansible.builtin.command"] = {
+            "argv": [
+                sys.executable,
+                "-c",
+                f"from pathlib import Path; Path({str(marker)!r}).touch()",
+            ]
+        }
+        restart["changed_when"] = True
     result = run_play(tmp_path, selected, {"vpn": {"enable_dns_morph_bridge": enabled}})
     assert (result.returncode == 0) is success, result.stdout + result.stderr
     if not success:

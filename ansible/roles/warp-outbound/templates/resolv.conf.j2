@@ -1,4 +1,4 @@
-{% for address in transport_egress_input_config.resolver.nameservers %}
+{% for address in warp_outbound_nameservers %}
 nameserver {{ address }}
 {% endfor %}
 options timeout:{{ transport_egress_input_config.resolver.timeout_seconds }} attempts:{{ transport_egress_input_config.resolver.attempts }}

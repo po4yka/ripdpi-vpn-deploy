@@ -9,6 +9,13 @@ transport_egress_libexec_dir: /usr/local/libexec/ripdpi-transport-egress
 transport_egress_namespace: ripdpi-warp
 transport_egress_policy_config: /etc/ripdpi/transport-egress/policy.json
 transport_egress_policy_loader: /usr/local/libexec/ripdpi-transport-egress/policy-loader.py
+# Encrypted upstreams for the private gateways' built-in DNS. The direct gateway
+# answers the normalizer's redirected port-53 queries through them, so recipient
+# names never leave the node as plaintext DNS. Each entry keeps the canonical
+# unexpectedIPs anti-rebinding filter; `+local` dials directly as the gateway UID.
+transport_egress_dns_upstreams:
+  - https+local://1.1.1.1/dns-query
+  - https+local://8.8.8.8/dns-query
 transport_egress_normalizer_user: transport-normalizer
 transport_egress_gateway_user: transport-gateway
 transport_egress_warp_gateway_user: transport-warp-gateway

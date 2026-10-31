@@ -263,10 +263,11 @@ table inet filter {
     meta l4proto ipv6-icmp icmpv6 type { nd-router-solicit, nd-neighbor-solicit, nd-neighbor-advert } ip6 hoplimit 255 accept
     meta l4proto ipv6-icmp icmpv6 type { destination-unreachable, packet-too-big, time-exceeded, parameter-problem } accept
 
-    # Host infrastructure egress: resolver, time sync, package updates,
-    # geodata refresh, backup remotes, monitoring alerts, and HTTPS APIs.
+    # Host infrastructure egress: resolver (plain and DNS over TLS), time sync,
+    # package updates, geodata refresh, backup remotes, monitoring alerts, and HTTPS APIs.
     udp dport 53 accept
     tcp dport 53 accept
+    tcp dport 853 accept
     udp dport 123 accept
     tcp dport { 80, 443 } accept
 {% if vpn.enable_tailnet_management | default(false) %}

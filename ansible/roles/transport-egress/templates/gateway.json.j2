@@ -3,12 +3,19 @@
   "dns": {
     "queryStrategy": "UseIP",
     "servers": [
-{% for address in transport_egress_normalizer_config.resolver.nameservers %}
-      {"address": {{ address | to_json }}, "port": 53, "unexpectedIPs": {{ (_transport_egress_forbidden.ipv4 + _transport_egress_forbidden.ipv6) | to_json }}}{% if not loop.last %},{% endif %}
+{% for address in transport_egress_dns_upstreams %}
+      {"address": {{ address | to_json }}, "unexpectedIPs": {{ (_transport_egress_forbidden.ipv4 + _transport_egress_forbidden.ipv6) | to_json }}}{% if not loop.last %},{% endif %}
 {% endfor %}
     ]
   },
-  "inbounds": [{
+  "inbounds": [{% if _transport_egress_backend_name == 'direct' %}{
+    "tag": "dns-forwarder",
+    "listen": "127.0.0.1",
+    "port": {{ transport_egress_policy_config_data.resolver.forwarder_port }},
+    "protocol": "dokodemo-door",
+    "settings": {"address": "127.0.0.1", "port": 53, "network": "tcp,udp"}
+  }, {% endif %}{
+    "tag": "recipient",
     "listen": {{ _transport_egress_backend.address | to_json }},
     "port": {{ _transport_egress_backend.port }},
     "protocol": "socks",
@@ -17,5 +24,7 @@
       "accounts": [{"user": {{ _transport_egress_backend.username | to_json }}, "pass": {{ _transport_egress_backend.password | to_json }}}]
     }
   }],
-  "outbounds": [{"protocol": "freedom", "settings": {"domainStrategy": "ForceIP"}}]
+  "outbounds": [{"tag": "recipient", "protocol": "freedom", "settings": {"domainStrategy": "ForceIP"}}{% if _transport_egress_backend_name == 'direct' %},
+    {"tag": "dns-resolver", "protocol": "dns", "settings": {"nonIPQuery": "drop"}}],
+  "routing": {"domainStrategy": "AsIs", "rules": [{"type": "field", "inboundTag": ["dns-forwarder"], "outboundTag": "dns-resolver"}]}{% else %}]{% endif %}
 }

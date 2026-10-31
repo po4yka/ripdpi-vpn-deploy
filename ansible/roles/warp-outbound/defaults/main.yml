@@ -11,3 +11,9 @@ warp_outbound:
   mode: tunnel_only
   routing_tag: warp-out
 warp_outbound_role_enabled: true
+# Numeric resolvers sealed into the vendor namespace. The recipient normalizer
+# now resolves through the egress forwarder on host loopback, which the
+# namespace cannot reach, so the vendor keeps its own public resolver pins.
+warp_outbound_nameservers:
+  - 1.1.1.1
+  - 8.8.8.8

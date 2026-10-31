@@ -9,7 +9,12 @@ native gateway inside the owned WARP tunnel namespace. AmneziaWG device
 forwarding keeps its existing separate contract.
 
 Each new TCP connection or UDP destination binding resolves through sealed
-libc/NSS with numeric public resolvers. An all-denied answer refuses. TCP uses
+libc/NSS whose only nameserver is loopback `127.0.0.1`. The owned kernel policy
+redirects that normalizer-UID port-53 traffic to a DNS forwarder inbound on the
+direct private gateway (`12053`), which answers A/AAAA from Xray's built-in DNS
+over `https+local://` upstreams (`transport_egress_dns_upstreams`) that each
+carry the canonical `unexpectedIPs` filter and drops every other query type. No
+recipient name leaves the node as plaintext DNS. An all-denied answer refuses. TCP uses
 one immutable set of admitted literals, sorted within each family and
 interleaved IPv4-first. It tries at most eight candidates with at most two
 concurrent authenticated gateway controls and a 250 ms start stagger. One
@@ -38,7 +43,8 @@ admitted rewrites. Unsupported later rewrites, TC/XDP and flow-offload authority
 refuse activation. Ordinary host infrastructure UIDs retain their own policy.
 
 The private listeners are `12080` (Xray direct), `12081` (Hysteria direct), and
-`12082` (Xray WARP). Native gateways use `12090` (direct) and `12091` (WARP).
+`12082` (Xray WARP). Native gateways use `12090` (direct) and `12091` (WARP);
+the direct gateway's DNS forwarder is `12053`.
 Frontend UDP relay pools are `13000–15999`; upstream source pools are
 `16000–18999`. Activation requires those ports to be outside the actual
 kernel ephemeral range or already fully reserved, and refuses foreign socket

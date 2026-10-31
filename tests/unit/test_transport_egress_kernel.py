@@ -225,3 +225,33 @@ def test_backend_ipc_requires_its_owned_interface():
     assert 'meta skuid 101 oifname "lo" ip daddr 127.0.0.1 tcp dport 12090 accept' in rendered
     assert 'meta skuid 101 oifname "rpd-warp-host" ip daddr 10.250.254.2 tcp dport 12091 accept' in rendered
     assert 'meta skuid 101 oifname "rpd-warp-host" ip daddr 10.250.254.2 udp sport 18000-18999 udp dport 12091 accept' in rendered
+
+
+def test_resolver_forwarder_redirect_is_normalizer_only_and_validated():
+    result = build(context(True))
+    policy = result['policy']
+    assert result['normalizer']['resolver']['nameservers'] == ['127.0.0.1']
+    assert policy['resolver'] == {'nameservers': ['127.0.0.1'], 'forwarder_port': 12053}
+    assert (12053, 12053) in kernel.intervals(policy)
+    rendered = kernel.render(policy)
+    assert 'add chain inet ripdpi_transport resolver_nat { type nat hook output priority -100; policy accept; }' in rendered
+    for protocol in ('tcp', 'udp'):
+        assert f'resolver_nat meta skuid 101 ip daddr 127.0.0.1 {protocol} dport 53 dnat ip to 127.0.0.1:12053' in rendered
+        assert f'meta skuid 102 oifname "lo" ip daddr 127.0.0.1 {protocol} sport 12053 ct direction reply ct original proto-dst 53 accept' in rendered
+    assert 'ip daddr 127.0.0.1 meta l4proto { tcp, udp } th dport 12053 meta skuid != 101 drop' in rendered
+    assert 'meta skuid 101 oifname "lo" ip daddr 127.0.0.1 meta l4proto { tcp, udp } th dport 12053 accept' in rendered
+    assert 'th dport 53 accept' not in rendered
+    namespace = kernel.render(policy, True)
+    assert '12053' not in namespace and 'resolver_nat' not in namespace
+    for mutate in (lambda p: p['resolver'].update(nameservers=['192.0.2.53']),
+                   lambda p: p['resolver'].update(forwarder_port=12090),
+                   lambda p: (p['resolver'].pop('forwarder_port'), p['resolver'].update(nameservers=['127.0.0.53']))):
+        candidate = build(context(True))['policy']
+        mutate(candidate)
+        with pytest.raises(kernel.BoundaryError):
+            kernel.render(candidate)
+    direct = build(context(True))['policy']
+    direct['resolver'] = {'nameservers': ['192.0.2.53']}
+    rendered = kernel.render(direct)
+    assert 'meta skuid 101 ip daddr 192.0.2.53 meta l4proto { tcp, udp } th dport 53 accept' in rendered
+    assert 'resolver_nat' not in rendered and (12053, 12053) not in kernel.intervals(direct)

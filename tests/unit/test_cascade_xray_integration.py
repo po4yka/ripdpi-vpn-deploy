@@ -82,3 +82,4 @@ def test_non_cascade_default_remains_direct() -> None:
 
     assert not any(item["tag"] == "cascade-classifier" for item in config["outbounds"])
     assert config["routing"]["rules"][-1]["outboundTag"] == "direct"
+    assert config["dns"]["servers"] == ["https+local://1.1.1.1/dns-query", "https+local://8.8.8.8/dns-query"]

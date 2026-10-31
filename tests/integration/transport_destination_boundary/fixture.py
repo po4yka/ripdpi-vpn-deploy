@@ -160,6 +160,7 @@ class NativeStack:
         built = build(context)
         value, projection = built["normalizer"], built["policy"]
         value["resolver"]["nameservers"] = projection["resolver"]["nameservers"] = ["192.0.2.53"]
+        projection["resolver"].pop("forwarder_port")  # the fixture peer answers port 53 directly
         if common:
             value["limits"]["max_associations"] = 2
             value["listeners"][0]["udp_port_max"] = projection["listeners"][0]["udp_port_max"] = 13001
