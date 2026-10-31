@@ -10,8 +10,8 @@ Primary: this repository. `ansible/roles/watchdog/templates/vpn-watchdog.sh.j2`,
 
 ## Execution
 
-- [ ] MON-1793445429481835 Count nginx 403 responses from the decoy vhost access logs in the watchdog, tolerate absent files, and cover the rendered pipeline with a test over temporary log files #bug @item:MON-1793445381777509
-- [ ] MON-1793445430745409 Read the same vhost logs in the probing summary aggregator with a unit test, update the role note and run the local gates #bug @item:MON-1793445381777509
+- [x] MON-1793445429481835 Count nginx 403 responses from the decoy vhost access logs in the watchdog, tolerate absent files, and cover the rendered pipeline with a test over temporary log files #bug @item:MON-1793445381777509
+- [x] MON-1793445430745409 Read the same vhost logs in the probing summary aggregator with a unit test, update the role note and run the local gates #bug @item:MON-1793445381777509
 
 ## Verification
 

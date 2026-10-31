@@ -259,14 +259,42 @@ def _public_access_line(status: int) -> str:
     )
 
 
-def test_nginx_403_detector_counts_the_vpn_public_access_format():
+def _run_nginx_403_detector(tmp_path, logs: dict[str, list[int]]) -> str:
+    """Run the rendered detector block against `logs` ({file name: statuses}) and
+    return the nginx_403_spike class text ("" when the class did not fire)."""
     rendered = render_template(TEMPLATES / "vpn-watchdog.sh.j2", _multi_cohort_vars())
-    program = re.search(r'"\$nginx_access"[^\n]*\n\s*\| awk \'([^\']+)\'', rendered).group(1)
+    start = rendered.index("nginx_access_logs=(")
+    block = rendered[start:rendered.index("\nfi\n", start) + 4]
+    for name, statuses in logs.items():
+        (tmp_path / name).write_text("".join(_public_access_line(s) + "\n" for s in statuses))
+    script = (
+        "declare -A classes\n"
+        + block.replace("/var/log/nginx", str(tmp_path))
+        + 'printf %s "${classes[nginx_403_spike]-}"\n'
+    )
+    result = subprocess.run(["bash", "-euo", "pipefail", "-c", script],
+                            env={"ENABLE_NGINX_XHTTP": "true", "PATH": "/usr/bin:/bin"},
+                            capture_output=True, text=True, check=True)
+    return result.stdout
 
-    lines = "".join(_public_access_line(status) + "\n" for status in (403, 200, 403, 404))
-    result = subprocess.run(["awk", program], input=lines, capture_output=True, text=True, check=True)
 
-    assert result.stdout.strip() == "2"
+def test_nginx_403_detector_counts_the_decoy_vhost_logs(tmp_path):
+    # A burst in the fallback log alone fires the class; the primary log is empty
+    # and the self-steal log does not exist.
+    fired = _run_nginx_403_detector(tmp_path, {
+        "vpn-xhttp.access.log": [],
+        "vpn-xhttp-fallback.access.log": [403] * 60 + [200, 404],
+    })
+    assert fired == "60 403 responses in tail"
+
+
+def test_nginx_403_detector_ignores_the_stock_access_log(tmp_path):
+    fired = _run_nginx_403_detector(tmp_path, {
+        "access.log": [403] * 80,
+        "vpn-xhttp.access.log": [403] * 50,
+        "reality-self-steal.access.log": [200],
+    })
+    assert fired == ""
 
 
 def test_watchdog_fails_when_stats_service_is_not_queryable():

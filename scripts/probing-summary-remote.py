@@ -24,7 +24,14 @@ NOW = dt.datetime.now(tz=dt.timezone.utc)
 SINCE = NOW - dt.timedelta(hours=WINDOW_HOURS)
 
 XRAY_ACCESS = pathlib.Path("/var/lib/vpn-xray-logs/access.log")
-NGINX_ACCESS = pathlib.Path("/var/log/nginx/access.log")
+# The decoy vhosts write their own access logs; nginx's stock access.log never
+# receives a decoy request because every role-managed server block declares
+# its own access_log.
+NGINX_ACCESS_LOGS = (
+    pathlib.Path("/var/log/nginx/vpn-xhttp.access.log"),
+    pathlib.Path("/var/log/nginx/vpn-xhttp-fallback.access.log"),
+    pathlib.Path("/var/log/nginx/reality-self-steal.access.log"),
+)
 HONEYPOT_LOG = pathlib.Path("/var/log/honeypot/connections.log")
 TEXTFILE_DIR = pathlib.Path("/var/lib/node_exporter/textfile")
 REPORT_DIR = pathlib.Path("/var/log")
@@ -70,32 +77,32 @@ def _read_xray_events() -> list[tuple[dt.datetime, str]]:
 
 
 def _read_nginx_403() -> list[tuple[dt.datetime, str]]:
-    if not NGINX_ACCESS.is_file():
-        return []
     events: list[tuple[dt.datetime, str]] = []
-    # nginx default combined log format
+    # Combined column layout; the vpn_public / vpn_self_steal formats write "-"
+    # for the client address, so the first column is a placeholder.
     log_re = re.compile(
         r'^(?P<ip>\S+) \S+ \S+ \[(?P<time>[^\]]+)\] '
         r'"\S+ \S+ \S+" (?P<status>\d+) '
     )
-    try:
-        with NGINX_ACCESS.open("r", errors="replace") as fh:
-            for line in fh:
-                m = log_re.match(line)
-                if not m:
-                    continue
-                if m.group("status") not in {"403", "444"}:
-                    continue
-                try:
-                    ts = dt.datetime.strptime(
-                        m.group("time"), "%d/%b/%Y:%H:%M:%S %z")
-                except ValueError:
-                    continue
-                if ts < SINCE:
-                    continue
-                events.append((ts, m.group("ip")))
-    except FileNotFoundError:
-        return []
+    for path in NGINX_ACCESS_LOGS:
+        try:
+            with path.open("r", errors="replace") as fh:
+                for line in fh:
+                    m = log_re.match(line)
+                    if not m:
+                        continue
+                    if m.group("status") not in {"403", "444"}:
+                        continue
+                    try:
+                        ts = dt.datetime.strptime(
+                            m.group("time"), "%d/%b/%Y:%H:%M:%S %z")
+                    except ValueError:
+                        continue
+                    if ts < SINCE:
+                        continue
+                    events.append((ts, m.group("ip")))
+        except (FileNotFoundError, IsADirectoryError, PermissionError):
+            continue
     return events
 
 

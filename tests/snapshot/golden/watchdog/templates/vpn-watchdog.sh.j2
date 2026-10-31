@@ -322,11 +322,24 @@ if [[ "${ENABLE_XRAY:-true}" == "true" && -r "$xray_access" ]]; then
   fi
 fi
 
-nginx_access="/var/log/nginx/access.log"
-if [[ "${ENABLE_NGINX_XHTTP:-true}" == "true" && -r "$nginx_access" ]]; then
-  recent_403="$(tail -n 2000 "$nginx_access" 2>/dev/null \
-    | awk '$9==403{n++} END{print n+0}')"
-  if [[ "${recent_403:-0}" -gt 50 ]]; then
+# The decoy vhosts write their own access logs (vpn_public / vpn_self_steal
+# keep the status in the combined column), so nginx's stock access.log never
+# sees a decoy request. Count the recent tail of each vhost log; an absent or
+# unreadable file counts as zero.
+nginx_access_logs=(
+  /var/log/nginx/vpn-xhttp.access.log
+  /var/log/nginx/vpn-xhttp-fallback.access.log
+  /var/log/nginx/reality-self-steal.access.log
+)
+if [[ "${ENABLE_NGINX_XHTTP:-true}" == "true" ]]; then
+  recent_403=0
+  for nginx_access in "${nginx_access_logs[@]}"; do
+    [[ -r "$nginx_access" ]] || continue
+    log_403="$(tail -n 2000 "$nginx_access" 2>/dev/null \
+      | awk '$9==403{n++} END{print n+0}')"
+    recent_403=$(( recent_403 + ${log_403:-0} ))
+  done
+  if (( recent_403 > 50 )); then
     classes[nginx_403_spike]="${recent_403} 403 responses in tail"
   fi
 fi
