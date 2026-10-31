@@ -319,6 +319,8 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: ./.github/actions/free-runner-disk
+
       - uses: ./.github/actions/setup-ci-python
         with:
           galaxy: "true"
@@ -584,6 +586,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/free-runner-disk
       - uses: ./.github/actions/setup-disposable-ci
       - name: Verify the real mtg release and FakeTLS configuration
         run: sudo env "PATH=$PATH" make test-mtg-native-compatibility
@@ -691,6 +694,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/free-runner-disk
       - uses: ./.github/actions/setup-ci-python
         with:
           galaxy: "true"
@@ -775,6 +779,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/free-runner-disk
       - uses: ./.github/actions/setup-disposable-ci
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
@@ -996,6 +1001,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/free-runner-disk
       - uses: ./.github/actions/setup-ci-python
         with:
           galaxy: "true"
@@ -1022,6 +1028,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+
+      - uses: ./.github/actions/free-runner-disk
 
       - uses: ./.github/actions/setup-ci-python
         with:

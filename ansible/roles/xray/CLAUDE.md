@@ -146,6 +146,8 @@ the preflight refuses zero. Probes send the configured `xray_utls_fingerprint`.
 
 ## Pitfalls
 
+- REALITY inbounds listen on `::` (dual-stack, so it assumes `net.ipv6.bindv6only=0` and IPv6 not disabled, the same assumption the nginx decoy's `[::]` listener already makes), so an IPv6 probe sees the same open-port set on both; the built-in DNS points at the egress loopback forwarder `127.0.0.2` outside cascade and DNS-Morph profiles, so a frontend-side lookup fails closed instead of leaving in plaintext.
+
 - **Reality `dest` is single-target per inbound** — you cannot have a single
   inbound fall back to multiple targets. Multi-cohort needs multiple inbounds.
   Don't try to express this in `settings.fallbacks` — those only apply *after*

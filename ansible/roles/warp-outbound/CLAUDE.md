@@ -26,7 +26,8 @@ Recipient WARP traffic uses a distinct native gateway identity. Namespace policy
 ## Pitfalls
 
 - No local fixture proves registered vendor TCP/UDP capability. Real registered tunnel acceptance requires separately authorized vendor account and client evidence.
-- Vendor root authority is isolated because tunnel management requires network administration. Recipient gateway and normalizer processes retain empty capabilities.
+- Vendor root authority is isolated because tunnel management requires network administration. The WARP gateway and normalizer processes retain empty capabilities; only the host's direct gateway binds the loopback DNS forwarder.
+- The namespace resolver keeps numeric upstream nameservers: the vendor client must resolve its control plane before any tunnel exists, and the host's loopback forwarder is not reachable from the namespace. The WARP gateway itself receives only literals.
 - A pinned package upgrade must not start the vendor outside its namespace or bypass guard publication.
 - Registration output may contain private identity details; CLI tasks stay under `no_log`.
 - The public package version comes from inventory or group vars, not SOPS. Same-pin redesign and fresh install are supported; a claimed different package identity refuses before mutation until its separate upgrade transaction is accepted.

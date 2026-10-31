@@ -157,6 +157,11 @@ public_site_canonical_url: "https://vpn.example.com:8443"
 # convergence while this is empty. Supply it in the same private extra-vars
 # file as public_site_canonical_url.
 nginx_xhttp_public_site_dir: ""
+# Measurement record (path, date, outcome) that justifies keeping a
+# WireGuard-shaped AmneziaWG instance (S1=S2=0, H1..H4=1,2,3,4, e.g. the
+# narrow-junk-sequential cohort) on a production host. Empty refuses such an
+# instance when the inventory env is prod; staging and lab hosts are not gated.
+awg_wireguard_shaped_measurement: ""
 # Explicit public listener collision exceptions. Keep empty for normal hosts.
 # Each item is either "tcp/8443" or a mapping like {protocol: udp, range: "20000-40000", reason: "..."}.
 listener_collision_allowlist: []

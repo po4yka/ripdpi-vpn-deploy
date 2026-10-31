@@ -82,3 +82,16 @@ def test_non_cascade_default_remains_direct() -> None:
 
     assert not any(item["tag"] == "cascade-classifier" for item in config["outbounds"])
     assert config["routing"]["rules"][-1]["outboundTag"] == "direct"
+
+
+def test_non_cascade_frontend_dns_stays_on_the_loopback_forwarder() -> None:
+    variables = merge_render_vars()
+    assert json.loads(render_template(TEMPLATE, variables))["dns"]["servers"] == ["127.0.0.2"]
+    variables["vpn"] = {**variables["vpn"], "enable_dns_morph_bridge": True}
+    assert json.loads(render_template(TEMPLATE, variables))["dns"]["servers"] == ["1.1.1.1", "8.8.8.8"]
+
+
+def test_reality_inbounds_listen_dual_stack_like_the_decoy() -> None:
+    config = json.loads(render_template(TEMPLATE, merge_render_vars()))
+    reality = [item for item in config["inbounds"] if item["tag"].startswith("vless-reality")]
+    assert reality and all(item["listen"] == "::" for item in reality)

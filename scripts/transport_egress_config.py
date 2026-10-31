@@ -7,6 +7,7 @@ import json
 import sys
 from transport_egress_normalizer import validate_config
 from transport_egress_kernel import validate as validate_policy
+from transport_destination_policy import LOCAL_DNS_FORWARDER
 
 MAX_INPUT = 131072
 
@@ -28,8 +29,11 @@ def build(context, input_only=False):
             listeners.append(listener)
     if warp:
         backends['warp'] = {'address': '10.250.254.2', 'port': 12091, 'username': 'gateway-warp', 'password': secrets['warp_gateway_password'], 'udp_source_port_min': 18000, 'udp_source_port_max': 18999}
+    # DNS-Morph binds UDP/53 on every address, so only that profile keeps plaintext upstream resolvers.
+    nameservers = ['1.1.1.1', '8.8.8.8'] if vpn.get('enable_dns_morph_bridge', False) else [LOCAL_DNS_FORWARDER]
     config = {'schema_version': 1, 'backends': backends, 'listeners': listeners,
-              'resolver': {'nameservers': ['1.1.1.1', '8.8.8.8'], 'timeout_seconds': 1, 'attempts': 1, 'lookup_timeout_seconds': 5, 'workers': 4},
+              # The single forwarder keeps the two-second budget two upstreams had; its first answer includes a DoH handshake.
+              'resolver': {'nameservers': nameservers, 'timeout_seconds': 1 if len(nameservers) > 1 else 2, 'attempts': 1, 'lookup_timeout_seconds': 5, 'workers': 4},
               'policy': {'owned_addresses': sorted(set(context['owned_addresses'])), 'management_tcp_ports': sorted(set(context['management_tcp_ports'])), 'management_udp_ports': sorted(set(context['management_udp_ports']))},
               'limits': {'max_connections': 256, 'max_associations': 128, 'max_pending_packets': 256, 'max_datagram_bytes': 65507, 'handshake_seconds': 5, 'connect_seconds': 5, 'idle_seconds': 300, 'udp_quarantine_seconds': 240, 'max_bindings_per_association': 128}}
     if not input_only:
