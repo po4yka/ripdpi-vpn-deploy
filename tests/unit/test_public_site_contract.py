@@ -57,6 +57,23 @@ def _json_ld(page: str) -> dict:
     return json.loads(match.group(1))
 
 
+SELF_STEAL_TEMPLATE = (
+    REPO_ROOT / "ansible" / "roles" / "reality-self-steal" / "templates" / "site.conf.j2"
+)
+def _log_format_name(rendered: str) -> str:
+    """Return the name of the single log_format a rendered site file declares."""
+    (name,) = re.findall(r"^log_format (\S+) '", rendered, re.M)
+    return name
+
+
+def test_both_decoy_site_files_load_in_one_nginx() -> None:
+    rendered = [renderer.render_template(t, renderer.merge_render_vars())
+                for t in (TEMPLATE, SELF_STEAL_TEMPLATE)]
+    assert len({_log_format_name(text) for text in rendered}) == 2
+    # nginx refuses a duplicate log_format name across included site files.
+    assert renderer.validate_nginx("\n".join(rendered), "both decoy sites") is None
+
+
 def test_primary_vhost_serves_static_site_and_keeps_xhttp_path_separate() -> None:
     rendered = _render()
     assert "root /var/www/public-site;" in rendered

@@ -207,12 +207,11 @@ When `make emit-singbox CLIENT=name` is available, prefer the sing-box
 JSON output over manual VLESS URI strings. It wires every supported P0/P2
 transport into a single selector + urltest group, which matters for the
 home-ISP TLS policing failure mode. The standard artifact's urltest interval
-is 30 minutes: a shorter cadence opens one session per transport to the same
-address in a synchronous burst, which is the concurrent-session pattern that
-policing targets. The RIPDPI bundle keeps the cadence recorded in the vendored
-contract fixtures until the paired client change lands. P1 XHTTP requires an Xray-family profile
-or the RIPDPI-specific bundle; never copy that unsupported outbound into the
-standard document.
+is 30 minutes, and the RIPDPI bundle uses the same cadence: a shorter one opens
+one session per transport to the same address in a synchronous burst, which is
+the concurrent-session pattern that policing targets. P1 XHTTP requires an
+Xray-family profile or the RIPDPI-specific bundle; never copy that unsupported
+outbound into the standard document.
 
 ## Hysteria ECH-required profiles
 
