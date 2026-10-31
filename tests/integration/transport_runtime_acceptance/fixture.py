@@ -395,6 +395,9 @@ server.serve_forever()
 
     def upgrade(self, profile):
         if profile == 'xray':
+            # v26.5.3 is an upstream prerelease. Production refuses unreviewed Xray pins, and
+            # the lab's Make recipes inherit ENV=prod, so the upgrade runs as staging.
+            self.context['env'] = 'staging'
             self.context['xray'].update(version='v26.5.3', linux_amd64_sha256=XRAY_PINS['v26.5.3'],
                                         linux_arm64_sha256=XRAY_PINS['v26.5.3'])
             self.context['xray_runtime_release_urls'] = dict.fromkeys(('amd64','arm64'), 'file://' + str(self.artifacts / 'xray-v26.5.3.zip'))

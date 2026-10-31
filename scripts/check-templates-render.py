@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 import json
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -133,6 +134,14 @@ def validate_xray(text: str, label: str, log_dir: str | None = None) -> str | No
         Path(cfg_path).unlink(missing_ok=True)
 
 
+def _ipv6_sockets_supported() -> bool:
+    try:
+        socket.socket(socket.AF_INET6, socket.SOCK_STREAM).close()
+    except OSError:
+        return False
+    return True
+
+
 def validate_nginx(text: str, label: str) -> str | None:
     """nginx syntax check. ssl_certificate / ssl_certificate_key / listen
     *ssl* directives reference files that don't exist on the CI runner;
@@ -184,6 +193,15 @@ def validate_nginx(text: str, label: str) -> str | None:
         _lift_port,
         stripped,
     )
+
+    # nginx -t opens every listen socket. A host without IPv6 (some containers)
+    # cannot open [::] sockets; CI and Molecule still check those listeners.
+    if not _ipv6_sockets_supported():
+        stripped = _re.sub(
+            r"^\s*listen\s+\[[0-9a-fA-F:]+\][^;]*;",
+            "    # IPv6 listen stripped: this host has no IPv6",
+            stripped, flags=_re.MULTILINE,
+        )
 
     # Use a writable prefix so nginx -t can open its default access/error logs
     # and pid file. Pass empty access/error logs via -e and -g pid.

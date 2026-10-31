@@ -118,6 +118,11 @@ contract. Keep the descriptor checks and the OS directory permissions unchanged.
 
 Complete frontend authority is staged in the private `transport_runtime_candidates` plan. Native admission selects the staged asset directory; the unit retains the intended served asset directory, which is published with runtime links and config by consumer acceptance. Dedicated probe credentials must belong to the configured acceptance client in every enabled inbound/cohort. The owned canary supplies positive protocol traffic before the accepted receipt advances.
 
+**REALITY replay window is bounded** — every REALITY inbound renders
+`maxTimeDiff` from `xray_reality_max_time_diff_ms` (90 s). Xray's zero default
+lets a captured ClientHello replay later and expose the non-target handshake;
+the preflight refuses zero. Probes send the configured `xray_utls_fingerprint`.
+
 ## What's done well
 
 - **Idempotent inbound rebuild** — changed config or unit authority opens the

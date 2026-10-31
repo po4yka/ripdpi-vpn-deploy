@@ -8,3 +8,9 @@ xray_runtime_release_urls:
   arm64: "https://github.com/XTLS/Xray-core/releases/download/{{ xray.version }}/Xray-linux-arm64-v8a.zip"
 
 xray_runtime_stage_only: false
+
+# Xray releases reviewed for production. Upstream marks prereleases with a
+# release flag rather than a tag suffix, so membership, not tag shape, decides.
+# scripts/check-xray-version-pin.py requires the release-line repository pin here.
+xray_runtime_production_versions:
+  - v26.3.27

@@ -72,6 +72,26 @@ def test_nginx_validator_lifts_only_the_port(tmp_path, monkeypatch, address, exp
     monkeypatch.setenv("CAPTURE", str(captured))
     monkeypatch.setattr(renderer.shutil, "which", lambda _name: str(nginx))
     monkeypatch.setattr(renderer.tempfile, "mkdtemp", lambda **_kwargs: str(tmp_path / "prefix"))
+    monkeypatch.setattr(renderer, "_ipv6_sockets_supported", lambda: True)
 
     assert renderer.validate_nginx(f"server {{ listen {address}; }}", "fixture") is None
     assert f"listen {expected};" in captured.read_text()
+
+
+def test_nginx_validator_drops_ipv6_listeners_only_on_hosts_without_ipv6(tmp_path, monkeypatch):
+    renderer = _load()
+    captured = tmp_path / "captured.conf"
+    nginx = tmp_path / "nginx"
+    nginx.write_text('#!/bin/sh\ncp "$5" "$CAPTURE"\n')
+    nginx.chmod(0o755)
+    monkeypatch.setenv("CAPTURE", str(captured))
+    monkeypatch.setattr(renderer.shutil, "which", lambda _name: str(nginx))
+    monkeypatch.setattr(renderer.tempfile, "mkdtemp", lambda **_kwargs: str(tmp_path / "prefix"))
+    # The kernel address-family capability is the external boundary.
+    monkeypatch.setattr(renderer, "_ipv6_sockets_supported", lambda: False)
+
+    site = "server {\n    listen 8443 ssl http2;\n    listen [::]:8443 ssl http2;\n}"
+    assert renderer.validate_nginx(site, "fixture") is None
+    rendered = captured.read_text()
+    assert "listen 8443 http2;" in rendered
+    assert "[::]" not in rendered

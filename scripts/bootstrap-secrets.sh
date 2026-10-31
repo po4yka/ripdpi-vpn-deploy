@@ -299,7 +299,7 @@ xray:
   server_names:
     - ${SERVER_NAME_YAML}
 
-  xhttp_path: "/$(openssl rand -hex 4)"
+  xhttp_path: "/$(openssl rand -hex 16)"
 
   clients:
 HEAD

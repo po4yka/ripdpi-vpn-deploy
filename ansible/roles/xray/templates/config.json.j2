@@ -90,6 +90,7 @@
           "show": false,
           "target": "{{ xray.target }}",
           "xver": 0,
+          "maxTimeDiff": {{ xray_reality_max_time_diff_ms | int }},
           "serverNames": {{ xray.server_names | to_json }},
           "privateKey": "{{ xray.reality_private_key }}",
           "shortIds": [
@@ -129,7 +130,7 @@
         "network": "xhttp",
         "security": "none",
         "xhttpSettings": {
-          "path": "{{ xray.xhttp_path | default('/app-sync') }}",
+          "path": "{{ xray.xhttp_path }}",
           "mode": "{{ xray.xhttp_mode | default('auto') }}"
         },
         "sockopt": {

@@ -268,7 +268,7 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
                 out.append(dict(type='vless', tag='p1-xhttp-' + tag + suffix, server=ip,
                                 server_port=endpoint['port'], uuid=credential['uuid'],
                                 tls=dict(enabled=True, server_name=server_name, utls=dict(enabled=True, fingerprint=fp)),
-                                transport=dict(type='xhttp', host=server_name, path=x.get('xhttp_path', '/app-sync'), mode=mode,
+                                transport=dict(type='xhttp', host=server_name, path=x['xhttp_path'], mode=mode,
                                                **({'xmux': tuning} if tuning else {}))))
         if enabled('enable_hysteria'):
             hy = d['hysteria']
@@ -318,7 +318,6 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
                     out.append(entry)
                     snell.append(snell_tag)
         if extended:
-            topology['split_hop_egress'] |= vpn.get('enable_split_hop_ingress', False)
             realm = vpn.get('hysteria_realm')
             if realm and topology['hysteria_realm'] and realm != topology['hysteria_realm']:
                 raise ValueError('conflicting vpn.hysteria_realm values across HOSTS')
@@ -390,6 +389,20 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
     return payload, bindings
 
 
+def share_uri(payload):
+    """Return the one VLESS+REALITY share URI of a sing-box client payload."""
+    from urllib.parse import quote, urlencode
+    reality = [v for v in payload['outbounds'] if v['type'] == 'vless' and v['tls'].get('reality', {}).get('enabled')]
+    if len(reality) != 1:
+        raise ValueError('share URI requires exactly one REALITY endpoint; select it with HOSTS and COHORTS')
+    v = reality[0]
+    host = '[' + v['server'] + ']' if ':' in v['server'] else v['server']
+    query = dict(encryption='none', security='reality', type='tcp', sni=v['tls']['server_name'],
+                 fp=v['tls']['utls']['fingerprint'], pbk=v['tls']['reality']['public_key'],
+                 sid=v['tls']['reality']['short_id'], **({'flow': v['flow']} if v.get('flow') else {}))
+    return f"vless://{v['uuid']}@{host}:{v['server_port']}?{urlencode(query, quote_via=quote)}#{quote(v['tag'])}"
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
@@ -399,17 +412,20 @@ def main():
     parser.add_argument('--xhttp-only', action='store_true')
     parser.add_argument('--per-app-bypass', default='')
     parser.add_argument('--per-app-via-tun', default='')
+    parser.add_argument('--share-uri', action='store_true', help='print the one VLESS+REALITY share URI instead of JSON')
     args = parser.parse_args()
     try:
         if args.bundle and args.profile_format == 'xray':
             raise ValueError('bundle requires RIPDPI format')
+        if args.share_uri and (args.bundle or args.profile_format != 'sing-box'):
+            raise ValueError('share URI requires sing-box format')
         selected_format = 'ripdpi' if args.bundle else {'sing-box': 'singbox', 'ripdpi': 'ripdpi', 'xray': 'xray'}[args.profile_format]
         o = options(selected_format, expires=os.environ.get('BUNDLE_EXPIRES', ''))
         payload, _ = materialize(args.client, o, per_app_bypass=args.per_app_bypass, per_app_via_tun=args.per_app_via_tun, extended=args.bundle, xhttp_only=args.xhttp_only)
-        print(json.dumps(payload, indent=2))
+        print(share_uri(payload) if args.share_uri else json.dumps(payload, indent=2))
         return 0
     except (OSError, ValueError, KeyError, TypeError, AttributeError, RecursionError, StopIteration, subprocess.SubprocessError, yaml.YAMLError) as error:
-        safe = {'--xhttp-only requires --profile-format ripdpi', 'ECH requires the verified official sing-box engine; RIPDPI export is unsupported', 'BBR resource profiles require the verified official sing-box engine; RIPDPI export is unsupported', 'invalid-hysteria-hopping', 'P0 REALITY finalmask requires an Xray client', 'P0 REALITY Mux.Cool requires an Xray client; sing-mux is incompatible', 'conflicting vpn.hysteria_realm values across HOSTS', 'ambiguous-device-binding', 'missing-device-binding', 'plaintext secrets cannot be combined with SOPS_FILES', 'missing-snell-variant'}
+        safe = {'--xhttp-only requires --profile-format ripdpi', 'ECH requires the verified official sing-box engine; RIPDPI export is unsupported', 'BBR resource profiles require the verified official sing-box engine; RIPDPI export is unsupported', 'invalid-hysteria-hopping', 'P0 REALITY finalmask requires an Xray client', 'P0 REALITY Mux.Cool requires an Xray client; sing-mux is incompatible', 'conflicting vpn.hysteria_realm values across HOSTS', 'ambiguous-device-binding', 'missing-device-binding', 'plaintext secrets cannot be combined with SOPS_FILES', 'missing-snell-variant', 'share URI requires sing-box format', 'share URI requires exactly one REALITY endpoint; select it with HOSTS and COHORTS'}
         detail = str(error) if isinstance(error, ValueError) and str(error) in safe else ('plaintext secrets unavailable' if 'VPN_SECRETS_FILE' in os.environ else 'materialization refused')
         print('client-payload: ' + detail, file=__import__('sys').stderr)
         return 2

@@ -70,7 +70,7 @@
                 "network": "raw",
                 "security": "reality",
                 "realitySettings": {
-                  "fingerprint": "chrome",
+                  "fingerprint": {{ xray_utls_fingerprint | default('chrome') | to_json }},
                   "serverName": "{{ xray.server_names[0] }}",
                   "publicKey": "{{ xray.reality_public_key }}",
                   "shortId": "{{ smoketest_client.short_id }}"

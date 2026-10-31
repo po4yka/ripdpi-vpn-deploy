@@ -20,7 +20,7 @@ REFUSAL = ("xray.clients", "duplicate UUID authentication identity")
 
 
 def devices(second):
-    return {"clients": [
+    return {"xhttp_path": "/4b8e2c1d", "clients": [
         {"name": "first", "uuid": IDENTITY, "short_id": "aa"},
         {"name": "second", "uuid": second, "short_id": "bb"},
     ]}

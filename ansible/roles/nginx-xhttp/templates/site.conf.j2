@@ -48,7 +48,7 @@ server {
 {% endif %}
 
     # XHTTP path → Xray localhost inbound
-    location {{ xray.xhttp_path | default('/app-sync') }}/ {
+    location {{ xray.xhttp_path }}/ {
         access_log off;
         error_log /dev/null crit;
 
@@ -131,7 +131,7 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
 
     # XHTTP path → Xray localhost inbound (shared with the primary frontend)
-    location {{ xray.xhttp_path | default('/app-sync') }}/ {
+    location {{ xray.xhttp_path }}/ {
         access_log off;
         error_log /dev/null crit;
 

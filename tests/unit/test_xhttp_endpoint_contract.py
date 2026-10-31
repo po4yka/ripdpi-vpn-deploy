@@ -56,10 +56,17 @@ def test_transport_preflight_rejects_noncanonical_paths_without_values(path):
     assert path not in json.dumps(errors)
 
 
-@pytest.mark.parametrize("path", ["/sync", "/app-sync", "/sync_v2/packet-1"])
+@pytest.mark.parametrize("path", ["/sync", "/2f9c0e4a", "/sync_v2/packet-1"])
 @pytest.mark.parametrize("port", [443, 8443])
 def test_canonical_path_and_served_origin_are_accepted(path, port):
     assert not transport_errors(*inputs(path, port))
+
+
+def test_published_or_absent_path_is_refused():
+    document, context = inputs("/app-sync")
+    assert ("xray.xhttp_path", "must not be the published example path; generate a random one") in transport_errors(document, context)
+    del document["xray"]["xhttp_path"]
+    assert any(field == "xray.xhttp_path" for field, _ in transport_errors(document, context))
 
 
 @pytest.mark.parametrize("origin", [

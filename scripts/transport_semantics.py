@@ -127,6 +127,10 @@ DNS_NAME = re.compile(
 PUBLIC_ORIGIN_TEMPLATE = "https://{{ nginx_xhttp.server_name }}{{ ':' ~ nginx_xhttp_public_port if nginx_xhttp_public_port | int != 443 else '' }}"
 
 
+# Repository examples published this path; a served frontend must never use it.
+PUBLISHED_XHTTP_PATH = "/app-sync"
+
+
 def xhttp_path_valid(value: object) -> bool:
     return isinstance(value, str) and len(value) <= 256 and XHTTP_PATH.fullmatch(value) is not None
 
@@ -226,8 +230,10 @@ def xhttp_endpoints(doc: dict, context: dict) -> list[dict]:
 def xhttp_errors(doc: dict, context: dict) -> list[tuple[str, str]]:
     raw = doc.get("xray", {})
     errors = []
-    if not isinstance(raw, dict) or not xhttp_path_valid(raw.get("xhttp_path", "/app-sync")):
+    if not isinstance(raw, dict) or not xhttp_path_valid(raw.get("xhttp_path")):
         errors.append(("xray.xhttp_path", "must be a bounded nonroot path of slash-separated alphanumeric underscore or dash segments"))
+    elif raw["xhttp_path"] == PUBLISHED_XHTTP_PATH:
+        errors.append(("xray.xhttp_path", "must not be the published example path; generate a random one"))
     if raw and isinstance(raw, dict) and raw.get("xhttp_mode", "auto") not in ("auto", "packet-up", "stream-up"):
         errors.append(("xray.xhttp_mode", "must be an admitted XHTTP mode"))
     if isinstance(raw, dict):
