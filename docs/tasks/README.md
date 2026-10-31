@@ -267,6 +267,17 @@ client and artifact evidence.
 
 Completing all execution checkboxes advances the portfolio task at most to `review`; it does not prove acceptance.
 
+`main` accepts squash merges only and requires linear history
+(`.github/repository-policy.json`), so every pull request lands as one
+first-parent commit. The committed-review policy validates the first-parent
+history of `main`, so the `review` snapshot, the terminal `done`/`dropped`
+commit, and the `close purge` deletion must each be merged to `main` as a
+separate pull request (or otherwise land as separate first-parent commits).
+A single pull request holding both the review snapshot and the terminal
+commit is squashed into one commit, `main` then shows `doing` followed
+directly by `done`, and the later `close purge` fails with
+`invalid terminal transition doing -> done`.
+
 `steps ... add` allocates the ID through the shared Git allocator and adds the
 owning `@item` backlink; kind and priority default to the portfolio task. Titles
 must be plain single-line text, without manual IDs or mdtask metadata. Existing
@@ -279,7 +290,7 @@ write lock; coordinate lifecycle transitions and external editors separately.
 After editing steps and completing verification mappings, run `generate-board`
 before `validate`; `add` does not rewrite the generated board.
 
-Commit the completed task, execution, verification, and regenerated board in `review` before archival. Archive a completed OpenSpec change only through `./taskctl openspec archive`. Then run `close prepare`, commit the terminal record, run `close purge`, and commit the deletion separately. CI rejects deletion without the preceding terminal-state commit. Direct upstream archive, `--no-validate`, manual task IDs, and mdtask archive/ID assignment are unsupported.
+Commit the completed task, execution, verification, and regenerated board in `review` before archival, and merge that review snapshot to `main` on its own before the terminal commit. Archive a completed OpenSpec change only through `./taskctl openspec archive`. Then run `close prepare`, commit the terminal record, run `close purge`, and commit the deletion separately. Under the squash-only merge policy each of these three commits (review snapshot, terminal `done`/`dropped` record, purge deletion) needs its own pull request so that it stays a separate first-parent commit on `main`; a pull request that holds review and done together is squashed into one commit, and the later `close purge` can no longer be validated. CI rejects deletion without the preceding terminal-state commit. Direct upstream archive, `--no-validate`, manual task IDs, and mdtask archive/ID assignment are unsupported.
 
 An archived dropped task may display its owned change-document links at their
 archive locations. Its original close receipt remains immutable. Taskctl checks

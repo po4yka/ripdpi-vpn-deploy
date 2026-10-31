@@ -6,7 +6,7 @@ The nginx-xhttp primary and fallback vhosts and the reality-self-steal vhost log
 
 ## Ownership
 
-Primary: this repository. `ansible/roles/nginx-xhttp/templates/site.conf.j2`, `ansible/roles/reality-self-steal/templates/site.conf.j2`, `ansible/roles/monitoring/templates/logrotate-nginx.j2`, the matching role `CLAUDE.md` notes, `tests/unit/test_public_site_contract.py`, `tests/unit/test_nginx_xhttp_bearer_logs.py`, `tests/unit/test_watchdog_templates.py`, `tests/unit/test_monitoring_logrotate.py` and the snapshot goldens of both site templates. The watchdog script and `scripts/probing-summary-remote.py` are read, not edited.
+Primary: this repository. `ansible/roles/monitoring/templates/logrotate-nginx.j2`, the matching role `CLAUDE.md` notes, `tests/unit/test_public_site_contract.py`, `tests/unit/test_watchdog_templates.py`, `tests/unit/test_monitoring_logrotate.py` and the nginx logrotate golden; the site templates carry the formats already merged on `main`. The watchdog script and `scripts/probing-summary-remote.py` are read, not edited.
 
 ## Execution
 

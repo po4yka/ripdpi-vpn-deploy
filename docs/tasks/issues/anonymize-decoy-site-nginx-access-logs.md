@@ -23,7 +23,7 @@ The public decoy vhosts of nginx-xhttp (primary and fallback) and the loopback r
 
 ## Acceptance criteria
 
-- Rendered nginx-xhttp and reality-self-steal site templates declare a role-named `log_format` without `$remote_addr`, `$remote_user`, `$http_user_agent` or any forwarded-address variable, and every enabled `access_log` names it; transport, bearer and redirect surfaces stay `access_log off`.
+- Rendered nginx-xhttp and reality-self-steal site templates declare role-named formats (`vpn_public`, `vpn_self_steal`) without `$remote_addr`, `$remote_user`, `$http_referer` or `$http_user_agent`, every enabled `access_log` names them, and both site files load into one `nginx -t`; transport, bearer and redirect surfaces stay `access_log off`.
 - The format keeps `"$request" $status` adjacent with the status as the ninth field; a rendered-template test runs the watchdog detector's `awk` over rendered-format lines and counts the 403 responses.
 - `logrotate-nginx.j2` renders `rotate 7` for `/var/log/nginx/*.log`.
-- Snapshot goldens for both site templates are refreshed and reviewed; the touched unit tests, `make snapshot-check` and `make check` pass; CI is green at the pull-request head.
+- The nginx logrotate golden is refreshed and reviewed; the touched unit tests, `make snapshot-check` and `make check` pass; CI is green at the pull-request head.

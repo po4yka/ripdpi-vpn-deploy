@@ -17,8 +17,8 @@ out of scope; it is closed here on its own.
 
 ## What Changes
 
-- The nginx-xhttp primary and fallback vhosts and the reality-self-steal vhost log through a role-named `log_format` that carries no client address, remote user or user agent; the XHTTP, bearer-path and redirect servers stay at `access_log off`.
-- The anonymous format keeps the `combined` field layout (placeholders for the removed fields), so the watchdog `nginx_403_spike` detector and the probing summary still read the status code from the same position without a parser change.
+- The nginx-xhttp primary and fallback vhosts and the reality-self-steal vhost log through role-named formats (`vpn_public`, `vpn_self_steal`) that carry no client address, remote user, referer or user agent; the XHTTP, bearer-path and redirect servers stay at `access_log off`. These formats landed on `main` through `SEC-1793428673775693` while this change was in flight; this change keeps them, pins the layout contract and closes the remaining items below.
+- The formats keep the `combined` field layout (placeholders for the removed fields), so the watchdog `nginx_403_spike` detector and the probing summary still read the status code from the same position without a parser change; a rendered test runs the detector's `awk` over rendered-format lines, and another loads both site files into one `nginx -t`.
 - Monitoring's package-wide nginx logrotate policy keeps seven daily rotations instead of fourteen, the same retention as the Xray policy.
 - No BREAKING change: no variable, secret, listener, schema or operator input changes; existing log files keep their names and rotate normally.
 
@@ -34,4 +34,4 @@ out of scope; it is closed here on its own.
 
 ## Impact
 
-Ansible roles `nginx-xhttp`, `reality-self-steal` (site templates) and `monitoring` (`logrotate-nginx.j2`); watchdog detector contract covered by a new rendered test; snapshot goldens for both site templates; role notes. No Terraform, cloud-init, secrets, vpnd, client-contract or live-host change. Nodes pick the new format up on their next deployment through the existing compensated nginx transaction.
+Ansible role `monitoring` (`logrotate-nginx.j2`) and role notes; the nginx-xhttp and reality-self-steal site templates as already merged; watchdog detector contract covered by a new rendered test; the nginx logrotate golden. No Terraform, cloud-init, secrets, vpnd, client-contract or live-host change. Nodes pick the new format up on their next deployment through the existing compensated nginx transaction.

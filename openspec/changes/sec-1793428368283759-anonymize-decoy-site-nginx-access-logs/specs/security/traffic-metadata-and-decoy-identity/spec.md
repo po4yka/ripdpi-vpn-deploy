@@ -6,7 +6,7 @@ Keep per-device traffic metadata off the node by default: the public decoy vhost
 
 ### Requirement: REQ-TMD-DECOY-LOG-ANON — Decoy access logs carry no client identity
 
-The rendered nginx-xhttp primary and fallback vhosts and the rendered reality-self-steal vhost MUST write their access logs through a named `log_format` whose layout references no client address (`$remote_addr`, `$binary_remote_addr`, `$realip_remote_addr`, `$proxy_protocol_addr`, `$http_x_forwarded_for`), no `$remote_user` and no `$http_user_agent`, and MUST NOT use nginx's default `combined` format for any enabled access log.
+The rendered nginx-xhttp primary and fallback vhosts and the rendered reality-self-steal vhost MUST write their access logs through a named `log_format` whose layout references no client address (`$remote_addr`, `$binary_remote_addr`, `$realip_remote_addr`, `$proxy_protocol_addr`, `$http_x_forwarded_for`), no `$remote_user`, no `$http_referer` and no `$http_user_agent`, and MUST NOT use nginx's default `combined` format for any enabled access log.
 
 #### Scenario: Primary and fallback public vhosts
 
@@ -20,8 +20,8 @@ The rendered nginx-xhttp primary and fallback vhosts and the rendered reality-se
 
 #### Scenario: Transport and bearer surfaces stay silent
 
-- **WHEN** the nginx-xhttp template is rendered with the fallback host, the Snell evaluation location and both plain-HTTP redirect servers enabled
-- **THEN** every `access_log` directive is either `off` or names the anonymous format; no directive falls back to the default format.
+- **WHEN** the nginx-xhttp template is rendered with and without the fallback host
+- **THEN** every `access_log` directive is either `off` or names `vpn_public`; no directive falls back to the default format.
 
 #### Scenario: Both roles on one host
 
@@ -30,7 +30,7 @@ The rendered nginx-xhttp primary and fallback vhosts and the rendered reality-se
 
 ### Requirement: REQ-TMD-DECOY-LOG-STATUS-FIELD — Status consumers keep reading the anonymous format
 
-The anonymous format MUST keep the `combined` field layout, with the removed fields replaced by `-` placeholders, so that `"$request" $status` stays adjacent and `$status` remains the ninth whitespace-separated field of a well-formed request line. The watchdog `nginx_403_spike` detector MUST count a 403 line written in that format.
+The `vpn_public` and `vpn_self_steal` formats MUST keep the `combined` field layout, with the removed fields replaced by `-` placeholders, so that `"$request" $status` stays adjacent and `$status` remains the ninth whitespace-separated field of a well-formed request line. The watchdog `nginx_403_spike` detector MUST count a 403 line written in that format.
 
 #### Scenario: Watchdog counts a 403 in the anonymous format
 

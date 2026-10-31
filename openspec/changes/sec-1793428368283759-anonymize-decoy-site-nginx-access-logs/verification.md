@@ -15,7 +15,7 @@ live_evidence: No provider, credential or live runtime mutation is included.
 client: not_applicable
 client_evidence: No client artifact or bundle contract changes.
 artifact: passed
-artifact_evidence: Three refreshed snapshot goldens (nginx-xhttp site, reality-self-steal site, nginx logrotate) reviewed in the pull request diff.
+artifact_evidence: The refreshed nginx logrotate golden reviewed in the pull request diff; the two site goldens match the formats merged on main.
 ---
 
 # Verification
@@ -24,6 +24,6 @@ artifact_evidence: Three refreshed snapshot goldens (nginx-xhttp site, reality-s
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-TMD-DECOY-LOG-ANON | SEC-1793428548231362 | `tests/unit/test_public_site_contract.py` (format content for both templates), `tests/unit/test_nginx_xhttp_bearer_logs.py` (every enabled access log names the format), `make snapshot-check` | Passed locally; remote CI pending |
+| REQ-TMD-DECOY-LOG-ANON | SEC-1793428548231362 | `tests/unit/test_public_site_contract.py` (format content and every enabled access log naming `vpn_public`, merged from `main`; both site files loaded into one `nginx -t`), `tests/unit/test_reality_self_steal.py` (self-steal format), `make snapshot-check` | Passed locally; remote CI pending |
 | REQ-TMD-DECOY-LOG-STATUS-FIELD | SEC-1793428548231362 | `tests/unit/test_watchdog_templates.py` runs the rendered detector `awk` over rendered-format lines | Passed locally; remote CI pending |
 | REQ-TMD-NGINX-LOG-RETENTION | SEC-1793428549224587 | `tests/unit/test_monitoring_logrotate.py` asserts `rotate 7`; `make check -j 4` | Passed locally (environment-only failures recorded above); remote CI pending |

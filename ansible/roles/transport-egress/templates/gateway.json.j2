@@ -1,11 +1,12 @@
+{%- set _forwarder = _transport_egress_backend_name == 'direct' and '127.0.0.2' in transport_egress_normalizer_config.resolver.nameservers -%}
+{%- set _unexpected = _transport_egress_forbidden.ipv4 + _transport_egress_forbidden.ipv6 -%}
 {
   "log": {"loglevel": "warning", "access": "none"},
   "dns": {
     "queryStrategy": "UseIP",
     "servers": [
-{% for address in transport_egress_normalizer_config.resolver.nameservers %}
-      {"address": {{ address | to_json }}, "port": 53, "unexpectedIPs": {{ (_transport_egress_forbidden.ipv4 + _transport_egress_forbidden.ipv6) | to_json }}}{% if not loop.last %},{% endif %}
-{% endfor %}
+      {"address": "https+local://1.1.1.1/dns-query", "unexpectedIPs": {{ _unexpected | to_json }}},
+      {"address": "https+local://8.8.8.8/dns-query", "unexpectedIPs": {{ _unexpected | to_json }}}
     ]
   },
   "inbounds": [{
@@ -16,6 +17,14 @@
       "auth": "password", "udp": true, "ip": {{ _transport_egress_backend.address | to_json }},
       "accounts": [{"user": {{ _transport_egress_backend.username | to_json }}, "pass": {{ _transport_egress_backend.password | to_json }}}]
     }
-  }],
-  "outbounds": [{"protocol": "freedom", "settings": {"domainStrategy": "ForceIP"}}]
+  }{% if _forwarder %}, {
+    "tag": "dns-in",
+    "listen": "127.0.0.2",
+    "port": 53,
+    "protocol": "dokodemo-door",
+    "settings": {"address": "1.1.1.1", "port": 53, "network": "tcp,udp"}
+  }{% endif %}],
+  "outbounds": [{"protocol": "freedom", "settings": {"domainStrategy": "ForceIP"}}{% if _forwarder %},
+    {"tag": "dns-out", "protocol": "dns", "settings": {"nonIPQuery": "reject"}}{% endif %}]{% if _forwarder %},
+  "routing": {"rules": [{"type": "field", "inboundTag": ["dns-in"], "outboundTag": "dns-out"}]}{% endif %}
 }

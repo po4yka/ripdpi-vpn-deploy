@@ -1,8 +1,6 @@
 # Managed by Ansible role `reality-self-steal`.
-# Access log without client identity; same column layout as nginx-xhttp's
-# format (one name per role: nginx refuses duplicate log_format names).
-log_format reality_self_steal_anonymous '- - - [$time_local] "$request" $status $body_bytes_sent "$http_referer" "-"';
-
+# Combined field layout without the client address, referer or user agent.
+log_format vpn_self_steal '- - - [$time_local] "$request" $status $body_bytes_sent "-" "-"';
 server {
     listen 127.0.0.1:8443 ssl http2;
     server_name edge.vpn.example.com;
@@ -28,6 +26,6 @@ server {
         try_files $uri $uri/ =404;
     }
 
-    access_log /var/log/nginx/reality-self-steal.access.log reality_self_steal_anonymous;
+    access_log /var/log/nginx/reality-self-steal.access.log vpn_self_steal;
     error_log /var/log/nginx/reality-self-steal.error.log warn;
 }

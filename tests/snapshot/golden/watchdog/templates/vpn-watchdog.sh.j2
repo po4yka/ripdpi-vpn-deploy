@@ -20,6 +20,8 @@ set -euo pipefail
 : "${XRAY_REALITY_PROBE_URL:=}"
 : "${XRAY_REALITY_PROBE_EXPECTED_STATUS:=204}"
 : "${XRAY_REALITY_PROBE_TIMEOUT:=15}"
+: "${XRAY_REALITY_TARGET:=}"
+: "${XRAY_REALITY_SNI:=}"
 : "${WATCHDOG_STATE_BIN:=/usr/local/libexec/vpn-watchdog-state.py}"
 : "${WATCHDOG_NOTIFY_BIN:=/usr/local/libexec/vpn-watchdog-notify.py}"
 HOSTNAME="${HOSTNAME:-$(hostname -f 2>/dev/null || hostname)}"
@@ -326,6 +328,34 @@ if [[ "${ENABLE_NGINX_XHTTP:-true}" == "true" && -r "$nginx_access" ]]; then
     | awk '$9==403{n++} END{print n+0}')"
   if [[ "${recent_403:-0}" -gt 50 ]]; then
     classes[nginx_403_spike]="${recent_403} 403 responses in tail"
+  fi
+fi
+
+# REALITY target drift: the borrowed site must still answer the exact handshake
+# a REALITY client sends (TLS 1.3, X25519 key share, ALPN h2, trusted chain for
+# the first server name). A loopback target is the owned self-steal site and
+# is covered by the nginx probes above.
+reality_target_handshake() {
+  python3 - "$XRAY_REALITY_TARGET" "$XRAY_REALITY_SNI" <<'PY'
+import socket, ssl, sys
+target, sni = sys.argv[1], sys.argv[2]
+host, port = target.rsplit(":", 1)
+context = ssl.create_default_context()
+context.minimum_version = ssl.TLSVersion.TLSv1_3
+context.set_alpn_protocols(["h2", "http/1.1"])
+try:
+    context.set_ecdh_curve("X25519")
+except (ValueError, ssl.SSLError):
+    pass  # older OpenSSL bindings cannot pin the group; the controller validator still does
+with socket.create_connection((host.strip("[]"), int(port)), timeout=10) as raw:
+    with context.wrap_socket(raw, server_hostname=sni) as tls:
+        sys.exit(0 if tls.selected_alpn_protocol() == "h2" else 2)
+PY
+}
+if [[ "${ENABLE_XRAY:-true}" == "true" && -n "$XRAY_REALITY_TARGET" && -n "$XRAY_REALITY_SNI" \
+      && "$XRAY_REALITY_TARGET" != 127.* && "$XRAY_REALITY_TARGET" != "[::1]:"* ]]; then
+  if ! reality_target_handshake >/dev/null 2>&1; then
+    classes[reality_target_drift]="REALITY target no longer completes a TLS 1.3/X25519/h2 handshake for the configured name"
   fi
 fi
 

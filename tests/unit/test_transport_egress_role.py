@@ -261,6 +261,9 @@ def test_vendor_resolver_has_canonical_directives_and_identical_publication_byte
     content = environment.get_template('resolv.conf.j2').render(
         transport_egress_input_config={'resolver': resolver})
     assert content == 'nameserver 1.1.1.1\nnameserver 8.8.8.8\noptions timeout:1 attempts:1\n'
+    # The vendor namespace cannot reach the host's loopback forwarder, so it keeps numeric upstreams.
+    assert environment.get_template('resolv.conf.j2').render(
+        transport_egress_input_config={'resolver': {**resolver, 'nameservers': ['127.0.0.2']}}) == content
     snapshot = load('snapshot')
     published = {'mode': 0o644, 'gid': 0, 'data': base64.b64encode(content.encode()).decode()}
     monkeypatch.setattr(snapshot.os, 'geteuid', lambda: 0)
@@ -631,10 +634,44 @@ def test_generation_controller_retains_uid_drop_without_changing_recipient_capab
     for value in ['User=root', 'NoNewPrivileges=true', 'ProtectSystem=strict',
                   'RestrictNamespaces=true', 'RestrictSUIDSGID=true', 'SystemCallArchitectures=native']:
         assert value in unit.splitlines()
-    for name in ['normalizer.service.j2', 'gateway.service.j2']:
-        recipient = (ROLE / 'templates' / name).read_text()
-        assert 'CapabilityBoundingSet=\n' in recipient
+    assert 'CapabilityBoundingSet=\n' in (ROLE / 'templates/normalizer.service.j2').read_text()
+    for backend, capability in [('direct', 'CAP_NET_BIND_SERVICE'), ('warp', '')]:
+        recipient = _render_gateway('gateway.service.j2', backend)
         assert 'AmbientCapabilities=CAP_SETUID' not in recipient
+        assert [line for line in recipient.splitlines() if line.startswith(('CapabilityBoundingSet=', 'AmbientCapabilities='))] == [
+            'CapabilityBoundingSet=' + capability, 'AmbientCapabilities=' + capability]
+
+
+def _render_gateway(name, backend, nameservers=('127.0.0.2',)):
+    sys.path.insert(0, str(ROOT / 'scripts'))
+    from template_render import template_environment
+    from jinja2 import FileSystemLoader
+    config = {'resolver': {'nameservers': list(nameservers)},
+              'backends': {'direct': {'address': '127.0.0.1', 'port': 12090, 'username': 'gateway-direct', 'password': 'p'},
+                           'warp': {'address': '10.250.254.2', 'port': 12091, 'username': 'gateway-warp', 'password': 'p'}}}
+    return template_environment(FileSystemLoader(str(ROLE / 'templates'))).get_template(name).render(
+        transport_egress_normalizer_config=config, _transport_egress_backend=config['backends'][backend],
+        _transport_egress_backend_name=backend, _transport_egress_forbidden={'ipv4': ['127.0.0.0/8'], 'ipv6': ['::1/128']},
+        transport_egress_gateway_user='transport-gateway', transport_egress_warp_gateway_user='transport-warp-gateway',
+        transport_egress_config_dir='/etc/ripdpi/transport-egress', transport_egress_namespace='ripdpi-warp',
+        transport_egress_policy_loader='/usr/local/libexec/policy-loader.py', transport_egress_policy_config='/etc/policy.json',
+        transport_egress_runtime_binary='/opt/xray/xray')
+
+
+def test_direct_gateway_forwards_normalizer_dns_over_https_only():
+    sys.path.insert(0, str(ROOT / 'scripts'))
+    from transport_destination_policy import LOCAL_DNS_FORWARDER
+    direct = json.loads(_render_gateway('gateway.json.j2', 'direct', [LOCAL_DNS_FORWARDER]))
+    assert all(server['address'].startswith('https+local://') and 'port' not in server for server in direct['dns']['servers'])
+    forwarder = next(item for item in direct['inbounds'] if item.get('tag') == 'dns-in')
+    assert (forwarder['listen'], forwarder['port'], forwarder['protocol']) == (LOCAL_DNS_FORWARDER, 53, 'dokodemo-door')
+    assert forwarder['settings']['network'] == 'tcp,udp'
+    assert next(item for item in direct['outbounds'] if item.get('tag') == 'dns-out')['settings'] == {'nonIPQuery': 'reject'}
+    assert direct['routing']['rules'] == [{'type': 'field', 'inboundTag': ['dns-in'], 'outboundTag': 'dns-out'}]
+    assert 'dns-in' not in json.dumps(json.loads(_render_gateway('gateway.json.j2', 'warp', [LOCAL_DNS_FORWARDER])))
+    plaintext = json.loads(_render_gateway('gateway.json.j2', 'direct', ['1.1.1.1', '8.8.8.8']))
+    assert 'dns-in' not in json.dumps(plaintext) and 'routing' not in plaintext
+    assert 'CAP_NET_BIND_SERVICE' not in _render_gateway('gateway.service.j2', 'direct', ['1.1.1.1', '8.8.8.8'])
 
 
 def test_native_identity_refusal_fixture_uses_valid_input_only_authority():
