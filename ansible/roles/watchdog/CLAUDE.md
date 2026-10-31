@@ -86,6 +86,7 @@ the finite oneshot deadline prevent a notification stall from disabling probes.
 
 ## Pitfalls
 
+- **The nginx 403 detector reads the decoy vhost logs** — `nginx_403_spike` sums the recent tail of `vpn-xhttp.access.log`, `vpn-xhttp-fallback.access.log` and `reality-self-steal.access.log`; nginx's stock `access.log` receives nothing from the role-managed vhosts because each declares its own `access_log`. Absent files count as zero; the list is rendered, not globbed.
 - **REALITY target drift is a watchdog class** — `reality_target_drift` fires when the borrowed `xray.target` no longer completes a TLS 1.3, X25519, ALPN h2 handshake for the first server name; an active prober then sees a REALITY answer that the real site cannot give. Loopback targets (the owned self-steal site) are skipped because the nginx probes already cover them.
 - **Fresh-host check mode has no watchdog timer yet** — inspect the existing
   unit before rendering. Skip only its systemd operations when the unit is
