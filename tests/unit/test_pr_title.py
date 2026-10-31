@@ -59,7 +59,7 @@ def repo(tmp_path):
 
 def test_valid_title_and_commit_range_pass(repo):
     root, base = repo
-    head = _commit(root, 'fix(vpnd): reject invalid input\n\nBody text.')
+    _commit(root, 'fix(vpnd): reject invalid input\n\nBody text.')
     head = _commit(root, 'docs: explain the flag')
     result = _check(root, 'fix(vpnd): reject invalid input', base, head)
     assert result.returncode == 0, result.stderr
