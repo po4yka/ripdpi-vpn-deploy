@@ -669,7 +669,7 @@ def test_reality_target_probe_requires_h2_over_a_trusted_tls13_handshake(tmp_pat
                 with server.wrap_socket(connection, server_side=True):
                     pass
             except (OSError, ssl.SSLError):
-                pass
+                pass  # a refused handshake is the outcome under test; the client's exit code carries it
 
     thread = threading.Thread(target=serve, daemon=True)
     thread.start()
