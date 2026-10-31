@@ -96,6 +96,23 @@ The value must be an https origin; convergence fails closed on the
 in secrets. The dry run reaches those same asserts, so it needs the override
 too.
 
+The decoy content itself is operator-owned on production hosts. The pages
+bundled under `ansible/roles/nginx-xhttp/` are committed in a public repository,
+so every node that keeps them serves one byte-identical identity that a scanner
+can cluster. Put a complete static site (at least `404.html`; any further
+files and subdirectories are published at the same relative paths) in a
+controller-local directory and name it in the same override file:
+
+```bash
+echo 'nginx_xhttp_public_site_dir: "/path/to/owned-site"' >> secrets/local/decoy-origin.yml
+```
+
+A host whose inventory `env` is `prod` refuses convergence while the variable
+is empty; staging, lab and Molecule hosts may keep the bundled pages. The same
+reasoning applies to `xray.xhttp_path`: the committed example carries a
+`REPLACE_WITH_` placeholder that strict validation refuses, so choose a private
+path per deployment.
+
 ### Secrets that rotate together with the origin
 
 Changing the override alone is not enough — the following SOPS keys must be

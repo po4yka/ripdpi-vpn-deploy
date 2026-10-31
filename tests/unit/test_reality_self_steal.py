@@ -393,3 +393,46 @@ def test_molecule_verifies_disabling_mode_removes_the_private_listener() -> None
     ).read_text()
     assert "Simulate interrupted cleanup" in converge
     assert "stale in-memory listener" in converge
+
+
+def test_enabled_role_requires_one_certificate_for_a_hostname_shared_with_nginx_xhttp(
+    tmp_path: Path,
+) -> None:
+    playbook = tmp_path / "self-steal-shared-name.yml"
+    playbook.write_text("""---
+- hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  vars:
+    vpn:
+      enable_xray_reality: true
+      enable_nginx_xhttp: true
+      enable_reality_self_steal: true
+    xray:
+      target: 127.0.0.1:8443
+      server_names: [edge.example.test]
+    nginx_xhttp:
+      server_name: Edge.example.test
+      cert_pem: direct-frontend-certificate
+    reality_self_steal:
+      server_name: edge.example.test
+      cert_pem: loopback-target-certificate
+      key_pem: placeholder
+  roles:
+    - reality-self-steal
+""")
+    env = {**os.environ, "ANSIBLE_ROLES_PATH": str(ANSIBLE / "roles")}
+
+    result = subprocess.run(
+        ["ansible-playbook", "-i", "localhost,", str(playbook)],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "one hostname must present one certificate" in result.stdout
+    assert "loopback-target-certificate" not in result.stdout

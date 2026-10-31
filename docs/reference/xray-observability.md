@@ -19,8 +19,11 @@ allowlist.
 
 Per-user counters are disabled in Xray, so client email/name fields never enter
 the local StatsService response. UUIDs, short IDs, source addresses,
-destinations, and domains are not collected. Raw access/error logs retain the
-existing short local rotation policy and are not forwarded.
+destinations, and domains are not collected. The per-connection access log is
+rendered as `none` unless `vpn.enable_policy_ratelimit` is on, because each
+access line would tie a device name to a client address and a destination;
+`error.log` retains the existing short local rotation policy and is not
+forwarded.
 
 ## Operator check
 

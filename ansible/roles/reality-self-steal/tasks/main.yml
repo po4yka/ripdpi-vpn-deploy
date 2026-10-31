@@ -32,6 +32,20 @@
       {{ reality_self_steal.server_name }}.
   when: reality_self_steal_role_enabled | bool
 
+- name: Require one certificate for a hostname shared with the direct XHTTP frontend
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (vpn.enable_nginx_xhttp | default(false) | bool)
+        or ((nginx_xhttp.server_name | default('')) | lower) != (reality_self_steal.server_name | lower)
+        or (nginx_xhttp.cert_pem | default('')) == reality_self_steal.cert_pem
+    quiet: true
+    fail_msg: >-
+      reality_self_steal.server_name is also the nginx-xhttp server_name but the two
+      roles carry different certificates; one hostname must present one certificate
+      on every public port, so reuse nginx_xhttp.cert_pem/key_pem or choose a distinct name.
+  when: reality_self_steal_role_enabled | bool
+
 - name: Derive the immutable TLS release path
   ansible.builtin.set_fact:
     reality_self_steal_tls_release_dir: >-

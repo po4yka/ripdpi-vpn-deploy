@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import ast
+import base64
 import importlib.util
 import json
+import os
 import re
+import subprocess
+import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -753,3 +757,89 @@ def test_allowed_ci_origin_renders_only_its_runtime_hostname_and_port(port) -> N
 ])
 def test_committed_origin_rejects_literal_identity_other_expressions_and_profiles(profile, url):
     assert not _neutral_committed_origin(profile, url)
+
+
+def test_xhttp_locations_answer_upstream_errors_with_the_site_404() -> None:
+    rendered = _render(fallback=True)
+    locations = re.findall(r"location /\S+/ \{(.*?)\n    \}", rendered, flags=re.DOTALL)
+    assert len(locations) == 2
+    for body in locations:
+        assert "proxy_intercept_errors on;" in body
+        assert "error_page 404 502 503 504 =404 /404.html;" in body
+        assert "add_header" not in body
+
+
+ENABLE_TASKS = REPO_ROOT / "ansible/roles/nginx-xhttp/tasks/enable.yml"
+SITE_TASK_NAMES = (
+    "Pre-flight — production hosts serve an operator-owned public site",
+    "Enumerate the operator-owned public site tree on the controller",
+    "Enumerate the operator-owned public site directories on the controller",
+    "Resolve the published public site layout",
+    "Require the operator-owned tree to carry the ordinary error page",
+    "Resolve the public asset parent directories to prepare",
+    "Stage exact public assets in the same compensated nginx publication",
+    "Stage hostname-bound public pages in the same compensated publication",
+    "Stage the operator-owned public site in the same compensated publication",
+    "Stage retirement of bundled pages the operator-owned tree does not provide",
+)
+
+
+def _run_site_staging(tmp_path: Path, variables: dict) -> tuple[subprocess.CompletedProcess, dict | None]:
+    """Run the role's site-staging tasks in place of the publication transaction."""
+    tasks = yaml.safe_load(ENABLE_TASKS.read_text())
+    selected = [task for task in tasks if task["name"] in SITE_TASK_NAMES]
+    assert [task["name"] for task in selected] == list(SITE_TASK_NAMES)
+    result_file = tmp_path / "staged.json"
+    play = tmp_path / "site-staging.yml"
+    play.write_text(yaml.safe_dump([{
+        "hosts": "localhost", "connection": "local", "gather_facts": False, "become": False,
+        "vars": {"nginx_transaction_files": [], "role_path": str(ENABLE_TASKS.parents[1]),
+                 "ansible_python_interpreter": sys.executable, **variables},
+        "tasks": selected + [{"name": "Record staged rows", "ansible.builtin.copy": {
+            "dest": str(result_file), "mode": "0600",
+            "content": "{{ {'files': nginx_transaction_files, 'parents': _nginx_public_site_parents} | to_json }}"}}],
+    }]))
+    result = subprocess.run(["ansible-playbook", "-i", "localhost,", str(play)],
+                            env={**os.environ, "ANSIBLE_RETRY_FILES_ENABLED": "0"}, cwd=tmp_path,
+                            capture_output=True, text=True, timeout=60)
+    staged = json.loads(result_file.read_text()) if result_file.exists() else None
+    return result, staged
+
+
+def test_production_hosts_refuse_the_bundled_decoy_before_staging(tmp_path: Path) -> None:
+    result, staged = _run_site_staging(tmp_path, {"env": "prod", "nginx_xhttp_public_site_dir": ""})
+    assert result.returncode != 0
+    assert staged is None
+    assert "set\nnginx_xhttp_public_site_dir" in result.stdout.replace("\n      ", "\n") or "nginx_xhttp_public_site_dir" in result.stdout
+
+
+def test_operator_tree_replaces_every_bundled_page_in_one_publication(tmp_path: Path) -> None:
+    site = tmp_path / "site"
+    (site / "img" / "deep").mkdir(parents=True)
+    (site / "index.html").write_text("<h1>owned</h1>")
+    (site / "404.html").write_text("missing")
+    binary = bytes(range(256)) * 3
+    (site / "img" / "deep" / "logo.png").write_bytes(binary)
+    result, staged = _run_site_staging(tmp_path, {"env": "prod", "nginx_xhttp_public_site_dir": str(site)})
+    assert result.returncode == 0, result.stdout + result.stderr
+    rows = {row["path"]: row for row in staged["files"]}
+    assert rows["/var/www/public-site/index.html"]["kind"] == "file"
+    assert base64.b64decode(rows["/var/www/public-site/img/deep/logo.png"]["content_b64"], validate=True) == binary
+    assert rows["/var/www/public-site/404.html"]["mode"] == "0644"
+    absent = {path for path, row in rows.items() if row["kind"] == "absent"}
+    assert "/var/www/public-site/about.html" in absent
+    assert "/var/www/public-site/assets/site.css" in absent
+    assert "/var/www/public-site/notes/reading-benchmark-results.html" in absent
+    assert "/var/www/public-site/index.html" not in absent
+    assert set(staged["parents"]) == {"/var/www/public-site/img", "/var/www/public-site/img/deep"}
+    assert "<h1>owned</h1>" not in result.stdout
+
+
+def test_operator_tree_without_the_error_page_refuses(tmp_path: Path) -> None:
+    site = tmp_path / "site"
+    site.mkdir()
+    (site / "index.html").write_text("<h1>owned</h1>")
+    result, staged = _run_site_staging(tmp_path, {"env": "staging", "nginx_xhttp_public_site_dir": str(site)})
+    assert result.returncode != 0
+    assert staged is None
+    assert "must contain 404.html" in result.stdout

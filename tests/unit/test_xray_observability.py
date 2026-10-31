@@ -193,3 +193,13 @@ def test_new_timer_handler_is_safe_during_check_mode() -> None:
         handler["when"]
         == "monitoring_role_enabled | default(true) | bool and not ansible_check_mode"
     )
+
+
+@pytest.mark.parametrize("ratelimit", [False, True])
+def test_access_log_is_written_only_for_the_policy_ratelimit_consumer(ratelimit: bool) -> None:
+    variables = merge_render_vars()
+    variables["vpn"] = {**variables["vpn"], "enable_policy_ratelimit": ratelimit}
+    variables["xray_access_log_enabled"] = ratelimit
+    config = json.loads(render_template(XRAY_TEMPLATE, variables))
+    assert (config["log"]["access"] == "none") is (not ratelimit)
+    assert config["log"]["access"].endswith("/access.log") is ratelimit

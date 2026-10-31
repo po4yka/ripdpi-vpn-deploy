@@ -73,6 +73,10 @@ def merge_render_vars() -> dict:
     # Concrete role path authority for templates consuming the effective
     # configuration location rather than a hard-coded runtime path.
     merged["xray_etc_dir"] = merged.get("xray_config_dir", "/etc/xray")
+    # Role default is an expression over the vpn map, not an exact reference.
+    merged["xray_access_log_enabled"] = bool(
+        (merged.get("vpn") or {}).get("enable_policy_ratelimit", False)
+    )
     merged.update(SYNTHETIC_FACTS)
     merged.setdefault("xray_arch", "64")
     merged.setdefault("xray_sha256", "0" * 64)
