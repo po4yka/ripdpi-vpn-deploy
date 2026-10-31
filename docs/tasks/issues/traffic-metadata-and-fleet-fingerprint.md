@@ -2,7 +2,7 @@
 id: SEC-1793386547449444
 title: Close traffic-metadata retention and fleet-fingerprint audit findings
 kind: bug
-status: doing
+status: done
 area: security
 priority: high
 risk: high
@@ -12,8 +12,11 @@ blocked_by: []
 spec_mode: required
 openspec_change: sec-1793386547449444-traffic-metadata-and-fleet-fingerprint
 created: 2026-10-30
-updated: 2026-10-30
+updated: 2026-10-31
 related_tasks: []
+closed_at: "2026-10-31T06:39:43Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: PR 426 CI run 41131429189 attempt 2 green on head a0126fda; squash-merged as 61c0988342f38b5138273de39dfadb3e7dcf2b8c with an identical tree; local pytest, snapshot-check and docs-check passed; dry-run, staging, live and client not applicable for this source-only change
 ---
 
 ## Goal
