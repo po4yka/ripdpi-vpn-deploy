@@ -14,10 +14,9 @@ import subprocess
 import sys
 import tempfile
 
-from transport_destination_policy import IPV4_DENY, IPV6_DENY, normalize_address
+from transport_destination_policy import IPV4_DENY, IPV6_DENY, LOCAL_DNS_FORWARDER, normalize_address
 
 TABLE = 'ripdpi_transport'
-FORWARDER_ADDRESS = '127.0.0.1'
 STATE = Path('/var/lib/ripdpi/transport-egress')
 MAX_INPUT = 131072
 
@@ -79,26 +78,17 @@ def validate(raw):
             raise BoundaryError('invalid-policy-backend')
         ports.append(integer(item['port']))
         pools.append((integer(item['udp_source_port_min']), integer(item['udp_source_port_max'])))
-    keys(raw['resolver'], ['nameservers'], ['forwarder_port'])
-    if not isinstance(raw['resolver']['nameservers'], list) or not 1 <= len(raw['resolver']['nameservers']) <= 3:
-        raise BoundaryError('invalid-policy-resolver')
-    for value in raw['resolver']['nameservers']:
-        if str(normalize_address(value)) != value:
-            raise BoundaryError('invalid-policy-resolver')
-    # A loopback resolver exists only as the owned forwarder: the normalizer's port-53
-    # traffic is redirected to the direct gateway. Direct public resolvers stay
-    # available for fixtures with an authoritative peer.
-    if 'forwarder_port' in raw['resolver']:
-        if raw['resolver']['nameservers'] != [FORWARDER_ADDRESS]:
-            raise BoundaryError('invalid-policy-resolver')
-        ports.append(integer(raw['resolver']['forwarder_port']))
-    elif any(normalize_address(value).is_loopback for value in raw['resolver']['nameservers']):
-        raise BoundaryError('invalid-policy-resolver')
     if len(set(ports)) != len(ports):
         raise BoundaryError('policy-port-collision')
     for index, (low, high) in enumerate(pools):
         if low > high or high-low > 8191 or any(low <= port <= high for port in ports) or any(low <= end and start <= high for start, end in pools[:index]):
             raise BoundaryError('policy-pool-collision')
+    keys(raw['resolver'], ['nameservers'])
+    if not isinstance(raw['resolver']['nameservers'], list) or not 1 <= len(raw['resolver']['nameservers']) <= 3:
+        raise BoundaryError('invalid-policy-resolver')
+    for value in raw['resolver']['nameservers']:
+        if str(normalize_address(value)) != value:
+            raise BoundaryError('invalid-policy-resolver')
     keys(raw['policy'], ['owned_addresses', 'management_tcp_ports', 'management_udp_ports'])
     if not isinstance(raw['policy']['owned_addresses'], list) or len(raw['policy']['owned_addresses']) > 256:
         raise BoundaryError('invalid-owned-addresses')
@@ -114,8 +104,7 @@ def validate(raw):
 
 
 def intervals(raw):
-    forwarder = raw['resolver'].get('forwarder_port')
-    return ([(10808, 10808)] if 'classifier_uid' in raw else []) + ([(forwarder, forwarder)] if forwarder else []) + [(item['port'], item['port']) for item in raw['listeners']] + [(item['port'], item['port']) for item in raw['backends'].values()] + [(item['udp_port_min'], item['udp_port_max']) for item in raw['listeners']] + [(item['udp_source_port_min'], item['udp_source_port_max']) for item in raw['backends'].values()]
+    return ([(10808, 10808)] if 'classifier_uid' in raw else []) + [(item['port'], item['port']) for item in raw['listeners']] + [(item['port'], item['port']) for item in raw['backends'].values()] + [(item['udp_port_min'], item['udp_port_max']) for item in raw['listeners']] + [(item['udp_source_port_min'], item['udp_source_port_max']) for item in raw['backends'].values()]
 
 
 def render(raw, namespace=False):
@@ -135,9 +124,6 @@ def render(raw, namespace=False):
             address, port = item['address'], item['port']
             lines.append(f'  ip daddr {address} meta l4proto {{ tcp, udp }} th dport {port} meta skuid != {normalizer} drop')
             # Native SOCKS UDP BND is the same fixed inbound port.
-        forwarder = raw['resolver'].get('forwarder_port')
-        if forwarder:
-            lines.append(f'  ip daddr {FORWARDER_ADDRESS} meta l4proto {{ tcp, udp }} th dport {forwarder} meta skuid != {normalizer} drop')
         lines.append(' }')
         lines.append(' chain normalizer { type filter hook output priority 300; policy accept;')
         for item in raw['listeners']:
@@ -149,13 +135,9 @@ def render(raw, namespace=False):
             ipc_interface = 'lo' if name == 'direct' else 'rpd-warp-host'
             lines.append(f'  meta skuid {normalizer} oifname "{ipc_interface}" ip daddr {address} tcp dport {port} accept')
             lines.append(f'  meta skuid {normalizer} oifname "{ipc_interface}" ip daddr {address} udp sport {item["udp_source_port_min"]}-{item["udp_source_port_max"]} udp dport {port} accept')
-        if forwarder:
-            # The redirect below rewrites the sealed port-53 destination before this hook.
-            lines.append(f'  meta skuid {normalizer} oifname "lo" ip daddr {FORWARDER_ADDRESS} meta l4proto {{ tcp, udp }} th dport {forwarder} accept')
-        else:
-            for address in raw['resolver']['nameservers']:
-                family = 'ip6' if ':' in address else 'ip'
-                lines.append(f'  meta skuid {normalizer} {family} daddr {address} meta l4proto {{ tcp, udp }} th dport 53 accept')
+        for address in raw['resolver']['nameservers']:
+            family = 'ip6' if ':' in address else 'ip'
+            lines.append(f'  meta skuid {normalizer} {family} daddr {address} meta l4proto {{ tcp, udp }} th dport 53 accept')
         lines += [f'  meta skuid {normalizer} drop', ' }']
     else:
         lines += [' }']
@@ -168,11 +150,9 @@ def render(raw, namespace=False):
     interface = 'rpd-warp-ns' if namespace else 'lo'
     lines.append(f'  meta skuid {gateway_uid} oifname "{interface}" ip daddr {peer} tcp sport {port} ct direction reply ct original proto-dst {port} accept')
     lines.append(f'  meta skuid {gateway_uid} oifname "{interface}" ip daddr {peer} udp dport {backend["udp_source_port_min"]}-{backend["udp_source_port_max"]} ct direction reply udp sport {port} ct original proto-src {backend["udp_source_port_min"]}-{backend["udp_source_port_max"]} ct original proto-dst {port} accept')
-    forwarder = None if namespace else raw['resolver'].get('forwarder_port')
-    if forwarder:
-        # Forwarder answers return only on the normalizer's redirected port-53 flows.
-        for protocol in ('tcp', 'udp'):
-            lines.append(f'  meta skuid {gateway_uid} oifname "lo" ip daddr {FORWARDER_ADDRESS} {protocol} sport {forwarder} ct direction reply ct original proto-dst 53 accept')
+    if not namespace and LOCAL_DNS_FORWARDER in raw['resolver']['nameservers']:
+        # The direct gateway answers loopback DNS lookups; every other 127/8 destination stays denied below.
+        lines.append(f'  meta skuid {gateway_uid} oifname "lo" ip saddr {LOCAL_DNS_FORWARDER} ip daddr 127.0.0.1 meta l4proto {{ tcp, udp }} th sport 53 ct direction reply ct original proto-dst 53 accept')
     guarded_uids = [gateway_uid]
     if not namespace and 'classifier_uid' in raw:
         classifier = raw['classifier_uid']
@@ -197,12 +177,6 @@ def render(raw, namespace=False):
             lines.append(f'  meta skuid {gateway_uid} meta oif {index} meta l4proto {{ tcp, udp }} accept')
         lines.append(f'  meta skuid {gateway_uid} drop')
     lines += [' }', '}']
-    if forwarder:
-        # Owned output redirect: only the normalizer's sealed port-53 traffic reaches
-        # the direct gateway's encrypted forwarder; nothing else on the host changes.
-        lines.append(f'add chain inet {TABLE} resolver_nat {{ type nat hook output priority -100; policy accept; }}')
-        for protocol in ('tcp', 'udp'):
-            lines.append(f'add rule inet {TABLE} resolver_nat meta skuid {normalizer} ip daddr {FORWARDER_ADDRESS} {protocol} dport 53 dnat ip to {FORWARDER_ADDRESS}:{forwarder}')
     if namespace:
         # Remote or namespace-root processes cannot access the plaintext gateway.
         lines += [f'add chain inet {TABLE} input {{ type filter hook input priority -5; policy accept; }}', f'add rule inet {TABLE} input ip daddr {address} meta l4proto {{ tcp, udp }} th dport {port} ip saddr != 10.250.254.1 drop', f'add rule inet {TABLE} input ip daddr {address} iifname != "rpd-warp-ns" meta l4proto {{ tcp, udp }} th dport {port} drop']

@@ -357,6 +357,9 @@
 - name: Enforce AmneziaWG arm64 S3/S4 version floor
   ansible.builtin.import_tasks: guard-s34.yml
 
+- name: Guard WireGuard-shaped instances on production hosts
+  ansible.builtin.import_tasks: guard-wireguard-shape.yml
+
 - name: Require unique bounded current AmneziaWG members
   ansible.builtin.assert:
     that:

@@ -174,7 +174,8 @@ class NativeStack:
         assert result.returncode == 0, "production-kernel-projection-rejected"
         private = self.state / "config.json"
         private.write_text(json.dumps(value));private.chmod(0o600)
-        for name, body in (("resolv.conf", "nameserver 192.0.2.53\noptions timeout:1 attempts:1\n"),
+        resolver = value["resolver"]
+        for name, body in (("resolv.conf", f"nameserver 192.0.2.53\noptions timeout:{resolver['timeout_seconds']} attempts:{resolver['attempts']}\n"),
                            ("nsswitch.conf", "hosts: dns\n"), ("hosts", "")):
             (self.state / name).write_text(body);(self.state / name).chmod(0o644)
         backend = value["backends"]["direct"]

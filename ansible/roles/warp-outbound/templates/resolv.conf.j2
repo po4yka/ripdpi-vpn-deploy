@@ -1,4 +1,5 @@
-{% for address in warp_outbound_nameservers %}
+{# The vendor namespace has no loopback DNS forwarder; its client resolves its own control plane upstream. #}
+{% for address in transport_egress_input_config.resolver.nameservers | reject('eq', '127.0.0.2') | list or ['1.1.1.1', '8.8.8.8'] %}
 nameserver {{ address }}
 {% endfor %}
 options timeout:{{ transport_egress_input_config.resolver.timeout_seconds }} attempts:{{ transport_egress_input_config.resolver.attempts }}

@@ -13,8 +13,7 @@
   "stats": {},
   "dns": {
     "servers": [
-      "https+local://1.1.1.1/dns-query",
-      "https+local://8.8.8.8/dns-query"
+      "127.0.0.2"
     ],
     "queryStrategy": "UseIP",
     "tag": "dns-inbound"
@@ -22,7 +21,7 @@
   "inbounds": [
     {
       "tag": "vless-reality",
-      "listen": "0.0.0.0",
+      "listen": "::",
       "port": 443,
       "protocol": "vless",
       "settings": {

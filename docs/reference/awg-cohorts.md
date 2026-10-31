@@ -62,7 +62,11 @@ sets the profile and SOPS overrides anything per-deployment.
 
 Leaving `vpn.awg_cohort` empty keeps the broad-rule baseline baked
 into the role defaults — that is the right starting point on any
-network without a documented profile.
+network without a documented profile. Because `narrow-junk-sequential`
+keeps the plain 148-byte Initiation behind its junk (`S1 = S2 = 0`,
+`H1..H4 = 1, 2, 3, 4`), a host whose inventory `env` is `prod` refuses it
+unless `awg_wireguard_shaped_measurement` names the measurement record
+that justifies it (see [deploy-profiles](deploy-profiles.md)).
 
 `vpn.awg_cohort` supplies defaults for every instance; explicit per-instance
 parameters win. A single instance uses the same nonempty list contract.
@@ -270,7 +274,10 @@ for upgrading the non-zero S3/S4 version floor remains unchanged.
 Bundle version 2 uses `wire_profile: awg-3.1-ranges-v1`. Headers are canonical
 strings such as `"11"` or `"1000-1999"`. I1-I5 use bounded tag programs and are
 sent before handshake junk packets. The exact contract and limits are in
-[ripdpi-bundle.md](ripdpi-bundle.md). Earlier source pairs admit singleton
+[ripdpi-bundle.md](ripdpi-bundle.md). No shipped cohort carries an I1-I5
+program: a signature packet is a fixed on-path artefact, and none of the
+candidate programs has a measurement showing it passes where the plain junk
+preamble does not. Add one only together with its measurement record. Earlier source pairs admit singleton
 headers without signatures. The reviewed 3.1 pair admits the supported ranges
 and tags but retains its production hold. Keep S3/S4 zero until the physical
 arm64 policy has qualifying evidence.

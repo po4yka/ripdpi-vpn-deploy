@@ -17,7 +17,7 @@ import sys
 import threading
 import time
 
-from transport_destination_policy import DestinationPolicy, PolicyError, canonical_name, normalize_address
+from transport_destination_policy import DestinationPolicy, PolicyError, canonical_name, normalize_address, LOCAL_DNS_FORWARDER
 from transport_private_authority import PrivateAuthorityError, read_private_file
 from transport_socks import (FAILURE, MAX_HANDSHAKE, NeedMore, WireError, authentication,
                              datagram, encoded_datagram, greeting, reply, request,
@@ -26,7 +26,6 @@ from transport_socks import (FAILURE, MAX_HANDSHAKE, NeedMore, WireError, authen
 MAX_CONFIG = 131072
 MAX_STREAM_BUFFER = 65536
 MAX_RESOLVER_RESPONSE = 8192
-LOOPBACK_FORWARDER = "127.0.0.1"
 MAX_CONNECT_CANDIDATES = 8
 MAX_CONNECT_CONTROLS = 2
 CONNECT_STAGGER_SECONDS = 0.25
@@ -145,9 +144,7 @@ def validate_config(raw, *, input_only=False):
     policy = DestinationPolicy()
     for value in resolver["nameservers"]:
         try:
-            # The exact loopback literal names the owned forwarder behind the kernel
-            # redirect; every other loopback or private resolver stays refused.
-            if str(normalize_address(value)) != value or not (value == LOOPBACK_FORWARDER or policy.allows(value, 53, "udp")):
+            if str(normalize_address(value)) != value or not (value == LOCAL_DNS_FORWARDER or policy.allows(value, 53, "udp")):
                 raise NormalizerError("invalid-resolvers")
         except PolicyError:
             raise NormalizerError("invalid-resolvers") from None

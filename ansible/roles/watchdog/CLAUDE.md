@@ -86,6 +86,7 @@ the finite oneshot deadline prevent a notification stall from disabling probes.
 
 ## Pitfalls
 
+- **REALITY target drift is a watchdog class** — `reality_target_drift` fires when the borrowed `xray.target` no longer completes a TLS 1.3, X25519, ALPN h2 handshake for the first server name; an active prober then sees a REALITY answer that the real site cannot give. Loopback targets (the owned self-steal site) are skipped because the nginx probes already cover them.
 - **Fresh-host check mode has no watchdog timer yet** — inspect the existing
   unit before rendering. Skip only its systemd operations when the unit is
   absent in check mode; normal convergence must still start it.

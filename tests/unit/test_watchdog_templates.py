@@ -84,8 +84,13 @@ def test_environment_lists_every_probe_without_client_credentials():
     assert watchdog_client["uuid"] not in rendered
     assert watchdog_client["short_id"] not in rendered
     assert "XRAY_API_SERVER=127.0.0.1:10086" in rendered
+    assert f"XRAY_REALITY_TARGET={vars_['xray']['target']}" in rendered
+    assert f"XRAY_REALITY_SNI={vars_['xray']['server_names'][0]}" in rendered
     assert "NTFY_" not in rendered
     assert "PUSHOVER_" not in rendered
+    vars_["vpn_subscription_only"] = True
+    quiet = render_template(TEMPLATES / "vpn-watchdog.env.j2", vars_)
+    assert "XRAY_REALITY_TARGET=\n" in quiet and "XRAY_REALITY_SNI=\n" in quiet
 
 
 def test_notification_authority_is_separate_and_the_unit_has_a_deadline():
@@ -622,3 +627,54 @@ def test_disabled_xhttp_does_not_require_nginx_role_variables(subscription_only)
         values.pop(name, None)
     rendered = render_template(TEMPLATES / "vpn-watchdog.env.j2", values)
     assert "NGINX_PORT=0\nXHTTP_BACKEND_PORT=0" in rendered
+
+
+def _reality_target_handshake_probe() -> str:
+    rendered = render_template(TEMPLATES / "vpn-watchdog.sh.j2", _multi_cohort_vars())
+    assert 'classes[reality_target_drift]=' in rendered
+    start = rendered.index("<<'PY'\n", rendered.index("reality_target_handshake() {")) + len("<<'PY'\n")
+    return rendered[start:rendered.index("\nPY\n", start)]
+
+
+@pytest.mark.parametrize(
+    ("alpn", "trusted", "expected"),
+    [(["h2", "http/1.1"], True, 0), (["http/1.1"], True, 2), (["h2"], False, 1)],
+    ids=["h2-trusted", "no-h2", "untrusted-chain"],
+)
+def test_reality_target_probe_requires_h2_over_a_trusted_tls13_handshake(tmp_path, alpn, trusted, expected):
+    import os
+    import socket
+    import ssl
+    import subprocess
+    import sys
+    import threading
+
+    cert, key = tmp_path / "cert.pem", tmp_path / "key.pem"
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes",
+                    "-days", "2", "-subj", "/CN=edge.example.test", "-addext", "subjectAltName=DNS:edge.example.test",
+                    "-keyout", str(key), "-out", str(cert)], check=True, capture_output=True)
+    server = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    server.minimum_version = ssl.TLSVersion.TLSv1_3
+    server.load_cert_chain(cert, key)
+    server.set_alpn_protocols(alpn)
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    listener.settimeout(10)
+
+    def serve():
+        with listener:
+            try:
+                connection, _ = listener.accept()
+                with server.wrap_socket(connection, server_side=True):
+                    pass
+            except (OSError, ssl.SSLError):
+                pass  # a refused handshake is the outcome under test; the client's exit code carries it
+
+    thread = threading.Thread(target=serve, daemon=True)
+    thread.start()
+    environment = {**os.environ, "SSL_CERT_FILE": str(cert)} if trusted else {**os.environ, "SSL_CERT_FILE": os.devnull}
+    result = subprocess.run([sys.executable, "-", f"127.0.0.1:{listener.getsockname()[1]}", "edge.example.test"],
+                            input=_reality_target_handshake_probe(), text=True, capture_output=True, env=environment, timeout=30)
+    thread.join(10)
+    assert result.returncode == expected, result.stderr
