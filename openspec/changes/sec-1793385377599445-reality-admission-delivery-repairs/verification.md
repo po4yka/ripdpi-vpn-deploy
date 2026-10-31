@@ -1,9 +1,9 @@
 ---
 task_id: SEC-1793385377599445
 change: sec-1793385377599445-reality-admission-delivery-repairs
-commit_sha: c7c2dd99fc446cb642a2ca1ab832056fb69f10da
+commit_sha: 4660af508321d88b98a89f35521744b3346dc50a
 local: passed
-local_evidence: On c7c2dd99fc44, the narrow tests for every requirement passed. snapshot-check, make shellcheck, docs-check, all pre-commit hooks and all 70 bats tests passed; bats ran with the pinned Python on PATH because a mise shim under the test's temporary HOME lacks PyYAML. In the earlier make -k -j 4 check, test-unit (31 failures), vpnd-test (9), vpnd-package-check and bats-test failed. PR CI exposed four new_client_atomic.bats failures from a fixture without xhttp_path; that fixture is fixed and the four tests reproduced and then passed. The other failures reproduce on clean main 6297d207 in this container: no IPv6, root, no native tools, and the mise HOME shim. Native lanes for the touched native tests were not runnable locally.
+local_evidence: On 4660af50 (rewritten from c7c2dd99 with an identical tree when the commit author was corrected), the narrow tests for every requirement passed. snapshot-check, make shellcheck, docs-check, all pre-commit hooks and all 70 bats tests passed; bats ran with the pinned Python on PATH because a mise shim under the test's temporary HOME lacks PyYAML. In the earlier make -k -j 4 check, test-unit (31 failures), vpnd-test (9), vpnd-package-check and bats-test failed. PR CI exposed four new_client_atomic.bats failures from a fixture without xhttp_path; that fixture is fixed and the four tests reproduced and then passed. The other failures reproduce on clean main 6297d207 in this container: no IPv6, root, no native tools, and the mise HOME shim. Native lanes for the touched native tests were not runnable locally.
 remote_ci: required
 remote_ci_evidence: null
 dry_run: required
