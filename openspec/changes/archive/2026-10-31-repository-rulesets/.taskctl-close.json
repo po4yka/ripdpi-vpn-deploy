@@ -1,0 +1,11 @@
+{
+  "change": "repository-rulesets",
+  "evidence_summary": "Layered rulesets, release immutability, dependency coverage and PR-title validation merged as bdde127d (PR 396); live apply and readback on 2026-10-25; main run 40174238688 on the merged commit green.",
+  "execution_sha256": "b27d1853035b72b628ee6bf676420157326e57928f3fbe14333d47bf6f517fb8",
+  "issue_sha256": "72b67622b6e965bafb663f7afbda20d6123ada697fa3a0f94c6e14b3ac768e9d",
+  "outcome": "done",
+  "prepared_at": "2026-10-31T16:21:38Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "CIC-1792911952227614"
+}
