@@ -364,7 +364,7 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
         # client fixtures change; the standard artifact probes every half hour so
         # sing-box never opens one session per transport in a synchronous burst.
         out.append(dict(type='urltest', tag='auto', outbounds=automatic, url='https://www.gstatic.com/generate_204',
-                        interval='5m' if o['format'] == 'ripdpi' else '30m', tolerance=50))
+                        interval='30m', tolerance=50))
     out += [dict(type='direct', tag='direct'), dict(type='block', tag='block')]
     rules = [dict(package_name=list(filter(None, value.split(','))), action='route', outbound=target)
              for value, target in ((per_app_bypass, 'direct'), (per_app_via_tun, 'select')) if value]
