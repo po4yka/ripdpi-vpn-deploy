@@ -54,6 +54,7 @@ COMPATIBILITY_SKILL_ROOTS = {
     ".claude/skills": "../../.agents/skills",
     ".github/skills": "../../.agents/skills",
 }
+DEFAULT_PROTECTED_REF = "origin/main"
 STATUS_ORDER = ("doing", "review", "blocked", "todo", "backlog")
 STATUSES = frozenset((*STATUS_ORDER, "done", "dropped"))
 KINDS = frozenset(("feature", "bug", "chore", "research", "epic"))
@@ -4621,6 +4622,10 @@ def command_verify(args: argparse.Namespace) -> int:
     documents, steps = load_state(args.root)
     document = find_document(documents, args.query)
     verify_task(args.root, document, steps, archive_ready=args.archive_ready)
+    if args.archive_ready:
+        require_review_on_protected_ref(
+            args.root, document, getattr(args, "protected_ref", None)
+        )
     print(f"Verified {document.task_id}")
     return 0
 
@@ -4855,20 +4860,58 @@ def prepare_dropped_execution(
     return execution
 
 
-def require_committed_review(root: Path, document: Document) -> None:
-    relative = document.path.relative_to(root).as_posix()
-    committed = git_show_text(root, "HEAD", relative)
+def committed_task_snapshot(root: Path, ref: str, relative: str) -> Document | None:
+    committed = git_show_text(root, ref, relative)
     if committed is None:
-        fail(f"{document.task_id}: done closure requires committed review status")
+        return None
     with tempfile.TemporaryDirectory(prefix="taskctl-committed-review-") as directory:
         snapshot_path = Path(directory) / "issue.md"
         snapshot_path.write_text(committed, encoding="utf-8")
-        snapshot = read_document(snapshot_path)
-    if (
-        snapshot.task_id != document.task_id
-        or snapshot.values.get("status") != "review"
+        return read_document(snapshot_path)
+
+
+def snapshot_is_review(snapshot: Document | None, task_id: str) -> bool:
+    return (
+        snapshot is not None
+        and snapshot.task_id == task_id
+        and snapshot.values.get("status") == "review"
+    )
+
+
+def require_committed_review(root: Path, document: Document) -> None:
+    relative = document.path.relative_to(root).as_posix()
+    if not snapshot_is_review(
+        committed_task_snapshot(root, "HEAD", relative), document.task_id
     ):
         fail(f"{document.task_id}: done closure requires committed review status")
+
+
+def require_review_on_protected_ref(
+    root: Path, document: Document, protected_ref: str | None
+) -> None:
+    # A squash merge collapses a branch into one first-parent commit on main,
+    # so a review snapshot that exists only in local branch history would land
+    # together with the terminal record and leave the purge audit with an
+    # invalid doing -> done transition. The snapshot must already be on the
+    # protected ref before done closure is prepared.
+    ref = protected_ref or DEFAULT_PROTECTED_REF
+    resolved = run_command(
+        ("git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"), root=root
+    )
+    if resolved.returncode != 0:
+        fail(
+            f"{document.task_id}: protected ref {ref} is not available; "
+            "fetch it or pass --protected-ref"
+        )
+    relative = document.path.relative_to(root).as_posix()
+    if not snapshot_is_review(
+        committed_task_snapshot(root, ref, relative), document.task_id
+    ):
+        fail(
+            f"{document.task_id}: review snapshot is not on {ref}; merge the review "
+            "commit as its own pull request (or fetch origin) before preparing "
+            "done closure"
+        )
 
 
 def command_close_prepare(args: argparse.Namespace) -> int:
@@ -4878,6 +4921,9 @@ def command_close_prepare(args: argparse.Namespace) -> int:
         if document.values["status"] != "review":
             fail("done closure requires review status")
         require_committed_review(args.root, document)
+        require_review_on_protected_ref(
+            args.root, document, getattr(args, "protected_ref", None)
+        )
         verify_task(
             args.root,
             document,
@@ -5121,6 +5167,7 @@ def build_parser() -> argparse.ArgumentParser:
     verify = subparsers.add_parser("verify")
     verify.add_argument("query")
     verify.add_argument("--archive-ready", action="store_true")
+    verify.add_argument("--protected-ref")
     verify.set_defaults(handler=command_verify)
 
     openspec = subparsers.add_parser("openspec")
@@ -5139,6 +5186,7 @@ def build_parser() -> argparse.ArgumentParser:
     prepare.add_argument("--outcome", required=True, choices=("done", "dropped"))
     prepare.add_argument("--reason")
     prepare.add_argument("--evidence", required=True)
+    prepare.add_argument("--protected-ref")
     prepare.set_defaults(handler=command_close_prepare)
     purge = close_sub.add_parser("purge")
     purge.add_argument("query")

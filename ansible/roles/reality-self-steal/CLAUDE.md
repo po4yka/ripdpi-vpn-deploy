@@ -22,7 +22,7 @@ Operator target hygiene selects `--mode owned-public` with an explicit public en
 
 ## Pitfalls
 
-- The loopback site's access log uses the `vpn_self_steal` format without `$remote_addr`, referer or user agent; every request there arrives through Xray, so the address would only be the REALITY frontend anyway, but the browser fingerprint of a real visitor must not be retained.
+- The loopback site's access log uses the `vpn_self_steal` format (distinct from nginx-xhttp's `vpn_public`: nginx refuses duplicate `log_format` names when both site files load) without `$remote_addr`, referer or user agent; every request there arrives through Xray, so the address would only be the REALITY frontend anyway, but the browser fingerprint of a real visitor must not be retained.
 
 - Enabling the role without first changing `xray.target` to the exact loopback listener is intentionally rejected.
 - `server_names` must contain only the owned certificate hostname; borrowed fallback names defeat the same-ASN design.
