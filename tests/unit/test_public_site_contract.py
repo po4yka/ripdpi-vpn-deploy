@@ -57,6 +57,58 @@ def _json_ld(page: str) -> dict:
     return json.loads(match.group(1))
 
 
+SELF_STEAL_TEMPLATE = (
+    REPO_ROOT / "ansible" / "roles" / "reality-self-steal" / "templates" / "site.conf.j2"
+)
+CLIENT_IDENTITY_VARIABLES = (
+    "$remote_addr", "$binary_remote_addr", "$realip_remote_addr", "$proxy_protocol_addr",
+    "$http_x_forwarded_for", "$remote_user", "$http_user_agent",
+)
+
+
+def _access_log_format(rendered: str) -> tuple[str, str]:
+    """Return the single (name, layout) pair a rendered site file declares."""
+    ((name, layout),) = re.findall(r"^log_format (\S+) '([^']*)';$", rendered, re.M)
+    return name, layout
+
+
+@pytest.mark.parametrize(
+    ("template", "logs"),
+    [
+        (TEMPLATE, ["vpn-xhttp.access.log", "vpn-xhttp-fallback.access.log"]),
+        (SELF_STEAL_TEMPLATE, ["reality-self-steal.access.log"]),
+    ],
+)
+def test_decoy_vhosts_log_without_client_identity(template: Path, logs: list[str]) -> None:
+    variables = renderer.merge_render_vars()
+    variables["nginx_xhttp"] = {**variables["nginx_xhttp"], "fallback_enabled": True}
+    rendered = renderer.render_template(template, variables)
+    name, layout = _access_log_format(rendered)
+    for log in logs:
+        assert f"access_log /var/log/nginx/{log} {name};" in rendered
+    assert not any(variable in layout for variable in CLIENT_IDENTITY_VARIABLES), layout
+    # The combined column layout survives: the status follows the request line
+    # and stays the ninth field the watchdog and the probing summary read.
+    line = (
+        layout.replace("$time_local", "31/Oct/2026:10:00:00 +0000")
+        .replace("$request", "GET /index.html HTTP/1.1")
+        .replace("$status", "403")
+        .replace("$body_bytes_sent", "153")
+        .replace("$http_referer", "-")
+    )
+    assert "$" not in line, layout
+    assert '"GET /index.html HTTP/1.1" 403' in line
+    assert line.split()[8] == "403"
+
+
+def test_both_decoy_site_files_load_in_one_nginx() -> None:
+    rendered = [renderer.render_template(t, renderer.merge_render_vars())
+                for t in (TEMPLATE, SELF_STEAL_TEMPLATE)]
+    assert len({_access_log_format(text)[0] for text in rendered}) == 2
+    # nginx refuses a duplicate log_format name across included site files.
+    assert renderer.validate_nginx("\n".join(rendered), "both decoy sites") is None
+
+
 def test_primary_vhost_serves_static_site_and_keeps_xhttp_path_separate() -> None:
     rendered = _render()
     assert "root /var/www/public-site;" in rendered

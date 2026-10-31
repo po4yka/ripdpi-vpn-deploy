@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import re
+import subprocess
 from copy import deepcopy
 from pathlib import Path
 
@@ -13,6 +15,7 @@ from scripts.template_render import merge_render_vars, render_template
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TEMPLATES = REPO_ROOT / "ansible" / "roles" / "watchdog" / "templates"
+NGINX_SITE = REPO_ROOT / "ansible" / "roles" / "nginx-xhttp" / "templates" / "site.conf.j2"
 
 
 def _multi_cohort_vars() -> dict:
@@ -237,6 +240,28 @@ def test_failure_fixture_admits_guarded_config_and_explicit_runtime_authority(tm
         "src": "{{ watchdog_failure_runtime_binary }}", "dest": "/usr/local/bin/xray",
         "state": "link", "owner": "root", "group": "root",
     }
+
+
+def _anonymous_access_line(status: int) -> str:
+    rendered = render_template(NGINX_SITE, merge_render_vars())
+    layout = re.search(r"^log_format vpn_xhttp_anonymous '([^']*)';$", rendered, re.M).group(1)
+    return (
+        layout.replace("$time_local", "31/Oct/2026:10:00:00 +0000")
+        .replace("$request", "GET /wp-login.php HTTP/1.1")
+        .replace("$status", str(status))
+        .replace("$body_bytes_sent", "153")
+        .replace("$http_referer", "-")
+    )
+
+
+def test_nginx_403_detector_counts_the_anonymous_access_format():
+    rendered = render_template(TEMPLATES / "vpn-watchdog.sh.j2", _multi_cohort_vars())
+    program = re.search(r'"\$nginx_access"[^\n]*\n\s*\| awk \'([^\']+)\'', rendered).group(1)
+
+    lines = "".join(_anonymous_access_line(status) + "\n" for status in (403, 200, 403, 404))
+    result = subprocess.run(["awk", program], input=lines, capture_output=True, text=True, check=True)
+
+    assert result.stdout.strip() == "2"
 
 
 def test_watchdog_fails_when_stats_service_is_not_queryable():

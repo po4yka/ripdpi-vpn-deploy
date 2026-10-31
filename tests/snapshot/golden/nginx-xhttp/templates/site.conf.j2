@@ -5,6 +5,11 @@
 
 
 
+# Public-site access log without client identity: no address, user or user
+# agent. Keeps the `combined` column layout (placeholders for the removed
+# fields) so the watchdog's `awk '$9==403'` and the probing summary still
+# read the status from the same field.
+log_format vpn_xhttp_anonymous '- - - [$time_local] "$request" $status $body_bytes_sent "$http_referer" "-"';
 
 
 server {
@@ -80,7 +85,7 @@ server {
         try_files $uri $uri/ =404;
     }
 
-    access_log /var/log/nginx/vpn-xhttp.access.log;
+    access_log /var/log/nginx/vpn-xhttp.access.log vpn_xhttp_anonymous;
     error_log  /var/log/nginx/vpn-xhttp.error.log warn;
 }
 

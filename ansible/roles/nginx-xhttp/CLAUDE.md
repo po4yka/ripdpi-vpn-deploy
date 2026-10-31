@@ -93,7 +93,7 @@ Permissions/Referrer/nosniff set at server scope in both public vhosts.
 `proxy_read_timeout` and `proxy_send_timeout`; the public root vhost uses
 defaults. Don't mix these — XHTTP needs long-lived streams.
 
-**Both XHTTP locations suppress access logging** — primary and fallback transport paths keep request/session identifiers out of public-site logs; ordinary site requests retain their access logs.
+**Both XHTTP locations suppress access logging** — primary and fallback transport paths keep request/session identifiers out of public-site logs. Ordinary site requests log through `vpn_xhttp_anonymous`: no client address, remote user or user agent, but the `combined` column layout is kept with `-` placeholders so the watchdog's `awk '$9==403'` and `scripts/probing-summary-remote.py` still read the status. A layout change must move with `tests/unit/test_watchdog_templates.py`.
 
 The shared publisher journals complete prior/desired rows, exact boot/running
 state and a versioned phase before each live boundary. Recognized interruption

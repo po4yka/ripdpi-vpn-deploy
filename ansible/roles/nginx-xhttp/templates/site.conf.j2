@@ -5,6 +5,11 @@
 {% set nginx_fallback_name = nginx_xhttp.fallback_server_name | default(nginx_xhttp.server_name) %}
 {% set nginx_same_public_host = (nginx_fallback_name | lower) == (nginx_xhttp.server_name | lower) %}
 {% set nginx_primary_hsts = nginx_redirect_port == 443 or (nginx_fallback_enabled and (nginx_xhttp_fallback_port | int) == 443 and nginx_same_public_host) %}
+# Public-site access log without client identity: no address, user or user
+# agent. Keeps the `combined` column layout (placeholders for the removed
+# fields) so the watchdog's `awk '$9==403'` and the probing summary still
+# read the status from the same field.
+log_format vpn_xhttp_anonymous '- - - [$time_local] "$request" $status $body_bytes_sent "$http_referer" "-"';
 {% if (vpn.enable_snell | default(false)) and (snell | default({})).evaluation_enabled | default(false) %}
 limit_req_zone $binary_remote_addr zone=snell_evaluation:1m rate=10r/s;
 {% endif %}
@@ -91,7 +96,7 @@ server {
         try_files $uri $uri/ =404;
     }
 
-    access_log /var/log/nginx/vpn-xhttp.access.log;
+    access_log /var/log/nginx/vpn-xhttp.access.log vpn_xhttp_anonymous;
     error_log  /var/log/nginx/vpn-xhttp.error.log warn;
 }
 {% if nginx_fallback_enabled %}
@@ -174,7 +179,7 @@ server {
         try_files $uri $uri/ =404;
     }
 
-    access_log /var/log/nginx/vpn-xhttp-fallback.access.log;
+    access_log /var/log/nginx/vpn-xhttp-fallback.access.log vpn_xhttp_anonymous;
     error_log  /var/log/nginx/vpn-xhttp-fallback.error.log warn;
 }
 

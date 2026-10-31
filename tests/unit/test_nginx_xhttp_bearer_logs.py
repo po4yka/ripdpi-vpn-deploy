@@ -49,3 +49,11 @@ def test_snell_evaluation_location_never_logs_its_token_path():
     locations = blocks(render_every_bearer_surface(), r"^\s*location ~ \^/synthetic_token_0123456789/")
     assert len(locations) == 1
     assert all(directive in locations[0] for directive in SILENT), locations[0]
+
+
+def test_every_enabled_access_log_names_the_anonymous_format():
+    directives = re.findall(r"^\s*access_log ([^;]+);", render_every_bearer_surface(), re.M)
+    enabled = [directive for directive in directives if directive != "off"]
+    # Only the primary and fallback public sites log; neither falls back to `combined`.
+    assert len(enabled) == 2
+    assert all(directive.endswith(" vpn_xhttp_anonymous") for directive in enabled), enabled
