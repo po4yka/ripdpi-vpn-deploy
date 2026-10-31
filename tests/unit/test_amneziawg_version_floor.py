@@ -17,6 +17,7 @@ POLICY = REPO_ROOT / "contract" / "amneziawg-arm64-version-floor.json"
 VALIDATOR = REPO_ROOT / "scripts" / "check-amneziawg-arm64-version-floor.py"
 WATCHER = REPO_ROOT / "scripts" / "check-amneziawg-arm64-upstream.py"
 ROLE_GUARD = REPO_ROOT / "ansible" / "roles" / "amneziawg" / "tasks" / "guard-s34.yml"
+SHAPE_GUARD = REPO_ROOT / "ansible" / "roles" / "amneziawg" / "tasks" / "guard-wireguard-shape.yml"
 
 
 def _load_watcher():
@@ -337,3 +338,34 @@ def test_live_api_failures_exit_indeterminate(monkeypatch, error):
     monkeypatch.setattr(watcher, "_live_payloads", fail_live)
 
     assert watcher.main([]) == 2
+
+
+_WIREGUARD_SHAPED = {"name": "awg0", "s1": 0, "s2": 0, "h1": "1", "h2": "2", "h3": "3", "h4": "4"}
+
+
+@pytest.mark.parametrize(
+    ("variables", "accepted"),
+    [
+        ({"_awg_instances": [_WIREGUARD_SHAPED], "env": "prod"}, False),
+        ({"_awg_instances": [_WIREGUARD_SHAPED], "env": "prod", "awg_wireguard_shaped_measurement": "  "}, False),
+        ({"_awg_instances": [_WIREGUARD_SHAPED], "env": "prod",
+          "awg_wireguard_shaped_measurement": "measurements/2026-10-plain-initiation: passes"}, True),
+        ({"_awg_instances": [_WIREGUARD_SHAPED], "env": "staging"}, True),
+        ({"_awg_instances": [{**_WIREGUARD_SHAPED, "s1": 50, "s2": 100}], "env": "prod"}, True),
+        ({"_awg_instances": [{**_WIREGUARD_SHAPED, "h1": "1000-1999"}], "env": "prod"}, True),
+    ],
+    ids=["prod-unmeasured", "prod-blank-measurement", "prod-measured", "staging", "padded-handshake", "random-headers"],
+)
+def test_wireguard_shape_guard_requires_a_production_measurement(tmp_path, variables, accepted):
+    playbook = tmp_path / "shape-guard.yml"
+    playbook.write_text(
+        "---\n- hosts: localhost\n  gather_facts: false\n  tasks:\n"
+        f"    - ansible.builtin.import_tasks: {SHAPE_GUARD}\n",
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        ["ansible-playbook", "--inventory", "localhost,", "--connection", "local",
+         "--extra-vars", json.dumps(variables), str(playbook)],
+        capture_output=True, text=True,
+    )
+    assert (result.returncode == 0) is accepted, result.stdout + result.stderr

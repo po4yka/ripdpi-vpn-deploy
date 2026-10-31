@@ -108,7 +108,13 @@ echo 'nginx_xhttp_public_site_dir: "/path/to/owned-site"' >> secrets/local/decoy
 ```
 
 A host whose inventory `env` is `prod` refuses convergence while the variable
-is empty; staging, lab and Molecule hosts may keep the bundled pages. The same
+is empty; staging, lab and Molecule hosts may keep the bundled pages.
+
+The same production gate applies to a WireGuard-shaped AmneziaWG instance
+(`S1 = S2 = 0` with `H1..H4 = 1,2,3,4`): its handshake is a plain 148-byte
+WireGuard Initiation behind junk. A `prod` host keeps such an instance only
+when `awg_wireguard_shaped_measurement` names the measurement record (path,
+date, outcome) that justifies it; put it in the same private override file. The same
 reasoning applies to `xray.xhttp_path`: the committed example carries a
 `REPLACE_WITH_` placeholder that strict validation refuses, so choose a private
 path per deployment.

@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-31
+goal: SEC-1793428673775693 Close the remaining traffic-privacy audit findings on
+  resolver privacy, decoy logs and identity checks
