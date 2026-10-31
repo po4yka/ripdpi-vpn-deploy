@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "Merged to main as d4450315 (#429). Hosted CI run 41190534403 on 584c042d passed all seven newly hosted Molecule scenarios (snell, split-hop-ingress, probe-matrix-target, policy-ratelimit, reality-self-steal defaults; nginx-xhttp/fallback-on; reality-self-steal/disabled). Its two red checks were contract-sync, fixed when #430 merged, and an intrusion_prevention Debian mirror fetch failure. test_repository_identifier_policy.py guards labels and knowledge-store citations; test_governance_counts.py matches testing.md to the CI matrix.",
+  "execution_sha256": "af0e77ac5af90c6dd5ebd05e0686cc9ca6afdfcffa7c143d6df05b427ee707bd",
+  "issue_sha256": "fb0a1712cea624b6e756e895bb850f268518f8894220796c6ac7c3f4b873828f",
+  "outcome": "done",
+  "prepared_at": "2026-10-31T11:24:45Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "TST-1793428205355254"
+}
