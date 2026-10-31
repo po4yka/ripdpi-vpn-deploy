@@ -20,7 +20,7 @@ def test_nginx_logrotate_policy_replaces_the_overlapping_legacy_dropin():
     assert "cmd: logrotate --debug /etc/logrotate.conf" in tasks
     assert policy.startswith("/var/log/nginx/*.log {")
     assert "/var/log/nginx/vpn-*.log" not in policy
-    assert "rotate 14" in policy
+    assert "rotate 7" in policy
 
 
 def test_xray_rotation_restarts_active_service_and_propagates_failure(tmp_path):

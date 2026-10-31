@@ -45,7 +45,7 @@ direct restart under the controller restarts the whole protected generation.
 ## What's done well
 
 - **Logrotate with retention** — monitoring owns one package-wide Nginx policy
-  and the Xray policy, both with daily rotation and 14-day retention. The role
+  and the Xray policy, both with daily rotation and seven retained rotations. The role
   removes the old overlapping `nginx-vpn` drop-in so every log has one owner.
 - **Prometheus textfile collector enabled** — `--collector.systemd` and
   `--collector.processes` ship systemd unit states and process stats without
