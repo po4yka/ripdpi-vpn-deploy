@@ -142,7 +142,7 @@
               arm64: file:///tmp/snell-checksum-fixture.tar.gz
             snell:
               version: v1.14.0
-              install_root: /opt/snell-checksum-test
+              install_root: /opt/snell
               config_dir: /etc/snell
               log_dir: /var/log/snell
               listen_addr: "::"
