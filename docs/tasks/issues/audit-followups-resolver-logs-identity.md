@@ -2,7 +2,7 @@
 id: SEC-1793428673775693
 title: Close the remaining traffic-privacy audit findings on resolver privacy, decoy logs and identity checks
 kind: bug
-status: review
+status: done
 area: security
 priority: high
 risk: high
@@ -14,6 +14,9 @@ openspec_change: sec-1793428673775693-audit-followups-resolver-logs-identity
 created: 2026-10-31
 updated: 2026-10-31
 related_tasks: []
+closed_at: "2026-10-31T11:29:27Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Delivered by PR 432, squash-merged as 4aa9ba3e; remote CI evidence is the full green main run 41185499260 on 28d8d6e0 (76 jobs, required checks passed; tree differs from 4aa9ba3e only by task records, tasking skills and their lock file). Review snapshot merged separately as 67fcf906 (PR 437).
 ---
 
 ## Goal
