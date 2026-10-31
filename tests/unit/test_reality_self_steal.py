@@ -96,7 +96,7 @@ def test_xray_public_reality_inbound_targets_the_owned_loopback_site() -> None:
     )
     reality = inbound["streamSettings"]["realitySettings"]
 
-    assert inbound["listen"] == "0.0.0.0"
+    assert inbound["listen"] == "::"
     assert inbound["port"] == 443
     assert inbound["streamSettings"]["network"] == "raw"
     assert reality["target"] == "127.0.0.1:8443"
@@ -436,3 +436,17 @@ def test_enabled_role_requires_one_certificate_for_a_hostname_shared_with_nginx_
     assert result.returncode != 0
     assert "one hostname must present one certificate" in result.stdout
     assert "loopback-target-certificate" not in result.stdout
+
+
+def test_self_steal_access_log_retains_no_client_address_or_user_agent() -> None:
+    rendered = renderer.render_template(
+        NGINX_TEMPLATE,
+        {
+            "reality_self_steal_listen_address": "127.0.0.1",
+            "reality_self_steal_port": 8443,
+            "reality_self_steal": {"server_name": "edge.example.test"},
+        },
+    )
+    assert not any(field in rendered for field in ("$remote_addr", "$http_referer", "$http_user_agent"))
+    assert "access_log /var/log/nginx/reality-self-steal.access.log vpn_self_steal;" in rendered
+    assert "log_format vpn_self_steal" in rendered

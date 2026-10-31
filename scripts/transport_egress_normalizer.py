@@ -17,7 +17,7 @@ import sys
 import threading
 import time
 
-from transport_destination_policy import DestinationPolicy, PolicyError, canonical_name, normalize_address
+from transport_destination_policy import DestinationPolicy, PolicyError, canonical_name, normalize_address, LOCAL_DNS_FORWARDER
 from transport_private_authority import PrivateAuthorityError, read_private_file
 from transport_socks import (FAILURE, MAX_HANDSHAKE, NeedMore, WireError, authentication,
                              datagram, encoded_datagram, greeting, reply, request,
@@ -144,7 +144,7 @@ def validate_config(raw, *, input_only=False):
     policy = DestinationPolicy()
     for value in resolver["nameservers"]:
         try:
-            if str(normalize_address(value)) != value or not policy.allows(value, 53, "udp"):
+            if str(normalize_address(value)) != value or not (value == LOCAL_DNS_FORWARDER or policy.allows(value, 53, "udp")):
                 raise NormalizerError("invalid-resolvers")
         except PolicyError:
             raise NormalizerError("invalid-resolvers") from None

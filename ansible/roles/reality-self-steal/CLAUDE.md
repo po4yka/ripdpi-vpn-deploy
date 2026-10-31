@@ -22,6 +22,8 @@ Operator target hygiene selects `--mode owned-public` with an explicit public en
 
 ## Pitfalls
 
+- The loopback site's access log uses the `vpn_self_steal` format without `$remote_addr`, referer or user agent; every request there arrives through Xray, so the address would only be the REALITY frontend anyway, but the browser fingerprint of a real visitor must not be retained.
+
 - Enabling the role without first changing `xray.target` to the exact loopback listener is intentionally rejected.
 - `server_names` must contain only the owned certificate hostname; borrowed fallback names defeat the same-ASN design.
 - A hostname shared with nginx-xhttp must carry the same `cert_pem` in both roles; one name presenting two certificates on two ports is a correlation signal. Distinct names are fine. `make validate-target` in `owned-public` mode reports `owned_name_resolution` (`matches`, `elsewhere`, `unresolved`), the comparison a censor makes before trusting an SNI; promotion requires `matches`. It is reported rather than refused because fixtures cannot own public DNS.

@@ -225,3 +225,19 @@ def test_backend_ipc_requires_its_owned_interface():
     assert 'meta skuid 101 oifname "lo" ip daddr 127.0.0.1 tcp dport 12090 accept' in rendered
     assert 'meta skuid 101 oifname "rpd-warp-host" ip daddr 10.250.254.2 tcp dport 12091 accept' in rendered
     assert 'meta skuid 101 oifname "rpd-warp-host" ip daddr 10.250.254.2 udp sport 18000-18999 udp dport 12091 accept' in rendered
+
+
+def test_loopback_forwarder_admits_only_gateway_dns_replies():
+    result = build(context(True))
+    assert result['normalizer']['resolver']['nameservers'] == ['127.0.0.2']
+    rendered = kernel.render(result['policy'])
+    assert '  meta skuid 101 ip daddr 127.0.0.2 meta l4proto { tcp, udp } th dport 53 accept' in rendered
+    reply = ('  meta skuid 102 oifname "lo" ip saddr 127.0.0.2 ip daddr 127.0.0.1 meta l4proto { tcp, udp } th sport 53 '
+             'ct direction reply ct original proto-dst 53 accept')
+    assert rendered.index(reply) < rendered.index('meta skuid 102 ip daddr { 0.0.0.0/8')
+    assert 'sport 53' not in kernel.render(result['policy'], True)
+    morph = context()
+    morph['vpn']['enable_dns_morph_bridge'] = True
+    plaintext = build(morph)
+    assert plaintext['normalizer']['resolver']['nameservers'] == ['1.1.1.1', '8.8.8.8']
+    assert 'sport 53' not in kernel.render(plaintext['policy'])
