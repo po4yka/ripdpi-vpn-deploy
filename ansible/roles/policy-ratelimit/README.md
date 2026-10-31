@@ -15,7 +15,7 @@ re-scoping the daemon.
 
 **Status:** accepted. Supersedes the role's original `probe-ratelimit` framing.
 
-**Context.** The role was first written to throttle TSPU active-probing of the
+**Context.** The role was first written to throttle DPI active-probing of the
 REALITY listener by tailing `access.log` for a rejected/graylisted handshake.
 That contradicts how REALITY actually works — and our own threat model. The
 re-architecture forced a choice between two implementations.
@@ -69,10 +69,10 @@ and scope the daemon to the policy violations it can actually see in
 
 **Decision: (b).** Reasons, in priority order:
 
-1. **(a) demotes REALITY on the RU baseline.** P0 is VLESS+REALITY+Vision
+1. **(a) demotes REALITY on the filtered-path baseline.** P0 is VLESS+REALITY+Vision
    *direct* on TCP/443. REALITY's steal-oneself fallback *is* the
    active-probing defence — that is exactly why VLESS+REALITY survived the
-   Aug-2025 TSPU active-probing wave that broke Trojan and VMess. Inserting an
+   Aug-2025 active-probing wave that broke Trojan and VMess. Inserting an
    `ssl_preread` stream hop ahead of it changes the listener topology of the
    baseline protocol, turning a one-daemon question into an architecture
    change to the thing that already works.

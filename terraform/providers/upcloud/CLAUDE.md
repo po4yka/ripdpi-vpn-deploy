@@ -85,7 +85,7 @@ Small Starter plans use their exact bundled Standard disk size (10, 20 or 30 GB)
   Do not drop either path without replacing its guarantee.
 - **Storage size is in GiB** — if you pass `50` thinking GB, you get the
   smaller billing tier silently.
-- **Region affects RU latency more than provider** — Helsinki / Frankfurt /
+- **Region affects filtered-path latency more than provider** — Helsinki / Frankfurt /
   Amsterdam are baseline; LON / NYC add jitter the cohort tuning won't fix.
 - **UDP/443 edge rule ≠ UDP delivery** — `firewall.tf` opens UDP/443 under
   `enable_hysteria` (v4+v6), but a present rule does not guarantee the provider

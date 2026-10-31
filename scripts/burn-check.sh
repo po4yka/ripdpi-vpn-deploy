@@ -2,12 +2,11 @@
 # External reachability probe for the current VPN VPS IP.
 #
 # Uses check-host.net's public node API to test TCP/443 reachability from
-# multiple geographic vantage points, including RU. Exits non-zero if N or
+# multiple vantage points, including filtered ones. Exits non-zero if N or
 # more nodes fail. Intended to run from cron on the operator workstation.
 #
 # Also runs an external UDP/443 (Hysteria2/QUIC) edge-reachability probe. This
-# closes the silent-failure gap documented in the censorship-bypass KB concept
-# `cloud-firewall-udp-egress-friction`: on several cloud providers, inbound
+# closes a silent-failure gap: on several cloud providers, inbound
 # UDP/443 is silently dropped at the provider-edge firewall even when the
 # instance's own nftables shows ACCEPT and the listener is bound. On-host
 # checks (`nft list`, `ss -ulnp`) cannot see this; only an external probe can.
@@ -15,7 +14,7 @@
 # treats any reply as proof the datagram reached the server. It is always
 # NON-FATAL (WARN only) — a no-response is ambiguous (edge drop vs. Hysteria2
 # silently ignoring an unauthenticated probe) and is disambiguated server-side
-# with `tcpdump -i any udp port 443` per the KB verification chain.
+# with `tcpdump -i any udp port 443`.
 #
 # Usage:
 #   scripts/burn-check.sh                      # uses defaults

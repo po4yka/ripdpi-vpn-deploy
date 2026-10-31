@@ -35,7 +35,7 @@ destinations. A censor watching the VPS can use that UDP/443 flow as a
 **leak fingerprint** that distinguishes a proxy/exit from an ordinary
 TLS-over-TCP host. Blackholing outbound QUIC keeps the exit's egress shape
 uniformly TCP, removing that signal. This matches the threat model in the repo
-hard rules (RU-internet / TSPU-aware) and is the safe baseline.
+hard rules (filtered-path / DPI-aware) and is the safe baseline.
 
 ### The trade-off (why you might turn it off)
 
@@ -57,8 +57,8 @@ proxy.** The effect is a graceful degradation, not a breakage:
 
 Set `xray_block_quic_outbound: false` for a deploy or cohort where **HTTP/3
 performance matters more than the egress fingerprint surface** — for example a
-node serving a cohort on a high-loss mobile network, on a provider/IP that is
-not under active QUIC-aware scrutiny. Leave it **on** for the RU baseline.
+node serving a cohort on a high-loss access network, on a provider/IP that is
+not under active QUIC-aware scrutiny. Leave it **on** for the filtered-path baseline.
 
 ```yaml
 # e.g. ansible/group_vars/<cohort>.yml
