@@ -2,7 +2,7 @@
 {
   "log": {
     "loglevel": "warning",
-    "access": "{{ xray_log_dir | default('/var/lib/vpn-xray-logs') }}/access.log",
+    "access": "none",
     "error": "{{ xray_log_dir | default('/var/lib/vpn-xray-logs') }}/error.log"
   },
   "api": {
@@ -85,7 +85,7 @@
         "network": "xhttp",
         "security": "none",
         "xhttpSettings": {
-          "path": "/REPLACE_WITH_RANDOM_HEX_PATH",
+          "path": "/REPLACE_WITH_PRIVATE_XHTTP_PATH",
           "mode": "auto"
         },
         "sockopt": {

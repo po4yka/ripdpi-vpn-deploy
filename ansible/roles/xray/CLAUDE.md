@@ -91,6 +91,12 @@ address. Every shared frontend overwrites that header with its admitted peer;
 never append a supplied chain. The input path shares controller admission with
 Nginx and liveness emission, so unsupported endpoint syntax fails before staging.
 
+**The access log follows policy-ratelimit** — `xray_access_log_enabled`
+defaults to `vpn.enable_policy_ratelimit`; otherwise `log.access` is `none`.
+Each access line records client address, sniffed destination and device
+`email`, a ledger the threat model forbids at rest. The policy daemon is the
+only consumer; the watchdog's reject-spike detector tolerates an empty log.
+
 **StatsService is local-only** — traffic and online-user counters are enabled
 for redacted diagnostics, but the gRPC API binds only to
 `xray_api_listen=127.0.0.1:10086`. The monitoring role owns export and

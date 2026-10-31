@@ -827,11 +827,12 @@ def test_public_pages_and_assets_are_staged_by_actual_ansible_without_direct_pub
     shutil.copytree(source_role / 'templates/public-site', role / 'templates/public-site')
     shutil.copytree(source_role / 'files/public-site', role / 'files/public-site')
     source = yaml.safe_load((source_role / 'tasks/enable.yml').read_text())
-    names = {'Stage exact public assets in the same compensated nginx publication',
+    names = {'Resolve the published public site layout',
+             'Stage exact public assets in the same compensated nginx publication',
              'Stage hostname-bound public pages in the same compensated publication',
              'Stage removal of the exact retired security contact alongside the site'}
     tasks = [copy.deepcopy(value) for value in source if value.get('name') in names]
-    assert len(tasks) == 3 and all('ansible.builtin.set_fact' in value and 'notify' not in value for value in tasks)
+    assert len(tasks) == 4 and all('ansible.builtin.set_fact' in value and 'notify' not in value for value in tasks)
     _write(role / 'tasks/main.yml', tasks)
     variables = merge_render_vars()
     variables.pop('item', None)

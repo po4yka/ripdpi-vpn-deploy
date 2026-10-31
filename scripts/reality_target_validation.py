@@ -119,14 +119,26 @@ def worker(kind, payload):
         rows = socket.getaddrinfo(payload["host"], None, type=socket.SOCK_STREAM)
         print(json.dumps(sorted({row[4][0] for row in rows})))
     else:
-        context = ssl.create_default_context(cafile=os.environ.get("REALITY_CA_FILE"))
-        context.hostname_checks_common_name = False
-        context.minimum_version = ssl.TLSVersion.TLSv1_3
-        context.set_alpn_protocols(["h2", "http/1.1"])
-        try:
+        def handshake(x25519_only):
+            context = ssl.create_default_context(cafile=os.environ.get("REALITY_CA_FILE"))
+            context.hostname_checks_common_name = False
+            context.minimum_version = ssl.TLSVersion.TLSv1_3
+            context.set_alpn_protocols(["h2", "http/1.1"])
+            if x25519_only:
+                # REALITY clients offer only X25519; a target that cannot take
+                # that key share answers the real client with a different handshake.
+                context.set_ecdh_curve("X25519")
             with socket.create_connection((payload["ip"], payload["port"])) as raw:
                 with context.wrap_socket(raw, server_hostname=payload["sni"]) as conn:
-                    print(json.dumps({"h2": conn.selected_alpn_protocol() == "h2"}))
+                    return conn.selected_alpn_protocol() == "h2"
+        try:
+            try:
+                print(json.dumps({"h2": handshake(True)}))
+            except ssl.SSLCertVerificationError:
+                raise
+            except ssl.SSLError:
+                handshake(False)
+                print(json.dumps({"error": "x25519_unavailable"}))
         except ssl.SSLCertVerificationError:
             print(json.dumps({"error": "certificate_validation_failed"}))
 
@@ -229,6 +241,24 @@ def collect(budget, mode, host, port, configured, *, metadata=False):
         if mode == "owned-public":
             raise Refused("public_endpoint_loopback")
         raise Refused("borrowed_endpoint_loopback")
+    resolution = "not_applicable"
+    if mode == "owned-public":
+        # The censor compares the SNI name's addresses with the server address.
+        # An owned name must resolve to the public endpoint before promotion; a
+        # borrowed target fails that comparison by construction and is not checked.
+        # Reported, not refused: fixtures cannot own public DNS, and the runbook
+        # requires `matches` before the owned identity is promoted.
+        if configured[0] == host:
+            resolution = "matches"
+        else:
+            try:
+                owned = call_worker(budget, "dns", {"host": configured[0]})
+            except Refused as error:
+                if str(error) != "dns_failed":
+                    raise
+                resolution = "unresolved"
+            else:
+                resolution = "matches" if set(owned) & set(ips) else "elsewhere"
     for ip in ips:
         failed, asn, prefix = 0, "", ""
         if metadata:
@@ -264,7 +294,7 @@ def collect(budget, mode, host, port, configured, *, metadata=False):
         compatibility = ("unavailable" if "client_unavailable" in client_errors
                          else "failed" if client_errors else "passed")
     reasons.extend(client_errors)
-    return reasons, observations, compatibility
+    return reasons, observations, compatibility, resolution
 
 
 def main():
@@ -294,15 +324,15 @@ def main():
             return 0
         except (OSError, ValueError):
             return 1
-    reasons, observations, compatibility, mode = [], [], "unavailable", "unknown"
+    reasons, observations, compatibility, mode, resolution = [], [], "unavailable", "unknown", "not_applicable"
     try:
         with cancellation():
             budget = Budget()
             mode, host, port, configured = load_inputs(budget)
             if args.names:
                 args.names.write_text(" ".join(configured))
-            reasons, observations, compatibility = collect(budget, mode, host, port, configured,
-                                                          metadata=args.action == "collect")
+            reasons, observations, compatibility, resolution = collect(budget, mode, host, port, configured,
+                                                                      metadata=args.action == "collect")
     except Refused as error:
         reasons.append(str(error))
     except (OSError, ValueError, KeyError, TypeError):
@@ -313,6 +343,7 @@ def main():
     else:
         print(json.dumps(dict(schema_version=1, mode=mode, hygiene="failed" if not observations or any(not r.startswith("client_") for r in reasons) else "passed",
                               reason_codes=sorted(set(reasons)), client_compatibility=compatibility,
+                              owned_name_resolution=resolution,
                               client_engine="curl-impersonate-0.6.1/chrome116" if compatibility != "unavailable" else None,
                               filtered_survival="unverified", promotion="not_authorized",
                               checked_pairs=sum(row[3] for row in observations))))

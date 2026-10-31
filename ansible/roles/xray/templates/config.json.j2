@@ -34,7 +34,7 @@
 {
   "log": {
     "loglevel": "warning",
-    "access": "{{ xray_log_path }}/access.log",
+    "access": "{% if xray_access_log_enabled | default(false) | bool %}{{ xray_log_path }}/access.log{% else %}none{% endif %}",
     "error": "{{ xray_log_path }}/error.log"
   },
   "api": {

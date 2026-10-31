@@ -130,3 +130,8 @@ def test_realm_user_group_arguments_match_the_tls_ownership_mode(shared_tls) -> 
         assert values["groups"] is omitted
         # ansible.builtin.user rejects append=true when groups is omitted.
         assert values["append"] is False or values["append"] is omitted
+
+
+def test_hysteria_unit_keeps_connection_records_out_of_the_journal() -> None:
+    unit = (REPO_ROOT / "ansible/roles/hysteria/templates/hysteria-server.service.j2").read_text()
+    assert "Environment=HYSTERIA_LOG_LEVEL=warn" in unit

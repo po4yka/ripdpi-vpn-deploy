@@ -37,7 +37,7 @@ server {
 
 
     # XHTTP path → Xray localhost inbound
-    location /REPLACE_WITH_RANDOM_HEX_PATH/ {
+    location /REPLACE_WITH_PRIVATE_XHTTP_PATH/ {
         access_log off;
         error_log /dev/null crit;
 
@@ -47,6 +47,11 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header Forwarded "";
+
+        # Upstream refusals and an absent upstream answer as the ordinary site
+        # 404, so a probe sees one identity whether or not Xray is running.
+        proxy_intercept_errors on;
+        error_page 404 502 503 504 =404 /404.html;
 
         # Streaming-friendly
         client_max_body_size 0;

@@ -210,8 +210,10 @@ class NativeStack:
         self.key.chmod(0o640);os.chown(self.key, 0, self.gids["h"])
         self.values = merge_render_vars()
         self.values["transport_egress_secrets"] = secret_values
+        # The lab reads peer attribution and rotation from the access log, which
+        # production renders as `none` unless the policy rate-limiter consumes it.
         self.values.update(xray_runtime_binary=self.xray, xray_runtime_bundled_asset_dir=str(self.assets),
-                           xray_asset_dir=str(self.assets))
+                           xray_asset_dir=str(self.assets), xray_access_log_enabled=True)
         self.uuid = str(uuid.uuid4())
         self.short = secrets.token_hex(8)
         self.hys_password = "synthetic-native-hysteria-secret-" + secrets.token_hex(12)

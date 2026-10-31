@@ -154,6 +154,9 @@ class Lab:
                                     clients=[{'name': 'native-device', 'uuid': str(uuid.uuid4()), 'short_id': secrets.token_hex(4)}])
         self.context['xray_runtime_release_urls'] = {'amd64': 'file://' + str(self.artifacts / 'xray-v26.3.27.zip'),
                                                   'arm64': 'file://' + str(self.artifacts / 'xray-v26.3.27.zip')}
+        # Rotation evidence reads the access log, which production renders as `none`
+        # unless the policy rate-limiter consumes it.
+        self.context.update(xray_access_log_enabled=True)
         self.context.update(xray_fallback_port=0, xray_port=443, xray_runtime_user='xray', xray_runtime_group='xray',
                             xray_install_dir='/opt/xray', hysteria_install_root='/opt/hysteria',
                             transport_runtime_probe_url='https://192.0.2.80:18080/',
