@@ -23,7 +23,7 @@ to the same address every five minutes through a well-known third-party URL.
 - The committed secrets example no longer carries a deployable XHTTP path; strict validation refuses the placeholder.
 - Both direct XHTTP locations intercept upstream errors and answer them with the decoy's ordinary 404, so a probe sees one site identity whether or not Xray is running.
 - REALITY target validation requires X25519 and reports whether the owned name resolves to the public endpoint (`owned_name_resolution`); self-steal refuses a shared hostname with a different certificate than nginx-xhttp.
-- Standard sing-box artifacts test latency every 30 minutes instead of every 5; the RIPDPI bundle keeps the vendored contract cadence here and follows in `SEC-1793428392418058` together with the paired client change.
+- Standard sing-box artifacts test latency every 30 minutes instead of every 5; the RIPDPI bundle keeps the vendored contract cadence until the paired client change.
 
 ## Capabilities
 

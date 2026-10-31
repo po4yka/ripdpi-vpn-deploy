@@ -24,5 +24,5 @@ The RIPDPI bundle's `auto` outbound probes latency every 30 minutes like the sta
 
 - `scripts/client_payload.py` emits `interval: 30m` for every format with no format conditional.
 - `contract/ripdpi-bundle.payload-failover.json` and `contract/ripdpi-bundle.hysteria-port-hopping.json` differ only in that scalar, and the byte-compare tests in `tests/unit/test_client_payload_recipient_boundaries.py` pass.
-- `docs/reference/client-notes.md` and the `SEC-1793386547449444` change record describe one cadence.
+- `docs/reference/client-notes.md` and `REQ-TMD-CLIENT-CADENCE` describe one cadence for both formats.
 - `./taskctl validate` and `make task-federation PEER_ROOT=<RIPDPI checkout>` pass; `contract-sync` passes after both repositories merge.

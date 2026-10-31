@@ -24,5 +24,5 @@ artifact_evidence: The two contract example diffs change only the auto outbound 
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-TMD-BUNDLE-CADENCE | SEC-1793428478810526 | Byte-compare tests in `tests/unit/test_client_payload_recipient_boundaries.py` against the updated contract examples; sing-box round-trip interval test | Passed locally (117 passed); remote CI pending |
-| REQ-TMD-BUNDLE-CADENCE | SEC-1793428480039653 | `make docs-check`, `./taskctl validate`, `make task-federation PEER_ROOT=<RIPDPI checkout>` | Passed locally; `contract-sync` dispatch pending until both repositories merge |
+| REQ-TMD-CLIENT-CADENCE | SEC-1793428478810526 | Byte-compare tests in `tests/unit/test_client_payload_recipient_boundaries.py` against the updated contract examples; sing-box round-trip interval test | Passed locally (117 passed); remote CI pending |
+| REQ-TMD-CLIENT-CADENCE | SEC-1793428480039653 | `make docs-check`, `./taskctl validate`, `make task-federation PEER_ROOT=<RIPDPI checkout>` | Passed locally; `contract-sync` dispatch pending until both repositories merge |

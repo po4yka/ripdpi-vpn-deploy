@@ -6,7 +6,7 @@ Every emitted client document, the standard sing-box artifact and the RIPDPI bun
 
 ## Ownership
 
-Primary: this repository. `scripts/client_payload.py`; `contract/ripdpi-bundle.payload-failover.json` and `contract/ripdpi-bundle.hysteria-port-hopping.json`; `docs/reference/client-notes.md`; the `SEC-1793386547449444` change artifacts. Paired client change: `po4yka/RIPDPI#DAT-1793428393229398` re-vendors the two contract files byte-identically.
+Primary: this repository. `scripts/client_payload.py`; `contract/ripdpi-bundle.payload-failover.json` and `contract/ripdpi-bundle.hysteria-port-hopping.json`; `docs/reference/client-notes.md`; the `security/traffic-metadata-and-decoy-identity` delta spec. Paired client change: `po4yka/RIPDPI#DAT-1793428393229398` re-vendors the two contract files byte-identically.
 
 ## Execution
 

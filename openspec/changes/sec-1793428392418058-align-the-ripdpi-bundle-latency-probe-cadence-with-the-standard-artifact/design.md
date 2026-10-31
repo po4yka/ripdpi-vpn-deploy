@@ -11,13 +11,13 @@
 
 - Remove the conditional rather than add a format parameter: the split existed only to keep `contract-sync` green, and no consumer wants a faster cadence. Rejected: a `--probe-interval` flag, which would add an operator input nobody asked for.
 - Change the contract examples by editing the one scalar in place instead of regenerating them, so the diff proves that nothing else moved; the byte-compare tests confirm the emitter agrees.
-- The delta spec adds `REQ-TMD-BUNDLE-CADENCE` to the same capability that `SEC-1793386547449444` introduces, and that change's `REQ-TMD-CLIENT-CADENCE` text is updated to name this task as the paired change, so the archived capability reads consistently once both changes land.
+- `SEC-1793386547449444` is archived and its capability spec is in `openspec/specs/security/traffic-metadata-and-decoy-identity/`, so the delta modifies `REQ-TMD-CLIENT-CADENCE` in place instead of adding a sibling requirement; the archived change artifacts stay untouched as history.
 
 ## Contracts and ownership
 
 - Scripts: `scripts/client_payload.py` (`auto` outbound).
 - Contract: `contract/ripdpi-bundle.payload-failover.json`, `contract/ripdpi-bundle.hysteria-port-hopping.json`; the client vendors both under `core/data/src/test/resources/contract/` in `po4yka/RIPDPI#DAT-1793428393229398`.
-- Documentation: `docs/reference/client-notes.md`; the `SEC-1793386547449444` proposal, design and delta spec.
+- Documentation: `docs/reference/client-notes.md`; main spec `security/traffic-metadata-and-decoy-identity` (`REQ-TMD-CLIENT-CADENCE`).
 - No Terraform, Ansible, secrets, vpnd or configuration contract.
 
 ## Risks / Trade-offs
