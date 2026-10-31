@@ -188,6 +188,21 @@
     - not (baseline_dns_morph_active | default(vpn.enable_dns_morph_bridge | default(false)) | bool)
     - not (baseline_defer_resolver_restore | default(false) | bool)
 
+- name: Encrypt host upstream resolution with explicit DNS over TLS servers
+  ansible.builtin.copy:
+    dest: /etc/systemd/resolved.conf.d/vpn-dns-over-tls.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Resolve]
+      DNS=1.1.1.1#cloudflare-dns.com 8.8.8.8#dns.google
+      Domains=~.
+      DNSOverTLS=yes
+      LLMNR=no
+      MulticastDNS=no
+  register: baseline_dns_over_tls
+
 - name: Apply the resolver transition before dependent roles run
   ansible.builtin.systemd_service:
     name: systemd-resolved
@@ -195,13 +210,35 @@
   when:
     - not ansible_check_mode
     - >-
-      baseline_stub_disabled.changed or baseline_stub_restored.changed or
-      baseline_stub_pending.stat.exists or baseline_stub_pending_created.changed or
-      (baseline_stub_original_target | length > 0 and
-       not (baseline_dns_morph_active | default(vpn.enable_dns_morph_bridge | default(false)) | bool))
-    - >-
-      (baseline_dns_morph_active | default(vpn.enable_dns_morph_bridge | default(false)) | bool) or
-      not (baseline_defer_resolver_restore | default(false) | bool)
+      baseline_dns_over_tls.changed or
+      ((baseline_stub_disabled.changed or baseline_stub_restored.changed or
+        baseline_stub_pending.stat.exists or baseline_stub_pending_created.changed or
+        (baseline_stub_original_target | length > 0 and
+         not (baseline_dns_morph_active | default(vpn.enable_dns_morph_bridge | default(false)) | bool))) and
+       ((baseline_dns_morph_active | default(vpn.enable_dns_morph_bridge | default(false)) | bool) or
+        not (baseline_defer_resolver_restore | default(false) | bool)))
+
+- name: Prove encrypted upstream resolution before dependent roles run
+  when:
+    - not ansible_check_mode
+    - baseline_dns_over_tls.changed
+  block:
+    - name: Resolve a pinned upstream name through the encrypted resolver
+      ansible.builtin.command:
+        argv: [resolvectl, query, --type=A, cloudflare-dns.com]
+      changed_when: false
+  rescue:
+    - name: Withdraw the encrypted resolver configuration that cannot resolve
+      ansible.builtin.file:
+        path: /etc/systemd/resolved.conf.d/vpn-dns-over-tls.conf
+        state: absent
+    - name: Restore the previous resolver configuration
+      ansible.builtin.systemd_service:
+        name: systemd-resolved
+        state: restarted
+    - name: Refuse a host whose encrypted resolver cannot resolve
+      ansible.builtin.fail:
+        msg: encrypted-resolver-unavailable
 
 - name: Restore only the retained managed DNS stub symlink after restart
   ansible.builtin.file:

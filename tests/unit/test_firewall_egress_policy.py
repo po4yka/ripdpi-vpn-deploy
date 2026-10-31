@@ -147,6 +147,7 @@ def test_strict_drops_by_default_and_allows_baseline_infra():
     assert "ct state established,related accept" in chain
     assert "udp dport 53 accept" in chain
     assert "tcp dport 53 accept" in chain
+    assert "tcp dport 853 accept" in chain
     assert "udp dport 123 accept" in chain
     assert "tcp dport { 80, 443 } accept" in chain
     assert "\n    meta l4proto tcp accept\n" not in chain

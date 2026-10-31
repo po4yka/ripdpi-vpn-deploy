@@ -22,6 +22,8 @@ after the real replay completes; failure categories contain no setting values.
 
 **Resolver transitions preserve DNS first** — ordinary profiles retain the resolved stub. DNS-Morph migrates only known stub symlinks to a verified upstream resolver before disabling the stub; custom stub files or absent upstreams fail before mutation. The restart happens before dependent listeners converge.
 
+**Host lookups use strict DNS over TLS** — when systemd-resolved exists, `resolver.yml` installs `vpn-dns-over-tls.conf` (`DNS=` with certificate names, `Domains=~.` so global servers win over DHCP per-link servers, `DNSOverTLS=yes`, `LLMNR=no`, `MulticastDNS=no`). A changed drop-in restarts resolved through the same transition task regardless of stub deferral, then one `resolvectl query` proves the encrypted path; a failed proof withdraws the drop-in, restarts and fails with `encrypted-resolver-unavailable` instead of falling back to plaintext. Under DNS-Morph the host symlink bypasses resolved, so host lookups there stay plaintext to the pinned servers; recipient-side resolution is the transport-egress role's own contract.
+
 Managed stub migration retains its exact original target in a private root-owned
 record. A separate pending-apply marker precedes configuration publication, so
 an interrupted enable retries the restart without restarting on every converge.
