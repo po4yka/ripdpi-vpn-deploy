@@ -114,3 +114,20 @@ def test_taskctl_consumers_checkout_verifiable_terminal_history():
         checkout = next(step for step in jobs[name]["steps"]
                         if step.get("uses", "").startswith("actions/checkout@"))
         assert checkout["with"].get("fetch-depth") == 0, name
+
+
+def test_disk_reserving_lanes_free_the_hosted_toolchains_before_setup():
+    jobs = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
+    freeing = {name for name, job in jobs.items()
+               if any(step.get("uses") == "./.github/actions/free-runner-disk" for step in job.get("steps", []))}
+    assert freeing == (GALAXY_JOBS - {"ansible"}) | NATIVE_JOBS
+    for name in freeing:
+        uses = [step.get("uses", "") for step in jobs[name]["steps"]]
+        assert uses.index("./.github/actions/free-runner-disk") == 1, name
+        assert uses[0].startswith("actions/checkout@")
+    action = yaml.safe_load((ROOT / ".github/actions/free-runner-disk/action.yml").read_text())
+    script = action["runs"]["steps"][0]["run"]
+    assert "set -euo pipefail" in script and script.count("df -h /") == 2
+    for path in ("/usr/share/dotnet", "/usr/local/lib/android", "/opt/ghc", "/opt/hostedtoolcache/CodeQL"):
+        assert path in script
+    assert 'sudo rm -rf -- "$path"' in script and "hostedtoolcache/Python" not in script
