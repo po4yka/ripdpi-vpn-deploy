@@ -6,6 +6,9 @@
 
 
 
+# Combined field layout without the client address, referer or user agent, so
+# status-column tooling (awk '$9') keeps working on these logs.
+log_format vpn_public '- - - [$time_local] "$request" $status $body_bytes_sent "-" "-"';
 
 server {
     listen 8443 ssl http2;
@@ -80,7 +83,7 @@ server {
         try_files $uri $uri/ =404;
     }
 
-    access_log /var/log/nginx/vpn-xhttp.access.log;
+    access_log /var/log/nginx/vpn-xhttp.access.log vpn_public;
     error_log  /var/log/nginx/vpn-xhttp.error.log warn;
 }
 

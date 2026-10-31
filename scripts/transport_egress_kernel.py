@@ -14,7 +14,7 @@ import subprocess
 import sys
 import tempfile
 
-from transport_destination_policy import IPV4_DENY, IPV6_DENY, normalize_address
+from transport_destination_policy import IPV4_DENY, IPV6_DENY, LOCAL_DNS_FORWARDER, normalize_address
 
 TABLE = 'ripdpi_transport'
 STATE = Path('/var/lib/ripdpi/transport-egress')
@@ -150,6 +150,9 @@ def render(raw, namespace=False):
     interface = 'rpd-warp-ns' if namespace else 'lo'
     lines.append(f'  meta skuid {gateway_uid} oifname "{interface}" ip daddr {peer} tcp sport {port} ct direction reply ct original proto-dst {port} accept')
     lines.append(f'  meta skuid {gateway_uid} oifname "{interface}" ip daddr {peer} udp dport {backend["udp_source_port_min"]}-{backend["udp_source_port_max"]} ct direction reply udp sport {port} ct original proto-src {backend["udp_source_port_min"]}-{backend["udp_source_port_max"]} ct original proto-dst {port} accept')
+    if not namespace and LOCAL_DNS_FORWARDER in raw['resolver']['nameservers']:
+        # The direct gateway answers loopback DNS lookups; every other 127/8 destination stays denied below.
+        lines.append(f'  meta skuid {gateway_uid} oifname "lo" ip saddr {LOCAL_DNS_FORWARDER} ip daddr 127.0.0.1 meta l4proto {{ tcp, udp }} th sport 53 ct direction reply ct original proto-dst 53 accept')
     guarded_uids = [gateway_uid]
     if not namespace and 'classifier_uid' in raw:
         classifier = raw['classifier_uid']

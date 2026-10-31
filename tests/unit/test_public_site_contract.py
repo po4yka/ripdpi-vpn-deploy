@@ -843,3 +843,13 @@ def test_operator_tree_without_the_error_page_refuses(tmp_path: Path) -> None:
     assert result.returncode != 0
     assert staged is None
     assert "must contain 404.html" in result.stdout
+
+
+@pytest.mark.parametrize("fallback", [False, True])
+def test_public_access_logs_retain_no_client_address_or_user_agent(fallback: bool) -> None:
+    rendered = _render(fallback=fallback)
+    log_format = next(line for line in rendered.splitlines() if line.strip().startswith("log_format vpn_public"))
+    assert not any(field in log_format for field in ("$remote_addr", "$http_referer", "$http_user_agent"))
+    assert "$status" in log_format
+    enabled = [line.split() for line in rendered.splitlines() if line.strip().startswith("access_log") and "off;" not in line]
+    assert enabled and all(line[-1] == "vpn_public;" for line in enabled)

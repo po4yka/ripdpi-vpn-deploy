@@ -8,6 +8,9 @@
 {% if (vpn.enable_snell | default(false)) and (snell | default({})).evaluation_enabled | default(false) %}
 limit_req_zone $binary_remote_addr zone=snell_evaluation:1m rate=10r/s;
 {% endif %}
+# Combined field layout without the client address, referer or user agent, so
+# status-column tooling (awk '$9') keeps working on these logs.
+log_format vpn_public '- - - [$time_local] "$request" $status $body_bytes_sent "-" "-"';
 
 server {
     listen {{ nginx_xhttp_public_port }} ssl http2;
@@ -91,7 +94,7 @@ server {
         try_files $uri $uri/ =404;
     }
 
-    access_log /var/log/nginx/vpn-xhttp.access.log;
+    access_log /var/log/nginx/vpn-xhttp.access.log vpn_public;
     error_log  /var/log/nginx/vpn-xhttp.error.log warn;
 }
 {% if nginx_fallback_enabled %}
@@ -174,7 +177,7 @@ server {
         try_files $uri $uri/ =404;
     }
 
-    access_log /var/log/nginx/vpn-xhttp-fallback.access.log;
+    access_log /var/log/nginx/vpn-xhttp-fallback.access.log vpn_public;
     error_log  /var/log/nginx/vpn-xhttp-fallback.error.log warn;
 }
 

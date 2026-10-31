@@ -265,6 +265,11 @@ and `down_mbps` from the server upload rate. Positive rates round up to integer
 Mbps; server negotiation clamps them to the exact configured rates. These hints
 select Brutal and apply per connection. They are not an aggregate server limit
 or a security bandwidth ceiling. Set rates that the client path can sustain.
+Every device of a node receives the same pair on purpose: the values travel
+inside the encrypted QUIC stream, so they are not an on-path fingerprint, the
+server clamps them to its configured rates anyway, and liveness refuses a
+profile whose pair differs from the node's configuration
+(`wrong-hysteria-bandwidth`). Vary rates per node, not per device.
 The RIPDPI importer does not apply these bandwidth hints. Do not rely on this
 profile to limit that client's rate. Hopping is supported for official sing-box
 and the qualified native RIPDPI client. RIPDPI export retains the configured
