@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-10-31T17:43:29Z",
+  "change": "cic-1793457997498773-merge-every-pull-request-by-rebase-and-keep-lifecycle-commits-in-one-pull-request",
+  "commit_sha": "3175b0d96f5ee54174040130be88b3fb6714a324",
+  "outcome": "review",
+  "schema": 1,
+  "task_id": "CIC-1793457997498773"
+}
