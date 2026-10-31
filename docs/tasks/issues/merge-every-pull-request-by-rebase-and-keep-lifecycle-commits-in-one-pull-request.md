@@ -2,7 +2,7 @@
 id: CIC-1793457997498773
 title: Merge every pull request by rebase and keep lifecycle commits in one pull request
 kind: feature
-status: review
+status: done
 area: ci
 priority: high
 risk: high
@@ -14,6 +14,9 @@ openspec_change: cic-1793457997498773-merge-every-pull-request-by-rebase-and-kee
 created: 2026-10-31
 updated: 2026-10-31
 related_tasks: [CIC-1792911952227614]
+closed_at: "2026-10-31T17:49:45Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Rebase-only merge policy merged as 3175b0d9 (PR 447) and applied to GitHub by the owner with verified readback; CI validates every pull-request commit subject; the protected-ref gate is removed; review-snapshot run 41216160249 green.
 ---
 
 ## Goal

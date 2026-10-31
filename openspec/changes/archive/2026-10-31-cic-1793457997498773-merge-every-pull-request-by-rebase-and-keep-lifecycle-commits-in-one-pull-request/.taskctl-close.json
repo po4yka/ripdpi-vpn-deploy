@@ -1,0 +1,11 @@
+{
+  "change": "cic-1793457997498773-merge-every-pull-request-by-rebase-and-keep-lifecycle-commits-in-one-pull-request",
+  "evidence_summary": "Rebase-only merge policy merged as 3175b0d9 (PR 447) and applied to GitHub by the owner with verified readback; CI validates every pull-request commit subject; the protected-ref gate is removed; review-snapshot run 41216160249 green.",
+  "execution_sha256": "26e030fdadef853100898ddbfb6f6166983dbb9910ef36c55f83febce7e42583",
+  "issue_sha256": "847bae71febd4cd101d1d27bb2578a2b9993617432692a333ac547216f1b6653",
+  "outcome": "done",
+  "prepared_at": "2026-10-31T17:49:45Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "CIC-1793457997498773"
+}

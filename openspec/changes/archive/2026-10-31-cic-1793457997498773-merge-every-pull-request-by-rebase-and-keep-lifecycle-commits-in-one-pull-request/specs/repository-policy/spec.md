@@ -4,6 +4,11 @@ Keep `main` linear through rebase-only merges so that every pull-request commit
 lands unchanged as its own first-parent commit, and validate each of those
 commits before it can become a release-please input.
 
+## RENAMED Requirements
+
+- FROM: `### Requirement: REQ-RPOL-MERGE — Consistent squash subjects`
+- TO: `### Requirement: REQ-RPOL-MERGE — Rebase-only merges with validated commit subjects`
+
 ## MODIFIED Requirements
 
 ### Requirement: REQ-RPOL-MERGE — Rebase-only merges with validated commit subjects
