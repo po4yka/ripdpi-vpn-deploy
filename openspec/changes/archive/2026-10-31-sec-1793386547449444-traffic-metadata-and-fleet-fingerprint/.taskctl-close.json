@@ -1,0 +1,11 @@
+{
+  "change": "sec-1793386547449444-traffic-metadata-and-fleet-fingerprint",
+  "evidence_summary": "PR 426 CI run 41131429189 attempt 2 green on head a0126fda; squash-merged as 61c0988342f38b5138273de39dfadb3e7dcf2b8c with an identical tree; local pytest, snapshot-check and docs-check passed; dry-run, staging, live and client not applicable for this source-only change",
+  "execution_sha256": "90a50e804e75806b20086c5e8bfb599a4597211d393ee970fb355ad792b99662",
+  "issue_sha256": "dbe7149171df08eedaa29b77797f3946644aba7b0348fbc9804f0a4ebc5aea54",
+  "outcome": "done",
+  "prepared_at": "2026-10-31T06:39:43Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SEC-1793386547449444"
+}
