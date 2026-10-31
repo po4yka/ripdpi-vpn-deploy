@@ -1,4 +1,4 @@
-"""PR subjects become release-please inputs after squash merging."""
+"""PR titles and every PR commit subject become release-please inputs after rebase merging."""
 
 import importlib.util
 import json
@@ -29,15 +29,64 @@ def test_conventional_subjects(title, expected):
     assert titles.valid(title) is expected
 
 
-def test_actual_event_title_is_checked_without_shell_interpolation(tmp_path):
-    event = tmp_path / 'event.json'
+def _git(repo, *args):
+    return subprocess.run(['git', '-C', str(repo), *args], check=True, capture_output=True,
+                          text=True, env={**os.environ, 'GIT_AUTHOR_NAME': 't', 'GIT_AUTHOR_EMAIL': 't@x',
+                                          'GIT_COMMITTER_NAME': 't', 'GIT_COMMITTER_EMAIL': 't@x'}).stdout.strip()
+
+
+def _commit(repo, message):
+    (repo / 'file').write_text(message)
+    _git(repo, 'add', 'file')
+    _git(repo, 'commit', '-q', '-m', message)
+    return _git(repo, 'rev-parse', 'HEAD')
+
+
+def _check(repo, title, base, head):
+    event = repo / 'event.json'
+    event.write_text(json.dumps({'pull_request': {'title': title, 'base': {'sha': base}, 'head': {'sha': head}}}))
+    return subprocess.run([sys.executable, str(SCRIPT)], cwd=repo,
+                          env={**os.environ, 'GITHUB_EVENT_NAME': 'pull_request',
+                               'GITHUB_EVENT_PATH': str(event)}, capture_output=True, text=True, timeout=10)
+
+
+@pytest.fixture
+def repo(tmp_path):
+    _git(tmp_path, 'init', '-q')
+    base = _commit(tmp_path, 'chore: base')
+    return tmp_path, base
+
+
+def test_valid_title_and_commit_range_pass(repo):
+    root, base = repo
+    head = _commit(root, 'fix(vpnd): reject invalid input\n\nBody text.')
+    head = _commit(root, 'docs: explain the flag')
+    result = _check(root, 'fix(vpnd): reject invalid input', base, head)
+    assert result.returncode == 0, result.stderr
+
+
+def test_actual_event_title_is_checked_without_shell_interpolation(repo):
+    root, base = repo
+    head = _commit(root, 'ci: update policy')
     for title, expected in [('ci: update policy', 0), ('$(touch unexpected)', 1)]:
-        event.write_text(json.dumps({'pull_request': {'title': title}}))
-        result = subprocess.run([sys.executable, str(SCRIPT)], cwd=tmp_path,
-                                env={**os.environ, 'GITHUB_EVENT_NAME': 'pull_request',
-                                     'GITHUB_EVENT_PATH': str(event)}, capture_output=True, timeout=10)
-        assert result.returncode == expected
-    assert not (tmp_path / 'unexpected').exists()
+        assert _check(root, title, base, head).returncode == expected
+    assert not (root / 'unexpected').exists()
+
+
+@pytest.mark.parametrize('message,fragment', [
+    ('wip', 'not a Conventional Commit'),
+    ('fix: trailing period.', 'not a Conventional Commit'),
+    ('fix: ok subject\n\nCo-authored-by: Someone <x@y>', 'Co-authored-by'),
+    ('fix: ok subject\n\nco-authored-by: lower case <x@y>', 'Co-authored-by'),
+])
+def test_offending_commit_in_range_fails_and_is_named(repo, message, fragment):
+    root, base = repo
+    _commit(root, 'feat: first')
+    offender = _commit(root, message)
+    head = _commit(root, 'test: last')
+    result = _check(root, 'feat: first', base, head)
+    assert result.returncode == 1
+    assert offender[:12] in result.stderr and fragment in result.stderr
 
 
 def test_title_edits_trigger_read_only_ci_and_title_result_reaches_aggregate():
@@ -47,4 +96,5 @@ def test_title_edits_trigger_read_only_ci_and_title_result_reaches_aggregate():
     assert ci['permissions'] == {'contents': 'read'}
     job = ci['jobs']['pr-title']
     assert 'if' not in job and 'continue-on-error' not in job
+    assert job['steps'][0]['with']['fetch-depth'] == 0  # the commit range needs both PR parents
     assert job['steps'][-1]['run'] == 'python3 scripts/check-pr-title.py'

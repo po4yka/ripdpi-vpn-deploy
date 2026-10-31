@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-31
+goal: CIC-1793457997498773 Merge every pull request by rebase and keep lifecycle
+  commits in one pull request

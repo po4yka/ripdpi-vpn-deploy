@@ -738,7 +738,8 @@ authentication and packet guards active in this lane.
 The branch-required contexts are `required checks`, `codeql (python)`, and
 `codeql (actions)`, each bound to GitHub Actions. The first context includes every
 selected CI job, including `PR title`; child contexts are not duplicate branch
-requirements. PR edits trigger CI so the squash subject is checked again.
+requirements. PR edits trigger CI so the title is checked again, and the same job
+validates every commit subject in the PR range because `main` is rebase-merged.
 `test_branch_protection_contract.py` exercises the configuration command through
 its GitHub API boundary, including migration order, identity refusal, remote
 failures, readback, and idempotence. The existing aggregate tests retain failure,
