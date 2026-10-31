@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-10-31T14:05:31Z",
+  "change": "cic-1793437852879654-refuse-done-closure-until-the-review-snapshot-is-on-the-protected-ref",
+  "commit_sha": "ab47c7fdd34689d8cecf77ac88a81e51b8ce66ed",
+  "outcome": "review",
+  "schema": 1,
+  "task_id": "CIC-1793437852879654"
+}
