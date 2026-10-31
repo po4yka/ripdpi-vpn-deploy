@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-10-31
+goal: MON-1793445381777509 Point the nginx 403 detectors at the decoy vhost logs
