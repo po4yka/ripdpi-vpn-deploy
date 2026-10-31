@@ -2,7 +2,7 @@
 id: SEC-1793428368283759
 title: Anonymize decoy-site nginx access logs
 kind: bug
-status: review
+status: done
 area: security
 priority: medium
 risk: standard
@@ -15,6 +15,9 @@ created: 2026-10-31
 updated: 2026-10-31
 related_tasks: [SEC-1793386547449444]
 status_detail: Implementation and local gates complete; pull request pending
+closed_at: "2026-10-31T12:26:33Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "Decoy vhost access logs carry no client identity (vpn_public, vpn_self_steal; formats merged via #432, layout contract and both-site nginx -t pinned by tests), monitoring keeps seven nginx rotations; integrated as 62f758d3 (#431); remote CI run 2105 green on 06a093cd; task MON-1793445381777509 tracks the blind 403 detectors."
 ---
 
 ## Goal

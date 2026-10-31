@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-10-31T12:24:32Z",
+  "change": "sec-1793428368283759-anonymize-decoy-site-nginx-access-logs",
+  "commit_sha": "62f758d335e6b5a0d0ea8ffab4c6ed0f1a7da4c5",
+  "outcome": "review",
+  "schema": 1,
+  "task_id": "SEC-1793428368283759"
+}
