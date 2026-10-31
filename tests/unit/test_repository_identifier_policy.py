@@ -130,3 +130,36 @@ def test_android_research_tracks_physical_awg_acceptance_and_open_gaps():
         "IPv6 differential",
     ):
         assert remaining_gate in content
+
+
+CODE_ROOTS = ("ansible/", "scripts/", "terraform/", "tests/", "vpnd/", ".github/")
+LABEL_CORPORA = {SELF, "tests/unit/test_docs_index.py"}
+LABELS = re.compile(r"\b(RU|TSPU|RKN|Russia|Russian)\b")
+# GeoIP country codes are classifier data, not cohort labels.
+GEOIP_CODE = re.compile(r"""b?["']RU["']""")
+CITATIONS = re.compile(r"(?i)\bkb (concept|verification)\b|\bconcept page\b")
+
+
+def _label_offences(text):
+    return [number for number, line in enumerate(text.splitlines(), 1)
+            if LABELS.search(GEOIP_CODE.sub("", line)) or CITATIONS.search(line)]
+
+
+def test_label_scan_flags_prose_labels_and_keeps_geoip_data():
+    assert _label_offences("# throttle TSPU probing\nfor the RU baseline\n") == [1, 2]
+    assert _label_offences("see the censorship KB concept page\n") == [1]
+    assert _label_offences('if country == "RU":\n    geoip = _field(1, b"RU")\n') == []
+
+
+def test_code_paths_carry_no_geographic_labels_or_knowledge_store_citations():
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z", "--", *CODE_ROOTS, "Makefile"], cwd=ROOT, capture_output=True, check=True
+    ).stdout.decode().split("\0")
+    offenders = []
+    for relative in tracked:
+        path = ROOT / relative
+        if not relative or relative in LABEL_CORPORA or path.suffix == ".gz" or path.is_symlink():
+            continue
+        lines = _label_offences(path.read_text(errors="ignore"))
+        offenders.extend(f"{relative}:{number}" for number in lines)
+    assert not offenders, "labels or knowledge-store citations:\n" + "\n".join(offenders)

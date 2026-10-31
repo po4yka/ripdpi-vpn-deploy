@@ -11,7 +11,7 @@ The role owns only the private cascade-leg listener and forwarding configuration
 
 ## Pitfalls
 
-- Do not add GeoIP, RU/foreign, or client-termination decisions here; classification belongs exclusively to cascade ingress.
+- Do not add GeoIP, domestic/foreign, or client-termination decisions here; classification belongs exclusively to cascade ingress.
 - Service management remains off until a future attestation-backed activation decision.
 
 - Ordinary site convergence always invokes lifecycle reconciliation. The

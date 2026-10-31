@@ -26,19 +26,28 @@ def resolver_host():
         upstream = run / "resolv.conf"
         upstream.write_text("nameserver 192.0.2.53\n")
         (etc / "resolv.conf").symlink_to(stub)
+        # The encrypted-resolver proof is a stub that records calls and fails on demand.
+        proofs, proof_failure = root / "proofs", root / "fail-proof"
+        resolvectl = root / "resolvectl"
+        resolvectl.write_text("#!/bin/sh\nprintf '%s\\n' \"$*\" >> " + str(proofs) + "\n"
+                              "[ -e " + str(proof_failure) + " ] && exit 1\nexit 0\n")
+        resolvectl.chmod(0o755)
         selected = relocate(tasks("roles/baseline/tasks/resolver.yml"), {
             "/etc/": str(etc) + "/",
             "/run/systemd/resolve/": str(run) + "/",
+            "resolvectl": str(resolvectl),
             "baseline_stub_receipt.stat.uid == 0": f"baseline_stub_receipt.stat.uid == {os.getuid()}",
             "baseline_stub_pending.stat.uid == 0": f"baseline_stub_pending.stat.uid == {os.getuid()}",
         })
         restarts = root / "restarts"
-        restart = next(row for row in selected if "ansible.builtin.systemd_service" in row)
-        restart.pop("ansible.builtin.systemd_service")
-        restart["ansible.builtin.command"] = {"argv": [sys.executable, "-c",
-            "from pathlib import Path; p=Path(" + repr(str(restarts)) + "); "
-            "p.write_text(p.read_text()+'restart\\n' if p.exists() else 'restart\\n')"]}
-        restart["changed_when"] = True
+        for restart in [row for row in selected if "ansible.builtin.systemd_service" in row] + [
+                row for block in selected for section in ("block", "rescue") for row in block.get(section, [])
+                if "ansible.builtin.systemd_service" in row]:
+            restart.pop("ansible.builtin.systemd_service")
+            restart["ansible.builtin.command"] = {"argv": [sys.executable, "-c",
+                "from pathlib import Path; p=Path(" + repr(str(restarts)) + "); "
+                "p.write_text(p.read_text()+'restart\\n' if p.exists() else 'restart\\n')"]}
+            restart["changed_when"] = True
 
         def execute(enabled, *, deferred=False, check=False, interrupt_before_restart=False):
             selected_tasks = copy.deepcopy(selected)
@@ -149,3 +158,29 @@ def test_interrupted_enable_replays_apply_then_returns_to_idempotence(resolver_h
         assert result.returncode == 0, result.stdout + result.stderr
         assert not pending.exists()
     assert restarts.read_text().splitlines() == ["restart"]
+
+
+def test_encrypted_host_resolver_is_installed_once_and_proven_after_restart(resolver_host):
+    root, resolver, stub, _upstream, restarts, execute = resolver_host
+    dropin = root / "etc/systemd/resolved.conf.d/vpn-dns-over-tls.conf"
+    result = execute(False, deferred=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    content = dropin.read_text()
+    assert "DNSOverTLS=yes" in content and "Domains=~." in content and "LLMNR=no" in content
+    assert "DNS=1.1.1.1#cloudflare-dns.com 8.8.8.8#dns.google" in content
+    assert resolver.resolve() == stub and restarts.read_text().splitlines() == ["restart"]
+    assert (root / "proofs").read_text().splitlines() == ["query --type=A cloudflare-dns.com"]
+    result = execute(False, deferred=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert restarts.read_text().splitlines() == ["restart"]
+    assert (root / "proofs").read_text().splitlines() == ["query --type=A cloudflare-dns.com"]
+
+
+def test_failed_encrypted_resolver_proof_withdraws_the_drop_in_and_refuses(resolver_host):
+    root, resolver, stub, _upstream, restarts, execute = resolver_host
+    (root / "fail-proof").touch()
+    result = execute(False, deferred=True)
+    assert result.returncode != 0
+    assert "encrypted-resolver-unavailable" in result.stdout
+    assert not (root / "etc/systemd/resolved.conf.d/vpn-dns-over-tls.conf").exists()
+    assert resolver.resolve() == stub and restarts.read_text().splitlines() == ["restart", "restart"]

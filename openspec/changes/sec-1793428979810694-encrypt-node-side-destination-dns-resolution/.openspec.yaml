@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-10-31
+goal: SEC-1793428979810694 Encrypt node-side destination DNS resolution

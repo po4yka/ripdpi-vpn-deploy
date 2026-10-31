@@ -130,7 +130,7 @@ Variables (override on command line):
   probing-summary            7-day Xray/nginx/honeypot rollup
   xray-diagnostics           Fresh redacted Xray counters via local StatsService
   tspu-canary                Daily DPI rule-drift probes (in-cohort box)
-  test-tls-policing HOST=…   Probe the ~12-concurrent-TLS home-ISP rule
+  test-tls-policing HOST=…   Probe the ~12-concurrent-TLS policing rule
   probe-payload-throttle HOST=… Probe per-ASN ~16 KiB payload throttling
   snell-refinement BUNDLE=… CONFIG=… VANTAGE=…  Run staged Snell refinement matrix
   fleet-status [HOSTS=…]     Strict inventory observations; client health remains separate

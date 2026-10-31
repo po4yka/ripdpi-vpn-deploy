@@ -9,7 +9,7 @@ variable "region" {
 
   validation {
     condition     = contains(["ams", "fra", "lhr"], var.region)
-    error_message = "region must be one of the approved low-latency RU-path locations: ams, fra, lhr."
+    error_message = "region must be one of the approved low-latency filtered-path locations: ams, fra, lhr."
   }
 }
 

@@ -36,10 +36,10 @@ xray_access_log_enabled: "{{ vpn.enable_policy_ratelimit | default(false) | bool
 # Client uTLS (browser-mimic) fingerprint emitted into sing-box client bundles
 # for the REALITY and XHTTP outbounds. CLIENT-side only — the server has no uTLS
 # knob — but declared here as the canonical per-profile default; override in
-# group_vars (e.g. a RU-hosted cohort). `scripts/emit-singbox.sh` reads it
+# group_vars (e.g. a cohort hosted on a flagged domestic cloud AS). `scripts/emit-singbox.sh` reads it
 # (UTLS_FINGERPRINT env overrides for a single run). Default "chrome"; sing-box
 # also accepts firefox/edge/safari/ios/android/random/…. Changing this is only
-# materially relevant under the June-2026 RU-AS cascade pattern (Chrome/Safari/iOS
+# materially relevant under the June-2026 domestic-AS three-condition TLS pattern (Chrome/Safari/iOS
 # flagged, Firefox/Android pass) — NOT on the foreign-VPS baseline. See
 # docs/reference/client-notes.md. Do NOT rotate it automatically; see the failover caveat.
 xray_utls_fingerprint: "chrome"

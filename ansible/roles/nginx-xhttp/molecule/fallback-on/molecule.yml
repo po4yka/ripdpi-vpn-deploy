@@ -4,7 +4,7 @@
 # This variant asserts:
 #   * a second `listen 2083 ssl;` server block is present with HTTP/2 enabled
 #   * it reuses the shared Xray localhost upstream (127.0.0.1:10085)
-#   * it carries NO Cloudflare real_ip directives (RU baseline holds)
+#   * it carries NO Cloudflare real_ip directives (filtered-path baseline holds)
 #   * nginx binds the fallback port at runtime
 #   * the primary 8443 listener and its assertions still pass
 #

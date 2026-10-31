@@ -115,7 +115,8 @@
     - name: Verify prerelease production refusal
       block:
         - name: Attempt a production converge
-          ansible.builtin.include_role: {name: snell}
+          # enable.yml directly: main.yml's rescue replaces the cause with a categorical message.
+          ansible.builtin.include_role: {name: snell, tasks_from: enable}
           vars:
             env: prod
         - name: Fail when production converge was accepted
@@ -133,7 +134,7 @@
     - name: Verify checksum failure stops convergence
       block:
         - name: Attempt install with a bad checksum
-          ansible.builtin.include_role: {name: snell}
+          ansible.builtin.include_role: {name: snell, tasks_from: enable}
           vars:
             env: staging
             snell_release_urls:
@@ -141,7 +142,7 @@
               arm64: file:///tmp/snell-checksum-fixture.tar.gz
             snell:
               version: v1.14.0
-              install_root: /opt/snell-checksum-test
+              install_root: /opt/snell
               config_dir: /etc/snell
               log_dir: /var/log/snell
               listen_addr: "::"
@@ -201,7 +202,7 @@
     - name: Verify invalid configuration stops convergence
       block:
         - name: Attempt converge with rejecting validator
-          ansible.builtin.include_role: {name: snell}
+          ansible.builtin.include_role: {name: snell, tasks_from: enable}
           vars:
             env: staging
             snell_release_urls:

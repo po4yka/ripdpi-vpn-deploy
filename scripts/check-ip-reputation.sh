@@ -8,13 +8,13 @@
 #   FireHOL Level 1 IP set (optional local netset via FIREHOL_NETSET_FILE)
 #   AbuseIPDB confidence-of-abuse score (HTTPS; needs ABUSEIPDB_KEY)
 #
-# SCOPE — HOSTING-ABUSE HYGIENE, NOT RU/TSPU BURN STATE.
+# SCOPE — HOSTING-ABUSE HYGIENE, NOT FILTERED-PATH BURN STATE.
 # Hits on Spamhaus, FireHOL, or AbuseIPDB indicate that the IP has been
 # associated with spam, malware, or generic hosting abuse. This is DISTINCT
-# from TSPU burn. TSPU burn is AS-level behavioural scoring derived from
-# traffic observation on RU paths — it is independent of these abuse feeds
-# and an IP can be TSPU-burned while appearing clean here, or vice versa.
-# For actual RU burn detection, use RU-vantage reachability probing via
+# from DPI burn. DPI burn is AS-level behavioural scoring derived from
+# traffic observation on filtered paths — it is independent of these abuse feeds
+# and an IP can be DPI-burned while appearing clean here, or vice versa.
+# For actual burn detection, use filtered-vantage reachability probing via
 # scripts/burn-check.sh (see docs/how-to/transport-reachability-matrix.md).
 #
 # On finding, exits 1 and (when ntfy is configured) sends an alert.

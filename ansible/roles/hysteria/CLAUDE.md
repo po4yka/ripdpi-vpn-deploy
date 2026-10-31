@@ -59,7 +59,8 @@ rate. Official sing-box accepts integer Mbps hints, rounded up; server negotiati
 clamps the exact configured rates. BBR profiles omit these hints. This is not an
 aggregate or security rate limit, and RIPDPI currently ignores the hints. Each
 supported bundle endpoint retains its own Salamander metadata. Hopping is
-supported by official sing-box; RIPDPI export refuses it until the client is qualified.
+exported to official sing-box (`server_ports`, `hop_interval`) and to RIPDPI
+bundles (`hysteria_extras.port_hopping`).
 
 **Pinned binary** — Hysteria version and architecture checksums are pinned;
 the role delegates verified candidate publication and `current`/public/previous
@@ -83,7 +84,7 @@ The staged runtime-release include returns generic `runtime_release_candidates`;
 
 ## Pitfalls
 
-- **UDP/443 is heavily policed in RU** — some carriers QUIC-throttle on UDP/443
+- **UDP/443 is heavily policed on filtered paths** — some networks QUIC-throttle on UDP/443
   but not UDP/8443. Have `--port` flexibility ready; don't assume 443.
 - **UDP ceilings belong to baseline** — its bounded `rmem_max`/`wmem_max` inputs
   are optional performance settings. Observe effective values and receive drops;

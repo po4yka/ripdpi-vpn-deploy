@@ -20,7 +20,7 @@
 #                                      uses protocol quorum when LIVENESS_CONFIG is set
 #   */2 *   monitor-protocol-liveness (when LIVENESS_CONFIG is set without
 #                                      a warm-spare ENV)
-#   daily   tspu-canary               TSPU rule-drift probes
+#   daily   tspu-canary               DPI rule-drift probes
 #   daily   probing-summary           7-day rollup
 #   daily   backup-state              encrypted local TF state backup
 #   daily   probe-payload-throttle    per-ASN ~16 KiB payload-throttle probe

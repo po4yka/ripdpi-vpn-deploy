@@ -103,7 +103,7 @@ server {
 # Secondary DIRECT (non-CDN) HTTPS XHTTP frontend. Distinct public port so
 # XHTTP delivery survives a Cloudflare outage without touching the primary
 # listener. Shares the same Xray localhost upstream. Carries NO Cloudflare
-# real-IP-restoration / Origin-CA directives — this is the RU-baseline direct
+# real-IP-restoration / Origin-CA directives — this is the filtered-path-baseline direct
 # path, reachable by anyone, so it serves the same public site and never uses
 # a silent-close response.
 server {
