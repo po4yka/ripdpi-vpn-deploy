@@ -157,9 +157,9 @@ interfaces. Fresh absence and recorded enable/disable transitions stay idempoten
   interfaces set no `DNS=`, so `awg-quick` never calls resolvconf.
 - **Fresh-host check mode cannot start an absent instance** — require a planned shared unit installation, then defer activation and restart until the real converge.
 - **Fresh-host check mode has no Git yet** — apt only plans the Git dependency, so defer source checkout and commit attestation until convergence. Receipt inspection still reports installed binary drift in check mode.
-- **AWG 2.0 client app version skew** — issue #2457: clients on AmneziaWG
-  client v1.0.x silently fall back to vanilla WG handshake when the server
-  uses 2.0 finalmask. Pin client version in `docs/reference/client-notes.md`.
+- **AWG 2.0 client app version skew** — the role emits no finalmask, I1..I5
+  or AWG 3.1 options (see Pinned userspace AWG). Before enabling them, record
+  the minimum supported client version in `docs/reference/client-notes.md`.
 - **MTU selection is explicit** — a smaller configured MTU is not automatic
   path diagnosis. Verify sustained transfers on the actual constrained path.
 - **Endpoint port reuse with Hysteria** — both use UDP. See `firewall/CLAUDE.md`

@@ -22,10 +22,11 @@ even if publication was interrupted and its bytes are now unchanged.
 useful tactical option for HTTP/2 + Chromium TLS fingerprint. Client
 preamble behavior and compatibility checks are in `docs/reference/client-notes.md`.
 
-**Mutually exclusive with nginx-xhttp** — both want 443/tcp; the global
-listener manifest guard rejects the pair before any role runs. The role
-runs caddy-naive standalone with its own cert (from SOPS) on port 443 —
-there is no shared listener.
+**Owns a dedicated public TCP port** — `naive_bind_port` defaults to 443,
+which collides with REALITY on `xray_port`, and with nginx-xhttp when its
+public port is 443; the global listener manifest guard rejects any such pair
+before any role runs. The role runs caddy-naive standalone with its own cert
+(from SOPS) — there is no shared listener.
 The service enables HTTP/1.1 and HTTP/2 only. HTTP/3 is disabled, so Caddy
 cannot acquire an undeclared UDP listener or collide with an enabled UDP
 transport. This deliberately keeps the transport's contract TCP-only.

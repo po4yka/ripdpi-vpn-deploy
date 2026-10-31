@@ -859,7 +859,7 @@ help:
 	@echo "  probing-summary            7-day Xray/nginx/honeypot rollup"
 	@echo "  xray-diagnostics           Fresh redacted Xray counters via local StatsService"
 	@echo "  tspu-canary                Daily DPI rule-drift probes (in-cohort box)"
-	@echo "  test-tls-policing HOST=…   Probe the ~12-concurrent-TLS home-ISP rule"
+	@echo "  test-tls-policing HOST=…   Probe the ~12-concurrent-TLS policing rule"
 	@echo "  probe-payload-throttle HOST=… Probe per-ASN ~16 KiB payload throttling"
 	@echo "  snell-refinement BUNDLE=… CONFIG=… VANTAGE=…  Run staged Snell refinement matrix"
 	@echo "  fleet-status [HOSTS=…]     Strict inventory observations; client health remains separate"
@@ -1649,7 +1649,7 @@ monitor-reality-target:
 	SOPS_FILE=$(SOPS_FILE) ENV=$(ENV) ./scripts/monitor-reality-target.sh \
 	  $(if $(filter 1 yes true,$(ACCEPT_BASELINE)),--accept-baseline)
 
-# Run this from the FILTERED (RU) vantage — it decides which SNI variant survives.
+# Run this from the FILTERED vantage — it decides which SNI variant survives.
 # EXIT_IP=<vps-ip> make probe-sni-survival   (VANTAGE defaults to "filtered")
 probe-sni-survival:
 	@test -n "$(EXIT_IP)" || { echo "set EXIT_IP=<vps-ip> — run this from a filtered vantage"; exit 1; }

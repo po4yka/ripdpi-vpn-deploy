@@ -43,7 +43,7 @@ vpn:
                                   # optional origin-firewall lockdown.
                                   # Read docs/decisions/0001-cdn-not-filtered-path-baseline.md before
                                   # turning this on — CDN is NOT the
-                                  # RU baseline in this project.
+                                  # filtered-path baseline in this project.
   enable_honeypot: false          # opt-in; active-probing canary listener
                                   # on honeypot.port (default 4443). Logs
                                   # every TCP connect + SNI, exports

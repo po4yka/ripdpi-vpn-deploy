@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Run a battery of "canary" probes that exercise distinct TSPU
+# Run a battery of "canary" probes that exercise distinct path-DPI
 # detection layers, record the per-probe verdict, and diff against
-# yesterday's run. A diff means TSPU rules likely changed.
+# yesterday's run. A diff means the DPI rules likely changed.
 #
-# Designed to run from an in-cohort RU test box on a daily cron:
+# Designed to run from an in-cohort test box on the filtered path, on a daily cron:
 #
 #   27 3 * * *  cd ~/GitRep/vpn-deploy && make tspu-canary
 #
 # The verdicts are interesting only from inside the cohort whose
-# behaviour you care about (RU mobile / RU home ISP / specific
-# operator). Run from a non-RU box and you mostly see baseline
-# reachability, not TSPU rule changes.
+# behaviour you care about (the exact access network whose DPI you
+# track). Run from an unfiltered box and you mostly see baseline
+# reachability, not DPI rule changes.
 #
 # Probes (each: pass / fail; "fail" = the canary endpoint did NOT
 # return its expected response shape):
@@ -112,7 +112,7 @@ except Exception:
 PY
 }
 
-echo "TSPU canary run $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+echo "DPI canary run $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "  endpoints: tls=${CANARY_TLS_HOST}:${CANARY_TLS_PORT}"
 echo "             wg=${CANARY_WG_HOST:-(unset; skipped)}"
 echo "             dtls=${CANARY_DTLS_HOST:-(unset; skipped)}"
@@ -156,7 +156,7 @@ if [[ -f "$yest_file" ]]; then
       auth=()
       [[ -n "${NTFY_TOKEN:-}" ]] && auth=(-H "Authorization: Bearer ${NTFY_TOKEN}")
       curl -fsS --connect-timeout 5 --max-time 15 -X POST \
-        -H "Title: TSPU canary drift" \
+        -H "Title: DPI canary drift" \
         -H "Priority: high" \
         -H "Tags: warning,tspu,canary" \
         "${auth[@]}" \

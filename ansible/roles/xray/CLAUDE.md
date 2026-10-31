@@ -128,8 +128,8 @@ the preflight refuses zero. Probes send the configured `xray_utls_fingerprint`.
 - **Idempotent inbound rebuild** — changed config or unit authority opens the
   guarded transaction; unchanged passes retain the accepted generation.
 - **Multi-cohort support** — `vpn.xray_cohorts` is a list; each cohort gets
-  its own inbound with its own `serverNames`, `shortIds`, flow_mode, and
-  finalmask. See `docs/how-to/multi-cohort.md`.
+  its own inbound with its own port, `shortIds`, flow_mode, and finalmask.
+  `serverNames`, the REALITY private key and the target stay shared. See `docs/how-to/multi-cohort.md`.
 - **Alternate inbound is opt-in** — `xray_fallback_port` defaults to 0.
   A nonzero port synthesises a second VLESS+REALITY+Vision inbound sharing
   the same identity and requires a matching explicit provider listener.

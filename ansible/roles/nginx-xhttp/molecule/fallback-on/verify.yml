@@ -72,7 +72,7 @@
         executable: /bin/bash
       changed_when: false
 
-    - name: No Cloudflare-specific real_ip directives anywhere (RU baseline)
+    - name: No Cloudflare-specific real_ip directives anywhere (filtered-path baseline)
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
