@@ -67,7 +67,7 @@ def test_policy_has_separate_integrity_ci_and_tag_rules():
     assert pr['require_code_owner_review'] is False
     assert pr['require_last_push_approval'] is False
     assert pr['required_review_thread_resolution'] is True
-    assert pr['allowed_merge_methods'] == ['squash']
+    assert pr['allowed_merge_methods'] == ['rebase']
     assert ci['name'] == 'main-ci'
     assert ci['bypass_actors'] == [{'actor_id': 42894392, 'actor_type': 'User', 'bypass_mode': 'pull_request'}]
     assert [r['type'] for r in ci['rules']] == ['required_status_checks']
@@ -83,8 +83,7 @@ def test_policy_has_separate_integrity_ci_and_tag_rules():
         assert item['conditions']['ref_name'] == {'include': ['refs/heads/main'], 'exclude': []}
     assert all(item['enforcement'] == 'active' for item in POLICY['rulesets'])
     assert POLICY['settings'] == {
-        'allow_merge_commit': False, 'allow_squash_merge': True, 'allow_rebase_merge': False,
-        'squash_merge_commit_title': 'PR_TITLE', 'squash_merge_commit_message': 'PR_BODY',
+        'allow_merge_commit': False, 'allow_squash_merge': False, 'allow_rebase_merge': True,
         'delete_branch_on_merge': True, 'allow_auto_merge': True}
     assert POLICY['immutable_releases'] is True
     assert not (ROOT / '.github/workflows/branch-protection.yml').exists()

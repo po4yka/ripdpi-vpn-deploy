@@ -178,9 +178,9 @@ in a clean checkout without `.fleet.mk` before attributing it to source.
    `required checks` aggregator requires every selected job to succeed and
    every unselected job to be planned as skipped.
    [Branch protection](docs/how-to/branch-protection.md) lists the required
-   statuses. Squash-merge is preferred; task lifecycle PRs that contain a
-   terminal record followed by archival keep their separate commits through
-   the allowed linear rebase merge.
+   statuses. Every PR is rebase-merged, so each of its commits lands on
+   `main` unchanged; task lifecycle PRs keep their review, terminal and purge
+   commits separate for the task-contract audit.
 
 ## Commit messages
 
@@ -244,13 +244,16 @@ Do not add `Co-Authored-By:` trailers; the commit-message hook rejects them.
   `po4yka/RIPDPI#TRN-...`; validate them with
   `make task-federation PEER_ROOT=../RIPDPI`.
 
-## Pull request titles and merges
+## Pull request titles, commits and merges
 
-Use a Conventional Commit PR title, such as `fix(vpnd): reject invalid input` or
-`ci: improve repository checks`. The title must have a supported type, an optional
+Use a Conventional Commit PR title and a Conventional Commit subject on every
+commit in the PR, such as `fix(vpnd): reject invalid input` or
+`ci: improve repository checks`. Each must have a supported type, an optional
 lowercase scope, an optional breaking-change marker, and a nonempty subject.
-Do not end it with a period. CI validates title edits as well as new commits.
-GitHub permits squash merging only, uses the PR title as the commit subject and
-the PR body as the message, and deletes merged head branches automatically.
+Do not end it with a period, and do not add `Co-authored-by` trailers. CI
+validates the title on every edit and every commit subject in the PR range,
+because GitHub permits rebase merging only: each commit lands on `main`
+unchanged and becomes a release-please input. Reword commits on your own branch
+before merging. GitHub deletes merged head branches automatically.
 The owner can bypass CI only through a PR; branch integrity requirements remain
 in force. See [repository policy](docs/how-to/branch-protection.md).

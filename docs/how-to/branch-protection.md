@@ -1,6 +1,6 @@
 # Repository rules and merge policy
 
-> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-25
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-31
 
 The source of truth is [repository-policy.json](../../.github/repository-policy.json).
 The [configuration command](../../scripts/configure-repository.py), exposed through
@@ -11,7 +11,7 @@ GitHub enforces it alongside rulesets and it can block the intended CI bypass.
 
 | Ruleset | Target | Requirements | Bypass |
 |---|---|---|---|
-| `main-integrity` | `main` | PR, squash only, linear history, resolved conversations, no force push or deletion | None |
+| `main-integrity` | `main` | PR, rebase only, linear history, resolved conversations, no force push or deletion | None |
 | `main-ci` | `main` | Three required contexts and an up-to-date branch | Repository owner, PR only |
 | `release-tags` | `vpnd-v*` tags | No updates or deletion | None |
 
@@ -37,10 +37,12 @@ Do not add those child jobs as duplicate branch requirements. Update the JSON
 configuration if an aggregate or CodeQL context is renamed. Keep the GitHub
 Actions source binding; an identically named result from another app is not enough.
 
-The PR title must use Conventional Commit syntax, for example
-`ci: improve repository policy`. CI rechecks titles on PR edits. Dependabot uses
-the `chore` prefix. Squash merging uses the PR title and body, and GitHub removes
-merged head branches. Auto-merge remains available when requirements pass.
+The PR title and every commit subject in the PR must use Conventional Commit
+syntax, for example `ci: improve repository policy`, without `Co-authored-by`
+trailers. CI rechecks the title on PR edits and the commit range on every push.
+Dependabot uses the `chore` prefix. Rebase merging lands each PR commit on
+`main` unchanged, so each one is a release-please input; GitHub removes merged
+head branches. Auto-merge remains available when requirements pass.
 
 The aggregate enforces the existing behavior of its child checks. It does not
 strengthen their contracts: `reproducible-build` still permits example placeholder
