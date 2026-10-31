@@ -6,6 +6,10 @@
     vpn:
       enable_xray_reality: true
       enable_reality_self_steal: true
+    # group_vars/all.yml is not loaded by Molecule; mirror the listener ports.
+    xray_port: 443
+    xray_fallback_port: 0
+    nginx_xhttp_port: 10085
     xray:
       target: 127.0.0.1:8443
       server_names: [edge.example.test]
