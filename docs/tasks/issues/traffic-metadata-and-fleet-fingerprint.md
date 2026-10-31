@@ -2,7 +2,7 @@
 id: SEC-1793386547449444
 title: Close traffic-metadata retention and fleet-fingerprint audit findings
 kind: bug
-status: doing
+status: review
 area: security
 priority: high
 risk: high
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: sec-1793386547449444-traffic-metadata-and-fleet-fingerprint
 created: 2026-10-30
-updated: 2026-10-30
+updated: 2026-10-31
 related_tasks: []
 ---
 
