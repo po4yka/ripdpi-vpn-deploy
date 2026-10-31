@@ -48,9 +48,11 @@
       {%- if vpn.enable_cascade_ingress | default(false) %}
       "tcp://1.1.1.1:53",
       "tcp://8.8.8.8:53"
-      {%- else %}
+      {%- elif vpn.enable_dns_morph_bridge | default(false) %}
       "1.1.1.1",
       "8.8.8.8"
+      {%- else %}
+      "127.0.0.2"
       {%- endif %}
     ],
     "queryStrategy": "{% if vpn.enable_cascade_ingress | default(false) %}UseIPv4{% else %}UseIP{% endif %}",
@@ -66,7 +68,7 @@
     ) | from_json %}
     {
       "tag": "{% if _multi %}vless-reality-{{ _coh.name }}{% else %}vless-reality{% endif %}",
-      "listen": "0.0.0.0",
+      "listen": "::",
       "port": {{ _coh.port }},
       "protocol": "vless",
       "settings": {

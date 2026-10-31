@@ -1,0 +1,24 @@
+---
+- name: "Guard: a WireGuard-shaped AmneziaWG instance needs a recorded measurement on production"
+  vars:
+    _awg_wireguard_shaped: >-
+      {{ _awg_instances
+         | selectattr('s1', 'eq', 0) | selectattr('s2', 'eq', 0)
+         | selectattr('h1', 'eq', '1') | selectattr('h2', 'eq', '2')
+         | selectattr('h3', 'eq', '3') | selectattr('h4', 'eq', '4')
+         | map(attribute='name') | list }}
+  ansible.builtin.assert:
+    that:
+      - >-
+        (_awg_wireguard_shaped | length == 0)
+        or ((env | default('')) != 'prod')
+        or ((awg_wireguard_shaped_measurement | default('')) | trim | length > 0)
+    quiet: true
+    fail_msg: |
+      AmneziaWG instance(s) {{ _awg_wireguard_shaped | join(', ') }} use S1=S2=0 with
+      H1..H4 = 1,2,3,4: the handshake is a plain 148-byte WireGuard Initiation
+      preceded by junk, the shape docs/reference/awg-cohorts.md calls
+      deterministically identifiable. A production host may keep it only for a
+      measured path: set awg_wireguard_shaped_measurement to the measurement
+      record (path, date, outcome) in the same private extra-vars file as
+      public_site_canonical_url, or choose random headers / nonzero S1,S2.

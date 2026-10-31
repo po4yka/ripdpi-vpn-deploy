@@ -145,6 +145,7 @@ interfaces. Fresh absence and recorded enable/disable transitions stay idempoten
 
 ## Pitfalls
 
+- **WireGuard-shaped instances need a measurement on production** — `guard-wireguard-shape.yml` refuses `env: prod` for an instance with `S1 = S2 = 0` and `H1..H4 = 1,2,3,4` unless `awg_wireguard_shaped_measurement` is set; the shape is the plain Initiation behind junk that `docs/reference/awg-cohorts.md` calls deterministically identifiable, so it is only acceptable for a measured path.
 - **amneziawg-go builds with the pinned Go, never distro Go** — the role
   downloads `amneziawg_go_toolchain_version` from go.dev, verifies its sha256
   and builds with `GOTOOLCHAIN=local`. Distro go.env defaults to `auto`, and

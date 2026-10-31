@@ -9,7 +9,10 @@ native gateway inside the owned WARP tunnel namespace. AmneziaWG device
 forwarding keeps its existing separate contract.
 
 Each new TCP connection or UDP destination binding resolves through sealed
-libc/NSS with numeric public resolvers. An all-denied answer refuses. TCP uses
+libc/NSS against the direct gateway's loopback forwarder (`127.0.0.2:53`),
+which answers A/AAAA queries over DNS-over-HTTPS and drops every other type;
+only the DNS-Morph profile, which claims UDP/53 on every address, keeps
+numeric plaintext resolvers. An all-denied answer refuses. TCP uses
 one immutable set of admitted literals, sorted within each family and
 interleaved IPv4-first. It tries at most eight candidates with at most two
 concurrent authenticated gateway controls and a 250 ms start stagger. One
