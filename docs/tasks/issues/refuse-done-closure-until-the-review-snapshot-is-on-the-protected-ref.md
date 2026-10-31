@@ -2,7 +2,7 @@
 id: CIC-1793437852879654
 title: Refuse done closure until the review snapshot is on the protected ref
 kind: feature
-status: backlog
+status: doing
 area: ci
 priority: high
 risk: standard
