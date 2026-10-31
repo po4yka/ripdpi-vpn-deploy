@@ -12,7 +12,7 @@ Primary: this repository. `scripts/tasks/taskctl.py` (`close prepare`, `verify`,
 
 - [x] CIC-1793437958813160 Refuse close prepare done and verify archive-ready while the review snapshot is absent from the protected ref, with --protected-ref override, fail-closed missing-ref handling and taskctl tests for absent, stale, other-ID, present and override paths #feature !high @item:CIC-1793437852879654
 - [x] CIC-1793437959694888 Document the protected-ref prerequisite in the task README and the archive and board skills and refresh the generated asset lock hash #chore !high @item:CIC-1793437852879654
-- [ ] CIC-1793437960612788 Run focused taskctl pytest, taskctl validate, task-check, docs-check and exact-head protected CI #chore !high @item:CIC-1793437852879654
+- [x] CIC-1793437960612788 Run focused taskctl pytest, taskctl validate, task-check, docs-check and exact-head protected CI #chore !high @item:CIC-1793437852879654
 
 ## Verification
 

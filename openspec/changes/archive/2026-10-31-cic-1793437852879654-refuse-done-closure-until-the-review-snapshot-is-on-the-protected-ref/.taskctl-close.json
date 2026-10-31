@@ -1,0 +1,11 @@
+{
+  "change": "cic-1793437852879654-refuse-done-closure-until-the-review-snapshot-is-on-the-protected-ref",
+  "evidence_summary": "Protected-ref gate in close prepare and verify --archive-ready merged as ab47c7fd (PR 436) with taskctl tests for absent, stale, other-ID, present, missing-ref and override paths; README and lifecycle skills updated; local focused pytest, docs-check, validate and make check -k observed; main run 41201628097 on a2b370b9 fully green.",
+  "execution_sha256": "3cc1bf9972dd665916bcab67124145ced10943f9b3f89794ccd9cd4f91f73fe4",
+  "issue_sha256": "ea4a90942bd27fceedc18344b93e77c7aab75b863ced92f37d41d04981a3a0ba",
+  "outcome": "done",
+  "prepared_at": "2026-10-31T14:07:04Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "CIC-1793437852879654"
+}

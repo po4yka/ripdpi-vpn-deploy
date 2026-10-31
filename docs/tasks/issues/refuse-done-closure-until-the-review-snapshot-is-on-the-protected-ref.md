@@ -2,7 +2,7 @@
 id: CIC-1793437852879654
 title: Refuse done closure until the review snapshot is on the protected ref
 kind: feature
-status: review
+status: done
 area: ci
 priority: high
 risk: standard
@@ -14,6 +14,9 @@ openspec_change: cic-1793437852879654-refuse-done-closure-until-the-review-snaps
 created: 2026-10-31
 updated: 2026-10-31
 related_tasks: []
+closed_at: "2026-10-31T14:07:04Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Protected-ref gate in close prepare and verify --archive-ready merged as ab47c7fd (PR 436) with taskctl tests for absent, stale, other-ID, present, missing-ref and override paths; README and lifecycle skills updated; local focused pytest, docs-check, validate and make check -k observed; main run 41201628097 on a2b370b9 fully green.
 ---
 
 ## Goal
