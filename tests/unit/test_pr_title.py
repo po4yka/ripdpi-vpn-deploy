@@ -35,9 +35,9 @@ def _git(repo, *args):
                                           'GIT_COMMITTER_NAME': 't', 'GIT_COMMITTER_EMAIL': 't@x'}).stdout.strip()
 
 
-def _commit(repo, message):
-    (repo / 'file').write_text(message)
-    _git(repo, 'add', 'file')
+def _commit(repo, message, name='file'):
+    (repo / name).write_text(message)
+    _git(repo, 'add', name)
     _git(repo, 'commit', '-q', '-m', message)
     return _git(repo, 'rev-parse', 'HEAD')
 
@@ -62,6 +62,18 @@ def test_valid_title_and_commit_range_pass(repo):
     head = _commit(root, 'fix(vpnd): reject invalid input\n\nBody text.')
     head = _commit(root, 'docs: explain the flag')
     result = _check(root, 'fix(vpnd): reject invalid input', base, head)
+    assert result.returncode == 0, result.stderr
+
+
+def test_merge_commits_in_the_range_are_ignored(repo):
+    root, base = repo
+    _git(root, 'checkout', '-q', '-b', 'topic')
+    _commit(root, 'feat: topic work', name='topic-file')
+    _git(root, 'checkout', '-q', '-')
+    _commit(root, 'fix: main work')
+    _git(root, 'merge', '-q', '--no-ff', '-m', "Merge branch 'topic'", 'topic')
+    head = _git(root, 'rev-parse', 'HEAD')
+    result = _check(root, 'feat: topic work', base, head)
     assert result.returncode == 0, result.stderr
 
 

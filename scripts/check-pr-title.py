@@ -23,7 +23,8 @@ def valid(title):
 
 
 def commit_messages(base, head):
-    log = subprocess.run(['git', 'log', '--format=%H%x00%s%x00%b%x1e', f'{base}..{head}'],
+    # A rebase merge replays only the non-merge commits of the pull request.
+    log = subprocess.run(['git', 'log', '--no-merges', '--format=%H%x00%s%x00%b%x1e', f'{base}..{head}'],
                          capture_output=True, text=True, check=True)
     for record in log.stdout.split('\x1e'):
         record = record.lstrip('\n')
