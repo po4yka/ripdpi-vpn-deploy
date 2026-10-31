@@ -2,7 +2,7 @@
 id: CIC-1793457997498773
 title: Merge every pull request by rebase and keep lifecycle commits in one pull request
 kind: feature
-status: doing
+status: review
 area: ci
 priority: high
 risk: high

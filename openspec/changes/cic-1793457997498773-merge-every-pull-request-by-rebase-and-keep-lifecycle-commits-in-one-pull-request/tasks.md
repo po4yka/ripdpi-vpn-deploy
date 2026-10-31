@@ -10,8 +10,8 @@ Primary: this repository. `.github/repository-policy.json`, `.github/workflows/c
 
 ## Execution
 
-- [ ] CIC-1793458205564841 Switch the repository policy to rebase-only merges, drop the squash settings, and validate every pull-request commit subject and trailer in the PR title job with tests #feature !high @item:CIC-1793457997498773
-- [ ] CIC-1793458297726343 Remove the protected-ref gate and --protected-ref from taskctl close prepare and verify together with its tests, keeping the HEAD committed-review check #feature !high @item:CIC-1793457997498773
+- [x] CIC-1793458205564841 Switch the repository policy to rebase-only merges, drop the squash settings, and validate every pull-request commit subject and trailer in the PR title job with tests #feature !high @item:CIC-1793457997498773
+- [x] CIC-1793458297726343 Remove the protected-ref gate and --protected-ref from taskctl close prepare and verify together with its tests, keeping the HEAD committed-review check #feature !high @item:CIC-1793457997498773
 - [ ] CIC-1793458391172583 Document the rebase-only lifecycle in the task README, CONTRIBUTING, branch-protection and testing pages and the lifecycle skills, refresh the asset lock, and run focused pytest, docs-check, validate, make check and exact-head CI #chore !high @item:CIC-1793457997498773
 
 ## Verification
