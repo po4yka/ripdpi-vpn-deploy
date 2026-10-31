@@ -1,0 +1,11 @@
+{
+  "change": "sec-1793428368283759-anonymize-decoy-site-nginx-access-logs",
+  "evidence_summary": "Decoy vhost access logs carry no client identity (vpn_public, vpn_self_steal; formats merged via #432, layout contract and both-site nginx -t pinned by tests), monitoring keeps seven nginx rotations; integrated as 62f758d3 (#431); remote CI run 2105 green on 06a093cd; task MON-1793445381777509 tracks the blind 403 detectors.",
+  "execution_sha256": "2ef0196bb6f7dbdec1165407135bf4039c969e3958a96263e064729f70a2609d",
+  "issue_sha256": "355cd85225462cfaa5b6dff65656d2916be125ce817d98b416f5f9865d5b24b3",
+  "outcome": "done",
+  "prepared_at": "2026-10-31T12:26:33Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SEC-1793428368283759"
+}
