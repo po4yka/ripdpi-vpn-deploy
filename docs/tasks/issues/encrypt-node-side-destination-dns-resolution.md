@@ -18,11 +18,10 @@ related_tasks: []
 
 ## Goal
 
-An observer on the VPS uplink sees no per-destination DNS query in clear. The transport-egress normalizer resolves through the direct gateway's DoH forwarder behind an owned kernel redirect, the Xray frontend and private gateways render DoH servers with `unexpectedIPs`, and hosts with systemd-resolved use strict DoT with explicit servers and a fail-closed proof. DNS-Morph's port-53 ownership and the deferred stub restoration stay unchanged.
+An observer on the VPS uplink sees no plaintext DNS from the host's own lookups when systemd-resolved is present: baseline installs a strict DNS-over-TLS drop-in with explicit servers and a fail-closed proof, and strict egress admits TCP/853. Recipient destination resolution is owned by SEC-1793428673775693 (loopback forwarder on the direct gateway); this task closes the host-side gap it left out of scope. DNS-Morph's port-53 ownership and the deferred stub restoration stay unchanged.
 
 ## Acceptance criteria
 
-- The production egress context seals the normalizer to `127.0.0.1`, publishes `resolver.forwarder_port`, and the rendered policy contains the normalizer-only NAT redirect, admission drop, normalizer accept and gateway reply accept.
-- The direct gateway answers forwarder A/AAAA queries over `https+local://` upstreams with `unexpectedIPs` and drops other query types; the non-cascade frontend renders DoH servers.
-- Baseline installs the strict DoT drop-in only where resolved exists, proves one lookup after restart, and withdraws the drop-in with a categorical failure when the proof fails; strict egress admits TCP/853.
-- The resolver round-trip tests, transport-egress unit tests, `make snapshot-check` and the native egress lanes in CI pass.
+- Baseline installs the strict DoT drop-in only where resolved exists, restarts resolved through the existing transition task, proves one lookup, and withdraws the drop-in with a categorical failure when the proof fails.
+- Strict egress admits TCP/853; snapshot goldens reflect it.
+- The resolver round-trip tests, the runtime-audit resolver cases and the firewall egress tests pass; `make snapshot-check` passes.

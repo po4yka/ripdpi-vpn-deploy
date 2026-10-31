@@ -259,7 +259,7 @@ def test_vendor_resolver_has_canonical_directives_and_identical_publication_byte
                               trim_blocks=True, keep_trailing_newline=True)
     resolver = {'nameservers': ['1.1.1.1', '8.8.8.8'], 'timeout_seconds': 1, 'attempts': 1}
     content = environment.get_template('resolv.conf.j2').render(
-        transport_egress_input_config={'resolver': resolver}, warp_outbound_nameservers=resolver['nameservers'])
+        transport_egress_input_config={'resolver': resolver})
     assert content == 'nameserver 1.1.1.1\nnameserver 8.8.8.8\noptions timeout:1 attempts:1\n'
     # The vendor namespace cannot reach the host's loopback forwarder, so it keeps numeric upstreams.
     assert environment.get_template('resolv.conf.j2').render(
@@ -271,7 +271,7 @@ def test_vendor_resolver_has_canonical_directives_and_identical_publication_byte
     monkeypatch.setattr(sys, 'argv', ['snapshot.py', 'compare'])
     for second, changed in [('8.8.8.8', False), ('8.8.4.4', True)]:
         candidate = environment.get_template('resolv.conf.j2').render(
-            transport_egress_input_config={'resolver': resolver}, warp_outbound_nameservers=['1.1.1.1', second])
+            transport_egress_input_config={'resolver': {**resolver, 'nameservers': ['1.1.1.1', second]}})
         value = {path: {**published, 'data': base64.b64encode(candidate.encode()).decode()}}
         monkeypatch.setattr(sys, 'stdin', io.TextIOWrapper(io.BytesIO(json.dumps(value).encode())))
         snapshot.main()
@@ -987,28 +987,3 @@ def test_generation_units_have_one_publication_lane():
     assert names.index('Publish the complete validated candidate') < names.index('Verify actual published unit syntax')
     verify = next(task for task in publish if task['name'] == 'Verify actual published unit syntax')
     assert '_transport_egress_candidate_dir.path' in verify['ansible.builtin.command']['argv']
-
-
-def test_direct_gateway_forwards_sealed_dns_over_encrypted_upstreams_only():
-    sys.path.insert(0, str(ROOT / 'scripts'))
-    from template_render import merge_render_vars, render_template
-    template = ROOT / 'ansible/roles/transport-egress/templates/gateway.json.j2'
-    values = merge_render_vars()
-    direct = json.loads(render_template(template, values))
-    forbidden = values['_transport_egress_forbidden']['ipv4'] + values['_transport_egress_forbidden']['ipv6']
-    assert [server['address'] for server in direct['dns']['servers']] == ['https+local://1.1.1.1/dns-query', 'https+local://8.8.8.8/dns-query']
-    assert all(server['unexpectedIPs'] == forbidden for server in direct['dns']['servers'])
-    forwarder = next(item for item in direct['inbounds'] if item['tag'] == 'dns-forwarder')
-    assert forwarder['protocol'] == 'dokodemo-door' and forwarder['listen'] == '127.0.0.1'
-    assert forwarder['port'] == values['transport_egress_policy_config_data']['resolver']['forwarder_port'] == 12053
-    assert forwarder['settings'] == {'address': '127.0.0.1', 'port': 53, 'network': 'tcp,udp'}
-    resolver = next(item for item in direct['outbounds'] if item['tag'] == 'dns-resolver')
-    assert resolver == {'tag': 'dns-resolver', 'protocol': 'dns', 'settings': {'nonIPQuery': 'drop'}}
-    assert direct['outbounds'][0]['protocol'] == 'freedom'
-    assert direct['routing']['rules'] == [{'type': 'field', 'inboundTag': ['dns-forwarder'], 'outboundTag': 'dns-resolver'}]
-    values['_transport_egress_backend_name'] = 'warp'
-    values['_transport_egress_backend'] = {**values['_transport_egress_backend'], 'address': '10.250.254.2', 'port': 12091}
-    warp = json.loads(render_template(template, values))
-    assert [item['tag'] for item in warp['inbounds']] == ['recipient'] and 'routing' not in warp
-    assert [item['protocol'] for item in warp['outbounds']] == ['freedom']
-    assert [server['address'] for server in warp['dns']['servers']] == [server['address'] for server in direct['dns']['servers']]

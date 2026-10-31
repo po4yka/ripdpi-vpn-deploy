@@ -24,9 +24,7 @@ artifact_evidence: Snapshot goldens, the egress reference and role notes were up
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-EGRESS-DNS-FORWARDER | SEC-1793429342091969 | `tests/unit/test_transport_egress_kernel.py`, `tests/unit/test_transport_destination_boundary.py`; native egress fixtures apply the projection in CI | Local passed; CI and deploy evidence required |
-| REQ-GATEWAY-DOH-ANSWERS | SEC-1793429343002855 | gateway golden and `tests/unit/test_transport_egress_role.py`; local `xray run -test` plus forwarder probe against a fake upstream | Local passed; CI and deploy evidence required |
-| REQ-FRONTEND-DNS-DOH | SEC-1793429343002855 | xray golden and `tests/unit/test_cascade_xray_integration.py` | Local passed; CI and deploy evidence required |
-| REQ-HOST-DOT | SEC-1793429343972584 | `tests/unit/test_resolver_roundtrip.py`, `tests/unit/test_firewall_egress_policy.py` | Local passed; CI and deploy evidence required |
-| REQ-HOST-DOT-COMPENSATION | SEC-1793429343972584 | `tests/unit/test_resolver_roundtrip.py` failed-proof case | Local passed; CI and deploy evidence required |
-| REQ-DNS-MORPH-PORT53 | SEC-1793429343972584 | `tests/unit/test_resolver_roundtrip.py` round trip; kernel render keeps no port-53 listener | Local passed; CI and deploy evidence required |
+| REQ-HOST-DOT | SEC-1793429343972584 | `tests/unit/test_resolver_roundtrip.py` (drop-in installed once, proof call, idempotence), `tests/unit/test_firewall_egress_policy.py` (strict 853) | Local passed; CI and deploy evidence required |
+| REQ-HOST-DOT-COMPENSATION | SEC-1793429343972584 | `tests/unit/test_resolver_roundtrip.py` failed-proof case (drop-in withdrawn, second restart, categorical failure) | Local passed; CI and deploy evidence required |
+| REQ-DNS-MORPH-PORT53 | SEC-1793429343972584 | `tests/unit/test_resolver_roundtrip.py` round trip and `tests/unit/test_runtime_audit_regressions.py` resolver states | Local passed; CI and deploy evidence required |
+| (superseded) recipient forwarder | SEC-1793429342091969, SEC-1793429343002855 | NAT-redirect forwarder built and proven locally, then dropped on merge of SEC-1793428673775693 (main's `127.0.0.2` forwarder) | Superseded; not part of the merged tree |

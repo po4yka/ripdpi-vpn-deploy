@@ -2,11 +2,11 @@
 
 ## Objective
 
-Recipient destination names resolve through the direct gateway's DoH forwarder behind an owned kernel redirect, the frontend and gateways render DoH servers with `unexpectedIPs`, and hosts with systemd-resolved use strict DoT with a fail-closed proof, while DNS-Morph's port-53 lifecycle stays unchanged.
+Hosts with systemd-resolved use strict DoT with explicit servers and a fail-closed proof, strict egress admits TCP/853, and DNS-Morph's port-53 lifecycle stays unchanged. The recipient forwarder is owned by the merged change SEC-1793428673775693; the first two steps below built an alternative NAT-redirect forwarder that was dropped when main merged first, so their checked state records superseded work, not shipped behavior.
 
 ## Ownership
 
-Single serialized lane. Scripts: `transport_egress_config.py`, `transport_egress_normalizer.py`, `transport_egress_kernel.py`. Ansible: `roles/transport-egress` (defaults, `gateway.json.j2`, notes), `roles/xray/templates/config.json.j2`, `roles/baseline/tasks/resolver.yml` and notes, `roles/firewall/templates/nftables.conf.j2`. Tests: the matching `tests/unit` files, snapshot goldens, native egress fixtures. Docs: `docs/reference/transport-egress.md`, `ansible/CLAUDE.md`.
+Single serialized lane. Ansible: `roles/baseline/tasks/resolver.yml` and notes, `roles/firewall/templates/nftables.conf.j2`, `ansible/CLAUDE.md`. Tests: `tests/unit/test_resolver_roundtrip.py`, `tests/unit/test_runtime_audit_regressions.py`, `tests/unit/test_firewall_egress_policy.py`, the firewall snapshot golden.
 
 ## Execution
 
@@ -17,7 +17,7 @@ Single serialized lane. Scripts: `transport_egress_config.py`, `transport_egress
 
 ## Verification
 
-- Local narrow checks: `pytest tests/unit/test_transport_egress_kernel.py tests/unit/test_transport_destination_boundary.py tests/unit/test_transport_egress_role.py tests/unit/test_resolver_roundtrip.py tests/unit/test_firewall_egress_policy.py tests/unit/test_cascade_xray_integration.py`, then `make snapshot-check` and `make docs-check`.
+- Local narrow checks: `pytest tests/unit/test_resolver_roundtrip.py tests/unit/test_runtime_audit_regressions.py tests/unit/test_firewall_egress_policy.py`, then `make snapshot-check` and `make docs-check`.
 - Local gate: `make check`.
-- Remote: PR CI on the exact head SHA, including the native egress and kernel lanes that apply the production projection.
+- Remote: PR CI on the exact head SHA.
 - Dry-run, staging, live and client: deferred to a separately authorized `make dry-run`/`make deploy`; this change does not run them.

@@ -150,16 +150,6 @@ def test_strict_configuration_rejects_unsafe_authority(mutation):
     assert "sensitive-marker" not in str(error.value)
 
 
-def test_loopback_forwarder_is_the_only_admitted_loopback_resolver():
-    value = config()
-    value["resolver"]["nameservers"] = ["127.0.0.1"]
-    assert normalizer.validate_config(value)["resolver"]["nameservers"] == ["127.0.0.1"]
-    for address in ("127.0.0.2", "::1", "10.0.0.53", "::ffff:127.0.0.1"):
-        value["resolver"]["nameservers"] = [address]
-        with pytest.raises(normalizer.NormalizerError, match="invalid-resolvers"):
-            normalizer.validate_config(value)
-
-
 def test_early_and_final_cli_validation_remain_read_only_and_redacted(tmp_path):
     value = config()
     for argument, document in (("--validate", value), ("--validate-input", copy.deepcopy(value))):

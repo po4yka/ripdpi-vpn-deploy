@@ -26,9 +26,8 @@ by RIPDPI recipient export and requires two operator-owned HTTPS controls.
 
 Site baseline defers managed DNS stub restoration until DNS-Morph has retired
 its listener. The retiring role calls only baseline's resolver tasks; tagged
-runs that omit retirement retain the working upstream resolver. The host DoT
-drop-in binds no port-53 listener and the egress DNS forwarder is reached only
-through an owned kernel redirect, so neither depends on the resolved stub.
+runs that omit retirement retain the working upstream resolver. Baseline's host
+DoT drop-in binds no port-53 listener and does not depend on the resolved stub.
 
 DNS-Morph controller admission runs after exact-node ownership in site pre_tasks, before host changes and
 at standalone role entry. Both use the same bounded YAML validator and rendered
