@@ -1,0 +1,11 @@
+{
+  "change": "sec-1793428673775693-audit-followups-resolver-logs-identity",
+  "evidence_summary": "Delivered by PR 432, squash-merged as 4aa9ba3e; remote CI evidence is the full green main run 41185499260 on 28d8d6e0 (76 jobs, required checks passed; tree differs from 4aa9ba3e only by task records, tasking skills and their lock file). Review snapshot merged separately as 67fcf906 (PR 437).",
+  "execution_sha256": "6fdc7958305aa89e890a72772e9fc019f30ecb923d4944bc6dd6b87bfb12d278",
+  "issue_sha256": "b3e8f23d8d238b6d7110cc717433d9e0a3496efd94c92b76e7cb431801faf26c",
+  "outcome": "done",
+  "prepared_at": "2026-10-31T11:29:27Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SEC-1793428673775693"
+}
