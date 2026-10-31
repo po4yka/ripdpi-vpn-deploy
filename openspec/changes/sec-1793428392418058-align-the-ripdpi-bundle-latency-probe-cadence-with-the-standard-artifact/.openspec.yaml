@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-31
+goal: SEC-1793428392418058 Align the RIPDPI bundle latency probe cadence with
+  the standard artifact

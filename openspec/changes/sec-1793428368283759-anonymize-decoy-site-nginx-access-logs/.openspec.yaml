@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-10-31
+goal: SEC-1793428368283759 Anonymize decoy-site nginx access logs
