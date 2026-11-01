@@ -347,7 +347,6 @@ def test_failure_sender_wrapper_preserves_delegate_inputs_and_result(
     tmp_path, authority, mount_failure
 ):
     import os
-    import re
     import subprocess
     import sys
     import yaml
@@ -451,7 +450,6 @@ def test_failure_journal_diagnostics_filter_private_messages_and_preserve_hard_f
     tmp_path,
 ):
     import os
-    import re
     import subprocess
     import sys
     import yaml
