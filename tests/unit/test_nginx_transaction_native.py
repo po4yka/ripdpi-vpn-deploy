@@ -213,8 +213,13 @@ def test_real_nginx_complete_tls_boot_and_failed_activation_compensation():
         # Keep the low-port check private, with the kernel's default threshold.
         validation_config = base / 'validation-nginx.conf'
         validation_config.write_text(
-            f'pid {base}/validation.pid;\nerror_log {logs}/validation.log;\n'
-            'events {}\nhttp { server { listen 127.0.0.1:80; } }\n'
+            f'user www-data;\npid {base}/validation.pid;\nerror_log {logs}/validation.log;\n'
+            'events {}\nhttp {\n'
+            f'access_log {logs}/validation-access.log;\n'
+            + ''.join(f'{name}_temp_path {base}/{name};\n' for name in (
+                'client_body', 'proxy', 'fastcgi', 'uwsgi', 'scgi',
+            ))
+            + 'server { listen 127.0.0.1:80; } }\n'
         )
         validation_manifest = base / 'validation.json'
         validation_manifest.write_text(json.dumps({
