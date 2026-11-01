@@ -213,7 +213,7 @@ def test_real_nginx_complete_tls_boot_and_failed_activation_compensation():
         # Keep the low-port check private, with the kernel's default threshold.
         validation_config = base / 'validation-nginx.conf'
         validation_config.write_text(
-            f'pid {runtime}/validation.pid;\nerror_log {logs}/validation.log;\n'
+            f'pid {base}/validation.pid;\nerror_log {logs}/validation.log;\n'
             'events {}\nhttp { server { listen 127.0.0.1:80; } }\n'
         )
         validation_manifest = base / 'validation.json'
@@ -230,6 +230,7 @@ def test_real_nginx_complete_tls_boot_and_failed_activation_compensation():
             f"spec=importlib.util.spec_from_file_location('transaction',{str(helper)!r})\n"
             "m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)\n"
             "assert int(Path('/proc/sys/net/ipv4/ip_unprivileged_port_start').read_text())>80\n"
+            f"subprocess.run(['/usr/sbin/nginx','-t','-c',{str(validation_config)!r}],check=True)\n"
             f"validation=subprocess.run(['unshare','--mount','--propagation','private',"
             f"'/usr/bin/python3',{str(helper)!r},'--validate',{str(validation_manifest)!r}],check=True)\n"
             f"master=m.nginx_master({unit!r})\n"
