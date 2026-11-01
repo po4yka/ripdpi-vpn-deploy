@@ -26,3 +26,8 @@ The implementation MUST provide consistent canonical metadata and a real 404 res
 
 - **WHEN** the public site uses the `vpn-p1-web` profile
 - **THEN** its public listener contract contains only TCP/80 and TCP/443, and subscription delivery is disabled.
+
+#### Scenario: Operator-owned site passes through the deployment controller
+
+- **WHEN** an exact-host deployment supplies `nginx_xhttp_public_site_dir`
+- **THEN** it MUST accept only a bounded owner-controlled static tree with a regular `404.html`, snapshot the validated content for publication, and refuse links, unsafe ancestry or a source change before host writes; unrelated role overrides remain forbidden.

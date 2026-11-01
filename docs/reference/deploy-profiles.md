@@ -107,6 +107,11 @@ controller-local directory and name it in the same override file:
 echo 'nginx_xhttp_public_site_dir: "/path/to/owned-site"' >> secrets/local/decoy-origin.yml
 ```
 
+Use an absolute path with safe owner-controlled directories and regular files.
+Links, hard links, hidden entries and special files are refused. The tree is
+limited to 1024 entries, 16 path components, 4 MiB per file and 16 MiB in total.
+The controller uses a private snapshot and rechecks the source before host writes.
+
 A host whose inventory `env` is `prod` refuses convergence while the variable
 is empty; staging, lab and Molecule hosts may keep the bundled pages.
 

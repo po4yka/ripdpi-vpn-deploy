@@ -16,6 +16,7 @@ import unicodedata
 import yaml
 
 import fleet_inspection
+from public_site_inputs import SiteInputError, read_site
 from bootstrap_readiness import (CommandTimeout, ReadinessError, SshTransportError,
                                  cancellation, run_command, wait_for_bootstrap)
 from sshd_bundle_source import BundleSourceError, bundle_manifest
@@ -651,7 +652,7 @@ def controller(mode):
         validate_yaml(secret_data)
         secrets = private_file(directory / "secrets.yaml", secret_data)
         environment["VPN_SECRETS_FILE"] = str(secrets)
-        overrides, override_values, input_fences = None, {}, []
+        overrides, override_values, input_fences, site_fence = None, {}, [], None
         if os.environ.get("DEPLOY_EXTRA_VARS_FILE"):
             if not os.environ.get("DEPLOY_LIMIT"):
                 raise DeployError("extra vars require an explicit inventory selection")
@@ -664,8 +665,20 @@ def controller(mode):
             override_values, exposure_fences = prepare_network_exposure_inputs(
                 root, directory, override_values, hosts, environment)
             input_fences = [override_fence, *exposure_fences]
+            if "nginx_xhttp_public_site_dir" in override_values:
+                original_site = override_values["nginx_xhttp_public_site_dir"]
+                entries, fingerprint = read_site(original_site)
+                site_fence = (original_site, fingerprint)
+                snapshot = directory / "public-site"
+                for relative, content in entries.items():
+                    path = snapshot / relative
+                    if content is None:
+                        path.mkdir(mode=0o700)
+                    else:
+                        private_file(path, content)
+                override_values = dict(override_values, nginx_xhttp_public_site_dir=str(snapshot))
             normalized = (yaml.safe_dump(override_values, sort_keys=True).encode()
-                          if "network_exposure_gate" in override_values else override_data)
+                          if "network_exposure_gate" in override_values or site_fence else override_data)
             overrides = private_file(directory / "operator-overrides.yml", normalized)
         known_hosts = private_file(directory / "known_hosts", read_input(os.environ.get(
             "DEPLOY_KNOWN_HOSTS", str(Path.home() / ".ssh/known_hosts"))))
@@ -729,6 +742,8 @@ def controller(mode):
                         environment=certificate_environment, cwd=directory)
         for fence in input_fences:
             verify_input_fence(fence)
+        if site_fence and read_site(site_fence[0])[1] != site_fence[1]:
+            raise DeployError("operator public site changed before convergence")
         if mode == "deploy":
             # Recheck every selected sink before the first host can be changed.
             # Checking inside the host loop could discover a later unsafe sink
@@ -778,7 +793,7 @@ def main():
     try:
         with cancellation():
             controller(sys.argv[1])
-    except (DeployError, BundleSourceError, ReadinessError, fleet_inspection.InspectionError) as error:
+    except (DeployError, BundleSourceError, ReadinessError, fleet_inspection.InspectionError, SiteInputError) as error:
         print("deploy: " + str(error), file=sys.stderr)
         return 1
     return 0

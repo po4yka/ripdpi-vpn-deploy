@@ -12,6 +12,7 @@ import yaml
 
 from transport_semantics import origin_valid
 from firewall_collector_ingress import validate as validate_collector_ingress
+from public_site_inputs import read_site
 
 ALLOWED_KEYS = {
     "ansible_host",
@@ -19,6 +20,7 @@ ALLOWED_KEYS = {
     "firewall_forward_interface_contract",
     "firewall_tailnet_collector_ingress",
     "public_site_canonical_url",
+    "nginx_xhttp_public_site_dir",
     "network_exposure_gate",
     "vpn_device_revocation",
     "vpn_device_retained_publisher",
@@ -139,6 +141,9 @@ def validate(path: Path) -> None:
         url = document["public_site_canonical_url"]
         if not origin_valid(url):
             raise ValueError("public_site_canonical_url must be a canonical HTTPS origin")
+
+    if "nginx_xhttp_public_site_dir" in document:
+        read_site(document["nginx_xhttp_public_site_dir"])
 
     if "firewall_tailnet_collector_ingress" in document:
         validate_collector_ingress(document['firewall_tailnet_collector_ingress'])

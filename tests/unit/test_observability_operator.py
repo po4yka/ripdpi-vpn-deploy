@@ -823,8 +823,11 @@ def test_rollback_reconverges_one_role_from_private_last_known_good_inputs(
     assert len(_calls(operator)) == len(calls)
 
 
+@pytest.mark.parametrize("component,role,alias,setting,path", [
+    ("control-plane", "observability_control_plane", "node-a", "config_root", "/owner/custom-observability"),
+    ("agent", "observability_agent", "node-agent", "install_root", "/opt/observability-vmagent-fixture")])
 def test_remove_converges_only_selected_role_with_enabled_false(
-    operator: dict[str, object],
+    operator: dict[str, object], component: str, role: str, alias: str, setting: str, path: str,
 ) -> None:
     result = _run(operator, "remove", "--confirm")
     assert result.returncode == 2
@@ -836,17 +839,18 @@ def test_remove_converges_only_selected_role_with_enabled_false(
     variables = operator["vars"]
     assert isinstance(variables, Path)
     variables.write_text(
-        "observability_control_plane:\n  enabled: true\n  config_root: /owner/custom-observability\n",
+        f"{role}:\n  enabled: true\n  {setting}: {path}\n",
         encoding="utf-8",
     )
-    result = _run(operator, "remove", "--vars", str(variables), "--confirm")
+    result = _run(operator, "remove", "--component", component,
+                  "--host", alias, "--vars", str(variables), "--confirm")
 
     assert result.returncode == 0, result.stderr
     call = _calls(operator)[0]
-    assert call["argv"][call["argv"].index("--limit") + 1] == "node-a"
-    assert "observability_control_plane" in call["playbook"]
+    assert call["argv"][call["argv"].index("--limit") + 1] == alias
+    assert role in call["playbook"]
     assert "enabled: false" in call["playbook"]
-    assert "/owner/custom-observability" in call["playbook"]
+    assert path in call["playbook"]
     assert "site.yml" not in " ".join(call["argv"])
 
 
@@ -1128,6 +1132,20 @@ def test_makefile_exposes_only_narrow_observability_controller_targets() -> None
     assert "--rollback-manifest" in block
     assert "observability-operator.py deploy" in block
     assert "--confirm" in block
+    site = yaml.safe_load((ROOT / "ansible/playbooks/site.yml").read_text())
+
+    def role_imports(value):
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if key in {"ansible.builtin.import_role", "ansible.builtin.include_role"}:
+                    yield child["name"]
+                yield from role_imports(child)
+        elif isinstance(value, list):
+            for child in value:
+                yield from role_imports(child)
+
+    assert not {"observability_agent", "observability_control_plane", "observability_kuma"}.intersection(
+        role_imports(site))
 
 
 def test_make_status_forwards_literal_exact_scope(operator: dict[str, object]) -> None:

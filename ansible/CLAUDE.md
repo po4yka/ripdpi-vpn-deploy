@@ -146,6 +146,9 @@ The sender uses independently pinned vmagent with one disk-backed remote-write
 queue. Its physical queue allowance and the collector allowance are both
 reserved on a shared filesystem; retained Prometheus WAL is not migrated or
 deleted automatically. Resource limits still apply to the entire agent slice.
+Full VPN convergence leaves these independent components intact. The exact-host
+observability lifecycle owns agent installation, rotation and removal; its
+disabled role remains the explicit removal path.
 The Kuma playbook owns only observer runtime, private push ingress and backup.
 `install-sshd-recovery.yml` installs the isolated recovery foundation on one
 explicit node; it never activates a migration or imports baseline handlers.

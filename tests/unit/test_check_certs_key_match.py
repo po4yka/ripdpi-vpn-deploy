@@ -291,7 +291,7 @@ def test_check_certs_resolves_exact_inventory_profiles_without_cohort_flags(
     repo = tmp_path / "repo"
     scripts = repo / "scripts"
     scripts.mkdir(parents=True)
-    for name in ("check-certs.sh", "deploy-controller.py", "fleet_inspection.py", "bootstrap_readiness.py",
+    for name in ("check-certs.sh", "deploy-controller.py", "public_site_inputs.py", "fleet_inspection.py", "bootstrap_readiness.py",
                  "sshd_bundle_source.py", "sshd_contexts.py", "sshd_transaction_limits.py", "transport_semantics.py"):
         shutil.copy2(ROOT / "scripts" / name, scripts / name)
     group_vars = repo / "ansible/group_vars"
