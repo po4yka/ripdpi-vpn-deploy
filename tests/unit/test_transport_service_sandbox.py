@@ -64,7 +64,10 @@ def test_public_tls_coordinator_can_inspect_cross_uid_nginx_workers():
     unit = (REPO_ROOT / 'ansible/roles/nginx-xhttp/templates/vpn-public-tls.service.j2').read_text()
     capabilities = next(line.split('=', 1)[1].split() for line in unit.splitlines()
                         if line.startswith('CapabilityBoundingSet='))
-    assert set(capabilities) == {'CAP_CHOWN', 'CAP_DAC_OVERRIDE', 'CAP_FOWNER', 'CAP_SYS_ADMIN', 'CAP_SYS_PTRACE'}
+    assert set(capabilities) == {
+        'CAP_CHOWN', 'CAP_DAC_OVERRIDE', 'CAP_FOWNER', 'CAP_NET_BIND_SERVICE',
+        'CAP_SYS_ADMIN', 'CAP_SYS_CHROOT', 'CAP_SYS_PTRACE',
+    }
 
 
 @pytest.mark.parametrize('sharing', [False, True])
