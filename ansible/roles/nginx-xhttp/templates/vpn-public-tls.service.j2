@@ -23,6 +23,7 @@ LockPersonality=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
 SystemCallArchitectures=native
-# Runtime adoption checks /proc identities of nginx workers with another UID.
-CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_SYS_ADMIN CAP_SYS_PTRACE
+# Candidate checks bind declared ports; adoption enters nginx's mount namespace
+# and checks /proc identities of workers with another UID.
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_NET_BIND_SERVICE CAP_SYS_ADMIN CAP_SYS_CHROOT CAP_SYS_PTRACE
 ReadWritePaths=/etc/letsencrypt /var/lib/letsencrypt /var/log/letsencrypt /var/lib/vpn-public-tls /etc/nginx/tls /etc/nginx/conf.d /etc/vpn-public-tls /var/log/nginx /var/lib/vpn-nginx-publication

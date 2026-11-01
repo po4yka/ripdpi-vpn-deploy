@@ -6,7 +6,7 @@ Managed HTTP-01 uses a separate public-tls transaction owner for the HTTP vhost 
 
 The full deployment keeps its ingress owner while a bounded controller DNS wait follows real HTTP preparation. Three consecutive samples from both public resolver views must match the Terraform-owned IPv4 and optional IPv6 for every certificate name. An auxiliary name may alias only the canonical name. Timeout uses ordinary ingress/firewall compensation; a separately applied DNS change remains operator-owned.
 
-The renewal coordinator requires `CAP_SYS_PTRACE` to inspect executable identities of nginx workers under another UID. The isolated Certbot issuer retains an empty capability set.
+The renewal coordinator requires `CAP_NET_BIND_SERVICE` for nginx configuration checks on privileged ports, `CAP_SYS_ADMIN` and `CAP_SYS_CHROOT` to enter nginx's mount namespace, and `CAP_SYS_PTRACE` to inspect worker executable identities under another UID. The isolated Certbot issuer retains an empty capability set.
 
 The durable committing decision retains the revocation operation/digest alongside its egress and firewall finish choices. Recovery requires the same request authority and passes it privately to outer-route completion; an absent or different authority cannot close that decision.
 The committing journal requires both finish flags and the explicit revocation field (null for ordinary changes). Older committing shapes refuse instead of being upgraded or given inferred authority.
