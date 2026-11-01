@@ -102,16 +102,16 @@ def fresh(value, now, max_age):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and -5 <= now - value <= max_age
 
 
-def query(origin, expression, now, fetcher):
+def query(origin, expression, clock, fetcher):
     result = fetcher(origin + "/api/v1/query?" + parse.urlencode({"query": expression}))
     if result.get("status") != "success" or result.get("data", {}).get("resultType") != "vector":
         raise Refusal("query")
     values = result["data"]["result"]
-    if len(values) != 1 or not fresh(float(values[0]["value"][0]), now, 150) or float(values[0]["value"][1]) != 1:
+    if len(values) != 1 or not fresh(float(values[0]["value"][0]), clock(), 150) or float(values[0]["value"][1]) != 1:
         raise Refusal("condition")
 
 
-def conditions(config, credentials, previous, now, fetcher=fetch, runner=subprocess.run):
+def conditions(config, credentials, previous, clock, fetcher=fetch, runner=subprocess.run):
     kind = config["kind"]
     if kind == "node":
         for unit in config["services"]:
@@ -126,27 +126,25 @@ def conditions(config, credentials, previous, now, fetcher=fetch, runner=subproc
         if not TOKEN.fullmatch(relay_auth):
             raise Refusal("relay-credential")
         if kind == "delivery":
-            started = time.monotonic()
             answer = fetcher(config["relay_origin"] + "/v1/delivery-canary", bearer=relay_auth, method="POST", timeout=35)
-            now += time.monotonic() - started
             if answer != {"status": "delivered"}:
                 raise Refusal("delivery-canary")
         receipt = fetcher(config["relay_origin"] + "/v1/receipts", bearer=relay_auth)
         if kind == "delivery":
             sequence = receipt.get("edit_sequence")
-            if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence <= previous.get("sequence", 0) or not fresh(receipt.get("edit_at"), now, 330) or not fresh(receipt.get("send_at"), now, 26 * 3600):
+            if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence <= previous.get("sequence", 0) or not fresh(receipt.get("edit_at"), clock(), 330) or not fresh(receipt.get("send_at"), clock(), 26 * 3600):
                 raise Refusal("delivery-receipt")
             return sequence
         # The canary timestamp is consumed once: a cached acknowledgement cannot
         # repeatedly prove a functioning rule -> Alertmanager -> relay pipeline.
         stamp = receipt.get("rule_to_relay_at")
-        if not fresh(stamp, now, 150) or stamp <= previous.get("sequence", 0):
+        if not fresh(stamp, clock(), 150) or stamp <= previous.get("sequence", 0):
             raise Refusal("pipeline-receipt")
     origin = config["prometheus_origin"]
     for node in config["expected_nodes"]:
-        query(origin, 'min((up{job="node-exporter",node="' + node + '"} == bool 1) * (time() - timestamp(up{job="node-exporter",node="' + node + '"}) < bool 150))', now, fetcher)
+        query(origin, 'min((up{job="node-exporter",node="' + node + '"} == bool 1) * (time() - timestamp(up{job="node-exporter",node="' + node + '"}) < bool 150))', clock, fetcher)
     if not panel_only:
-        query(origin, 'min((up{job="observability-alertmanager"} == bool 1) * (time() - timestamp(up{job="observability-alertmanager"}) < bool 150))', now, fetcher)
+        query(origin, 'min((up{job="observability-alertmanager"} == bool 1) * (time() - timestamp(up{job="observability-alertmanager"}) < bool 150))', clock, fetcher)
     rules = fetcher(origin + "/api/v1/rules")
     groups = rules.get("data", {}).get("groups", [])
     if rules.get("status") != "success" or not groups:
@@ -154,7 +152,7 @@ def conditions(config, credentials, previous, now, fetcher=fetch, runner=subproc
     evaluations = []
     for group in groups:
         evaluated = dt.datetime.fromisoformat(group["lastEvaluation"].replace("Z", "+00:00")).timestamp()
-        if not fresh(evaluated, now, 150) or not group.get("rules") or any(rule.get("health") != "ok" or rule.get("lastError") for rule in group["rules"]):
+        if not fresh(evaluated, clock(), 150) or not group.get("rules") or any(rule.get("health") != "ok" or rule.get("lastError") for rule in group["rules"]):
             raise Refusal("rule-evaluation")
         evaluations.append(evaluated)
     if panel_only:
@@ -180,9 +178,15 @@ def atomic_write(path, content, mode=0o600):
 
 def run(config, credentials, state_path, now=None, fetcher=fetch, runner=subprocess.run):
     now = time.time() if now is None else now
+    started = time.monotonic()
+
+    def clock():
+        # Include request and CPU-quota delays without following wall-clock jumps.
+        return now + time.monotonic() - started
+
     validate_config(config)
     previous = json.loads(state_path.read_text()) if state_path.exists() else {}
-    sequence = conditions(config, credentials, previous, now, fetcher, runner)
+    sequence = conditions(config, credentials, previous, clock, fetcher, runner)
     token = credential(credentials, "push-token").strip()
     if not TOKEN.fullmatch(token):
         raise Refusal("push-credential")
