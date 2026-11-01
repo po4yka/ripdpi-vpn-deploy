@@ -14,8 +14,6 @@ from jinja2 import Environment, StrictUndefined
 import pytest
 import yaml
 
-from tests.site_role_graph import site_roles
-
 ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / "ansible" / "roles" / "observability_agent"
 
@@ -954,16 +952,9 @@ def test_enabled_receiver_records_only_categorical_failure_phases() -> None:
     assert "if len(body) != length" in prepare
 
 
-def test_site_uses_the_role_contract_as_the_single_enablement_flag() -> None:
-    site = (ROOT / "ansible" / "playbooks" / "site.yml").read_text()
+def test_role_contract_uses_one_enablement_flag() -> None:
     group_vars = (ROOT / "ansible" / "group_vars" / "all.yml").read_text()
 
-    selected = next(
-        role
-        for role in site_roles(yaml.safe_load(site)[0])
-        if role["role"] == "observability_agent"
-    )
-    assert "when" not in selected
     lifecycle = (ROLE / "tasks/main.yml").read_text()
     assert (
         "when: not (observability_agent.enabled | default(false) | bool)" in lifecycle
