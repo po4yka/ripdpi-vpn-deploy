@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
@@ -84,6 +85,7 @@ def test_native_cache_recovery_has_one_bounded_source_and_exact_snapshot(tmp_pat
         "xray",
         "vpn",
         "xray_probe_client",
+        "observability_agent",
     ],
 )
 def test_rejects_data_plane_and_protocol_overrides(tmp_path: Path, key: str) -> None:
@@ -91,6 +93,90 @@ def test_rejects_data_plane_and_protocol_overrides(tmp_path: Path, key: str) -> 
 
     with pytest.raises(ValueError, match="non-allowlisted"):
         validator.validate(path)
+
+
+def test_accepts_owned_public_site_and_detects_content_changes(tmp_path):
+    site = tmp_path / "site"
+    site.mkdir(mode=0o700)
+    (site / "404.html").write_bytes(b"ordinary missing page")
+    (site / "index.html").write_bytes(b"public article")
+    validator.validate(write_yaml(tmp_path, {"nginx_xhttp_public_site_dir": str(site)}))
+    entries, before = validator.read_site(str(site))
+    assert entries["index.html"] == b"public article"
+    (site / "index.html").write_bytes(b"changed article")
+    assert validator.read_site(str(site))[1] != before
+
+
+@pytest.mark.parametrize("fault", ["relative", "missing-404", "root-link", "parent-link",
+                                  "file-link", "hardlink", "fifo", "writable", "hidden"])
+def test_rejects_unsafe_public_site_tree(tmp_path, fault):
+    site = tmp_path / "site"
+    site.mkdir(mode=0o700)
+    error = site / "404.html"
+    error.write_bytes(b"missing page")
+    if fault == "relative":
+        value = "relative-site"
+    elif fault == "missing-404":
+        error.unlink()
+        value = str(site)
+    elif fault in {"root-link", "parent-link"}:
+        link = tmp_path / "link"
+        link.symlink_to(site if fault == "root-link" else tmp_path, target_is_directory=True)
+        value = str(link if fault == "root-link" else link / "site")
+    else:
+        value = str(site)
+        if fault == "file-link":
+            (site / "article.html").symlink_to(error)
+        elif fault == "hardlink":
+            os.link(error, site / "article.html")
+        elif fault == "fifo":
+            os.mkfifo(site / "pipe")
+        elif fault == "writable":
+            error.chmod(0o666)
+        elif fault == "hidden":
+            (site / ".env").write_bytes(b"private data")
+    with pytest.raises(ValueError, match="public site"):
+        validator.validate(write_yaml(tmp_path, {"nginx_xhttp_public_site_dir": value}))
+
+
+def test_rejects_foreign_owned_public_site(tmp_path, monkeypatch):
+    site = tmp_path / "site"
+    site.mkdir(mode=0o700)
+    (site / "404.html").write_bytes(b"missing page")
+    uid = os.geteuid()
+    monkeypatch.setattr(os, "geteuid", lambda: uid + 1)
+    with pytest.raises(ValueError, match="public site"):
+        validator.read_site(str(site))
+
+
+def test_rejects_oversized_public_site_file(tmp_path):
+    site = tmp_path / "site"
+    site.mkdir(mode=0o700)
+    with (site / "404.html").open("wb") as stream:
+        stream.truncate(4 * 1024 * 1024 + 1)
+    with pytest.raises(ValueError, match="public site"):
+        validator.read_site(str(site))
+
+
+@pytest.mark.parametrize("limit", ["entries", "depth", "total-bytes"])
+def test_public_site_tree_limits_are_enforced(tmp_path, limit):
+    site = tmp_path / "site"
+    site.mkdir(mode=0o700)
+    (site / "404.html").write_bytes(b"missing page")
+    if limit == "entries":
+        for i in range(1024):
+            (site / f"page-{i}.html").write_bytes(b"page")
+    elif limit == "depth":
+        child = site
+        for _ in range(17):
+            child = child / "nested"
+            child.mkdir(mode=0o700)
+    else:
+        for i in range(4):
+            with (site / f"asset-{i}").open("wb") as stream:
+                stream.truncate(4 * 1024 * 1024)
+    with pytest.raises(ValueError, match="limit"):
+        validator.read_site(str(site))
 
 
 @pytest.mark.parametrize("document", [{}, [], None])

@@ -125,6 +125,10 @@ It never runs `site.yml` or prints secret values or rendered secret content.
 
 ## Command effects
 
+Full VPN deployment preserves independently managed monitoring components.
+Use the exact-host component commands below to install, rotate or remove an
+agent. Do not pass role mappings through ordinary deployment overrides.
+
 | Command | Effect and authority |
 |---|---|
 | `make observability-render` | In-memory local template render; no SSH or host facts, no rendered secrets on stdout. Host admission remains unverified. |

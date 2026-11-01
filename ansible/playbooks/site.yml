@@ -625,11 +625,6 @@
         name: node_manifest
         public: true
       tags: [manifest]
-    - name: Reconcile observability_agent runtime
-      ansible.builtin.import_role:
-        name: observability_agent
-        public: true
-      tags: [observability-agent, monitoring]
 
 - name: Publish and prove the SSH baseline after the VPN stack converges
   hosts: vpn

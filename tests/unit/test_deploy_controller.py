@@ -38,6 +38,7 @@ def workspace(tmp_path):
     for name in ("fleet_inspection.py", "deploy-source-identity.sh", "sshd_bundle_source.py", "sshd_contexts.py",
                  "sshd_transaction_limits.py",
                  "validate-ansible-extra-vars.py", "firewall_collector_ingress.py", "transport_semantics.py",
+                 "public_site_inputs.py",
                  "deploy-controller.py", "bootstrap_readiness.py",
                  "network-exposure-gate.py", "ci_deployment.py", "tailnet_management.py"):
         source = ROOT / "scripts" / name
@@ -747,6 +748,58 @@ print('{{"summary": {{"validation": "valid"}}, "plan": {{}}}}')
     result = invoke(workspace, target="dry-run", limit="node-one",
                     ANSIBLE_EXTRA_VARS_FILE=str(override))
     assert result.returncode != 0
+    assert not any(entry["program"] in {"ssh", "ansible-playbook", "audit-log.sh"}
+                   for entry in calls(workspace))
+
+
+@pytest.mark.parametrize("target", ["dry-run", "deploy"])
+def test_owned_site_is_snapshotted_for_publication_and_removed_afterward(workspace, target):
+    root = workspace["root"]
+    site = root.parent / "owned-site"
+    write(site / "404.html", "missing page")
+    write(site / "assets/style.css", "body { color: black; }")
+    override = write(root.parent / "site.yml", yaml.safe_dump({
+        "nginx_xhttp_public_site_dir": str(site)}))
+    record = root.parent / "published-site.json"
+    binary = Path(workspace["env"]["PATH"].split(os.pathsep)[0])
+    write(binary / "ansible-playbook", f"""#!{sys.executable}
+import json, pathlib, stat, sys, yaml
+play = json.loads(pathlib.Path(sys.argv[1]).read_text())
+files = play[0]['vars']['deployment_input_files']['node-one']
+override = next(pathlib.Path(p) for p in files if p.endswith('-overrides.yml'))
+site = pathlib.Path(yaml.safe_load(override.read_text())['nginx_xhttp_public_site_dir'])
+pathlib.Path({str(record)!r}).write_text(json.dumps({{
+    'path': str(site), 'page': (site / '404.html').read_text(),
+    'css': (site / 'assets/style.css').read_text(),
+    'directory_mode': stat.S_IMODE(site.stat().st_mode),
+    'file_mode': stat.S_IMODE((site / '404.html').stat().st_mode)}}))
+""", 0o700)
+    result = invoke(workspace, target=target, limit="node-one",
+                    ANSIBLE_EXTRA_VARS_FILE=str(override))
+    assert result.returncode == 0, result.stderr
+    published = json.loads(record.read_text())
+    assert published["page"] == "missing page"
+    assert published["css"] == "body { color: black; }"
+    assert published["directory_mode"] == 0o700 and published["file_mode"] == 0o600
+    assert Path(published["path"]) != site
+    assert not Path(published["path"]).exists()
+    assert (site / "404.html").read_text() == "missing page"
+
+
+def test_owned_site_change_after_precheck_refuses_before_host_contact(workspace):
+    root = workspace["root"]
+    site = root.parent / "owned-site"
+    write(site / "404.html", "missing page")
+    override = write(root.parent / "site.yml", yaml.safe_dump({
+        "nginx_xhttp_public_site_dir": str(site)}))
+    write(root / "scripts/check-certs.sh", f"""#!{sys.executable}
+from pathlib import Path
+Path({str(site / '404.html')!r}).write_text('replaced page')
+""", 0o700)
+    result = invoke(workspace, target="dry-run", limit="node-one",
+                    ANSIBLE_EXTRA_VARS_FILE=str(override))
+    assert result.returncode != 0
+    assert "operator public site changed" in result.stderr
     assert not any(entry["program"] in {"ssh", "ansible-playbook", "audit-log.sh"}
                    for entry in calls(workspace))
 

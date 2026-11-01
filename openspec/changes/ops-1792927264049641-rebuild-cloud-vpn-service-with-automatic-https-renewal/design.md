@@ -77,6 +77,11 @@ transaction. Hysteria has native ACME support in its pinned server release.
   credentials. The owner selected the private panel and provider notifications.
   Production and cloud observer admission remain explicit; no retired dedicated
   collector or old acceptance receipt is reused.
+- Keep agent installation, rotation and removal in the exact-host observability
+  lifecycle. Full VPN convergence must preserve that independently owned runtime.
+- Admit the operator-owned static site through one typed override. Snapshot its
+  bounded, owner-controlled regular files before convergence, reject links and
+  unsafe ancestry, and recheck the source tree before host writes.
 - SSH ownership schema 2 requires an explicit VPN or observer inventory section.
   Keep identical source, dual-path and rollback checks for both sections.
 - Allow 7200 seconds for a complete first-convergence or preview session on
