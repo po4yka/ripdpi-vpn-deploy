@@ -237,3 +237,44 @@ def test_panel_only_pipeline_has_real_fresh_conditions_without_relay_authority(i
             push.run(config, directory, directory / 'state', now=1000, fetcher=fetch, runner=runner)
         assert not any('/api/push/' in url for url in calls)
         assert ((directory / 'state').read_bytes() if (directory / 'state').exists() else None) == before
+
+
+@pytest.mark.parametrize('case', ['healthy', 'future-sample', 'stale-sample', 'future-rule', 'stale-rule'])
+def test_pipeline_freshness_tracks_elapsed_query_time(inputs, monkeypatch, case):
+    config, directory = inputs
+    config.update(kind='pipeline', notification_mode='panel-only', expected_nodes=['node-a', 'node-b', 'node-c'])
+    (directory / 'relay-auth-token').unlink()
+    elapsed = [0.0]
+    monkeypatch.setattr(push.time, 'monotonic', lambda: elapsed[0])
+    calls = []
+
+    def fetch(url, **kwargs):
+        if '/api/v1/query?' in url:
+            calls.append('query')
+            elapsed[0] += 3
+            stamp = 1000 + elapsed[0]
+            if case == 'future-sample': stamp += 6
+            if case == 'stale-sample': stamp -= 151
+            return {'status': 'success', 'data': {'resultType': 'vector', 'result': [{'value': [stamp, '1']}]}}
+        if url.endswith('/api/v1/rules'):
+            calls.append('rules')
+            elapsed[0] += 3
+            stamp = 1000 + elapsed[0] - 1
+            if case == 'future-rule': stamp = 1000 + elapsed[0] + 6
+            if case == 'stale-rule': stamp = 1000 + elapsed[0] - 151
+            return {'status': 'success', 'data': {'groups': [{
+                'lastEvaluation': dt.datetime.fromtimestamp(stamp, dt.UTC).isoformat(),
+                'rules': [{'health': 'ok'}],
+            }]}}
+        calls.append('push')
+        return {'ok': True}
+
+    state = directory / 'state'
+    if case == 'healthy':
+        assert push.run(config, directory, state, now=1000, fetcher=fetch) == {'sequence': 1011, 'last_success': 1000}
+        assert calls == ['query', 'query', 'query', 'rules', 'push']
+    else:
+        with pytest.raises(push.Refusal, match='condition' if case.endswith('sample') else 'rule-evaluation'):
+            push.run(config, directory, state, now=1000, fetcher=fetch)
+        assert calls == (['query'] if case.endswith('sample') else ['query', 'query', 'query', 'rules'])
+        assert not state.exists()
