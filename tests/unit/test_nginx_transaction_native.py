@@ -210,37 +210,59 @@ def test_real_nginx_complete_tls_boot_and_failed_activation_compensation():
         assert first.returncode == 0, first.stderr
         assert body() == "old"
         assert run("systemctl", "is-enabled", unit).stdout.strip() == "enabled"
-        # Run the real adoption checks inside the renewal service sandbox.
-        # Only paths and ExecStart are scoped to this owned nginx fixture.
+        # Keep the low-port check private, with the kernel's default threshold.
+        validation_config = base / 'validation-nginx.conf'
+        validation_config.write_text(
+            f'pid {runtime}/validation.pid;\nerror_log {logs}/validation.log;\n'
+            'events {}\nhttp { server { listen 127.0.0.1:80; } }\n'
+        )
+        validation_manifest = base / 'validation.json'
+        validation_manifest.write_text(json.dumps({
+            'bindings': [], 'credential_source': '', 'unit': unit,
+            'runtime_directories': [],
+            'validate_argv': ['/usr/sbin/nginx', '-t', '-c', str(validation_config)],
+        }))
+        # Exercise candidate validation and adoption in the actual unit policy.
         inspection = base / 'renewal-inspection.py'
         inspected = base / 'renewal-workers.json'
         inspection.write_text(
-            "import importlib.util,json,pwd\nfrom pathlib import Path\n"
+            "import importlib.util,json,pwd,subprocess\nfrom pathlib import Path\n"
             f"spec=importlib.util.spec_from_file_location('transaction',{str(helper)!r})\n"
             "m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)\n"
+            "assert int(Path('/proc/sys/net/ipv4/ip_unprivileged_port_start').read_text())>80\n"
+            f"validation=subprocess.run(['unshare','--mount','--propagation','private',"
+            f"'/usr/bin/python3',{str(helper)!r},'--validate',{str(validation_manifest)!r}],check=True)\n"
+            f"master=m.nginx_master({unit!r})\n"
+            "namespace=subprocess.run(['nsenter','--mount','--target',master[0],'/bin/true'],check=True)\n"
             f"workers=m.nginx_workers(m.nginx_master({unit!r}))\nm.wait_adoption({unit!r})\n"
             "assert workers\nuid=pwd.getpwnam('www-data').pw_uid\n"
             "for pid,_started in workers:\n"
             " status=Path('/proc',pid,'status').read_text()\n"
             " assert next(line.split()[1] for line in status.splitlines() if line.startswith('Uid:'))==str(uid)\n"
-            f"Path({str(inspected)!r}).write_text(json.dumps({{'workers':len(workers)}}))\n"
+            f"Path({str(inspected)!r}).write_text(json.dumps({{'workers':len(workers),"
+            "'validation_exit':validation.returncode,'namespace_exit':namespace.returncode}))\n"
         )
         renewal_policy = (ROOT / 'ansible/roles/nginx-xhttp/templates/vpn-public-tls.service.j2').read_text()
         renewal_policy = '\n'.join(
             f'ExecStart=/usr/bin/python3 {inspection}' if line.startswith('ExecStart=') else
             f'ReadWritePaths={base}' if line.startswith('ReadWritePaths=') else line
             for line in renewal_policy.splitlines()
-        ) + '\n'
-        renewal_unit_file.write_text(renewal_policy.replace(' CAP_SYS_PTRACE', ''))
-        run('systemctl', 'daemon-reload')
-        assert run('systemctl', 'start', renewal_unit, check=False).returncode != 0
-        assert not inspected.exists()
-        assert 'PermissionError' in run('journalctl', '-u', renewal_unit, '--no-pager', '-o', 'cat').stdout
-        run('systemctl', 'reset-failed', renewal_unit)
+        ) + '\nPrivateNetwork=true\n'
+        for missing in ('CAP_SYS_PTRACE', 'CAP_NET_BIND_SERVICE', 'CAP_SYS_CHROOT'):
+            renewal_unit_file.write_text(renewal_policy.replace(' ' + missing, ''))
+            run('systemctl', 'daemon-reload')
+            refused = run('systemctl', 'start', renewal_unit, check=False)
+            assert refused.returncode != 0, missing
+            assert not inspected.exists(), missing
+            if missing == 'CAP_SYS_PTRACE':
+                assert 'PermissionError' in run('journalctl', '-u', renewal_unit, '--no-pager', '-o', 'cat').stdout
+            run('systemctl', 'reset-failed', renewal_unit)
         renewal_unit_file.write_text(renewal_policy)
         run('systemctl', 'daemon-reload')
         run('systemctl', 'start', renewal_unit)
-        assert json.loads(inspected.read_text())['workers'] > 0
+        observed = json.loads(inspected.read_text())
+        assert observed['workers'] > 0
+        assert observed['validation_exit'] == observed['namespace_exit'] == 0
         prior = snapshot()
         fifo = config / "unrelated-fifo"
         os.mkfifo(fifo, 0o600)
