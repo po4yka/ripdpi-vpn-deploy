@@ -40,6 +40,18 @@ transaction. Hysteria has native ACME support in its pinned server release.
 - Limit observer SSH forwarding to the local dashboard destination, with no
   agent or remote forwarding. Use the existing recoverable SSH transaction;
   do not add an independent SSH policy writer to the observer role.
+- Apply observer kernel prerequisites through one exact-host operator Ansible
+  configuration outside the Kuma role. Use a dedicated inet table with the
+  reviewed IPv4 TCP IP-options guard and a separate persistent MPTCP policy.
+  Bind existing ruleset loaders and their configuration before installation.
+  Order the guard after those loaders and before network preparation; normal
+  loader reloads must retain it. Never flush or replace foreign tables. Identify
+  existing MPTCP socket owners, plan any required native service maintenance,
+  restore previously running services, and require zero MPTCP sockets before
+  acceptance. Keep SSH, private ingress, monitor authority and resource limits.
+  Test real packet boundaries and seal all prerequisite files in encrypted
+  operator recovery. Record boot ordering as structural evidence until a real
+  boot tests it; do not report the mitigation as an installed kernel patch.
 - Preserve newlines in rendered Xray postrotate shell in both Ansible and local
   rendering. Test actual shell syntax and failure propagation.
 - Reboot only the observer after its encrypted backup and independent management
