@@ -125,7 +125,7 @@
     "net-snmp": "~3.26.1",
     "node-cloudflared-tunnel": "~1.0.10",
     "node-radius-utils": "~1.2.0",
-    "nodemailer": "10.0.6",
+    "nodemailer": "10.1.4",
     "nostr-tools": "~2.20.0",
     "notp": "~2.0.3",
     "openid-client": "~5.7.1",
