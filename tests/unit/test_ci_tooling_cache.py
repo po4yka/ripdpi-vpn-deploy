@@ -30,7 +30,7 @@ OLD_CONTEXTS = {
 def test_native_package_pins_use_the_immutable_ubuntu_snapshot_with_exact_version_fallback():
     job = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]["transport-runtime-acceptance"]
     script = next(step["run"] for step in job["steps"] if "apt-get" in step.get("run", ""))
-    assert script.count("--snapshot 20261026T120000Z") == 2
+    assert script.count("--snapshot 20261101T120000Z") == 2
     assert "APT::Update::Error-Mode=any" in script
     assert "Acquire::Retries=5" in script
     for pin in ("nftables=1.0.9-1ubuntu0.1", "libnftables1=1.0.9-1ubuntu0.1",

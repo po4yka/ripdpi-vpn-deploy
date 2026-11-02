@@ -724,14 +724,14 @@ jobs:
             apt_options=(-o Acquire::Retries=5)
             snapshot_ok=0
             for attempt in 1 2 3; do
-              if apt-get "${apt_options[@]}" -o APT::Update::Error-Mode=any --snapshot 20261026T120000Z update; then
+              if apt-get "${apt_options[@]}" -o APT::Update::Error-Mode=any --snapshot 20261101T120000Z update; then
                 snapshot_ok=1
                 break
               fi
               sleep $((attempt * 10))
             done
             if [ "$snapshot_ok" = 1 ]; then
-              apt_options+=(--snapshot 20261026T120000Z)
+              apt_options+=(--snapshot 20261101T120000Z)
             else
               echo "::warning::Ubuntu snapshot mirror unavailable; using the live archive with exact version pins"
               apt-get "${apt_options[@]}" update
