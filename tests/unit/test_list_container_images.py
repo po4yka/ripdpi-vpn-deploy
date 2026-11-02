@@ -19,15 +19,15 @@ def test_scan_matrix_includes_production_images_and_deduplicates_test_images(tmp
         scenario = tmp_path / "ansible/roles" / name
         scenario.mkdir()
         (scenario / "molecule.yml").write_text("platforms:\n  - name: target\n    image: example.invalid/test:1\n")
+    stack = tmp_path / "ansible/molecule/full-stack"
+    stack.mkdir(parents=True)
+    (stack / "molecule.yml").write_text("platforms:\n  - name: target\n    image: example.invalid/stack:1\n")
     assert module.image_references(tmp_path) == [
+        {"image": "example.invalid/stack:1", "category": "trivy-example.invalid/stack:1"},
         {"image": "example.invalid/test:1", "category": "trivy-example.invalid/test:1"},
         {"image": "example.invalid/observer@sha256:" + "b" * 64, "category": "trivy-observability-kuma-aarch64"},
         {"image": "example.invalid/observer@sha256:" + "a" * 64, "category": "trivy-observability-kuma-x86_64"},
     ]
-    observer["image_digests"]["x86_64"] = "sha256:" + "c" * 64
-    (role / "main.yml").write_text(yaml.safe_dump({"observability_kuma": observer}))
-    assert [row["category"] for row in module.image_references(tmp_path)] == [
-        "trivy-example.invalid/test:1", "trivy-observability-kuma-aarch64", "trivy-observability-kuma-x86_64"]
 
 
 

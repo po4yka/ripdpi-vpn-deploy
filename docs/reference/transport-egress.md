@@ -106,3 +106,10 @@ Nginx adoption receipts now require schema 2 ownership and bounded digest-only p
 Watchdog recovery for Xray and Hysteria goes through the running root controller. A successful request changes only its selected frontend PID; mappings and the other frontend retain their PIDs. The requester checks actual root controller identity, private receipt binding and current readiness under one deadline. Unrelated drift cannot count as targeted recovery, and failure has no direct-restart fallback. The watchdog service budget includes both enabled protected requests at the maximum supported timeout.
 
 Node-local masquerade resolution is scoped to Hysteria with a private read-only hosts bind that participates in frontend rollback. Nginx never changes global `/etc/hosts`; public site pages/assets share its typed publication and compensation. Host-NSS verification remains separate from independently authenticated public DNS/client acceptance.
+
+
+The authenticated SOCKS5 UDP ASSOCIATE reply selects the gateway relay port.
+The normalizer requires the exact configured backend IP and a nonzero returned
+port, then sends UDP to that endpoint while retaining the control connection.
+The relay port is independent of the fixed TCP control port. Frontend source
+pinning, destination checks and local UDP source-pool limits still apply.

@@ -78,3 +78,10 @@ proof. Successful source checks alone MUST NOT accept deployment.
 
 - **WHEN** reviewed security updates are deployed
 - **THEN** fresh target checks, encrypted actual configuration capture and an offsite restore MUST confirm the updated service scope.
+
+
+#### Scenario: Authenticated gateway returns an independent UDP relay
+
+- **WHEN** the reviewed Xray gateway returns an ephemeral UDP ASSOCIATE port
+- **THEN** the normalizer MUST use that nonzero port at the exact configured backend IP while keeping the authenticated control socket, recipient source pinning and destination policy.
+- **AND** a foreign relay address or zero port MUST refuse before UDP delivery while retaining the existing quarantine and capacity rules.

@@ -409,6 +409,11 @@
         state: started
         daemon_reload: true
 
+    - name: Validate nginx with the observer startup policy
+      ansible.builtin.command:
+        argv: [/usr/bin/systemd-analyze, verify, nginx.service]
+      changed_when: false
+
     - name: Install observer systemd unit
       ansible.builtin.template:
         src: observability-kuma.service.j2

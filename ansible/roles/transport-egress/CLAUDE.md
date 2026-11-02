@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+SOCKS UDP uses the authenticated reply's nonzero relay port at the exact
+configured backend address. Xray allocates that port per association; it is
+not the TCP control port. The normalizer keeps the control socket and all
+recipient source/destination guards while using that returned endpoint.
+
 Runtime probes use the watchdog secret's canary URL and expected HTTP status. The default status is 204 when no value is supplied.
 
 Consumer admission streams its fixed helper sources with the private request on stdin. The small launcher pins each source digest and path before any module executes; complete sources must not enter a command argument, which has a separate Linux size limit.

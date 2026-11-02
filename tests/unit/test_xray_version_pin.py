@@ -92,6 +92,14 @@ def test_actual_cli_refuses_repository_pin_outside_production_allowlist(tmp_path
         # Upstream prereleases carry plain tags, so a tag-shape check cannot refuse them.
         ({"env": "prod", "xray": {"version": "v26.10.17"}}, False),
         ({"env": "staging", "xray": {"version": "v26.10.17"}}, True),
+        ({"env": "p0-upcloud", "xray": {"version": "v26.10.17"}}, False),
+        ({"env": "p1-scaleway", "xray": {"version": "v26.10.17"}}, False),
+        ({"env": "p2-vultr", "xray": {"version": "v26.10.17"}}, False),
+        ({"env": "unclassified", "xray": {"version": "v26.10.17"}}, False),
+        ({"env": "prod-staging", "xray": {"version": "v26.10.17"}}, False),
+        ({"env": "canary", "xray": {"version": "v26.10.17"}}, True),
+        ({"env": "ci-staging-fixture", "xray": {"version": "v26.10.17"}}, True),
+        ({"env": "p0-upcloud", "xray": {"version": "v26.10.31"}}, True),
     ],
 )
 def test_runtime_acquisition_admits_only_reviewed_production_pins(variables, admitted):

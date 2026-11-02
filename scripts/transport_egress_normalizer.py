@@ -634,9 +634,9 @@ class Normalizer:
             _frame(connection, lambda data: _expected(data, b"\x01\x00"), deadline)
             connection.sendall(upstream_request(command, host, port))
             _, address, bound_port = _frame(connection, upstream_reply, deadline)
-            if command == 3 and (address != backend["address"] or bound_port != backend["port"]):
+            if command == 3 and (address != backend["address"] or not bound_port):
                 raise WireError("unexpected-upstream-relay")
-            return connection, backend
+            return connection, (address, bound_port)
         except (OSError, ValueError):
             connection.close()
             raise NormalizerError("upstream-unavailable") from None
@@ -727,9 +727,9 @@ class Normalizer:
         front_port = upstream_port = None
         try:
             front, front_port = self.front_pools[item["name"]].acquire()
-            backend_control, backend = self._backend(item, 3)
+            backend_control, relay = self._backend(item, 3)
             upstream, upstream_port = self.back_pools[item["backend"]].acquire()
-            upstream.connect((backend["address"], backend["port"]))
+            upstream.connect(relay)
             control.sendall(reply(item["address"], front_port))
             control.setblocking(False)
             backend_control.setblocking(False)

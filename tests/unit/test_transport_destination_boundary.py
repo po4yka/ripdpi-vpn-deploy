@@ -220,7 +220,19 @@ class WireGateway:
                 if error.errno != errno.EADDRINUSE:
                     raise
             else:
-                self.tcp, self.udp, self.port = tcp, udp, port
+                # Keep the control UDP port reserved while the kernel selects
+                # a different relay port, then release that reservation.
+                with udp:
+                    relay = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    try:
+                        relay.bind(("127.0.0.1", 0))
+                    except OSError:
+                        relay.close()
+                        tcp.close()
+                        raise
+                self.tcp, self.udp, self.port = tcp, relay, port
+                self.relay_address = "127.0.0.1"
+                self.relay_port = relay.getsockname()[1]
                 break
         else:
             raise RuntimeError("fixture-gateway-port-exhausted")
@@ -258,7 +270,7 @@ class WireGateway:
                 connection.sendall(b"\x01\x00")
                 _, command, host, port = normalizer._frame(connection, wire.request)
                 self.records.append((command, host, port))
-                connection.sendall(wire.reply("127.0.0.1", self.port))
+                connection.sendall(wire.reply(self.relay_address, self.relay_port) if command == 3 else wire.reply("127.0.0.1", self.port))
                 while not self.stop.is_set():
                     data = connection.recv(16384)
                     if not data:
@@ -291,7 +303,7 @@ class WireGateway:
             worker.join(0.2)
 
 
-def test_gateway_reserves_tcp_and_udp_on_one_unoccupied_port(monkeypatch):
+def test_gateway_reserves_independent_udp_relay_and_closes_colliding_candidates(monkeypatch):
     original_bind = socket.socket.bind
     owned = []
     blocked = []
@@ -317,7 +329,7 @@ def test_gateway_reserves_tcp_and_udp_on_one_unoccupied_port(monkeypatch):
     try:
         gateway = WireGateway()
         assert gateway.port != blocked[0]
-        assert gateway.tcp.getsockname()[1] == gateway.udp.getsockname()[1]
+        assert gateway.tcp.getsockname()[1] != gateway.udp.getsockname()[1]
         assert owned[0].fileno() == -1
     finally:
         if gateway is not None:
@@ -604,3 +616,19 @@ def test_disconnected_peer_refusal_releases_connection_and_worker():
         assert not exhausted
     finally:
         connection.close()
+
+
+@pytest.mark.parametrize("address,port", [("127.0.0.2", None), ("::1", None), ("127.0.0.1", 0)])
+def test_udp_relay_refuses_foreign_address_or_zero_port(address, port):
+    with running() as (_, value, _, gateway):
+        gateway.relay_address = address
+        if port is not None:
+            gateway.relay_port = port
+        control = auth(value["listeners"][0]["port"], value["listeners"][0])
+        try:
+            control.sendall(wire.upstream_request(3, "0.0.0.0", 0))
+            with pytest.raises(wire.WireError, match="control-closed"):
+                normalizer._frame(control, wire.upstream_reply)
+        finally:
+            control.close()
+        assert gateway.records == [(3, "0.0.0.0", 0)]

@@ -837,3 +837,21 @@ def test_boot_address_parser_refuses_missing_wildcard_or_multiple_listeners(tmp_
     path.write_text(listener)
     with pytest.raises(ValueError):
         load_address_waiter().listener_address(path)
+
+
+def test_render_check_sends_only_observer_vhost_to_nginx(monkeypatch, tmp_path):
+    import shutil
+
+    spec = importlib.util.spec_from_file_location("check_templates", ROOT / "scripts/check-templates-render.py")
+    checker = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(checker)
+    templates = tmp_path / "ansible/roles/observability_kuma/templates"
+    templates.mkdir(parents=True)
+    for name in ["observability-kuma.conf.j2", "observability-kuma-nginx-start.conf.j2"]:
+        shutil.copyfile(ROLE / "templates" / name, templates / name)
+    monkeypatch.setattr(checker, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(checker, "ROLES_DIR", tmp_path / "ansible/roles")
+    checked = []
+    monkeypatch.setattr(checker, "validate_nginx", lambda text, label: checked.append(label))
+    assert checker.main() == 0
+    assert checked == ["ansible/roles/observability_kuma/templates/observability-kuma.conf.j2"]

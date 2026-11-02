@@ -191,7 +191,9 @@ guards:
 1. Bump `xray.version` in the secrets schema and SOPS files only when
    the target tag is GitHub-tagged Latest, not Pre-release. Production
    deploys refuse any version outside `xray_runtime_production_versions`
-   (`ansible/roles/xray-runtime/defaults/main.yml`) before download. Upstream
+   (`ansible/roles/xray-runtime/defaults/main.yml`) before download. This includes
+   named fleet environments and unknown names. Only explicit staging, canary
+   and CI namespaces admit qualification pins outside that list. Upstream
    prereleases carry plain tags, so this reviewed list, not the tag shape,
    is the machine gate. Add a version only after its staging soak, and keep
    the repository pin in it (`scripts/check-xray-version-pin.py` checks this).
