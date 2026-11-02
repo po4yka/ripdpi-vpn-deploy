@@ -1,0 +1,34 @@
+{
+  "producer_revision": "a39c9a574ace93c7e8e024828aa6fda72817c172",
+  "scope": "Historical accepted file envelope; no native traffic claim",
+  "generation_id": "00000000-0000-4000-8000-000000000001",
+  "files": {
+    "runner.py": "# Historical generation fixture; filesystem acceptance only.\n",
+    "config.json": "{\"expected_runtime\": {\"sing_box\": \"1.14.3\"}, \"provenance\": {\"client_generation_id\": \"00000000-0000-4000-8000-000000000002\", \"controller_revision\": \"a39c9a574ace93c7e8e024828aa6fda72817c172\", \"public_profile_digest\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"runner_sha256\": \"b52ea8dd4672327f62dad3c41669a67f3e3995ec82aa574de87538476b4fe866\", \"vantage\": \"external\"}, \"schema_version\": 2, \"sentinel\": \"fixture-sentinel\", \"sing_box\": {\"config\": \"/etc/vpn-liveness/generations/00000000-0000-4000-8000-000000000001/profiles/sing-box.json\", \"profiles\": {\"p0-reality\": [18080]}}, \"target_identity\": {\"applied_at\": 1700000000, \"deployable_digest\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"inventory_alias\": \"vpn-p0-fixture\", \"public_profile_digest\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"public_service_address_sha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"required_profiles\": [\"p0-reality\"], \"runner_sha256\": \"b52ea8dd4672327f62dad3c41669a67f3e3995ec82aa574de87538476b4fe866\", \"source_revision\": \"a39c9a574ace93c7e8e024828aa6fda72817c172\"}}\n",
+    "metadata.json": "{\"generation_id\": \"00000000-0000-4000-8000-000000000001\", \"provenance\": {\"client_generation_id\": \"00000000-0000-4000-8000-000000000002\", \"controller_revision\": \"a39c9a574ace93c7e8e024828aa6fda72817c172\", \"public_profile_digest\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"runner_sha256\": \"b52ea8dd4672327f62dad3c41669a67f3e3995ec82aa574de87538476b4fe866\", \"vantage\": \"external\"}, \"required_profiles\": [\"p0-reality\"], \"ssh_user\": \"deploy\", \"target_identity\": {\"applied_at\": 1700000000, \"deployable_digest\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"inventory_alias\": \"vpn-p0-fixture\", \"public_profile_digest\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"public_service_address_sha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"required_profiles\": [\"p0-reality\"], \"runner_sha256\": \"b52ea8dd4672327f62dad3c41669a67f3e3995ec82aa574de87538476b4fe866\", \"source_revision\": \"a39c9a574ace93c7e8e024828aa6fda72817c172\"}}\n",
+    "profiles/sing-box.json": "{\"outbounds\": [{\"type\": \"direct\"}]}\n"
+  },
+  "receipt": {
+    "generation_id": "00000000-0000-4000-8000-000000000001",
+    "status": "committed",
+    "candidate_digest": "277c76bde66ba09db571bca551de701347ea0cb5d937e83456b49560ae475c10",
+    "runner_sha256": "b52ea8dd4672327f62dad3c41669a67f3e3995ec82aa574de87538476b4fe866",
+    "provenance": {
+      "controller_revision": "a39c9a574ace93c7e8e024828aa6fda72817c172",
+      "runner_sha256": "b52ea8dd4672327f62dad3c41669a67f3e3995ec82aa574de87538476b4fe866",
+      "client_generation_id": "00000000-0000-4000-8000-000000000002",
+      "public_profile_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "vantage": "external"
+    },
+    "target_identity": {
+      "inventory_alias": "vpn-p0-fixture",
+      "public_service_address_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "deployable_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "applied_at": 1700000000,
+      "required_profiles": ["p0-reality"],
+      "source_revision": "a39c9a574ace93c7e8e024828aa6fda72817c172",
+      "runner_sha256": "b52ea8dd4672327f62dad3c41669a67f3e3995ec82aa574de87538476b4fe866",
+      "public_profile_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  }
+}
