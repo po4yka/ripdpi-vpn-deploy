@@ -1,0 +1,28 @@
+---
+name: pr-title
+
+# A title or description edit reruns only this check. In ci.yml the same edit
+# replaced the complete running CI plan for an unchanged head commit.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-title:
+    name: PR title
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Validate PR title and commit subjects
+        run: python3 scripts/check-pr-title.py

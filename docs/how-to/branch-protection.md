@@ -28,18 +28,21 @@ maintainer joins, update the review policy before relying on independent review.
 | `ci.yml` | `required checks` | GitHub Actions |
 | `codeql.yml` | `codeql (python)` | GitHub Actions |
 | `codeql.yml` | `codeql (actions)` | GitHub Actions |
+| `pr-title.yml` | `PR title` | GitHub Actions |
 
 The CI aggregate requires every selected job to pass. It rejects missing jobs,
 failed selection, malformed plans, failures, cancellations, and unexpected skips.
 Only planned, unselected jobs can be skipped. It includes secret checks,
-validators, task contracts, PR-title validation, and protective workflows.
+validators, task contracts, and protective workflows.
 Do not add those child jobs as duplicate branch requirements. Update the JSON
-configuration if an aggregate or CodeQL context is renamed. Keep the GitHub
+configuration if an aggregate, CodeQL or PR title context is renamed. Keep the GitHub
 Actions source binding; an identically named result from another app is not enough.
 
 The PR title and every commit subject in the PR must use Conventional Commit
 syntax, for example `ci: improve repository policy`, without `Co-authored-by`
-trailers. CI rechecks the title on PR edits and the commit range on every push.
+trailers. `pr-title.yml` rechecks the title on PR edits and the commit range on
+every push. It is a separate workflow so that a title or description edit does
+not cancel and restart the complete CI plan for an unchanged head commit.
 Dependabot uses the `chore` prefix. Rebase merging lands each PR commit on
 `main` unchanged, so each one is a release-please input; GitHub removes merged
 head branches. Auto-merge remains available when requirements pass.

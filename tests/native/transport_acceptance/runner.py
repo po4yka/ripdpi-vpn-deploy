@@ -52,14 +52,19 @@ SUITES = (
 )
 
 
+# Core suites run as two CI plans. CI medians in 2026-11: completion 12.4 minutes,
+# lifecycle 8.4, hopping 0.8. Each plan starts on a fresh runner with its own preflight.
+CORE_PLANS = {"completion": "core-1", "lifecycle": "core-2", "hopping": "core-2"}
+
+
 def suite_commands(plan):
     """Fixed complete CI plans; the local default executes their entire union."""
-    if plan not in {"all", "core", "recovery-1", "recovery-2", "recovery-3", "recovery-4"}:
+    if plan not in {"all", "core-1", "core-2", "recovery-1", "recovery-2", "recovery-3", "recovery-4"}:
         raise RuntimeError("native-plan-refused")
     commands = []
     for name, paths in SUITES:
         if name != "compensation":
-            if plan in {"all", "core"}:
+            if plan in {"all", CORE_PLANS[name]}:
                 commands.append((name, paths, []))
             continue
         for group in (1, 2, 3, 4):
@@ -643,7 +648,8 @@ def main():
     plan = os.environ.get("TRANSPORT_NATIVE_PLAN", "all")
     commands = suite_commands(plan)
     executions = commands
-    if plan in {"all", "core"}:
+    # The DHCPv6 preflight fails fast before the plan that owns hopping.
+    if plan in {"all", CORE_PLANS["hopping"]}:
         executions = [("dhcpv6-preflight", ["tests/native/transport_acceptance/test_dhcpv6.py"], []), *commands]
     evidence["plan"] = plan
     evidence["phase"] = "prerequisites"

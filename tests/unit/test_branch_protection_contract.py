@@ -75,7 +75,7 @@ def test_policy_has_separate_integrity_ci_and_tag_rules():
     assert checks['strict_required_status_checks_policy'] is True
     assert checks['required_status_checks'] == [
         {'context': c, 'integration_id': 15368}
-        for c in ('required checks', 'codeql (python)', 'codeql (actions)')]
+        for c in ('required checks', 'codeql (python)', 'codeql (actions)', 'PR title')]
     assert tags['target'] == 'tag' and tags['bypass_actors'] == []
     assert tags['conditions']['ref_name'] == {'include': ['refs/tags/vpnd-v*'], 'exclude': []}
     assert {r['type'] for r in tags['rules']} == {'update', 'deletion'}
