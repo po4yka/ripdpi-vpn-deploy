@@ -297,7 +297,12 @@ is missing evidence, separately from an observed inactive or failed service.
 
 ## Independent Kuma monitoring and Telegram evidence
 
-Kuma is pinned to stable 2.5.5 architecture-specific manifests in role defaults.
+Kuma 2.5.9 is pinned to scanned architecture-specific child manifests in role
+defaults. The build source is `images/observability-kuma`; the publisher records
+the separate provenance index. Production and test images share the scan gate,
+with distinct stable categories for the observer architectures. The private
+panel image omits unused notification tooling. Restore admits the exact current
+image and the explicitly retained previous image for that architecture.
 Its UI is host-loopback only on port 13001, reached through an already approved
 authenticated operator path. The private HTTPS 9444 vhost permits exact enrolled
 source addresses and GET push paths only: no UI, setup, websocket administration,

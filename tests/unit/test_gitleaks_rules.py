@@ -101,11 +101,13 @@ def test_gitleaks_history_ignores_code_identifier_false_positive(tmp_path: Path)
 
 
 @pytest.mark.parametrize("case", ["public-pin", "different-value", "different-path", "different-key"])
+@pytest.mark.parametrize("digest", [
+    "23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae",
+    "e4bd9119f50ae7c41658b1abd0679ae06f98bd864a2907ff33f2f2cf7081b214",
+])
 @pytest.mark.usefixtures("isolated_synthetic_git_config")
-def test_xray_public_digest_exception_is_exact(tmp_path: Path, case: str) -> None:
+def test_xray_public_digest_exception_is_exact(tmp_path: Path, case: str, digest: str) -> None:
     repo = _temporary_repo(tmp_path)
-    pin = yaml.safe_load((REPO_ROOT / ".github/actions/install-xray/action.yml").read_text())
-    digest = pin["runs"]["steps"][0]["env"]["XRAY_SHA256"]
     if case == "different-value":
         digest = digest[:-1] + ("a" if digest[-1] != "a" else "b")
     path = ".github/actions/install-xray/action.yml" if case != "different-path" else "other.yml"

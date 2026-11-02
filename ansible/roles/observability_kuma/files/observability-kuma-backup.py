@@ -174,7 +174,12 @@ def restore(config, credentials, identity):
     directory = private_directory(config['directory'])
     archive = private_regular(directory / (identity + '.tar.age'))
     manifest = json.loads(private_regular(directory / (identity + '.json')).read_text())
-    if manifest['schema_version'] != 1 or archive_digest(archive) != manifest['sha256'] or not re.fullmatch(r'louislam/uptime-kuma@sha256:[a-f0-9]{64}', manifest['image']):
+    allowed = config['restore_images']
+    if (not isinstance(allowed, list) or len(allowed) != 2 or
+            any(not isinstance(ref, str) or not re.fullmatch(r'[a-z0-9][a-z0-9._/-]*@sha256:[a-f0-9]{64}', ref) for ref in allowed) or
+            len(set(allowed)) != 2 or config['image'] not in allowed):
+        raise ValueError('restore-image-authority')
+    if manifest['schema_version'] != 1 or archive_digest(archive) != manifest['sha256'] or manifest['image'] not in allowed:
         raise ValueError('archive-integrity')
     private_directory(RESTORES)
     if shutil.disk_usage(RESTORES).free < MAX_DATA + 5 * 1024**3:

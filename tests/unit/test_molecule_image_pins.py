@@ -1,4 +1,6 @@
+import json
 import os
+import shutil
 import re
 import subprocess
 from pathlib import Path
@@ -38,27 +40,30 @@ def test_molecule_base_images_use_the_verified_scan_clean_digests() -> None:
 
 def test_image_scan_sarif_category_survives_a_digest_repin(tmp_path: Path) -> None:
     workflow = yaml.safe_load((ROOT / ".github/workflows/image-scan.yml").read_text())
-    steps = {step.get("name"): step for step in workflow["jobs"]["scan"]["steps"]}
-    derive = steps["Derive digest-free SARIF category"]
-    upload = steps["Upload Trivy SARIF results"]
-    assert (
-        upload["with"]["category"] == "${{ steps.%s.outputs.category }}" % derive["id"]
-    )
-
-    categories = set()
-    for digest in (next(iter(digests)) for digests in EXPECTED_DIGESTS.values()):
-        for image in EXPECTED_DIGESTS:
-            output = tmp_path / "github-output"
-            subprocess.run(
-                ["bash", "-c", derive["run"]],
-                check=True,
-                env={
-                    **os.environ,
-                    "IMAGE": f"{image}@sha256:{digest}",
-                    "GITHUB_OUTPUT": str(output),
-                },
-            )
-            categories.add(output.read_text())
-            output.unlink()
-
-    assert categories == {f"category=trivy-{image}\n" for image in EXPECTED_DIGESTS}
+    scan = workflow["jobs"]["scan"]
+    upload = next(step for step in scan["steps"] if step.get("name") == "Upload Trivy SARIF results")
+    assert upload["with"]["category"] == "${{ matrix.category }}"
+    assert scan["strategy"]["matrix"]["include"] == "${{ fromJson(needs.enumerate-images.outputs.matrix) }}"
+    collect = next(step for step in workflow["jobs"]["enumerate-images"]["steps"] if step.get("id") == "images")
+    (tmp_path / "scripts").mkdir()
+    shutil.copyfile(ROOT / "scripts/list-container-images.py", tmp_path / "scripts/list-container-images.py")
+    defaults = tmp_path / "ansible/roles/observability_kuma/defaults"
+    defaults.mkdir(parents=True)
+    scenario = tmp_path / "ansible/molecule/full-stack"
+    scenario.mkdir(parents=True)
+    expected = {"trivy-" + image for image in EXPECTED_DIGESTS}
+    expected.update({"trivy-observability-kuma-aarch64", "trivy-observability-kuma-x86_64"})
+    for digest in ["a" * 64, "b" * 64]:
+        (scenario / "molecule.yml").write_text(yaml.safe_dump({"platforms": [
+            {"image": image + "@sha256:" + digest} for image in EXPECTED_DIGESTS]}))
+        (defaults / "main.yml").write_text(yaml.safe_dump({"observability_kuma": {
+            "image_repository": "example.invalid/observer", "image_digests": {
+                "aarch64": "sha256:" + digest, "x86_64": "sha256:" + digest}}}))
+        output = tmp_path / "github-output"
+        subprocess.run(["bash", "-c", collect["run"]], cwd=tmp_path, check=True,
+            env={**os.environ, "GITHUB_OUTPUT": str(output)})
+        matrix = json.loads(output.read_text().removeprefix("matrix="))
+        assert len(matrix) == 4
+        assert {row["category"] for row in matrix} == expected
+        assert all(row["image"].endswith("@sha256:" + digest) for row in matrix)
+        output.unlink()

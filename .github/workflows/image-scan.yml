@@ -11,7 +11,7 @@ permissions:
 jobs:
   enumerate-images:
     timeout-minutes: 5
-    name: enumerate base images
+    name: enumerate container images
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -22,23 +22,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Collect base images from molecule scenarios
+      - uses: ./.github/actions/setup-ci-python
+      - name: Collect test and production images
         id: images
-        run: |
-          mapfile -t files < <(find ansible/roles ansible/molecule -path '*/molecule.yml' -type f)
-
-          if [ "${#files[@]}" -eq 0 ]; then
-            images='["__none__"]'
-          else
-            images=$(awk '/image:/ {print $2}' "${files[@]}" \
-              | grep -v '^true$' \
-              | sort -u \
-              | jq -R -s -c 'split("\n") | map(select(length > 0))')
-            if [ "${images}" = "[]" ]; then
-              images='["__none__"]'
-            fi
-          fi
-          echo "matrix=${images}" >> "$GITHUB_OUTPUT"
+        run: echo "matrix=$(python3 scripts/list-container-images.py)" >> "$GITHUB_OUTPUT"
 
   scan:
     timeout-minutes: 15
@@ -51,28 +38,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: ${{ fromJson(needs.enumerate-images.outputs.matrix) }}
+        include: ${{ fromJson(needs.enumerate-images.outputs.matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
 
-      - name: No Molecule base images configured
-        if: matrix.image == '__none__'
-        run: echo "No Molecule base images are configured."
-
-      # Code scanning closes an alert only when a later upload in the same
-      # category omits it. A digest in the category would orphan the previous
-      # digest's alerts on every repin, so key the category by image name.
-      - name: Derive digest-free SARIF category
-        id: sarif-category
-        if: matrix.image != '__none__'
-        env:
-          IMAGE: ${{ matrix.image }}
-        run: echo "category=trivy-${IMAGE%@sha256:*}" >> "$GITHUB_OUTPUT"
-
+      # Each architecture retains a stable category when its digest changes.
       - name: Run Trivy vulnerability scanner
-        if: matrix.image != '__none__'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.31.0
         with:
           image-ref: ${{ matrix.image }}
@@ -89,8 +62,8 @@ jobs:
           limit-severities-for-sarif: true
 
       - name: Upload Trivy SARIF results
-        if: always() && matrix.image != '__none__'
+        if: always()
         uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370  # v4.39.1
         with:
           sarif_file: trivy-results.sarif
-          category: ${{ steps.sarif-category.outputs.category }}
+          category: ${{ matrix.category }}

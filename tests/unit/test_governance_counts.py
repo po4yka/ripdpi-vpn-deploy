@@ -59,7 +59,9 @@ def test_molecule_images_are_digest_pinned():
     image_scan = (ROOT / ".github/workflows/image-scan.yml").read_text()
     assert "git diff --name-only" not in image_scan
     assert "BASE_SHA" not in image_scan
-    assert "find ansible/roles ansible/molecule -path '*/molecule.yml' -type f" in image_scan
+    workflow = yaml.safe_load(image_scan)
+    collect = next(step for step in workflow["jobs"]["enumerate-images"]["steps"] if step.get("id") == "images")
+    assert "python3 scripts/list-container-images.py" in collect["run"]
 
 
 def test_testing_documentation_matches_molecule_sequences_and_hosted_matrix():

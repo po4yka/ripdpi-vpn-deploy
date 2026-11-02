@@ -782,7 +782,7 @@ help:
 	@echo "  pre-deploy-check           spot-check-secrets + check-certs (auto for deploy/verify; SKIP_PRECHECK=1 to bypass)"
 	@echo "  backup-configure          Configure one exact ANSIBLE_LIMIT during an exclusive stopped-backup window; never runs backups or timers"
 	@echo "  dry-run                    Serial exact-node check; requires DEPLOY_SSH_CONTEXTS_FILE"
-	@echo "  migrate-ssh-ownership      Explicit one-node policy-preserving SSH ownership transaction"
+	@echo "  migrate-ssh-ownership      Exact SSH ownership or observer hardening transaction"
 	@echo "  staging-tailnet-controller-loss-test  Prove autonomous lease recovery after controller SIGKILL"
 	@echo "  staging-tailnet-reboot-recovery-test  Prove two-phase recovery across a real reboot"
 	@echo "  deploy                     Serial exact-node transaction; requires promotion and fresh baseline-failure receipt mappings"

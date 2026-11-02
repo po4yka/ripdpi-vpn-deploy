@@ -1253,3 +1253,21 @@ def test_baseline_promotes_exact_previous_policy_and_retains_rollback(
     assert planner.build_baseline_plan(
         baseline_config, contexts=CONTEXTS, hardening=BASELINE_HARDENING
     )["changed"] is False
+
+
+def test_observer_baseline_admits_only_the_dashboard_forwarding(planner, baseline_config):
+    template = ROOT / "ansible/roles/baseline/templates/observer-ssh-hardening.conf.j2"
+    rendered = Environment(autoescape=True, undefined=StrictUndefined).from_string(template.read_text()).render(ansible_user="deploy").encode()
+    plan = planner.build_baseline_plan(baseline_config, contexts=CONTEXTS, hardening=rendered)
+    staged = base64.b64decode(plan["files"][MANAGED]["after"]["data_b64"])
+    assert staged == rendered
+    for directive in [b"AllowTcpForwarding local", b"AllowStreamLocalForwarding no", b"AllowAgentForwarding no", b"PermitOpen 127.0.0.1:13001", b"PermitListen none"]:
+        assert directive in staged.splitlines()
+    for relative, item in plan["files"].items():
+        (baseline_config / relative).write_bytes(base64.b64decode(item["after"]["data_b64"]))
+    planner.assert_effective(plan, baseline_config, phase="after")
+    captures, _ = planner._capture(baseline_config, baseline=True)
+    for output in planner._effective_outputs(captures, {}, CONTEXTS):
+        options = dict(line.split(None, 1) for line in output.splitlines())
+        assert {key: options[key] for key in [b"allowtcpforwarding", b"allowstreamlocalforwarding", b"allowagentforwarding", b"permitopen", b"permitlisten"]} == {
+            b"allowtcpforwarding": b"local", b"allowstreamlocalforwarding": b"no", b"allowagentforwarding": b"no", b"permitopen": b"127.0.0.1:13001", b"permitlisten": b"none"}

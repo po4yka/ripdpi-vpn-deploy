@@ -95,7 +95,7 @@ def _config(tmp_path: Path) -> Path:
                 "stale_after_seconds": 120,
                 "expected_runtime": {
                     "sing_box": "1.14.0",
-                    "xray": "26.3.27",
+                    "xray": "26.10.31",
                     "awg": "1.0.0",
                     "awg_toolchain": "f" * 64,
                 },

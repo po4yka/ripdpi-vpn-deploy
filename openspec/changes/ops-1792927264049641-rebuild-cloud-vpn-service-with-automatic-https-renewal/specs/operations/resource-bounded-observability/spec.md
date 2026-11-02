@@ -60,3 +60,29 @@ Notification-enabled mode MUST distinguish fresh-message send from edit receipts
 
 - **WHEN** an existing notification-enabled collector changes to panel-only and candidate startup or readiness fails
 - **THEN** its previous configuration, unit and credential authority remain available for rollback; notification retirement starts only after ready collector activation commits.
+
+## ADDED Requirements
+
+### Requirement: REQ-IRBO-SECURITY — Verified observer security updates
+
+Observer image updates MUST use exact architecture digests and a locked package
+set. CI MUST scan production runtime images, not only test images. Fixed
+HIGH/CRITICAL dependency findings MUST be resolved before rollout; unfixed or
+inapplicable findings MUST retain explicit evidence and restrictions. Updates
+MUST preserve the private dashboard, monitor credentials and encrypted backup.
+
+#### Scenario: Upstream version still contains fixed vulnerabilities
+
+- **WHEN** a stable upstream observer image retains dependencies with available security fixes
+- **THEN** the operator MUST build and verify the patched runtime before deployment, without hiding findings or weakening the scanner gate.
+
+#### Scenario: Restricted dashboard tunnel
+
+- **WHEN** observer management is hardened
+- **THEN** only local TCP forwarding to the exact loopback dashboard is allowed, agent and remote forwarding are denied, and dual-path SSH recovery remains available.
+
+
+#### Scenario: Private address appears after nginx boot starts
+
+- **WHEN** the observer starts before its private listener address is assigned
+- **THEN** nginx MUST wait for that exact address within a finite startup bound, refuse other socket failures, and retain the same private listener and source restrictions.

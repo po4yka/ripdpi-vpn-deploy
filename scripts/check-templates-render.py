@@ -296,7 +296,8 @@ def main() -> int:
                     failures.append(err)
         elif tpl.name.endswith(".conf.j2") and (
             "nginx" in tpl.parent.parent.name
-            or tpl.parent.parent.name == "observability_kuma"
+            or (tpl.parent.parent.name == "observability_kuma"
+                and tpl.name == "observability-kuma.conf.j2")
         ):
             err = validate_nginx(output, str(rel))
             if err:

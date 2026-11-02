@@ -36,6 +36,7 @@ artifact_evidence: null
 | REQ-MTLS-ACTIVATE | OPS-1792928402860448 | Not yet run | required |
 | REQ-PIS-READ | OPS-1792928403354199 | Not yet run | required |
 | REQ-PIS-BOUNDARY | OPS-1792928403354199 | Not yet run | required |
+| REQ-IRBO-SECURITY | OPS-1792928403861188 | Portable observer, image scan and SSH producer checks pass; hosted and live checks pending | required |
 | REQ-IRBO-OBSERVER | OPS-1792928403861188 | Not yet run | required |
 | REQ-IRBO-DELIVERY | OPS-1792928403861188 | Not yet run | required |
 | REQ-IRBO-SCOPE | OPS-1792928404361547 | Not yet run | required |

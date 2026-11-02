@@ -391,3 +391,26 @@ def test_ci_generator_real_crypto_passes_secret_schema(tmp_path):
     public = subprocess.run(["wg", "pubkey"], input=registry["awg_private_key"].encode(), capture_output=True, timeout=10)
     assert public.returncode == 0
     assert public.stdout.decode().strip() == value["amneziawg_secrets"]["instances"][0]["peers"][0]["public_key"]
+
+
+def test_bootstrap_publishes_current_ownership_documents(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    pin = tmp_path / "seed-known-hosts"
+    pin.write_text("192.0.2.10 ssh-ed25519 synthetic-key\n")
+    monkeypatch.setattr(MODULE, "trusted_wait", lambda *args: None)
+    calls = []
+    def make(goal, **fields):
+        if goal == "bootstrap-tailnet":
+            prepared = json.loads(Path(fields["TAILNET_BOOTSTRAP_CONFIG"]).read_text())
+            MODULE.document(Path(prepared["output"]), {"contexts": []})
+        elif goal == "migrate-ssh-ownership":
+            calls.append(json.loads(Path(fields["SSH_OWNERSHIP_CONFIG"]).read_text()))
+    runtime = SimpleNamespace(work=tmp_path, environment={"ENV": "ci-staging-test"}, make=make)
+    seed = {"known_hosts_path": str(pin), "host_public_key_sha256": "c" * 64}
+    MODULE.bootstrap(runtime, config(), SimpleNamespace(key=lambda: "synthetic-enrollment"),
+                     seed, ("a" * 40, "b" * 64), "vpn-test", "192.0.2.10", ["100.64.0.1/32"], "192.0.2.20/32")
+    assert len(calls) == 2
+    assert [entry["mode"] for entry in calls] == ["check", "deploy"]
+    assert all(entry["schema_version"] == 3 and entry["intent"] == "ownership"
+               and entry["inventory_section"] == "vpn" for entry in calls)
