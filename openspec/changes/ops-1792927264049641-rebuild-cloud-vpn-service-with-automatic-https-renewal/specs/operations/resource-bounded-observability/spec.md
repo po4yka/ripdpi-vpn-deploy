@@ -86,3 +86,30 @@ MUST preserve the private dashboard, monitor credentials and encrypted backup.
 
 - **WHEN** the observer starts before its private listener address is assigned
 - **THEN** nginx MUST wait for that exact address before the stock configuration test, within a finite startup bound; address or socket refusal MUST fail the unit, and the same private listener and source restrictions MUST remain.
+
+### Requirement: REQ-IRBO-HOST-KERNEL — Independent observer kernel prerequisites
+
+The observer MUST use an exact-host operator configuration for the approved IPv4
+TCP IP-options guard and disabled MPTCP. It MUST stay outside the VPN inventory.
+Kuma MUST NOT import VPN baseline or firewall roles. Changes MUST preserve foreign
+rules, access grants, private monitoring authority and resource limits. Encrypted
+recovery MUST include all prerequisite files, source bindings and validation.
+
+#### Scenario: Add the independent observer guard
+
+- **WHEN** the observer lacks the approved kernel mitigation
+- **THEN** the operator MUST install one owned inet input guard at priority `-310` that drops IPv4 TCP packets with IP options, without a global ruleset flush or changes to other tables.
+- **AND** an existing foreign table or unbound ruleset loader MUST refuse before kernel writes; the persistent guard MUST start after the admitted loaders and before network preparation, and normal loader reloads MUST retain it.
+
+#### Scenario: Drain existing MPTCP socket owners
+
+- **WHEN** the observer has existing MPTCP sockets
+- **THEN** the operator MUST identify their exact native service owners and bind a bounded maintenance plan before changes; unknown owners MUST refuse maintenance.
+- **AND** acceptance MUST require persistent and effective `net.mptcp.enabled=0`, zero remaining MPTCP sockets, restored previously running services, and fresh public and Tailnet SSH/SFTP.
+- **AND** a rollback that restores MPTCP to `1` MUST reopen the security finding.
+
+#### Scenario: Prove the kernel boundary and preserve private monitoring
+
+- **WHEN** the observer guard is active
+- **THEN** real packet checks MUST prove that IPv4 TCP IP options are dropped while ordinary TCP, TCP-header options, UDP including IPv4 IP options, and IPv6 retain their normal policy.
+- **AND** the private panel, ingress and monitor authority MUST remain valid; boot ordering that has no observed reboot MUST be reported as structural verification, and this mitigation MUST NOT be reported as a kernel patch.

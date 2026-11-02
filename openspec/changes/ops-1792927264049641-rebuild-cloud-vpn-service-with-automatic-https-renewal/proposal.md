@@ -15,7 +15,8 @@ explicit cost bound for the site root disk.
 
 - Repair the live security audit findings: scanned observer images, valid log
   rotation, current verified runtimes and CA trust, restricted observer SSH
-  forwarding, and controlled application of installed OS updates.
+  forwarding, exact observer host kernel prerequisites, and controlled
+  application of installed OS updates.
 
 - Create reproducible input contracts for small current cloud plans, bounded
   site storage, and a management-only independent cloud observer.
