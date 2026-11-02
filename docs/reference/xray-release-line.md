@@ -37,8 +37,10 @@ crossing.
   MPTCP where the kernel provides it.
 - Freedom gateways use an explicit first allow rule. REALITY retains classical
   decryption and the PQE HOLD decision.
-- The required staging soak remains a live release gate. Source and native CI
-  results alone do not waive it.
+- On 2026-11-02, the owner approved a one-time exception to the staging soak
+  for this security update. After successful PR CI, update existing nodes in
+  sequence with authenticated traffic checks and retained rollback at each node.
+  Other release updates retain the 48-hour staging requirement below.
 
 ## v26.3.27 — 2026-03-27 (previous repository pin)
 
