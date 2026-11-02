@@ -501,6 +501,26 @@ def test_generator_refuses_nonregular_or_unverified_executables(tmp_path, kind):
         verified_binary(path)
 
 
+@pytest.mark.parametrize("machine,architecture", [("x86_64", "amd64"), ("aarch64", "arm64")])
+def test_linux_generator_requires_rebuilt_runtime_and_refuses_upstream_bytes(tmp_path, monkeypatch, machine, architecture):
+    import hashlib
+    import hysteria_ech
+
+    monkeypatch.setattr(hysteria_ech.sys, "platform", "linux")
+    monkeypatch.setattr(hysteria_ech.platform, "machine", lambda: machine)
+    monkeypatch.setitem(hysteria_ech.RUNTIME_PINS["artifacts"], "hysteria-linux-" + architecture,
+                        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+    old = b"old-upstream-binary"
+    monkeypatch.setitem(hysteria_ech.PINS["hysteria"]["sha256"], "linux-" + architecture,
+                        hashlib.sha256(old).hexdigest())
+    path = tmp_path / "candidate"
+    path.write_bytes(b"abc")
+    assert hysteria_ech.verified_binary(path) == b"abc"
+    path.write_bytes(old)
+    with pytest.raises(ValueError, match="unverified-hysteria-runtime"):
+        hysteria_ech.verified_binary(path)
+
+
 @pytest.mark.parametrize("origin", [None, 42, {}, "http://inner.example"])
 def test_ech_origin_type_refuses_without_loading_or_printing_authority(origin):
     document = hysteria(authority())

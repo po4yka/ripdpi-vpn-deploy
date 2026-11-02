@@ -252,7 +252,7 @@ def test_native_site_retirement_and_remaining_upgrade_commit_once():
         assert lab.converge('hysteria', site=True) == 0
         accepted = json.loads((state / 'accepted.json').read_bytes())
         assert accepted['nodes']['/etc/systemd/system/xray.service'] is None
-        assert os.readlink('/opt/hysteria/current').endswith('/v2.13.0')
+        assert os.readlink('/opt/hysteria/current').endswith('/' + fixture.HYSTERIA_RELEASE_ID)
         assert json.loads((state / 'last.json').read_bytes())['before_receipt'] == initial
         assert not (state / 'outer.json').exists()
         baseline = (state / 'accepted.json').read_bytes()
@@ -552,7 +552,7 @@ def test_native_ech_admission_retains_custom_configuration_directory():
         lab.upgrade('hysteria')
         directory = Path('/etc/hysteria/profile')
         lab.context['hysteria_config_dir'] = str(directory)
-        authority = generate(lab.artifacts / 'hysteria-v2.13.0', 'outer.example', 'owned.example')
+        authority = generate(lab.artifacts / ('hysteria-' + fixture.HYSTERIA_RELEASE_ID), 'outer.example', 'owned.example')
         lab.context['hysteria']['ech'] = authority
         assert lab.converge('hysteria') == 0
         key = directory / 'ech.key'
@@ -574,7 +574,7 @@ def test_native_ech_rotation_idempotence_and_complete_compensation():
         from transport_runtime_accept import fields
         assert lab.converge('hysteria') == 0
         lab.upgrade('hysteria')
-        binary = lab.artifacts / 'hysteria-v2.13.0'
+        binary = lab.artifacts / ('hysteria-' + fixture.HYSTERIA_RELEASE_ID)
         ech = generate(binary, 'outer.example', 'owned.example')
         lab.context['hysteria'].update(ech=ech, resource_profile='bbr-conservative')
         assert lab.converge('hysteria') == 0

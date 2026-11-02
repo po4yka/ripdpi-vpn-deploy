@@ -24,6 +24,7 @@ import yaml
 from scripts.template_render import merge_render_vars, render_template
 
 ROOT = Path(__file__).resolve().parents[3]
+HYSTERIA_RELEASE_ID = json.loads((ROOT / 'scripts/security-runtime-artifacts.json').read_text())['hysteria_release_identity']
 LIBRARY = ROOT / 'ansible/roles/runtime-release/files'
 OWNED_ORIGIN = 'https://owned.example'
 XRAY_PINS = {
@@ -96,7 +97,7 @@ def artifacts(directory):
     directory.mkdir(mode=0o755, parents=True, exist_ok=True)
     for name, pins in [('xray', XRAY_PINS), ('hysteria', HYSTERIA_PINS)]:
         for version, digest in pins.items():
-            identity = version + '-go1.27.3' if name == 'hysteria' and version == 'v2.13.0' else version
+            identity = HYSTERIA_RELEASE_ID if name == 'hysteria' and version == 'v2.13.0' else version
             path = directory / (name + '-' + identity + ('.zip' if name == 'xray' else ''))
             if not path.exists():
                 url = ('https://github.com/XTLS/Xray-core/releases/download/' + version + '/Xray-linux-' + ('arm64-v8a' if ARCH == 'arm64' else '64') + '.zip'
@@ -404,10 +405,10 @@ server.serve_forever()
                                         linux_arm64_sha256=XRAY_PINS['v26.5.3'])
             self.context['xray_runtime_release_urls'] = dict.fromkeys(('amd64','arm64'), 'file://' + str(self.artifacts / 'xray-v26.5.3.zip'))
         else:
-            self.context['hysteria_runtime_release_version'] = 'v2.13.0-go1.27.3'
+            self.context['hysteria_runtime_release_version'] = HYSTERIA_RELEASE_ID
             self.context['hysteria'].update(version='v2.13.0', linux_amd64_sha256=HYSTERIA_PINS['v2.13.0'],
                                            linux_arm64_sha256=HYSTERIA_PINS['v2.13.0'])
-            self.context['hysteria_release_urls'] = dict.fromkeys(('amd64','arm64'), 'file://' + str(self.artifacts / 'hysteria-v2.13.0-go1.27.3'))
+            self.context['hysteria_release_urls'] = dict.fromkeys(('amd64','arm64'), 'file://' + str(self.artifacts / ('hysteria-' + HYSTERIA_RELEASE_ID)))
 
     def enable_hysteria_hopping(self):
         self.context['vpn']['enable_hysteria'] = True

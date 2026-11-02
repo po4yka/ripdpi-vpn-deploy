@@ -14,7 +14,7 @@ import tarfile
 import time
 import urllib.request
 
-from hysteria_ech import PINS
+from hysteria_ech import PINS, RUNTIME_PINS
 
 
 def command(argv, timeout=30):
@@ -31,8 +31,8 @@ def binaries(cache):
     for name, repo, version, filename in (
         (
             "hysteria",
-            "HyNetworks/hysteria",
-            "app/v2.13.0",
+            "po4yka/ripdpi-vpn-deploy",
+            RUNTIME_PINS["release"],
             "hysteria-linux-" + architecture,
         ),
         (
@@ -42,7 +42,7 @@ def binaries(cache):
             "sing-box-1.14.3-linux-" + architecture + ".tar.gz",
         ),
     ):
-        archive = cache / filename
+        archive = cache / (version + "-" + filename if name == "hysteria" else filename)
         if not archive.exists():
             with urllib.request.urlopen(
                 "https://github.com/"
@@ -59,7 +59,8 @@ def binaries(cache):
             data = archive.read_bytes()
         assert (
             hashlib.sha256(data).hexdigest()
-            == PINS[name]["sha256"]["linux-" + architecture]
+            == (RUNTIME_PINS["artifacts"]["hysteria-linux-" + architecture]
+                if name == "hysteria" else PINS[name]["sha256"]["linux-" + architecture])
         ), "runtime-checksum-refused"
         if not archive.exists():
             archive.write_bytes(data)

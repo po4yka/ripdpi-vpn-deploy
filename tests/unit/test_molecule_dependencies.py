@@ -99,6 +99,17 @@ def test_full_stack_inventories_mirror_defaults_with_explicit_alternate() -> Non
         assert {name: variables.get(name) for name in names} == expected
 
 
+def test_full_stack_hysteria_pins_match_the_selected_rebuilt_release() -> None:
+    pins = json.loads((REPO_ROOT / 'scripts/security-runtime-artifacts.json').read_text())
+    defaults = yaml.safe_load((REPO_ROOT / 'ansible/roles/hysteria/defaults/main.yml').read_text())
+    fixture = yaml.safe_load((REPO_ROOT / 'ansible/molecule/full-stack/test-secrets.yaml').read_text())['hysteria']
+    assert fixture['version'] == 'v2.13.0'
+    assert defaults['hysteria_runtime_release_version'] == pins['hysteria_release_identity']
+    for architecture in ('amd64', 'arm64'):
+        assert fixture['linux_' + architecture + '_sha256'] == pins['artifacts']['hysteria-linux-' + architecture]
+        assert '/download/' + pins['release'] + '/' in defaults['hysteria_release_urls'][architecture]
+
+
 def test_full_stack_scenarios_repeat_convergence_before_verification() -> None:
     expected = [
         "dependency", "syntax", "create", "prepare", "converge",
