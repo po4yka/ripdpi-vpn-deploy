@@ -1,5 +1,6 @@
 """Native failures retain only bounded categories after private fixture cleanup."""
 import importlib.util
+import hashlib
 from pathlib import Path
 import socket
 
@@ -10,6 +11,21 @@ spec = importlib.util.spec_from_file_location('runtime_fixture_categories_test',
     ROOT / 'tests/integration/transport_runtime_acceptance/fixture.py')
 fixture = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fixture)
+
+
+def test_rebuilt_hysteria_cache_uses_immutable_release_identity(tmp_path, monkeypatch):
+    monkeypatch.setattr(fixture, 'ARCH', 'amd64')
+    monkeypatch.setattr(fixture, 'XRAY_PINS', {})
+    monkeypatch.setattr(fixture, 'HYSTERIA_PINS', {'v2.13.0': hashlib.sha256(b'rebuilt').hexdigest()})
+    cache = tmp_path / 'amd64'
+    cache.mkdir()
+    (cache / 'hysteria-v2.13.0-go1.27.3').write_bytes(b'rebuilt')
+    (cache / 'hysteria-v2.13.0').write_bytes(b'old-upstream-binary')
+    def no_download(*args, **kwargs):
+        raise AssertionError('the admitted rebuilt bytes must be reused')
+    monkeypatch.setattr(fixture, 'command', no_download)
+    assert fixture.artifacts(tmp_path) == cache
+    assert (cache / 'hysteria-v2.13.0-go1.27.3').stat().st_mode & 0o777 == 0o755
 
 
 def test_owned_canary_bind_never_requires_reverse_dns(monkeypatch):

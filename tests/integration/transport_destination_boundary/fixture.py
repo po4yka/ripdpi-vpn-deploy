@@ -19,6 +19,7 @@ import yaml
 
 from scripts.template_render import merge_render_vars, render_template
 from transport_egress_config import build
+from hysteria_ech import verified_binary
 
 ROOT = Path(__file__).resolve().parents[3]
 AREA = Path(__file__).resolve().parent
@@ -118,11 +119,10 @@ class NativeStack:
             # Copy the exact bytes into this owned executable directory.
             target = self.library / "hysteria"
             shutil.copyfile(self.hysteria, target);target.chmod(0o555)
-            architecture = "arm64" if os.uname().machine == "aarch64" else "amd64"
-            expected = json.loads((ROOT / "scripts/hysteria-runtimes.json").read_text())[
-                "hysteria"]["sha256"]["linux-" + architecture]
-            if hashlib.sha256(target.read_bytes()).hexdigest() != expected:
-                raise RuntimeError("native-hysteria-digest-mismatch")
+            try:
+                verified_binary(target)
+            except ValueError:
+                raise RuntimeError("native-hysteria-digest-mismatch") from None
             self.hysteria = str(target)
         self.state.mkdir(mode=0o700)
         self.driver_state = Path("/run") / (self.token + "-driver")
