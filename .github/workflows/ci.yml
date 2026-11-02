@@ -740,7 +740,7 @@ jobs:
               nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 \
               iproute2 openssl curl ca-certificates openssh-server \
               python3-yaml make unzip \
-              nginx=1.24.0-2ubuntu7.18 nginx-common=1.24.0-2ubuntu7.18
+              nginx=1.24.0-2ubuntu7.19 nginx-common=1.24.0-2ubuntu7.19
             chmod 0755 /var/log
           '
       - name: Execute complete transport acceptance in fresh partitioned runners

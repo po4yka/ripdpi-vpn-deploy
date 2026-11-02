@@ -34,7 +34,7 @@ def test_native_package_pins_use_the_immutable_ubuntu_snapshot_with_exact_versio
     assert "APT::Update::Error-Mode=any" in script
     assert "Acquire::Retries=5" in script
     for pin in ("nftables=1.0.9-1ubuntu0.1", "libnftables1=1.0.9-1ubuntu0.1",
-                "nginx=1.24.0-2ubuntu7.18", "nginx-common=1.24.0-2ubuntu7.18"):
+                "nginx=1.24.0-2ubuntu7.19", "nginx-common=1.24.0-2ubuntu7.19"):
         assert pin in script
 
 
