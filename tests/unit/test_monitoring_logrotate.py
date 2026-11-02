@@ -1,8 +1,12 @@
 """Monitoring must give each nginx log to exactly one logrotate policy."""
 
 from pathlib import Path
+import subprocess
 
-from scripts.template_render import merge_render_vars, render_fragment, render_template
+import pytest
+from jinja2 import FileSystemLoader
+
+from scripts.template_render import merge_render_vars, render_fragment, render_template, template_environment
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ROLE = REPO_ROOT / "ansible" / "roles" / "monitoring"
@@ -129,3 +133,15 @@ def test_every_protected_profile_rotates_xray_through_guarded_recovery():
             assert "systemctl restart" not in body, profile.name
         else:
             assert guarded not in body, profile.name
+
+
+@pytest.mark.parametrize("protected", [True, False])
+def test_postrotate_parses_with_ansible_whitespace_settings(protected):
+    variables = merge_render_vars()
+    variables["vpn"].update(enable_xray_reality=protected, enable_nginx_xhttp=False, enable_hysteria=False)
+    environment = template_environment(FileSystemLoader(str(ROLE / "templates")))
+    environment.trim_blocks = True
+    policy = environment.get_template("logrotate-xray.j2").render(**variables)
+    body = policy.split("postrotate", 1)[1].split("endscript", 1)[0]
+    result = subprocess.run(["sh", "-n"], input=body, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr

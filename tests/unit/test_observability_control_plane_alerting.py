@@ -23,7 +23,7 @@ from scripts.template_render import (
 
 ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / "ansible/roles/observability_control_plane"
-PROMTOOL_VERSION = "3.14.0"
+PROMTOOL_VERSION = "3.15.1"
 REQUIRED_SYSTEMD_UNITS = ["nginx.service", "xray.service"]
 
 

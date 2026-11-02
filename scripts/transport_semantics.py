@@ -184,7 +184,7 @@ def xhttp_tuning(raw: dict) -> dict:
     tuning = raw.get("xhttp_tuning")
     if "xhttp_tuning" not in raw:
         return {}
-    if (raw.get("version") != "v26.3.27" or not isinstance(tuning, dict)
+    if (raw.get("version") != "v26.10.31" or not isinstance(tuning, dict)
             or set(tuning) != {"profile", *XHTTP_TUNING_BOUNDS}
             or tuning.get("profile") != "bounded-pool" or raw.get("xhttp_mode", "auto") != "stream-up"
             or any(type(tuning.get(key)) is not int or not 1 <= tuning[key] <= maximum

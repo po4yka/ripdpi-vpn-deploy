@@ -42,7 +42,7 @@ def generated_p0(stack, monkeypatch):
     values = deepcopy(stack.values)
     values["vpn"].update(enable_hysteria=False, enable_amneziawg=False, enable_snell=False, enable_naive=False)
     values["xray"]["reality_public_key"] = stack.reality_password
-    values["xray"]["version"] = "v26.3.27"
+    values["xray"]["version"] = "v26.10.31"
     # This is the metadata boundary only. Both the materializer and protocol
     # configuration stay real, and no provider CLI or secret file is read.
     def metadata(argv, **_):
@@ -68,7 +68,7 @@ def start_sing_box(stack, binary, document, label):
 
 
 def test_generated_vision_recipient_preserves_authenticated_tcp_xudp_and_refusal(monkeypatch):
-    require_runtime("xray", "Xray 26.3.27")
+    require_runtime("xray", "Xray 26.10.31")
     binary = require_runtime("sing-box", "sing-box version 1.14.3")
     stack = fixture.NativeStack()
     try:
@@ -115,7 +115,7 @@ def start_xray(stack, document, label):
 
 @pytest.mark.parametrize("flow", ["vision", "mux"])
 def test_runtime_acceptance_probe_preserves_active_candidate_finalmask(flow):
-    require_runtime("xray", "Xray 26.3.27")
+    require_runtime("xray", "Xray 26.10.31")
     source = ROOT / "ansible/roles/runtime-release/files/transport_runtime_probe.py"
     spec = importlib.util.spec_from_file_location("p0_real_runtime_probe", source)
     probe = importlib.util.module_from_spec(spec)
@@ -147,7 +147,7 @@ def test_runtime_acceptance_probe_preserves_active_candidate_finalmask(flow):
 
 @pytest.mark.parametrize("flow,masked", [("mux", False), ("vision", True), ("mux", True)])
 def test_native_smoke_shape_authentication_xudp_and_active_finalmask(flow, masked):
-    require_runtime("xray", "Xray 26.3.27")
+    require_runtime("xray", "Xray 26.10.31")
     stack = fixture.NativeStack()
     try:
         stack.start()

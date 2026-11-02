@@ -79,7 +79,7 @@
       ansible.builtin.stat:
         path: /opt/xray/current
       register: link
-      failed_when: not link.stat.islnk or 'v26.3.27' not in link.stat.lnk_target
+      failed_when: not link.stat.islnk or 'v26.10.31' not in link.stat.lnk_target
 
     # Use jq directly instead of slurp+from_json+selectattr — far less
     # fragile across Jinja/Ansible versions and the output is auditable

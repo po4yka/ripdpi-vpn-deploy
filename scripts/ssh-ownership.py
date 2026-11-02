@@ -2,6 +2,7 @@
 """Explicit, policy-preserving SSH ownership migration for one pinned node."""
 from __future__ import annotations
 
+import base64
 import importlib.util
 import json
 import os
@@ -15,7 +16,7 @@ from sshd_contexts import bind_contexts
 
 
 ROOT = Path(__file__).resolve().parents[1]
-FIELDS = {"schema_version", "mode", "inventory_alias", "inventory_path", "inventory_section",
+FIELDS = {"schema_version", "mode", "intent", "inventory_alias", "inventory_path", "inventory_section",
           "known_hosts_path", "contexts_path", "source_revision", "deployable_digest"}
 HEX = re.compile(r"[0-9a-f]{64}")
 REVISION = re.compile(r"[0-9a-f]{40}")
@@ -45,8 +46,11 @@ def _document(raw):
     try:
         value = json.loads(raw, object_pairs_hook=_unique)
         if (not isinstance(value, dict) or set(value) != FIELDS
-                or type(value["schema_version"]) is not int or value["schema_version"] != 2
+                or type(value["schema_version"]) is not int or value["schema_version"] != 3
                 or value["inventory_section"] not in {"vpn", "observability-kuma"}
+                or value["intent"] not in {"ownership", "observer-dashboard"}
+                or (value["intent"] == "observer-dashboard"
+                    and value["inventory_section"] != "observability-kuma")
                 or not isinstance(value["mode"], str) or value["mode"] not in {"check", "deploy"}
                 or not isinstance(value["inventory_alias"], str)
                 or fleet_inspection.SAFE_NAME.fullmatch(value["inventory_alias"]) is None
@@ -110,6 +114,14 @@ def execute(config_path, *, controller=None):
             deploy.verify_input_fence(fence)
         prepare = {"intent": "sshd-ownership", "contexts": contexts, "timeout": 180,
                    "check_mode": config["mode"] == "check", "bundle_generation": generation}
+        if config["intent"] == "observer-dashboard":
+            from template_render import render_template
+
+            policy = render_template(
+                ROOT / "ansible/roles/baseline/templates/observer-ssh-hardening.conf.j2",
+                {"ansible_user": host["user"]},
+            )
+            prepare.update(intent="sshd-baseline", hardening_b64=base64.b64encode(policy.encode()).decode())
         receipt = controller.transaction_rpc(host, pin_path, "prepare", prepare, environment)
         if config["mode"] == "check":
             if (set(receipt) != {"status", "snapshot_digest"}

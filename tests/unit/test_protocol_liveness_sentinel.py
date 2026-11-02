@@ -170,7 +170,7 @@ import os, sys
 if sys.argv[1:] == ["version"]:
     with open(os.environ["CALL_LOG"], "a", encoding="utf-8") as log:
         log.write("xray version\\n")
-    print("Xray 26.3.27 (Xray, Penetrates Everything.)")
+    print("Xray 26.10.31 (Xray, Penetrates Everything.)")
     raise SystemExit(0)
 import json, pathlib, signal, socket
 with pathlib.Path(os.environ["CALL_LOG"]).open("a") as log:
@@ -303,7 +303,7 @@ signal.pause()
                 "expected_status": 204,
                 "timeout_seconds": 15,
                 "degraded_after_ms": 3000,
-                "expected_runtime": {"sing_box": "1.14.0", "xray": "26.3.27", "awg": "1.0.0", "awg_toolchain": toolchain_id},
+                "expected_runtime": {"sing_box": "1.14.0", "xray": "26.10.31", "awg": "1.0.0", "awg_toolchain": toolchain_id},
                 "sing_box": {"config": str(profile_config), "profiles": sing_profiles},
                 "xray": {"config": str(xray_config), "profiles": {"p1-xhttp": [18181]}},
                 "amneziawg": {"config": str(awg), "addresses": ["10.66.66.2/32", "fd42:42:42::2/128"], "mtu": 1420,
@@ -390,7 +390,7 @@ def test_sentinel_reports_authenticated_data_plane_success_without_secrets(
     calls = (tmp_path / "calls.log").read_text()
     assert "--resolve" not in calls
     assert calls.count("sing-box run") == 1
-    assert payload["runtime"]["xray"] == "26.3.27"
+    assert payload["runtime"]["xray"] == "26.10.31"
     assert payload["runtime"]["awg_toolchain"] == json.loads(config.read_text())["expected_runtime"]["awg_toolchain"]
     assert calls.index("xray run -test -config") < calls.index("xray run -config")
     assert subprocess.run(["ps", "-p", (tmp_path / "xray.pid").read_text().strip()], capture_output=True).returncode != 0
@@ -414,11 +414,11 @@ def test_runtime_version_requires_successful_stdout(monkeypatch, code, stdout, s
 @pytest.mark.parametrize(
     ("responses", "expected", "calls"),
     [
-        ([OSError("transient launch failure"), subprocess.CompletedProcess(["xray", "version"], 0, "Xray 26.3.27\n", "")], "26.3.27", 2),
-        ([subprocess.TimeoutExpired(["xray", "version"], 5), subprocess.CompletedProcess(["xray", "version"], 0, "Xray 26.3.27\n", "")], "26.3.27", 2),
+        ([OSError("transient launch failure"), subprocess.CompletedProcess(["xray", "version"], 0, "Xray 26.10.31\n", "")], "26.10.31", 2),
+        ([subprocess.TimeoutExpired(["xray", "version"], 5), subprocess.CompletedProcess(["xray", "version"], 0, "Xray 26.10.31\n", "")], "26.10.31", 2),
         ([OSError("first launch failure"), subprocess.TimeoutExpired(["xray", "version"], 5)], "missing", 2),
-        ([subprocess.CompletedProcess(["xray", "version"], 0, "unrelated 26.3.27\n", "")], "unknown", 1),
-        ([subprocess.CompletedProcess(["xray", "version"], 1, "Xray 26.3.27\n", "")], "unknown", 1),
+        ([subprocess.CompletedProcess(["xray", "version"], 0, "unrelated 26.10.31\n", "")], "unknown", 1),
+        ([subprocess.CompletedProcess(["xray", "version"], 1, "Xray 26.10.31\n", "")], "unknown", 1),
     ],
 )
 def test_xray_version_retries_only_transient_launch_failures(monkeypatch, responses, expected, calls):
@@ -721,9 +721,9 @@ def test_invalid_xray_profile_is_rejected_before_any_probe(tmp_path, invalid):
 
 
 @pytest.mark.parametrize("pin,banner,code", [
-    ("26.3.2", "Xray 26.3.27", 0),
-    ("26.3.27", "unrelated 26.3.27", 0),
-    ("26.3.27", "Xray 26.3.27", 1),
+    ("26.3.2", "Xray 26.10.31", 0),
+    ("26.10.31", "unrelated 26.10.31", 0),
+    ("26.10.31", "Xray 26.10.31", 1),
 ])
 def test_xray_version_requires_exact_successful_product_banner(tmp_path, pin, banner, code):
     config, env = _setup(tmp_path)

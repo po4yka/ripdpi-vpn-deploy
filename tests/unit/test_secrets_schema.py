@@ -126,7 +126,7 @@ def filled():
     )
     document = {
         "xray": {
-            "version": "v26.3.27",
+            "version": "v26.10.31",
             "linux_amd64_sha256": sha,
             "linux_arm64_sha256": sha,
             "reality_private_key": "AAAAAAAAAAAAAAAAAAAAAAAA",

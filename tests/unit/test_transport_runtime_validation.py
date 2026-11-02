@@ -472,7 +472,7 @@ def cache_recovery(acme_cache, tmp_path, monkeypatch):
         assert kwargs['cache'] == files and certificate is None and key is None
         calls.append('native')
     monkeypatch.setattr(validation, 'validate_hysteria', native)
-    request = {'binary': '/opt/hysteria/releases/v2.13.0/hysteria', 'gateway_binary': '/opt/xray/releases/v26.3.27/xray',
+    request = {'binary': '/opt/hysteria/releases/v2.13.0/hysteria', 'gateway_binary': '/opt/xray/releases/v26.10.31/xray',
                'config': yaml.safe_dump(document), 'unit': '[Service]\nUser=hysteria\nGroup=hysteria\n',
                'client_name': 'probe', 'snapshot_id': 'a'*64}
     return root, destination, request, files, calls

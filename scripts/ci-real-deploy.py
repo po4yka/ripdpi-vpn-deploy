@@ -97,7 +97,7 @@ def promotion_intent(work, config, profile, environment, alias, address, digest)
     required = CI_PROFILES["ci-" + profile]
     runtime = {"sing_box": "1.14.3"}
     if "p1-xhttp" in required:
-        runtime["xray"] = "26.3.27"
+        runtime["xray"] = "26.10.31"
     liveness = {"schema_version": 2, "probe_url": config["probe_url"], "expected_status": 204,
                 "expected_runtime": runtime,
                 "policies": [{"id": "ci-profile", "required_profiles": required, "min_failed_vantages": 1}],
@@ -220,7 +220,7 @@ def bootstrap(runtime, config, enrollment, seed, identity, alias, address, sourc
     runtime.environment.update(TAILNET_HANDOFFS=str(handoff), DEPLOY_CI_TAILNET_HANDOFF=str(handoff),
                                DEPLOY_SSH_CONTEXTS_FILE=str(contexts))
     runtime.make("inventory")
-    ownership = {"schema_version": 2, "inventory_alias": alias, "inventory_section": "vpn",
+    ownership = {"schema_version": 3, "intent": "ownership", "inventory_alias": alias, "inventory_section": "vpn",
                  "inventory_path": str(ROOT / "ansible/inventory/generated.ini"), "known_hosts_path": str(pin),
                  "contexts_path": str(contexts), "source_revision": identity[0], "deployable_digest": identity[1]}
     for mode in ("check", "deploy"):

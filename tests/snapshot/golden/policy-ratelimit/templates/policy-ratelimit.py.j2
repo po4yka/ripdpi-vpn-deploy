@@ -12,7 +12,7 @@ WHAT THIS DOES AND DOES NOT SEE
 This daemon does NOT — and by design CANNOT — see external active-probing
 of the REALITY listener. When a prober's ClientHello fails REALITY
 authentication, `xtls/reality`'s `func Server` (vendored at 9234c772ba8f by
-the pinned Xray-core v26.3.27) does not reject: it dials the camouflage
+Xray-core v26.3.27, the reviewed source) does not reject: it dials the camouflage
 `Dest` ("steal-oneself") and io.Copy-proxies the prober to the donor site.
 The only per-IP trace is a returned `fmt.Errorf("REALITY: processed invalid
 connection from <ip>: ...")`, logged by Xray's inbound worker at [Info] to
@@ -41,7 +41,7 @@ The Xray access-log line for a blackholed connection looks like:
 The detour separator varies by routing path (`->`, `>>`, `==>`,
 app/dispatcher/default.go); BLOCK_RE matches the `block` tag regardless.
 
-Pinned against Xray-core v26.3.27. See README.md for the full rationale.
+Mechanism reviewed against Xray-core v26.3.27. See README.md for the full rationale.
 
 Managed by Ansible role policy-ratelimit; do not hand-edit.
 """

@@ -91,7 +91,7 @@ def _receiver(tmp_path: Path, configuration: dict):
     version = subprocess.run(
         [binary, "--version"], capture_output=True, text=True, check=True, timeout=5
     )
-    assert "prometheus, version 3.14.0 " in version.stdout + version.stderr
+    assert "prometheus, version 3.15.1 " in version.stdout + version.stderr
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         port = listener.getsockname()[1]

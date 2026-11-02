@@ -32,7 +32,7 @@ acceptance task is cancelled; the source successor is `MON-1792080593038468`.
 
 Rollout remains on hold pending replacement acceptance. The previous Prometheus
 Agent 3.14.0 failed to deliver unsent pre-restart samples in the real outage
-drill. The approved replacement is vmagent 1.153.0 with a byte-bounded persistent
+drill. The approved replacement is vmagent 1.155.0 with a byte-bounded persistent
 queue, not a one-hour WAL. Retained files and replay logs do not prove delivery:
 require actual historical samples after clean and abrupt restarts, measured
 queue overhead, and the unchanged resource and live acceptance gates.
@@ -214,7 +214,7 @@ is recovered on the next convergence. Unfinished publication blocks unattended
 start without a live publisher. Working queue and retained copy each fit 1 GiB
 within the existing 2 GiB admission and filesystem reserve; unknown native
 layout, foreign ownership, nested mounts or insufficient capacity refuse before
-publication. This profile is bound to vmagent v1.153.0 and its single-worker,
+publication. This profile is bound to vmagent v1.155.0 and its single-worker,
 zero-memory-queue settings. Source/native acceptance requires actual delivery
 of the exact historical nonce after a rejected activation; source checks do not
 establish live fleet or host power-loss acceptance.
@@ -297,7 +297,12 @@ is missing evidence, separately from an observed inactive or failed service.
 
 ## Independent Kuma monitoring and Telegram evidence
 
-Kuma is pinned to stable 2.5.5 architecture-specific manifests in role defaults.
+Kuma 2.5.9 is pinned to scanned architecture-specific child manifests in role
+defaults. The build source is `images/observability-kuma`; the publisher records
+the separate provenance index. Production and test images share the scan gate,
+with distinct stable categories for the observer architectures. The private
+panel image omits unused notification tooling. Restore admits the exact current
+image and the explicitly retained previous image for that architecture.
 Its UI is host-loopback only on port 13001, reached through an already approved
 authenticated operator path. The private HTTPS 9444 vhost permits exact enrolled
 source addresses and GET push paths only: no UI, setup, websocket administration,

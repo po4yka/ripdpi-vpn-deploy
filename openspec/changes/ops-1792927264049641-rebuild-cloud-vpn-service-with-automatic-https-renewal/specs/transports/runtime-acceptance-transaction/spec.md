@@ -60,3 +60,21 @@ The controller MUST allow a 7200-second session for the complete exact-host `dry
 
 - **WHEN** the full-site command exceeds 7200 seconds
 - **THEN** the controller MUST stop its owned session and descendants, reclaim its private snapshots, and report failure; an incomplete preview MUST NOT authorize deployment.
+
+### Requirement: REQ-PROTO-RTA-SECURITY — Effective runtime maintenance
+
+Security maintenance MUST retain pinned runtime provenance and current CA
+trust. Xray log rotation MUST render valid shell under Ansible whitespace
+settings, retain guarded recovery and propagate errors. Required OS reboot
+MUST use exact-host maintenance and retain post-reboot management and service
+proof. Successful source checks alone MUST NOT accept deployment.
+
+#### Scenario: Protected log rotation
+
+- **WHEN** logrotate executes the protected Xray postrotate script
+- **THEN** it MUST parse correctly and request admitted recovery only for an active service, preserving error status.
+
+#### Scenario: Security rollout completes
+
+- **WHEN** reviewed security updates are deployed
+- **THEN** fresh target checks, encrypted actual configuration capture and an offsite restore MUST confirm the updated service scope.

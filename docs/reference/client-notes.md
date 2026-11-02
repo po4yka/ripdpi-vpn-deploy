@@ -299,7 +299,7 @@ staging soak, reconnect checks and exact-generation rollback rehearsal.
 The RIPDPI-format producer emits a primary XHTTP outbound and an independently
 selectable `:alternate` outbound when the selected profile enables the alternate
 listener. Each uses its own effective port and TLS name. Mode passes unchanged into the exact Xray adapter. Native Xray and monitoring
-output support the qualified `stream-up` bounded-pool profile on `v26.3.27`;
+output support the qualified `stream-up` bounded-pool profile on `v26.10.31`;
 RIPDPI export refuses fields its importer cannot consume. See
 [XHTTP delivery profiles](xhttp-delivery-profiles.md) for fields and limits.
 

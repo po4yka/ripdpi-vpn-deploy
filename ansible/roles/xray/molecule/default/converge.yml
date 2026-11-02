@@ -7,8 +7,8 @@
     xray_fallback_port: 2053
     nginx_xhttp_port: 10085
     xray_runtime_release_urls:
-      amd64: file:///var/tmp/xray-molecule/xray-v26.3.27.zip
-      arm64: file:///var/tmp/xray-molecule/xray-v26.3.27.zip
+      amd64: file:///var/tmp/xray-molecule/xray-v26.10.31.zip
+      arm64: file:///var/tmp/xray-molecule/xray-v26.10.31.zip
     p0_reality_shapes:
       vision:
         client_flow: xtls-rprx-vision
@@ -28,9 +28,9 @@
       enable_transport_egress: true
       enable_geodata: false
     xray:
-      version: v26.3.27
-      linux_amd64_sha256: 23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae
-      linux_arm64_sha256: 4d30283ae614e3057f730f67cd088a42be6fdf91f8639d82cb69e48cde80413c
+      version: v26.10.31
+      linux_amd64_sha256: e4bd9119f50ae7c41658b1abd0679ae06f98bd864a2907ff33f2f2cf7081b214
+      linux_arm64_sha256: 1811c8f1da0c3b6dc707ebaf1c8390e987ba39859a8f0a7aadd8526157f2ec8d
       reality_private_key: 6MpEOecc4Vy3oLd7MWFEozYpJ61O6x98ULDrgYVJxV8
       target: 192.0.2.90:8444
       server_names:
@@ -55,9 +55,9 @@
         mode: '0755'
     - name: Fetch exact checksum-verified native Xray archive fixture
       ansible.builtin.get_url:
-        url: https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-{{ 'arm64-v8a' if
+        url: https://github.com/XTLS/Xray-core/releases/download/v26.10.31/Xray-linux-{{ 'arm64-v8a' if
           ansible_facts['architecture'] in ['aarch64', 'arm64'] else '64' }}.zip
-        dest: /var/tmp/xray-molecule/xray-v26.3.27.zip
+        dest: /var/tmp/xray-molecule/xray-v26.10.31.zip
         checksum: sha256:{{ xray.linux_arm64_sha256 if ansible_facts['architecture'] in ['aarch64', 'arm64']
           else xray.linux_amd64_sha256 }}
         owner: root

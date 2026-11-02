@@ -75,7 +75,7 @@ def test_profile_emitter_writes_atomic_owner_only_driver_profile(tmp_path: Path)
     }}))
     secrets = tmp_path / "secrets.yml"
     secrets.write_text(yaml.safe_dump({
-        "xray": {"version": "v26.3.27"},
+        "xray": {"version": "v26.10.31"},
         "probe_matrix_target_secrets": {"mtproto_secret": "ee" + "aa" * 16 + "example.com".encode().hex(), "vless_uuid": "00000000-0000-4000-8000-000000000001", "xhttp_trojan_password": "b" * 24, "tcp_trojan_password": "c" * 24, "mtg_version": "v2.2.8"},
     }))
     output = tmp_path / "profile.json"

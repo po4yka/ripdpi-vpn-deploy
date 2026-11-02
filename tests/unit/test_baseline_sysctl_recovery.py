@@ -60,3 +60,17 @@ def test_udp_resource_admission_precedes_mutating_tasks(tmp_path, receive, send,
     assert marker.exists() is accepted
     if not accepted:
         assert "UDP socket ceilings must be integers" in result.stdout
+
+
+@pytest.mark.parametrize("present", [False, True])
+def test_mptcp_disable_is_mandatory_only_on_supported_kernels(present):
+    from scripts.template_render import render_template
+
+    template = ROOT / "ansible/roles/baseline/templates/sysctl-vpn.conf.j2"
+    rendered = render_template(template, {"_baseline_mptcp_sysctl": {"stat": {"exists": present}},
+        "baseline_udp_receive_buffer_max": 7500000, "baseline_udp_send_buffer_max": 7500000})
+    assert ("net.mptcp.enabled = 0" in rendered) is present
+    assert "-net.mptcp.enabled" not in rendered
+    tasks = yaml.safe_load((ROOT / "ansible/roles/baseline/tasks/main.yml").read_text())
+    check = next(task for task in tasks if task.get("name") == "Require disabled MPTCP on supported kernels")
+    assert check["ansible.builtin.assert"]["that"] == ["_baseline_mptcp_effective.stdout == '0'"]

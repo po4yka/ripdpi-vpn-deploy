@@ -17,7 +17,7 @@ the camouflage `Dest` ("steal-oneself") and surfaces only a returned
 `fmt.Errorf("REALITY: processed invalid connection from %s …")`, logged by
 Xray's inbound worker at `[Info]` to *error.log* (suppressed at
 `loglevel: "warning"`), never to the access.log this daemon tails. The ADR in
-`README.md` records the full mechanism (pinned Xray v26.3.27 / reality
+`README.md` records the full mechanism (reviewed Xray v26.3.27 / reality
 9234c772ba8f) and why path (b) over an nginx-stream front. What it actually
 enforces: authenticated clients whose traffic is routed to the `block`
 outbound (BitTorrent / QUIC-443 / RFC1918) or `rejected` at the VLESS layer —
@@ -67,7 +67,7 @@ input-recovery guarantee.
   IP is the edge IP. Disable this role when `cdn-front` is on.
 - **Don't tune below the carrier-NAT threshold** — banning a NAT IP bans
   every user behind it, including their working tunnel.
-- **Token/sink are pinned to Xray-core v26.3.27 access-log format** — re-run
+- **Token/sink fixtures use the reviewed Xray-core v26.3.27 access-log format** — re-run
   `tests/unit/test_policy_ratelimit.py` after any Xray pin bump; if the
   access-log line shape changed, the dead-contract gauge will also rise on
   live nodes.

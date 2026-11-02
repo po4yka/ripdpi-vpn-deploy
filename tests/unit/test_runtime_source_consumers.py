@@ -554,8 +554,8 @@ def test_source_publication_changes_drive_service_restart_state(tmp_path: Path) 
                         "gather_facts": False,
                         "vars": {
                             "xray_install_dir": "/opt/xray",
-                            "_xray_runtime_release_identity": "v26.3.27",
-                            "xray": {"version": "v26.3.27"},
+                            "_xray_runtime_release_identity": "v26.10.31",
+                            "xray": {"version": "v26.10.31"},
                             "runtime_build_changed": runtime_build_changed,
                             "runtime_build_results": {
                                 "xray-core": {"changed": runtime_build_changed}

@@ -43,7 +43,7 @@ def configured(tmp_path, monkeypatch, request):
     ]}))
     contexts.chmod(0o600)
     config = tmp_path / "ownership.json"
-    data = {"schema_version": 2, "mode": "check", "inventory_alias": "node-a", "inventory_section": request.param,
+    data = {"schema_version": 3, "intent": "ownership", "mode": "check", "inventory_alias": "node-a", "inventory_section": request.param,
             "inventory_path": str(inventory), "known_hosts_path": str(known),
             "contexts_path": str(contexts), "source_revision": "a" * 40,
             "deployable_digest": "b" * 64}
@@ -232,3 +232,30 @@ def test_explicit_inventory_section_is_required_before_host_access(configured, m
     monkeypatch.setattr(controller, 'transaction_rpc', lambda *args, **kwargs: pytest.fail('RPC before scope validation'))
     with pytest.raises(operator.OwnershipControllerError, match='configuration-invalid'):
         operator.execute(config)
+
+
+def test_observer_dashboard_intent_uses_exact_recoverable_policy(configured, monkeypatch):
+    import base64
+
+    operator, controller, config, data, _ = configured
+    data["intent"] = "observer-dashboard"
+    config.write_text(json.dumps(data))
+    calls = []
+    def rpc(host, pin, action, request, environment, **kwargs):
+        calls.append(request)
+        return {"status": "would-change", "snapshot_digest": "d" * 64}
+    monkeypatch.setattr(controller, "transaction_rpc", rpc)
+    if data["inventory_section"] == "vpn":
+        with pytest.raises(operator.OwnershipControllerError, match="configuration-invalid"):
+            operator.execute(config)
+        assert calls == []
+    else:
+        assert operator.execute(config) == {"status": "would-change"}
+        assert calls[0]["intent"] == "sshd-baseline"
+        policy = base64.b64decode(calls[0]["hardening_b64"]).decode()
+        assert "AllowTcpForwarding local\n" in policy
+        assert "PermitOpen 127.0.0.1:13001\n" in policy
+        assert "PermitListen none\n" in policy
+        assert "AllowAgentForwarding no\n" in policy
+        assert "AllowStreamLocalForwarding no\n" in policy
+        assert "AllowUsers deploy\n" in policy

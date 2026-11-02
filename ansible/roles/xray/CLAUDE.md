@@ -10,7 +10,7 @@ on both ends. It changes traffic appearance only; VLESS and REALITY still own
 authentication. Never put Finalmask under `sockopt`, where Xray ignores it.
 
 XHTTP server mode shares admission with recipient emission. Optional typed
-bounded-pool tuning is qualified for v26.3.27 native Xray outbounds only; XMUX
+bounded-pool tuning is qualified for v26.10.31 native Xray outbounds only; XMUX
 pool controls belong to the client and are never copied into the server inbound.
 No production pin, default mode, P0 shape or PQE eligibility changes with it.
 

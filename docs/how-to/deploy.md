@@ -123,7 +123,7 @@ SSH_OWNERSHIP_CONFIG="$HOME/.config/vpn-provision/ssh-ownership.json" make migra
 
 The same target accepts `mode: check` for a read-only preview, then
 `mode: deploy` for the bounded transaction. The private input file must be mode 0600
-and contain exactly `schema_version: 2`, `mode`, one `inventory_alias`,
+and contain exactly `schema_version: 3`, `mode`, `intent`, one `inventory_alias`,
 `inventory_section` (`vpn` or `observability-kuma`), absolute
 `inventory_path`, `known_hosts_path`, `contexts_path`, and the current checkout's
 `source_revision` and `deployable_digest` from `scripts/deploy-source-identity.sh`.
@@ -132,7 +132,11 @@ Migration requires the installed recovery generation and fresh strict SSH/SFTP
 proof on both public and Tailnet paths before confirmation. It preserves the
 effective SSH policy; the later baseline transaction applies desired hardening.
 The explicit observer section does not add that host to the VPN fleet. Old
-schema-1 inputs are refused; set the section and refresh the source identity.
+schema-1 and schema-2 inputs are refused; set the intent and refresh the source identity.
+Use `intent: ownership` for migration. The explicit `observer-dashboard` intent
+is limited to the observer section and applies the canonical recoverable SSH
+baseline: local forwarding only to `127.0.0.1:13001`, with no agent or remote
+forwarding. It uses the same preview, dual-path proof and rollback transaction.
 Do not manufacture socket contexts to pass deployment readiness. On disposable staging,
 create the cleanup manifest before either installer. Unset the enrollment
 key before ordinary `dry-run`/`deploy`, which now reject it.

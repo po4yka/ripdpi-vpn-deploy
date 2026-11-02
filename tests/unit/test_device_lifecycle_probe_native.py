@@ -57,7 +57,7 @@ def native_tools(snell_binary):
     naive = Path(os.environ.get("NAIVE_NATIVE_BINARY", str(ROOT / ".cache/p2-native-caddy/caddy")))
     for binary in (xray, hysteria, naive):
         assert binary.is_file(), "missing admitted native lifecycle runtime"
-    assert b"26.3.27" in command([xray, "version"])
+    assert b"26.10.31" in command([xray, "version"])
     assert b"v2.13.0" in command([hysteria, "version"])
     info = command([naive, "build-info"])
     assert b"v2.11.7" in info and b"c096d6a00cb2" in info

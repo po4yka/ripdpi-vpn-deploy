@@ -18,7 +18,7 @@ GUARD_BLOCK = re.compile(
 )
 MISSING = object()
 VERSION = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
-SUPPORTED_DOCUMENTS = {"example-secrets", "rendered-xray"}
+SUPPORTED_DOCUMENTS = {"example-secrets", "rendered-xray", "rendered-gateway"}
 SUPPORTED_ACTIVATIONS = {"always", "pinned-at-least"}
 REQUIRED_GUARD_KEYS = {
     "id",
@@ -292,11 +292,14 @@ def main() -> int:
         except ValueError as exc:
             raise GuardDefinitionError(str(exc)) from exc
 
-        rendered_text = render_template(XRAY_TEMPLATE, merge_render_vars())
+        variables = merge_render_vars()
+        rendered_text = render_template(XRAY_TEMPLATE, variables)
         rendered_xray = json.loads(rendered_text)
         documents = {
             "example-secrets": example_secrets,
             "rendered-xray": rendered_xray,
+            "rendered-gateway": json.loads(render_template(
+                REPO_ROOT / "ansible/roles/transport-egress/templates/gateway.json.j2", variables)),
         }
         issues = evaluate_guards(guards, pin_version, documents)
     except GuardDefinitionError as exc:
