@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-02
+goal: CIC-1793627867470408 Align the repository policy spec with the separate PR
+  title check
