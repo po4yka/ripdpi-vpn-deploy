@@ -51,6 +51,7 @@ def test_existing_output_is_preserved(tmp_path, monkeypatch):
 
 
 def test_compiler_process_ignores_ambient_workspace_and_go_environment(tmp_path, monkeypatch):
+    output = tmp_path / 'absent-parent/output'
     monkeypatch.setattr(builder.platform, "system", lambda: "Linux")
     monkeypatch.setattr(builder.shutil, "which", lambda _: "/usr/bin/dpkg-deb")
     monkeypatch.setenv('GOENV', '/unselected/go-env')
@@ -76,10 +77,11 @@ def test_compiler_process_ignores_ambient_workspace_and_go_environment(tmp_path,
         env = kwargs['env']
         assert env['GOENV'] == 'off' and env['GOWORK'] == 'off'
         assert env['GOTOOLCHAIN'] == 'local' and env['GOFLAGS'] == '-mod=readonly -p=2'
-        assert env['HOME'] == str(tmp_path / 'output/work/home')
+        assert env['HOME'] == str(tmp_path / 'absent-parent/output/work/home')
         assert 'SYNTHETIC_API_TOKEN' not in env
         raise BuildObserved()
     monkeypatch.setattr(builder.subprocess, 'run', compiler)
     with pytest.raises(BuildObserved):
-        builder.build(tmp_path / 'output')
-    assert not (tmp_path / 'output/build.json').exists()
+        builder.build(output)
+    assert output.is_dir() and output.stat().st_mode & 0o777 == 0o700
+    assert not (output / 'build.json').exists()
