@@ -293,6 +293,22 @@
   register: _firewall_tailnet_recovery_units
   when: ansible_facts.get('virtualization_type', '') != 'docker'
 
+- name: Install nftables service override directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/nftables.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Preserve kernel policy when the nftables loader stops
+  ansible.builtin.copy:
+    src: nftables-preserve-policy.conf
+    dest: /etc/systemd/system/nftables.service.d/99-vpn-host-preserve-policy.conf
+    owner: root
+    group: root
+    mode: "0644"
+
 - name: Install nftables required-dependency directory for boot recovery
   ansible.builtin.file:
     path: /etc/systemd/system/nftables.service.requires
@@ -315,14 +331,20 @@
   register: _firewall_tailnet_boot_required_by
   when: ansible_facts.get('virtualization_type', '') != 'docker'
 
-- name: Reload systemd after Tailnet recovery dependency changes
+- name: Reload systemd after firewall unit installation
+  # Also reconcile a prior interruption after unit bytes reached disk.
   ansible.builtin.systemd_service:
     daemon_reload: true
-  when:
-    - ansible_facts.get('virtualization_type', '') != 'docker'
-    - >-
-      _firewall_tailnet_recovery_units.changed or
-      _firewall_tailnet_boot_required_by.changed
+
+- name: Require the nftables loader to preserve active kernel policy
+  ansible.builtin.command:
+    argv: [systemctl, show, nftables.service, "--property=ExecStop,ExecStopPost", --value]
+  register: _firewall_nftables_stop_commands
+  changed_when: false
+  failed_when: >-
+    _firewall_nftables_stop_commands.rc != 0 or
+    _firewall_nftables_stop_commands.stdout | trim | length > 0
+  when: not (_firewall_effective_check_mode | bool)
 
 - name: Inspect existing Tailnet recovery units in check mode
   ansible.builtin.command:
