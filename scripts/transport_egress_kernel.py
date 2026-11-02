@@ -414,6 +414,7 @@ def admit_owners(raw, namespace=False):
         try:
             address = str(normalize_address(address.strip('[]')))
         except ValueError:
+            # ss can report wildcard endpoints; port ownership still applies below.
             pass
         if fields[0] == 'udp' and address == relay['address'] and actual != relay_uid:
             raise BoundaryError('foreign-relay-owner')
