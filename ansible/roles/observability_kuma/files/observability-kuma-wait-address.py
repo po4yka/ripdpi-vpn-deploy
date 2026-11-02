@@ -45,7 +45,8 @@ def main():
         wait_address(listener_address(CONFIG))
     except (ValueError, OSError):
         print('private ingress address unavailable', file=sys.stderr)
-        return 1
+        # ExecCondition must fail the unit, rather than silently skip startup.
+        return 255
     return 0
 
 

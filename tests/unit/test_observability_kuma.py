@@ -773,11 +773,26 @@ def test_ingress_wait_only_waits_for_unassigned_address(monkeypatch, failure):
 
 def test_ingress_boot_wait_uses_exact_private_address_and_is_removed_on_disable():
     unit = render("observability-kuma-nginx-start.conf.j2")
-    assert "ExecStartPre=/usr/bin/python3 -Es /usr/local/libexec/observability-kuma-wait-address.py\n" in unit
+    assert "ExecCondition=/usr/bin/python3 -Es /usr/local/libexec/observability-kuma-wait-address.py\n" in unit
+    assert "ExecStartPre=" not in unit
     tasks = yaml.safe_load((ROLE / "tasks/main.yml").read_text())
     disabled = next(t["block"] for t in tasks if t["name"].startswith("Remove only disabled observer ingress"))
     removal = next(t for t in disabled if t["name"] == "Remove only disabled observer startup policy")
     assert removal["loop"] == ["/etc/systemd/system/nginx.service.d/observability-kuma.conf", "/usr/local/libexec/observability-kuma-wait-address.py"]
+
+
+@pytest.mark.parametrize("state", ["ready", "invalid", "denied"])
+def test_ingress_start_condition_returns_success_or_unit_failure(tmp_path, monkeypatch, capsys, state):
+    module = load_address_waiter()
+    path = tmp_path / "nginx.conf"
+    path.write_text("invalid listener" if state == "invalid" else "listen 127.0.0.1:9444 ssl;\n")
+    module.CONFIG = path
+    if state == "denied":
+        def denied_socket(*args):
+            raise PermissionError(13, "denied")
+        monkeypatch.setattr(module.socket, "socket", denied_socket)
+    assert module.main() == (0 if state == "ready" else 255)
+    assert capsys.readouterr().err == ("" if state == "ready" else "private ingress address unavailable\n")
 
 
 @pytest.mark.parametrize("previous_policy", [False, True])
