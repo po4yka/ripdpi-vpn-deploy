@@ -85,4 +85,4 @@ MUST preserve the private dashboard, monitor credentials and encrypted backup.
 #### Scenario: Private address appears after nginx boot starts
 
 - **WHEN** the observer starts before its private listener address is assigned
-- **THEN** nginx MUST wait for that exact address within a finite startup bound, refuse other socket failures, and retain the same private listener and source restrictions.
+- **THEN** nginx MUST wait for that exact address before the stock configuration test, within a finite startup bound; address or socket refusal MUST fail the unit, and the same private listener and source restrictions MUST remain.

@@ -2,7 +2,8 @@
 
 ## Design decisions
 
-The shared nginx start waits at most 60 seconds for the exact private address.
+An ExecCondition waits at most 60 seconds for the exact private address before
+the vendor nginx configuration test. Refusal exits 255 to fail the unit.
 It derives the address from the published vhost link, so a restored generation
 also restores startup readiness. Only an unassigned address waits; other
 socket failures refuse.
