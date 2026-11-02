@@ -68,11 +68,16 @@ def test_four_profiles_are_materialized_with_only_named_client_material():
     standard = built["files"]["sing-box.json"]
     xray = built["files"]["xray.json"]
     awg = built["files"]["awg.conf"]
-    assert {o["type"] for o in standard["outbounds"]} == {"vless", "hysteria2"}
+    assert {o["type"] for o in standard["outbounds"]} == {"hysteria2"}
+    assert xray["inbounds"][0]["settings"]["udp"] is True
+    reality = xray["outbounds"][0]
+    assert reality["settings"]["vnext"][0]["users"][0]["flow"] == "xtls-rprx-vision"
+    assert reality["streamSettings"]["security"] == "reality"
+    assert reality["streamSettings"]["realitySettings"] == {"serverName": "cover.example", "publicKey": "public-reality-key", "shortId": "0011223344556677", "fingerprint": "chrome"}
     assert all(i["listen"] == "127.0.0.1" and i["type"] == "socks" for i in standard["inbounds"])
     assert not any("transport" in o and o["transport"]["type"] == "xhttp" for o in standard["outbounds"])
-    assert xray["outbounds"][0]["streamSettings"]["network"] == "xhttp"
-    assert xray["outbounds"][0]["streamSettings"]["tlsSettings"]["allowInsecure"] is False
+    assert xray["outbounds"][1]["streamSettings"]["network"] == "xhttp"
+    assert xray["outbounds"][1]["streamSettings"]["tlsSettings"]["allowInsecure"] is False
     assert xray["outbounds"][0]["settings"]["vnext"][0]["users"][0]["id"] == args["secrets_doc"]["xray"]["clients"][0]["uuid"]
     assert f"PrivateKey = {key(1)}" in awg and f"PublicKey = {key(5)}" in awg
     assert f"PresharedKey = {key(3)}" in awg and key(4) not in awg
@@ -119,8 +124,8 @@ def test_real_canonical_emitter_outputs_materialize_for_both_runtimes(tmp_path):
     assert set(profiles) == {"sing-box.json", "xray.json"}
     singbox = json.loads(profiles["sing-box.json"].read_text())
     xray = json.loads(profiles["xray.json"].read_text())
-    assert {outbound["type"] for outbound in singbox["outbounds"]} == {"vless", "hysteria2"}
-    assert xray["outbounds"][0]["streamSettings"]["network"] == "xhttp"
+    assert {outbound["type"] for outbound in singbox["outbounds"]} == {"hysteria2"}
+    assert xray["outbounds"][1]["streamSettings"]["network"] == "xhttp"
     assert all(path.stat().st_mode & 0o777 == 0o600 for path in profiles.values())
 
 
@@ -286,7 +291,7 @@ def test_hysteria_hop_ports_are_preserved_and_bound_in_public_digest():
     p2 = args["standard_doc"]["outbounds"][1]
     p2.update(server_ports=["50000:50010"], hop_interval="30s")
     first = module.build_profiles(**args)
-    assert first["files"]["sing-box.json"]["outbounds"][1]["server_ports"] == ["50000:50010"]
+    assert first["files"]["sing-box.json"]["outbounds"][0]["server_ports"] == ["50000:50010"]
     p2["server_ports"] = ["50000:50011"]
     assert first["public_profile_digest"] != module.build_profiles(**args)["public_profile_digest"]
 
@@ -328,8 +333,8 @@ def test_profile_variants_preserve_every_endpoint_and_port():
     p1.update(tag="p1-xhttp-scaleway-probe-fallback", server_port=8443)
     args["ripdpi_doc"]["outbounds"].append(p1)
     built = module.build_profiles(**args)
-    assert built["runtime"]["xray"]["profiles"]["p1-xhttp"] == [18181, 18182]
-    assert [o["settings"]["vnext"][0]["port"] for o in built["files"]["xray.json"]["outbounds"]] == [443, 8443]
+    assert built["runtime"]["xray"]["profiles"]["p1-xhttp"] == [18182, 18183]
+    assert [o["settings"]["vnext"][0]["port"] for o in built["files"]["xray.json"]["outbounds"]] == [443, 443, 8443]
 
 
 def test_non_awg_selection_does_not_derive_or_emit_awg_material():
@@ -339,8 +344,8 @@ def test_non_awg_selection_does_not_derive_or_emit_awg_material():
     args["derive_public_key"] = lambda _: pytest.fail("no AWG operation")
     args["awg_binding"] = None
     built = module.build_profiles(**args)
-    assert set(built["files"]) == {"sing-box.json"}
-    assert set(built["runtime"]) == {"sing_box"}
+    assert set(built["files"]) == {"xray.json"}
+    assert set(built["runtime"]) == {"xray"}
 
 
 @pytest.mark.parametrize("mutation", ["status-type", "profile-type", "xray-type", "hysteria-type"])

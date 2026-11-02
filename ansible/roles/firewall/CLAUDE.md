@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+The IPv4 TCP IP-options guard uses input priority -310 in the owned filter table,
+before every priority-zero accept, including loopback and established traffic.
+Keep its accept policy and TCP-only scope: UDP, IPv6 and TCP-header options retain
+the normal policy. This reduces CVE-2026-98432 exposure; it is not a kernel fix.
+
 `firewall_consumer.py rotate-ssh` changes one exact IPv4 source in the accepted
 SSH rule. It uses a retained single-rule adapter for apply and restore, so a
 complete nft reload cannot remove dynamic timed sets. The reviewed plan binds

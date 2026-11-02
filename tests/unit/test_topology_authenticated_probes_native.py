@@ -129,9 +129,12 @@ def test_xhttp_all_frontends_authentication_and_backend_outage(mode):
             values["xray"]["xhttp_tuning"] = {"profile": "bounded-pool", "max_connections": 2}
         document = json.loads(render_template(
             ROOT / "ansible/roles/watchdog/templates/reality-probe.json.j2", values))
+        for outbound in document['outbounds']:
+            tls = outbound['streamSettings']['tlsSettings']
+            assert tls['allowInsecure'] is False
+            tls['certificates'] = [{'certificateFile': str(stack.cert), 'usage': 'verify'}]
         path = stack.file("health-xhttp.json", json.dumps(document), "x")
-        stack.unit("health-xhttp", [stack.xray, "run", "-config", str(path)], "x",
-                   ["Environment=SSL_CERT_FILE=" + str(stack.cert)])
+        stack.unit("health-xhttp", [stack.xray, "run", "-config", str(path)], "x")
         ports = [item["port"] for item in document["inbounds"]]
         assert len(ports) == 2
         for port in ports:

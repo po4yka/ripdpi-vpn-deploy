@@ -29,7 +29,18 @@ crossing.
   dynamic Chrome UA by default, replacing the static `Go-http-client`
   string. No config change required.
 
-## v26.3.27 — 2026-03-27 (repository pin)
+## v26.10.31 — 2026-10-31 (repository pin)
+
+- Stable security release built with Go 1.27.3. Verify the exact archive digests
+  and keep staged native validation before activation.
+- Disable the unused MPTCP listener path. The host baseline also disables
+  MPTCP where the kernel provides it.
+- Freedom gateways use an explicit first allow rule. REALITY retains classical
+  decryption and the PQE HOLD decision.
+- The required staging soak remains a live release gate. Source and native CI
+  results alone do not waive it.
+
+## v26.3.27 — 2026-03-27 (previous repository pin)
 
 - **REALITY auto-probe defence** improvements.
 - **ECH full mode** — `echForceQuery` default changed to `"full"`.
@@ -150,7 +161,7 @@ guards:
   - id: freedom-final-rules-allow
     applies_from: v26.5.3
     activation: pinned-at-least
-    document: rendered-xray
+    document: rendered-gateway
     select:
       path: outbounds
       where:
@@ -180,7 +191,9 @@ guards:
 1. Bump `xray.version` in the secrets schema and SOPS files only when
    the target tag is GitHub-tagged Latest, not Pre-release. Production
    deploys refuse any version outside `xray_runtime_production_versions`
-   (`ansible/roles/xray-runtime/defaults/main.yml`) before download. Upstream
+   (`ansible/roles/xray-runtime/defaults/main.yml`) before download. This includes
+   named fleet environments and unknown names. Only explicit staging, canary
+   and CI namespaces admit qualification pins outside that list. Upstream
    prereleases carry plain tags, so this reviewed list, not the tag shape,
    is the machine gate. Add a version only after its staging soak, and keep
    the repository pin in it (`scripts/check-xray-version-pin.py` checks this).
@@ -234,7 +247,7 @@ instructions.
 ## Local XHTTP qualification
 
 The optional bounded-pool delivery profile is restricted to the existing
-v26.3.27 native Xray engine and its typed parser fields. It introduces no pin
-upgrade or prerelease eligibility. Native mode and resource comparisons run in
+v26.10.31 native Xray engine and its typed parser fields. The stable security
+upgrade does not grant prerelease eligibility. Native mode and resource comparisons run in
 `make test-xhttp-delivery-matrix`; external rollout and PQE HOLD remain separate.
 See [delivery profiles](xhttp-delivery-profiles.md).

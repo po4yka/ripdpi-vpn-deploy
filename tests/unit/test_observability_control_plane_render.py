@@ -268,12 +268,12 @@ def test_enabled_molecule_archive_matches_runtime_release_strip_contract() -> No
     assert "prometheus-fixture" not in prepare
     assert ".private-fixture-v3" in prepare
     assert config["prometheus"]["archive_members"] == {
-        "amd64": "prometheus-3.14.0.linux-amd64/prometheus",
-        "arm64": "prometheus-3.14.0.linux-arm64/prometheus",
+        "amd64": "prometheus-3.15.1.linux-amd64/prometheus",
+        "arm64": "prometheus-3.15.1.linux-arm64/prometheus",
     }
     assert config["prometheus"]["promtool_archive_members"] == {
-        "amd64": "prometheus-3.14.0.linux-amd64/promtool",
-        "arm64": "prometheus-3.14.0.linux-arm64/promtool",
+        "amd64": "prometheus-3.15.1.linux-amd64/promtool",
+        "arm64": "prometheus-3.15.1.linux-arm64/promtool",
     }
     assert config["alerting"]["alertmanager"]["archive_members"] == {
         "amd64": "alertmanager-0.28.1.linux-amd64/alertmanager",

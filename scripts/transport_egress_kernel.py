@@ -74,7 +74,7 @@ def validate(raw):
         raise BoundaryError('invalid-policy-backends')
     for name, item in raw['backends'].items():
         keys(item, ['address', 'port', 'udp_source_port_min', 'udp_source_port_max'])
-        if item['address'] != ('127.0.0.1' if name == 'direct' else '10.250.254.2'):
+        if item['address'] != ('127.0.0.55' if name == 'direct' else '10.250.254.2'):
             raise BoundaryError('invalid-policy-backend')
         ports.append(integer(item['port']))
         pools.append((integer(item['udp_source_port_min']), integer(item['udp_source_port_max'])))
@@ -122,8 +122,9 @@ def render(raw, namespace=False):
             lines.append(f'  ip daddr 127.0.0.1 tcp dport 10808 meta skuid != {frontend} drop')
         for name, item in raw['backends'].items():
             address, port = item['address'], item['port']
-            lines.append(f'  ip daddr {address} meta l4proto {{ tcp, udp }} th dport {port} meta skuid != {normalizer} drop')
-            # Native SOCKS UDP BND is the same fixed inbound port.
+            lines.append(f'  ip daddr {address} tcp dport {port} meta skuid != {normalizer} drop')
+            # The first UDP sender locks the native relay to its tuple.
+            lines.append(f'  ip daddr {address} meta l4proto udp meta skuid != {normalizer} drop')
         lines.append(' }')
         lines.append(' chain normalizer { type filter hook output priority 300; policy accept;')
         for item in raw['listeners']:
@@ -134,7 +135,8 @@ def render(raw, namespace=False):
             address, port = item['address'], item['port']
             ipc_interface = 'lo' if name == 'direct' else 'rpd-warp-host'
             lines.append(f'  meta skuid {normalizer} oifname "{ipc_interface}" ip daddr {address} tcp dport {port} accept')
-            lines.append(f'  meta skuid {normalizer} oifname "{ipc_interface}" ip daddr {address} udp sport {item["udp_source_port_min"]}-{item["udp_source_port_max"]} udp dport {port} accept')
+            peer = '127.0.0.1' if name == 'direct' else '10.250.254.1'
+            lines.append(f'  meta skuid {normalizer} oifname "{ipc_interface}" ip saddr {peer} ip daddr {address} udp sport {item["udp_source_port_min"]}-{item["udp_source_port_max"]} accept')
         for address in raw['resolver']['nameservers']:
             family = 'ip6' if ':' in address else 'ip'
             lines.append(f'  meta skuid {normalizer} {family} daddr {address} meta l4proto {{ tcp, udp }} th dport 53 accept')
@@ -149,7 +151,7 @@ def render(raw, namespace=False):
     peer = '10.250.254.1' if namespace else '127.0.0.1'
     interface = 'rpd-warp-ns' if namespace else 'lo'
     lines.append(f'  meta skuid {gateway_uid} oifname "{interface}" ip daddr {peer} tcp sport {port} ct direction reply ct original proto-dst {port} accept')
-    lines.append(f'  meta skuid {gateway_uid} oifname "{interface}" ip daddr {peer} udp dport {backend["udp_source_port_min"]}-{backend["udp_source_port_max"]} ct direction reply udp sport {port} ct original proto-src {backend["udp_source_port_min"]}-{backend["udp_source_port_max"]} ct original proto-dst {port} accept')
+    lines.append(f'  meta skuid {gateway_uid} oifname "{interface}" ip saddr {address} ip daddr {peer} udp dport {backend["udp_source_port_min"]}-{backend["udp_source_port_max"]} ct direction reply ct original proto-src {backend["udp_source_port_min"]}-{backend["udp_source_port_max"]} accept')
     if not namespace and LOCAL_DNS_FORWARDER in raw['resolver']['nameservers']:
         # The direct gateway answers loopback DNS lookups; every other 127/8 destination stays denied below.
         lines.append(f'  meta skuid {gateway_uid} oifname "lo" ip saddr {LOCAL_DNS_FORWARDER} ip daddr 127.0.0.1 meta l4proto {{ tcp, udp }} th sport 53 ct direction reply ct original proto-dst 53 accept')
@@ -179,13 +181,18 @@ def render(raw, namespace=False):
     lines += [' }', '}']
     if namespace:
         # Remote or namespace-root processes cannot access the plaintext gateway.
-        lines += [f'add chain inet {TABLE} input {{ type filter hook input priority -5; policy accept; }}', f'add rule inet {TABLE} input ip daddr {address} meta l4proto {{ tcp, udp }} th dport {port} ip saddr != 10.250.254.1 drop', f'add rule inet {TABLE} input ip daddr {address} iifname != "rpd-warp-ns" meta l4proto {{ tcp, udp }} th dport {port} drop']
+        low, high = backend['udp_source_port_min'], backend['udp_source_port_max']
+        lines += [f'add chain inet {TABLE} input {{ type filter hook input priority -5; policy accept; }}',
+                  f'add rule inet {TABLE} input ip daddr {address} tcp dport {port} ip saddr != 10.250.254.1 drop',
+                  f'add rule inet {TABLE} input ip daddr {address} iifname != "rpd-warp-ns" tcp dport {port} drop',
+                  f'add rule inet {TABLE} input iifname "rpd-warp-ns" ip saddr 10.250.254.1 ip daddr {address} udp sport {low}-{high} accept',
+                  f'add rule inet {TABLE} input ip daddr {address} meta l4proto udp drop']
     if not namespace and 'warp' in raw:
         backend = raw['backends']['warp']
         port, low, high = backend['port'], backend['udp_source_port_min'], backend['udp_source_port_max']
         lines += [f'add chain inet {TABLE} namespace_input {{ type filter hook input priority -5; policy accept; }}',
                   f'add rule inet {TABLE} namespace_input iifname "rpd-warp-host" ip saddr 10.250.254.2 ip daddr 10.250.254.1 tcp sport {port} ct direction reply ct original proto-dst {port} accept',
-                  f'add rule inet {TABLE} namespace_input iifname "rpd-warp-host" ip saddr 10.250.254.2 ip daddr 10.250.254.1 udp sport {port} udp dport {low}-{high} ct direction reply ct original proto-dst {port} accept',
+                  f'add rule inet {TABLE} namespace_input iifname "rpd-warp-host" ip saddr 10.250.254.2 ip daddr 10.250.254.1 udp dport {low}-{high} ct direction reply ct original proto-src {low}-{high} accept',
                   f'add rule inet {TABLE} namespace_input iifname "rpd-warp-host" fib daddr type local drop',
                   f'add chain inet {TABLE} namespace_forward {{ type filter hook forward priority 300; policy accept; }}']
         for family, prefixes in [('ip', IPV4_DENY), ('ip6', IPV6_DENY)]:
@@ -378,6 +385,8 @@ def admit_links(raw, namespace=False):
 
 def admit_owners(raw, namespace=False):
     expected = []
+    relay = raw['backends']['warp' if namespace else 'direct']
+    relay_uid = raw['warp_gateway_uid'] if namespace else raw['gateway_uid']
     if namespace:
         backend = raw['backends']['warp']
         expected.append((backend['port'], backend['port'], raw['warp_gateway_uid']))
@@ -396,13 +405,20 @@ def admit_owners(raw, namespace=False):
         if len(fields) < 6:
             raise BoundaryError('socket-authority-unavailable')
         try:
-            port = int(fields[4].rsplit(':', 1)[1])
+            address, port_text = fields[4].rsplit(':', 1)
+            port = int(port_text)
         except ValueError:
             continue
+        match = re.search(r'(?:^| )uid:([0-9]+)(?: |$)', line)
+        actual = int(match.group(1)) if match else 0
+        try:
+            address = str(normalize_address(address.strip('[]')))
+        except ValueError:
+            pass
+        if fields[0] == 'udp' and address == relay['address'] and actual != relay_uid:
+            raise BoundaryError('foreign-relay-owner')
         for low, high, uid in expected:
             if low <= port <= high:
-                match = re.search(r'(?:^| )uid:([0-9]+)(?: |$)', line)
-                actual = int(match.group(1)) if match else 0
                 if actual != uid:
                     # Kernel TIME_WAIT records have no live socket or process owner.
                     if (fields[:2] == ['tcp', 'TIME-WAIT'] and actual == 0

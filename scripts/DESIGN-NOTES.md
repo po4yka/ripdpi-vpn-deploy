@@ -1111,7 +1111,8 @@ identity and `ansible_host` as the transport; a distinct Tailnet transport
 must retain the public host-key alias for dual-path SSH proof.
 
 **Liveness formats are selected by required profiles** — standalone XHTTP uses
-RIPDPI emission and Xray; REALITY and Hysteria2 use sing-box emission. See the
+RIPDPI emission and Xray; REALITY uses sing-box emission translated to Xray
+for its hybrid ClientHello. Hysteria2 retains sing-box. See the
 liveness section of [DESIGN-NOTES.md](DESIGN-NOTES.md#liveness-sentinels-disposable-staging-and-retirement).
 
 **AWG liveness DNS follows the role profile** — the private sentinel runtime

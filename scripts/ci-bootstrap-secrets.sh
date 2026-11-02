@@ -100,7 +100,7 @@ done
 # ---------------------------------------------------------------------------
 xray_version="$(python3 -c "
 import yaml; d=yaml.safe_load(open('$EXAMPLE')) or {}
-print((d.get('xray') or {}).get('version') or 'v26.3.27')
+print((d.get('xray') or {}).get('version') or 'v26.10.31')
 ")"
 hys_version="$(python3 -c "
 import yaml; d=yaml.safe_load(open('$EXAMPLE')) or {}

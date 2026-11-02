@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[3]
 LIBRARY = ROOT / 'ansible/roles/runtime-release/files'
 OWNED_ORIGIN = 'https://owned.example'
 XRAY_PINS = {
-    'v26.3.27': '23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae',
+    'v26.10.31': 'e4bd9119f50ae7c41658b1abd0679ae06f98bd864a2907ff33f2f2cf7081b214',
     'v26.5.3': 'f9d7dd7492791430d48a9828fb36f32663577af787e8b363a1548dece21a7897',
 }
 HYSTERIA_PINS = {
@@ -36,7 +36,7 @@ HYSTERIA_PINS = {
 }
 
 ARM_XRAY_PINS = {
-    'v26.3.27': '4d30283ae614e3057f730f67cd088a42be6fdf91f8639d82cb69e48cde80413c',
+    'v26.10.31': '1811c8f1da0c3b6dc707ebaf1c8390e987ba39859a8f0a7aadd8526157f2ec8d',
     'v26.5.3': 'd6766870478cddaeb770625bf1a61dae2d5c0a1bc160abb21455698137f6071c',
 }
 ARM_HYSTERIA_PINS = {
@@ -148,12 +148,12 @@ class Lab:
                                    enable_hysteria=False, enable_geodata=False,
                                    enable_warp_outbound=False, build_xray_from_source=False,
                                    xray_flow_mode='vision', xray_finalmask=False)
-        self.context['xray'].update(version='v26.3.27', linux_amd64_sha256=XRAY_PINS['v26.3.27'],
-                                    linux_arm64_sha256=XRAY_PINS['v26.3.27'], target='192.0.2.90:8444',
+        self.context['xray'].update(version='v26.10.31', linux_amd64_sha256=XRAY_PINS['v26.10.31'],
+                                    linux_arm64_sha256=XRAY_PINS['v26.10.31'], target='192.0.2.90:8444',
                                     server_names=['owned.example'], cohorts=[],
                                     clients=[{'name': 'native-device', 'uuid': str(uuid.uuid4()), 'short_id': secrets.token_hex(4)}])
-        self.context['xray_runtime_release_urls'] = {'amd64': 'file://' + str(self.artifacts / 'xray-v26.3.27.zip'),
-                                                  'arm64': 'file://' + str(self.artifacts / 'xray-v26.3.27.zip')}
+        self.context['xray_runtime_release_urls'] = {'amd64': 'file://' + str(self.artifacts / 'xray-v26.10.31.zip'),
+                                                  'arm64': 'file://' + str(self.artifacts / 'xray-v26.10.31.zip')}
         # Rotation evidence reads the access log, which production renders as `none`
         # unless the policy rate-limiter consumes it.
         self.context.update(xray_access_log_enabled=True)
@@ -203,7 +203,7 @@ class Lab:
         if existing.exists():
             # CI owns this exact artifact. Preserve its original inode and never
             # adopt or replace an unknown installer binary.
-            with zipfile.ZipFile(self.artifacts / 'xray-v26.3.27.zip') as archive:
+            with zipfile.ZipFile(self.artifacts / 'xray-v26.10.31.zip') as archive:
                 expected = hashlib.sha256(archive.read('xray')).digest()
             if existing.is_symlink() or hashlib.sha256(existing.read_bytes()).digest() != expected:
                 raise RuntimeError('native-fixture-cli-unowned')
@@ -269,7 +269,7 @@ server.serve_forever()
                                            str(canary), str(self.cert), str(self.key)]))
         runtime = self.private / 'initial-xray'
         runtime.mkdir(mode=0o755)
-        command(['unzip', '-q', str(self.artifacts / 'xray-v26.3.27.zip'), '-d', str(runtime)])
+        command(['unzip', '-q', str(self.artifacts / 'xray-v26.10.31.zip'), '-d', str(runtime)])
         key_fields = dict(line.split(': ', 1) for line in command([str(runtime / 'xray'), 'x25519']).splitlines() if ': ' in line)
         self.context['xray']['reality_private_key'] = key_fields['PrivateKey']
         self.context['hysteria'].pop('resource_profile', None)

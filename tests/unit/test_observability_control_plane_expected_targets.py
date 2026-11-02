@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / "ansible/roles/observability_control_plane"
 RENDERER = ROLE / "files/observability-expected-target-renderer.py"
 ADAPTER = ROLE / "files/observability-control-plane-adapter.py"
-PROMTOOL_VERSION = "3.14.0"
+PROMTOOL_VERSION = "3.15.1"
 
 renderer_spec = importlib.util.spec_from_file_location(
     "observability_expected_target_renderer", RENDERER

@@ -64,7 +64,7 @@ def test_xray_molecule_uses_shared_runtime_publisher_and_idempotence():
     archive = next(task["ansible.builtin.get_url"] for task in converge["pre_tasks"]
                    if task["name"] == "Fetch exact checksum-verified native Xray archive fixture")
     pins = converge["vars"]["xray"]
-    assert pins["version"] == "v26.3.27"
+    assert pins["version"] == "v26.10.31"
     destination = f"/var/tmp/xray-molecule/xray-{pins['version']}.zip"
     assert archive["dest"] == destination
     assert archive["mode"] == "0600"

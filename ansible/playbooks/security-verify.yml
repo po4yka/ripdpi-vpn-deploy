@@ -87,9 +87,45 @@
       changed_when: false
       failed_when: security_sysctl_value.stdout != item.value
 
+    - name: Inspect optional kernel MPTCP control
+      ansible.builtin.stat:
+        path: /proc/sys/net/mptcp/enabled
+      register: security_mptcp_control
+
+    - name: Verify MPTCP is disabled when the kernel provides it
+      ansible.builtin.command:
+        argv: [sysctl, -n, net.mptcp.enabled]
+      register: security_mptcp_value
+      changed_when: false
+      failed_when: security_mptcp_value.stdout != '0'
+      when: security_mptcp_control.stat.exists
+
     - name: nftables config syntax valid
       ansible.builtin.command:
         cmd: nft -c -f /etc/nftables.conf
+      changed_when: false
+
+    - name: IPv4 TCP IP options are rejected before normal input acceptance
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -I
+          - -B
+          - -S
+          - -c
+          - |
+            import json, subprocess
+            rows = json.loads(subprocess.check_output(
+                ['nft', '-j', 'list', 'chain', 'inet', 'filter', 'ipv4_tcp_options_guard']
+            ))['nftables']
+            chain = next(r['chain'] for r in rows if 'chain' in r)
+            assert (chain['hook'], chain['prio'], chain['policy']) == ('input', -310, 'accept')
+            rule = next(r['rule'] for r in rows if 'rule' in r)
+            assert [e for e in rule['expr'] if 'counter' not in e] == [
+                {'match': {'op': '==', 'left': {'payload': {'protocol': 'ip', 'field': 'protocol'}}, 'right': 'tcp'}},
+                {'match': {'op': '>', 'left': {'payload': {'protocol': 'ip', 'field': 'hdrlength'}}, 'right': 5}},
+                {'drop': None},
+            ]
       changed_when: false
 
     - name: Read rendered nftables ruleset

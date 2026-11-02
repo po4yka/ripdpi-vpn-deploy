@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 ALLOWLIST = {
+    "vpnd/config/probe-matrix-target.example.json",
     "secrets/prod.secrets.example.yaml",
     "secrets/README.md",
     "scripts/bootstrap-secrets.sh",

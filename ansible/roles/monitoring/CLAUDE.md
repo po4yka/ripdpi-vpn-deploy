@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+Postrotate control tags must preserve shell line separators with Ansible's
+trim_blocks setting. The rendered script is checked by the native shell.
+
+
 Monitoring owns the root-only writable textfile ancestor as well as its shared child. Standalone sender and collector convergence use that same task before publishing metrics; recursive directory creation must not give the ancestor shared-writer permissions.
 
 Xray log retention follows the effective service, including XHTTP-only hosts. Guarded log rotation requests targeted recovery from the generation controller and propagates refusal; unguarded services retain direct restart. Retirement grants only the exact diagnostic textfile to the exporter account.

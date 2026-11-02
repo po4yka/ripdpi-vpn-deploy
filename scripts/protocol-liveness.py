@@ -52,8 +52,8 @@ class ConfigError(ValueError):
 
 def required_runtime(policy: dict) -> set[str]:
     profiles = set(policy["required_profiles"])
-    return ({"sing_box"} if profiles & {"p0-reality", "p2-hysteria2"} else set()) | (
-        {"xray"} if "p1-xhttp" in profiles else set()) | (
+    return ({"sing_box"} if "p2-hysteria2" in profiles else set()) | (
+        {"xray"} if profiles & {"p0-reality", "p1-xhttp"} else set()) | (
         {"awg", "awg_toolchain"} if "p2-amneziawg" in profiles else set())
 
 
@@ -119,8 +119,8 @@ def semantic_errors(config: dict) -> list[str]:
         for key in required_runtime(policy) - {"xray", "awg_toolchain"}:
             if not runtime.get(key):
                 messages.append(f"migration required: expected_runtime.{key} pin")
-        if "p1-xhttp" in required and not runtime.get("xray"):
-            messages.append("migration required: expected_runtime.xray pin for p1-xhttp")
+        if ("p0-reality" in required or "p1-xhttp" in required) and not runtime.get("xray"):
+            messages.append("migration required: expected_runtime.xray pin for REALITY/XHTTP")
         if "p2-amneziawg" in required:
             if not runtime.get("awg_toolchain"):
                 messages.append("migration required: expected_runtime.awg_toolchain source-input digest")

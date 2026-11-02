@@ -35,16 +35,17 @@
     cache_valid_time: 3600
   register: baseline_packages
 
-- name: Remove VPS firmware update tooling
+- name: Remove unsupported VPS hardware management packages
   ansible.builtin.apt:
     name:
       - fwupd
+      - openipmi
     state: absent
     purge: true
 
-- name: Clear obsolete fwupd failed units
+- name: Clear obsolete VPS hardware management failed units
   ansible.builtin.command:
-    cmd: systemctl reset-failed fwupd.service fwupd-refresh.service
+    cmd: systemctl reset-failed fwupd.service fwupd-refresh.service openipmi.service
   changed_when: false
   failed_when: false
 
@@ -101,6 +102,11 @@
   ansible.builtin.include_tasks: ssh_moduli.yml
   when: (security_controls | default({})).ssh_prune_moduli | default(false)
 
+- name: Detect kernel MPTCP support
+  ansible.builtin.stat:
+    path: /proc/sys/net/mptcp/enabled
+  register: _baseline_mptcp_sysctl
+
 - name: Drop sysctl tuning
   ansible.builtin.template:
     src: sysctl-vpn.conf.j2
@@ -111,3 +117,21 @@
 
 - name: Reconcile forwarding for every enabled routing workload
   ansible.builtin.import_tasks: forwarding.yml
+
+- name: Read effective MPTCP policy
+  ansible.builtin.command:
+    cmd: sysctl -n net.mptcp.enabled
+  changed_when: false
+  register: _baseline_mptcp_effective
+  when:
+    - _baseline_mptcp_sysctl.stat.exists
+    - not ansible_check_mode
+
+- name: Require disabled MPTCP on supported kernels
+  ansible.builtin.assert:
+    that:
+      - _baseline_mptcp_effective.stdout == '0'
+    fail_msg: The unused MPTCP path must be disabled.
+  when:
+    - _baseline_mptcp_sysctl.stat.exists
+    - not ansible_check_mode

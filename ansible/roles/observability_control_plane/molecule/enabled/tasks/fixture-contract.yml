@@ -81,19 +81,19 @@
       disk_measured_stop_seconds: 30
       disk_guard_state_dir: /var/lib/observability-disk-guard
       prometheus:
-        version: 3.14.0
+        version: 3.15.1
         urls:
-          amd64: https://github.com/prometheus/prometheus/releases/download/v3.14.0/prometheus-3.14.0.linux-amd64.tar.gz
-          arm64: https://github.com/prometheus/prometheus/releases/download/v3.14.0/prometheus-3.14.0.linux-arm64.tar.gz
+          amd64: https://github.com/prometheus/prometheus/releases/download/v3.15.1/prometheus-3.15.1.linux-amd64.tar.gz
+          arm64: https://github.com/prometheus/prometheus/releases/download/v3.15.1/prometheus-3.15.1.linux-arm64.tar.gz
         sha256:
-          amd64: f665c6da19eb7ba399c915d30c7d9793c9b417bf8a749b504bc470678631478d
-          arm64: 077f3781ab7245dc04c9a3c9b78ba120fc8e41aa0dc97489b0af67247e50ba83
+          amd64: 6a726885328ad9efebbf36e876ce2fb6225468a71fd1e7ce3ba666d5f4d97a84
+          arm64: ceb6d21493c37ca0b4513b147642797c68cf39a0f50a444d50e1e80c74f21b26
         archive_members:
-          amd64: prometheus-3.14.0.linux-amd64/prometheus
-          arm64: prometheus-3.14.0.linux-arm64/prometheus
+          amd64: prometheus-3.15.1.linux-amd64/prometheus
+          arm64: prometheus-3.15.1.linux-arm64/prometheus
         promtool_archive_members:
-          amd64: prometheus-3.14.0.linux-amd64/promtool
-          arm64: prometheus-3.14.0.linux-arm64/promtool
+          amd64: prometheus-3.15.1.linux-amd64/promtool
+          arm64: prometheus-3.15.1.linux-arm64/promtool
       tls:
         server_cert_pem: "{{ control_plane_fixture_tls.results[0].content | b64decode }}"
         server_key_pem: "{{ control_plane_fixture_tls.results[1].content | b64decode }}"

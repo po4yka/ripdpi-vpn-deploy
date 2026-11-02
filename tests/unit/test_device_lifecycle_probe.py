@@ -360,6 +360,39 @@ def test_command_timeout_reclaims_actual_child(tmp_path):
         os.kill(int(pid.read_text()), 0)
 
 
+@pytest.mark.parametrize('private_ca', [False, True])
+@pytest.mark.parametrize('security', ['tls', 'reality'])
+def test_xray_runtime_publishes_only_explicit_private_tls_ca(tmp_path, monkeypatch, private_ca, security):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    ca = tmp_path / 'owned-ca.pem' if private_ca else None
+    profile = {'engine': 'xray', 'config': {'outbounds': [{'streamSettings': {
+        'security': security, 'tlsSettings' if security == 'tls' else 'realitySettings': {
+            'serverName': 'owned.example', **({'allowInsecure': False} if security == 'tls' else {})}}}]}}
+    original = copy.deepcopy(profile)
+    published = []
+    def launch(argv, **_kwargs):
+        published.append(json.loads(Path(argv[-1]).read_text()))
+        return SimpleNamespace(poll=lambda: None)
+    runtime = worker.Runtime(ca_file=ca)
+    monkeypatch.setattr(runtime, 'binary', lambda _: '/owned/xray')
+    monkeypatch.setattr(runtime, 'http', lambda *_args, **_kwargs: {'accepted': True})
+    monkeypatch.setattr(worker.subprocess, 'Popen', launch)
+    monkeypatch.setattr(worker.socket, 'create_connection', lambda *_args, **_kwargs: nullcontext())
+    monkeypatch.setattr(worker, '_stop', lambda _: True)
+    result = runtime.stream(profile, {}, 1, tmp_path)
+    assert result == {'accepted': True, 'setup_ok': True, 'cleanup_ok': True}
+    stream = published[0]['outbounds'][0]['streamSettings']
+    if security == 'tls' and private_ca:
+        assert stream['tlsSettings']['certificates'] == [{'certificateFile': str(ca), 'usage': 'verify'}]
+    else:
+        assert stream == original['config']['outbounds'][0]['streamSettings']
+    if security == 'tls':
+        assert stream['tlsSettings']['allowInsecure'] is False
+    assert profile == original
+    assert not list(tmp_path.glob('*.json'))
+
+
 def test_missing_tools_do_not_become_denial(tmp_path):
     runtime = worker.Runtime(binaries={"curl": str(tmp_path / "missing")})
     value = request([naive_profile(tmp_path, 12345)], "https://localhost/probe")

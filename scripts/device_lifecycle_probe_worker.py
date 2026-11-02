@@ -338,6 +338,13 @@ class Runtime:
         engine = profile["engine"]
         if engine == "xray":
             config["inbounds"] = [{"listen": "127.0.0.1", "port": port, "protocol": "socks", "settings": {"auth": "noauth", "udp": False}}]
+            if self.ca_file:
+                # Xray uses bundled roots; the caller's private CA is explicit.
+                for outbound in config.get('outbounds', []):
+                    stream = outbound.get('streamSettings', {})
+                    if stream.get('security') == 'tls':
+                        stream['tlsSettings']['certificates'] = [
+                            {'certificateFile': str(self.ca_file), 'usage': 'verify'}]
         elif engine == "snell":
             config["inbounds"] = [{"listen": "127.0.0.1", "listen_port": port, "type": "socks"}]
         else:

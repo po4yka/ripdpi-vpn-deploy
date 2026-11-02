@@ -2,7 +2,7 @@
   "schema_version": 1,
   "target_id": "generic-dual",
   "endpoint": "192.0.2.10",
-  "expected_xray_version": "v26.3.27",
+  "expected_xray_version": "v26.10.31",
   "expected_mtg_version": "v2.2.8",
   "expected_mtproto_helper_version": "gotd-v0.160.0",
   "protocols": {

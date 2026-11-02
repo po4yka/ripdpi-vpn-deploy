@@ -42,7 +42,7 @@ def generated_p0(stack, monkeypatch):
     values = deepcopy(stack.values)
     values["vpn"].update(enable_hysteria=False, enable_amneziawg=False, enable_snell=False, enable_naive=False)
     values["xray"]["reality_public_key"] = stack.reality_password
-    values["xray"]["version"] = "v26.3.27"
+    values["xray"]["version"] = "v26.10.31"
     # This is the metadata boundary only. Both the materializer and protocol
     # configuration stay real, and no provider CLI or secret file is read.
     def metadata(argv, **_):
@@ -56,36 +56,24 @@ def generated_p0(stack, monkeypatch):
     delivered, _ = client_payload.materialize("native-device", options, documents={source: document}, source_paths=[source])
     built = build_profiles(delivered, None, document, "native-device", ["p0-reality"],
                            None, None, None, None, str(stack.library), awg_defaults={}, awg_cohort={})
-    return built["files"]["sing-box.json"]
-
-
-def start_sing_box(stack, binary, document, label):
-    path = stack.file(label + ".json", json.dumps(document), "x")
-    fixture.command([str(binary), "check", "-c", str(path)])
-    stack.unit(label, [str(binary), "run", "-c", str(path)], "x")
-    time.sleep(.5)
-    return document["inbounds"][0]["listen_port"]
+    return built["files"]["xray.json"]
 
 
 def test_generated_vision_recipient_preserves_authenticated_tcp_xudp_and_refusal(monkeypatch):
-    require_runtime("xray", "Xray 26.3.27")
-    binary = require_runtime("sing-box", "sing-box version 1.14.3")
+    require_runtime("xray", "Xray 26.10.31")
     stack = fixture.NativeStack()
     try:
         stack.start()
         stack.start_frontend("p0")
-        executable = stack.library / "sing-box"
-        shutil.copyfile(binary, executable)
-        executable.chmod(0o555)
         delivered = generated_p0(stack, monkeypatch)
-        assert delivered["outbounds"][0]["flow"] == "xtls-rprx-vision"
-        assert "multiplex" not in delivered["outbounds"][0]
-        port = start_sing_box(stack, executable, delivered, "recipient")
+        assert delivered["outbounds"][0]["settings"]["vnext"][0]["users"][0]["flow"] == "xtls-rprx-vision"
+        assert "mux" not in delivered["outbounds"][0]
+        port = start_xray(stack, delivered, "recipient")
         stack.run_driver(port)
         invalid = deepcopy(delivered)
-        invalid["inbounds"][0]["listen_port"] += 1
-        invalid["outbounds"][0]["uuid"] = str(uuid.uuid4())
-        rejected = start_sing_box(stack, executable, invalid, "wrong-recipient")
+        invalid["inbounds"][0]["port"] += 1
+        invalid["outbounds"][0]["settings"]["vnext"][0]["users"][0]["id"] = str(uuid.uuid4())
+        rejected = start_xray(stack, invalid, "wrong-recipient")
         stack.run_driver(rejected, True)
         stack.run_driver(port)
     finally:
@@ -115,7 +103,7 @@ def start_xray(stack, document, label):
 
 @pytest.mark.parametrize("flow", ["vision", "mux"])
 def test_runtime_acceptance_probe_preserves_active_candidate_finalmask(flow):
-    require_runtime("xray", "Xray 26.3.27")
+    require_runtime("xray", "Xray 26.10.31")
     source = ROOT / "ansible/roles/runtime-release/files/transport_runtime_probe.py"
     spec = importlib.util.spec_from_file_location("p0_real_runtime_probe", source)
     probe = importlib.util.module_from_spec(spec)
@@ -147,7 +135,7 @@ def test_runtime_acceptance_probe_preserves_active_candidate_finalmask(flow):
 
 @pytest.mark.parametrize("flow,masked", [("mux", False), ("vision", True), ("mux", True)])
 def test_native_smoke_shape_authentication_xudp_and_active_finalmask(flow, masked):
-    require_runtime("xray", "Xray 26.3.27")
+    require_runtime("xray", "Xray 26.10.31")
     stack = fixture.NativeStack()
     try:
         stack.start()

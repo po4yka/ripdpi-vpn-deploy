@@ -580,7 +580,7 @@ def engines():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     cache = module.artifacts(ROOT / ".cache/transport-runtime-acceptance")
-    with zipfile.ZipFile(cache / "xray-v26.3.27.zip") as archive:
+    with zipfile.ZipFile(cache / "xray-v26.10.31.zip") as archive:
         if hashlib.sha256(archive.read("xray")).hexdigest() != result["xray"]:
             raise RuntimeError("xray-pin-mismatch")
     if (

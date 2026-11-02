@@ -60,7 +60,7 @@ exit 0
 
 
 def test_pre_hot_reload_xray_is_restarted_instead_of_killed(tmp_path: Path) -> None:
-    calls = _run_activation(tmp_path, "26.3.27")
+    calls = _run_activation(tmp_path, "26.10.31")
 
     assert "restart xray.service" in calls
     assert "kill --signal=HUP xray.service" not in calls

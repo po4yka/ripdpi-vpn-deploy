@@ -72,7 +72,7 @@ def _report(sentinel: str, verdicts: dict[str, str], *, control: str = "ok", age
             }
             for profile, verdict in verdicts.items()
         ],
-        "runtime": {"sing_box": "1.14.0", "awg": "1.0.0", "xray": "26.3.27", "awg_toolchain": "a" * 64},
+        "runtime": {"sing_box": "1.14.0", "awg": "1.0.0", "xray": "26.10.31", "awg_toolchain": "a" * 64},
         "provenance": {"controller_revision": "b" * 40, "runner_sha256": "c" * 64,
                        "client_generation_id": "7f574d16-931e-42b4-a940-853b92f53a14",
                        "public_profile_digest": "d" * 64, "vantage": "external"},
@@ -93,7 +93,7 @@ def _config(tmp_path: Path, *, quorum: int = 2) -> Path:
                 "stale_after_seconds": 120,
                 "failure_threshold": 3,
                 "otp_ttl_seconds": 3600,
-                "expected_runtime": {"sing_box": "1.14.0", "awg": "1.0.0", "xray": "26.3.27", "awg_toolchain": "a" * 64},
+                "expected_runtime": {"sing_box": "1.14.0", "awg": "1.0.0", "xray": "26.10.31", "awg_toolchain": "a" * 64},
                 "policies": [
                     {
                         "id": "fullstack",
@@ -199,7 +199,7 @@ def test_schema_requires_transport_and_host_key_alias_together(tmp_path: Path) -
 def test_fullstack_configuration_requires_explicit_runtime_and_target_binding(tmp_path, missing):
     config_path = _config(tmp_path)
     config = yaml.safe_load(config_path.read_text())
-    config["expected_runtime"].update({"xray": "26.3.27", "awg_toolchain": "a" * 64})
+    config["expected_runtime"].update({"xray": "26.10.31", "awg_toolchain": "a" * 64})
     for sentinel in config["sentinels"]:
         sentinel.update({"vantage": "external", "awg_target": {"provider": "vultr", "environment": "test", "instance": "awg0"}})
     if missing in config["expected_runtime"]:
@@ -293,7 +293,7 @@ def test_pull_report_uses_bound_colima_executor_without_host_ssh(monkeypatch) ->
     assert captured[-3:] == ["/bin/sh", "-c", "sudo -n /usr/local/sbin/vpn-protocol-liveness"]
 
 
-@pytest.mark.parametrize("required,keys", [(["p0-reality"], {"sing_box"}),
+@pytest.mark.parametrize("required,keys", [(["p0-reality"], {"xray"}),
     (["p2-hysteria2"], {"sing_box"}), (["p1-xhttp"], {"xray"}),
     (["p2-amneziawg"], {"awg", "awg_toolchain"})])
 def test_report_runtime_is_scoped_to_its_sentinel_policy(tmp_path, required, keys):
@@ -310,7 +310,7 @@ def test_report_runtime_is_scoped_to_its_sentinel_policy(tmp_path, required, key
     assert valid is None and "runtime mismatch" in error
 
 
-@pytest.mark.parametrize("profile,key,pin", [("p0-reality", "sing_box", "1.14.0"), ("p1-xhttp", "xray", "26.3.27")])
+@pytest.mark.parametrize("profile,key,pin", [("p0-reality", "xray", "26.10.31"), ("p1-xhttp", "xray", "26.10.31")])
 def test_configuration_only_needs_pins_for_assigned_profiles(tmp_path, profile, key, pin):
     module = runpy.run_path(str(SCRIPT))
     config = yaml.safe_load(_config(tmp_path).read_text())

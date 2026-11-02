@@ -257,7 +257,7 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
             mode = x.get('xhttp_mode', 'auto')
             tuning = xhttp_tuning(x)
             native = o['format'] == 'xray' or xhttp_only
-            if native and x.get('version') != 'v26.3.27':
+            if native and x.get('version') != 'v26.10.31':
                 raise ValueError('unsupported-native-xhttp-version')
             # No unsupported field may silently disappear in a recipient importer.
             if not native and (mode not in ('auto', 'stream-up') or tuning):

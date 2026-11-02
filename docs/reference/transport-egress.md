@@ -41,7 +41,12 @@ admitted rewrites. Unsupported later rewrites, TC/XDP and flow-offload authority
 refuse activation. Ordinary host infrastructure UIDs retain their own policy.
 
 The private listeners are `12080` (Xray direct), `12081` (Hysteria direct), and
-`12082` (Xray WARP). Native gateways use `12090` (direct) and `12091` (WARP).
+`12082` (Xray WARP). Native gateways use TCP `127.0.0.55:12090` (direct)
+and `10.250.254.2:12091` (WARP). UDP relays use a per-association port on
+the same exact address. Those addresses are reserved for the gateway;
+foreign UDP socket owners refuse activation. Only the normalizer UID,
+its reserved source pool and the exact interface can reach a UDP relay.
+Gateway UDP replies require the matching conntrack reply direction.
 Frontend UDP relay pools are `13000–15999`; upstream source pools are
 `16000–18999`. Activation requires those ports to be outside the actual
 kernel ephemeral range or already fully reserved, and refuses foreign socket
@@ -106,3 +111,10 @@ Nginx adoption receipts now require schema 2 ownership and bounded digest-only p
 Watchdog recovery for Xray and Hysteria goes through the running root controller. A successful request changes only its selected frontend PID; mappings and the other frontend retain their PIDs. The requester checks actual root controller identity, private receipt binding and current readiness under one deadline. Unrelated drift cannot count as targeted recovery, and failure has no direct-restart fallback. The watchdog service budget includes both enabled protected requests at the maximum supported timeout.
 
 Node-local masquerade resolution is scoped to Hysteria with a private read-only hosts bind that participates in frontend rollback. Nginx never changes global `/etc/hosts`; public site pages/assets share its typed publication and compensation. Host-NSS verification remains separate from independently authenticated public DNS/client acceptance.
+
+
+The authenticated SOCKS5 UDP ASSOCIATE reply selects the gateway relay port.
+The normalizer requires the exact configured backend IP and a nonzero returned
+port, then sends UDP to that endpoint while retaining the control connection.
+The relay port is independent of the fixed TCP control port. Frontend source
+pinning, destination checks and local UDP source-pool limits still apply.

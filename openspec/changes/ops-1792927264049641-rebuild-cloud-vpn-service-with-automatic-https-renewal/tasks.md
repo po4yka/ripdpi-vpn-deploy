@@ -4,6 +4,7 @@
 
 Serve the rebuilt public site over automatically renewed HTTPS and qualify the
 cloud-only VPN transports and private panel within the approved resource bounds.
+Repair confirmed live security defects before final service acceptance.
 
 ## Ownership
 
