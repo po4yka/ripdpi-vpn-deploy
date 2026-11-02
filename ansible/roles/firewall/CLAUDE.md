@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+The stock nftables stop command flushes the complete kernel policy. The owned
+service drop-in clears it; stop retains enforcement and restart uses the scoped
+loader. Reload systemd on every convergence so interrupted copies reconcile.
+Normal convergence refuses any remaining effective stop or post-stop command.
+
 The IPv4 TCP IP-options guard uses input priority -310 in the owned filter table,
 before every priority-zero accept, including loopback and established traffic.
 Keep its accept policy and TCP-only scope: UDP, IPv6 and TCP-header options retain

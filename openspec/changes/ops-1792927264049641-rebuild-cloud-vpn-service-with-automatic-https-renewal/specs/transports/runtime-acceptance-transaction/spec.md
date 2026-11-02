@@ -109,3 +109,10 @@ proof. Successful source checks alone MUST NOT accept deployment.
 - **THEN** receipt lookup and upgrade MUST authenticate its exact private files, metadata, runner, target identity and full private receipt digest without applying the new runtime parser to that history.
 - **AND** new candidates and active probes MUST still require the current Xray contract; missing receipts or changed history MUST refuse before activation.
 - **AND** failed probes and interrupted installation MUST restore the exact previous bootstrap bytes, modes and current generation.
+
+
+#### Scenario: nftables loader lifecycle preserves enforcement
+
+- **WHEN** the managed nftables loader stops, reloads, starts or restarts
+- **THEN** stop MUST retain the loaded kernel policy, and reload/start MUST preserve independent tables and the current membership and remaining expiry of named timed sets.
+- **AND** convergence MUST reload service definitions even after an interrupted unit copy, and MUST refuse remaining effective stop or post-stop commands before runtime publication.

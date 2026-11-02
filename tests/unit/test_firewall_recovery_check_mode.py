@@ -101,3 +101,15 @@ def test_load_state_probe_refuses_ambiguous_or_failed_discovery(status, code, re
     )
     variables = {"_firewall_tailnet_existing_units": {"stdout": status, "rc": code}}
     assert evaluate(probe["failed_when"], variables) is refused
+
+
+@pytest.mark.parametrize(("returncode", "stdout"), [(0, ""), (0, "\n"), (0, "/usr/sbin/nft flush ruleset"), (0, "\n/bin/unsafe-stop\n"), (1, "")])
+def test_effective_nftables_stop_commands_must_be_empty(returncode, stdout):
+    task = next(item for item in TASKS if item["name"] == "Require the nftables loader to preserve active kernel policy")
+    assert task["ansible.builtin.command"]["argv"] == [
+        "systemctl", "show", "nftables.service", "--property=ExecStop,ExecStopPost", "--value"
+    ]
+    values = {"_firewall_nftables_stop_commands": {"stdout": stdout, "rc": returncode}}
+    assert evaluate(task["failed_when"], values) is bool(returncode or stdout.strip())
+    for checking in (False, True):
+        assert evaluate(task["when"], {"_firewall_effective_check_mode": checking}) is not checking

@@ -173,6 +173,16 @@
               for name, address in selected:
                   remaining = expiry(name, address)
                   assert 0 < remaining < previous[name], 'ban timeout was refreshed instead of preserved'
+              for action in ('reload', 'stop', 'start', 'restart'):
+                  stopped = subprocess.check_output(
+                      ['systemctl', 'show', 'nftables.service', '--property=ExecStop,ExecStopPost', '--value'],
+                      text=True,
+                  )
+                  assert not stopped.strip(), 'destructive nftables stop command remains'
+                  subprocess.run(['systemctl', action, 'nftables.service'], check=True, timeout=30)
+                  assert 'split-hop-sentinel' in nft('list', 'table', 'inet', 'split_hop_egress')
+                  for name, address in selected:
+                      assert 0 < expiry(name, address) < previous[name], 'loader lifecycle lost or refreshed a ban'
               rules = nft('list', 'chain', 'inet', 'filter', 'input')
               for name, _address in selected:
                   assert '@' + name + ' drop' in rules

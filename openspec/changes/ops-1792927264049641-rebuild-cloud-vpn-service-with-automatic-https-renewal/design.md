@@ -226,3 +226,8 @@ rule evaluation, without a notification receipt.
 Changing a live supplied certificate owner into an ACME owner is outside this
 fresh-node rollout. Such a node must be recreated under a reviewed plan; do not
 adopt a foreign active certificate receipt or restore old bytes over new TLS.
+
+The firewall role clears the stock global-flush stop command through one owned
+systemd drop-in. It reloads service definitions on every convergence and refuses
+remaining stop hooks. The loader still replaces only its owned tables; independent
+transport guards and dynamic bans survive its complete service lifecycle.
