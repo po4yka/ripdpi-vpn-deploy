@@ -24,9 +24,22 @@ import transport_socks as wire
 ROOT = Path(__file__).resolve().parents[2]
 
 
+@pytest.fixture(autouse=True)
+def fixture_loopback_transport(monkeypatch):
+    # macOS has one loopback alias. Linux CI uses the real dedicated address;
+    # these fixture peers test the wire contract, not native address isolation.
+    if sys.platform == 'darwin':
+        bind, connect, connect_ex = socket.socket.bind, socket.socket.connect, socket.socket.connect_ex
+        def local(endpoint):
+            return ('127.0.0.1', endpoint[1]) if endpoint[0] == '127.0.0.55' else endpoint
+        monkeypatch.setattr(socket.socket, 'bind', lambda stream, endpoint: bind(stream, local(endpoint)))
+        monkeypatch.setattr(socket.socket, 'connect', lambda stream, endpoint: connect(stream, local(endpoint)))
+        monkeypatch.setattr(socket.socket, 'connect_ex', lambda stream, endpoint: connect_ex(stream, local(endpoint)))
+
+
 def config(port=12080, backend_port=12090):
     return {"schema_version": 1, "runtime_uid": max(os.geteuid(), 501),
-            "backends": {"direct": {"address": "127.0.0.1", "port": backend_port,
+            "backends": {"direct": {"address": "127.0.0.55", "port": backend_port,
                                      "username": "gateway-direct", "password": "synthetic-backend-secret-" + "b" * 20,
                                      "udp_source_port_min": 20000, "udp_source_port_max": 20007}},
             "listeners": [{"name": "direct_xray", "address": "127.0.0.1", "port": port,
@@ -210,9 +223,9 @@ class WireGateway:
             udp = None
             try:
                 udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                tcp.bind(("127.0.0.1", 0))
+                tcp.bind(("127.0.0.55", 0))
                 port = tcp.getsockname()[1]
-                udp.bind(("127.0.0.1", port))
+                udp.bind(("127.0.0.55", port))
             except OSError as error:
                 tcp.close()
                 if udp is not None:
@@ -225,13 +238,13 @@ class WireGateway:
                 with udp:
                     relay = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                     try:
-                        relay.bind(("127.0.0.1", 0))
+                        relay.bind(("127.0.0.55", 0))
                     except OSError:
                         relay.close()
                         tcp.close()
                         raise
                 self.tcp, self.udp, self.port = tcp, relay, port
-                self.relay_address = "127.0.0.1"
+                self.relay_address = "127.0.0.55"
                 self.relay_port = relay.getsockname()[1]
                 break
         else:
@@ -311,7 +324,7 @@ def test_gateway_reserves_independent_udp_relay_and_closes_colliding_candidates(
     def occupy_udp_after_tcp_bind(stream, address):
         owned.append(stream)
         original_bind(stream, address)
-        if (stream.type == socket.SOCK_STREAM and address == ("127.0.0.1", 0)
+        if (stream.type == socket.SOCK_STREAM and address == ("127.0.0.55", 0)
                 and not blocked):
             blocked.append(stream.getsockname()[1])
             occupied = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -618,7 +631,7 @@ def test_disconnected_peer_refusal_releases_connection_and_worker():
         connection.close()
 
 
-@pytest.mark.parametrize("address,port", [("127.0.0.2", None), ("::1", None), ("127.0.0.1", 0)])
+@pytest.mark.parametrize("address,port", [("127.0.0.2", None), ("::1", None), ("127.0.0.55", 0)])
 def test_udp_relay_refuses_foreign_address_or_zero_port(address, port):
     with running() as (_, value, _, gateway):
         gateway.relay_address = address

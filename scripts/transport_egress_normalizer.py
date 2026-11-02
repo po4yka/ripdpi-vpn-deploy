@@ -89,7 +89,7 @@ def validate_config(raw, *, input_only=False):
         except PolicyError:
             raise NormalizerError("invalid-backend-address") from None
         if (str(address) != backend["address"] or address.version != 4
-                or (name == "direct" and str(address) != "127.0.0.1")
+                or (name == "direct" and str(address) != "127.0.0.55")
                 or (name == "warp" and (address.is_loopback or not address.is_private or address.is_unspecified))):
             raise NormalizerError("invalid-backend-address")
         _integer(backend["port"], 1, 65535)

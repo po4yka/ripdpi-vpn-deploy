@@ -85,3 +85,5 @@ proof. Successful source checks alone MUST NOT accept deployment.
 - **WHEN** the reviewed Xray gateway returns an ephemeral UDP ASSOCIATE port
 - **THEN** the normalizer MUST use that nonzero port at the exact configured backend IP while keeping the authenticated control socket, recipient source pinning and destination policy.
 - **AND** a foreign relay address or zero port MUST refuse before UDP delivery while retaining the existing quarantine and capacity rules.
+- **AND** the direct gateway MUST claim only `127.0.0.55` for TCP control and UDP relays; kernel admission MUST retain the normalizer UID, exact interface and source pool, and accept gateway responses only in conntrack reply direction. Foreign UDP socket owners on the claimed relay address MUST refuse activation.
+- **AND** private generation readiness MUST parse the complete authenticated UDP reply and refuse a foreign address or zero port.

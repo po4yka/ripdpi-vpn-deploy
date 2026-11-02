@@ -41,7 +41,12 @@ admitted rewrites. Unsupported later rewrites, TC/XDP and flow-offload authority
 refuse activation. Ordinary host infrastructure UIDs retain their own policy.
 
 The private listeners are `12080` (Xray direct), `12081` (Hysteria direct), and
-`12082` (Xray WARP). Native gateways use `12090` (direct) and `12091` (WARP).
+`12082` (Xray WARP). Native gateways use TCP `127.0.0.55:12090` (direct)
+and `10.250.254.2:12091` (WARP). UDP relays use a per-association port on
+the same exact address. Those addresses are reserved for the gateway;
+foreign UDP socket owners refuse activation. Only the normalizer UID,
+its reserved source pool and the exact interface can reach a UDP relay.
+Gateway UDP replies require the matching conntrack reply direction.
 Frontend UDP relay pools are `13000–15999`; upstream source pools are
 `16000–18999`. Activation requires those ports to be outside the actual
 kernel ephemeral range or already fully reserved, and refuses foreign socket

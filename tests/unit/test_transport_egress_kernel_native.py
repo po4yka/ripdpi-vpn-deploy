@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.native_runtime
 
 NATIVE = r'''
-import json,os,pathlib,subprocess,sys,tempfile,time,socket,threading,uuid
+import json,os,pathlib,subprocess,sys,tempfile,time,socket,threading,uuid,select
 sys.path.insert(0,sys.argv[1]+'/scripts')
 import transport_egress_kernel as k
 p=json.load(sys.stdin)
@@ -25,7 +25,7 @@ def run(*args,data=None,check=True):
  if check and r.returncode:raise RuntimeError(r.stderr)
  return r
 name='rdb-peer-'+uuid.uuid4().hex[:10]
-root=pathlib.Path(tempfile.mkdtemp(prefix='rdb-kernel-'));k.STATE=root;peer=None
+root=pathlib.Path(tempfile.mkdtemp(prefix='rdb-kernel-'));k.STATE=root;peer=None;relay=None
 PEER=r"""
 import socket,sys,threading,json,pathlib,time
 root=pathlib.Path(sys.argv[1]);counts={'public_tcp':0,'public_udp':0,'remote_ssh':0,'private_tcp':0,'private_udp':0};lock=threading.Lock()
@@ -60,6 +60,28 @@ try:
  assert r==b'boundary-positive';sys.exit(0)
 except (OSError,AssertionError):sys.exit(1)
 """
+RELAY=r"""
+import os,socket,sys,select
+os.setgroups([]);os.setgid(21002);os.setuid(21002)
+s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.bind(('127.0.0.55',0))
+print(s.getsockname()[1],flush=True)
+while True:
+ ready,_,_=select.select([s,sys.stdin],[],[],5)
+ if s in ready:
+  data,peer=s.recvfrom(2048);s.sendto(data,peer)
+ if sys.stdin in ready:
+  line=sys.stdin.readline()
+  if not line:break
+  s.sendto(b'unsolicited',('127.0.0.1',int(line)));print('sent',flush=True)
+"""
+UDP_DIAL=r"""
+import os,socket,sys
+uid,source,relay=map(int,sys.argv[1:]);os.setgroups([]);os.setgid(uid);os.setuid(uid)
+s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.settimeout(.4);s.bind(('127.0.0.1',source))
+try:
+ s.sendto(b'owned-relay',('127.0.0.55',relay));assert s.recv(2048)==b'owned-relay'
+except (OSError,AssertionError):sys.exit(1)
+"""
 local_counts={'admin':0,'web':0}
 def local(port,key):
  s=socket.socket();s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);s.bind(('203.0.113.1',port));s.listen();s.settimeout(.2)
@@ -87,6 +109,20 @@ try:
  p['policy']={'owned_addresses':['203.0.113.1'],'management_tcp_ports':[2222],'management_udp_ports':[]}
  assert json.loads(k.run('apply',p))=={'changed':True}
  assert json.loads(k.run('apply',p))=={'changed':False};k.run('verify',p)
+ relay=subprocess.Popen([sys.executable,'-c',RELAY],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+ assert select.select([relay.stdout],[],[],5)[0],'relay-not-ready'
+ relay_port=int(relay.stdout.readline());assert relay_port!=p['backends']['direct']['port']
+ def relay_dial(uid,source):
+  return run(sys.executable,'-c',UDP_DIAL,str(uid),str(source),str(relay_port),check=False).returncode==0
+ # Dynamic ports do not remove UID, source-pool or conntrack admission.
+ assert not relay_dial(21003,16000) and not relay_dial(21001,19000)
+ assert relay_dial(21001,16000)
+ with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as receiver:
+  receiver.bind(('127.0.0.1',16001));receiver.settimeout(.4)
+  relay.stdin.write('16001\n');relay.stdin.flush()
+  assert select.select([relay.stdout],[],[],5)[0] and relay.stdout.readline().strip()=='sent'
+  try:receiver.recv(2048);raise AssertionError('unsolicited-gateway-reply-admitted')
+  except socket.timeout:pass
  def dial(address,port=9000,network='tcp'):
   return run(sys.executable,'-c',DIAL,str(p['gateway_uid']),address,str(port),network,check=False).returncode==0
  assert dial('192.0.2.80') and dial('192.0.2.80',network='udp')
@@ -124,6 +160,10 @@ chain change { type nat hook output priority -100; policy accept; ip daddr 192.0
  print(json.dumps({'public_tcp_udp':True,'remote_ssh_and_own_web':True,'private_and_own_admin_contacts':0,'after_accept_dnat_guard':True,'late_authority_refused':True,'accepted_policy_preserved':True}))
 finally:
  for s in locals:s.close()
+ if relay is not None:
+  relay.terminate()
+  try:relay.wait(timeout=3)
+  except subprocess.TimeoutExpired:relay.kill();relay.wait()
  if peer is not None:
   peer.terminate()
   try:peer.wait(timeout=3)

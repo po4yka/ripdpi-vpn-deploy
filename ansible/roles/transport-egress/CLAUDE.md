@@ -3,9 +3,12 @@
 ## Design decisions
 
 SOCKS UDP uses the authenticated reply's nonzero relay port at the exact
-configured backend address. Xray allocates that port per association; it is
-not the TCP control port. The normalizer keeps the control socket and all
-recipient source/destination guards while using that returned endpoint.
+configured backend address. Direct gateway TCP and UDP claim only 127.0.0.55;
+WARP claims 10.250.254.2. Xray allocates each relay port per association.
+Kernel policy admits only the normalizer UID and reserved source pool to
+that exact address and interface; gateway replies require conntrack reply
+direction. Foreign UDP owners on the claimed address refuse activation.
+The normalizer retains its control socket and recipient destination guards.
 
 Runtime probes use the watchdog secret's canary URL and expected HTTP status. The default status is 204 when no value is supplied.
 
