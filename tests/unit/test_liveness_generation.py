@@ -519,3 +519,106 @@ def test_receipt_public_identity_must_match_installed_candidate(engine, root, ac
             engine.run_current(root, healthy)
         else:
             engine.committed_receipt(root, generation)
+
+
+@pytest.fixture
+def previous_p0(root):
+    """Load an envelope validated by the pre-Xray producer; no VPN proof."""
+    document = json.loads((ENGINE.parents[1] / "tests/fixtures/liveness-generation-p0-before-xray.json").read_text())
+    generation = document["generation_id"]
+    directory = root / "generations" / generation
+    (directory / "profiles").mkdir(parents=True, mode=0o700)
+    directory.parent.chmod(0o700)
+    directory.chmod(0o700)
+    for name, content in document["files"].items():
+        path = directory / name
+        path.write_text(content)
+        path.chmod(0o600)
+    (root / "receipts").mkdir(mode=0o700)
+    receipt_path = root / "receipts" / f"{generation}.json"
+    receipt_path.write_text(json.dumps(document["receipt"]))
+    receipt_path.chmod(0o600)
+    (root / "current").symlink_to(Path("generations") / generation)
+    return document
+
+
+def test_previous_runtime_envelope_allows_current_candidate_upgrade(engine, root, previous_p0):
+    previous = previous_p0["generation_id"]
+    old = root / "generations" / previous
+    before = {name: (old / name).read_bytes() for name in previous_p0["files"]}
+    receipt = engine.committed_receipt(root, previous)
+    assert receipt == {k: v for k, v in previous_p0["receipt"].items() if k != "candidate_digest"}
+    generation, stage = candidate(root)
+    with pytest.raises(engine.GenerationError, match="^generation-uncommitted$"):
+        engine.committed_receipt(root, generation)
+    installed = engine.install_generation(root, generation, stage, healthy)
+    assert installed["status"] == "committed"
+    assert (root / "current").readlink() == Path("generations") / generation
+    assert {name: (old / name).read_bytes() for name in before} == before
+
+
+@pytest.mark.parametrize("file", ["config.json", "metadata.json", "runner.py", "profiles/sing-box.json", "receipt"])
+def test_previous_runtime_tampering_refuses_before_upgrade(engine, root, previous_p0, file):
+    previous = previous_p0["generation_id"]
+    if file == "receipt":
+        (root / "receipts" / f"{previous}.json").unlink()
+    else:
+        path = root / "generations" / previous / file
+        path.write_bytes(path.read_bytes() + b"\n")
+    generation, stage = candidate(root)
+    for requested in (previous, generation):
+        with pytest.raises(engine.GenerationError) as caught:
+            engine.committed_receipt(root, requested)
+        assert str(caught.value) != "generation-uncommitted"
+    with pytest.raises(engine.GenerationError):
+        engine.install_generation(root, generation, stage, lambda _p: pytest.fail("tampered previous reached probe"))
+    assert not (root / "pending.json").exists()
+    assert (root / "current").readlink() == Path("generations") / previous
+    assert all(not p.exists() for p in bootstrap_files(engine, root))
+
+
+@pytest.mark.parametrize("action", ["stage", "run"])
+def test_old_runtime_remains_refused_for_candidate_and_run(engine, root, previous_p0, action):
+    previous = previous_p0["generation_id"]
+    if action == "stage":
+        stage = root / "staging" / previous
+        stage.parent.mkdir(mode=0o700)
+        (root / "generations" / previous).rename(stage)
+        invoke = lambda: engine.install_generation(root, previous, stage, healthy)
+    else:
+        invoke = lambda: engine.run_current(root, healthy)
+    with pytest.raises(engine.GenerationError, match="^candidate-runtime$"):
+        invoke()
+    assert not (root / "pending.json").exists()
+
+
+@pytest.mark.parametrize("interruption", [False, True])
+def test_failed_upgrade_restores_previous_runtime_bootstrap(engine, root, previous_p0, interruption):
+    previous = previous_p0["generation_id"]
+    for index, path in enumerate(bootstrap_files(engine, root)):
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        path.write_bytes(f"historical bootstrap {index}\n".encode())
+        path.chmod(0o640 if index == 2 else 0o744)
+    before = [(p.read_bytes(), p.stat().st_mode & 0o777) for p in bootstrap_files(engine, root)]
+    generation, stage = candidate(root)
+    if interruption:
+        code = """
+import importlib.util, os, pathlib, sys
+spec = importlib.util.spec_from_file_location('fixture_engine', sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+module._validate_sudoers = lambda path: None
+module.install_generation(pathlib.Path(sys.argv[2]), sys.argv[3], pathlib.Path(sys.argv[4]), lambda path: os._exit(86))
+"""
+        child = subprocess.run([sys.executable, "-B", "-c", code, str(ENGINE), str(root), generation, str(stage)], timeout=10, check=False)
+        assert child.returncode == 86
+        assert (root / "pending.json").exists()
+        engine.recover_pending(root)
+    else:
+        with pytest.raises(engine.GenerationError, match="installation-failed"):
+            engine.install_generation(root, generation, stage, lambda _path: {})
+    assert [(p.read_bytes(), p.stat().st_mode & 0o777) for p in bootstrap_files(engine, root)] == before
+    assert (root / "current").readlink() == Path("generations") / previous
+    assert not (root / "pending.json").exists()
+    assert engine.committed_receipt(root, previous)["status"] == "committed"
+    assert engine.install_generation(root, generation, stage, healthy)["status"] == "committed"

@@ -336,7 +336,11 @@ systemd job. A shared lock serializes install and probe. Pending state snapshots
 the previous launcher, engine, sudo rule and current generation before activation.
 A failed initial authenticated probe restores that state. A committed receipt
 bound to the exact generation, runner and public profile is required before the
-controller publishes its assignment. Lost SSH leaves public pending metadata;
+controller publishes its assignment. New candidates and active probes require
+the current runtime contract. Before an upgrade, the engine authenticates the
+previous generation's exact files against its private receipt, without parsing
+that generation under new runtime rules. It preserves all file, identity and
+digest checks. New P0 candidates still require Xray. Lost SSH leaves public pending metadata;
 retry first reconciles the same generation's receipt. Queueing a job is not
 success. The probe deadline is the per-request timeout multiplied by the control
 plus logical profile count, with 240 seconds for bounded setup and cleanup

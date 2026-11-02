@@ -33,6 +33,10 @@ transaction. Hysteria has native ACME support in its pinned server release.
   retaining its application version; keep rclone under dpkg with a distinct
   package version. Prove native versions, guarded transport acceptance and a
   real remote backup and restore before closing the compiler finding.
+- Authenticate accepted sentinel generations through their private full-file
+  receipt digest. Keep current runtime validation on new candidates and active
+  probes. Preserve exact prior bootstrap bytes and modes when an upgrade fails;
+  do not reinterpret accepted runtime history with a new configuration parser.
 - Limit observer SSH forwarding to the local dashboard destination, with no
   agent or remote forwarding. Use the existing recoverable SSH transaction;
   do not add an independent SSH policy writer to the observer role.
