@@ -62,7 +62,7 @@ def _run_gate(gate, results):
     )
 
 
-@pytest.mark.parametrize("job", ("python-validators", "pr-title", "gitleaks", "shellcheck", "task-contract"))
+@pytest.mark.parametrize("job", ("python-validators", "gitleaks", "shellcheck", "task-contract"))
 @pytest.mark.parametrize("outcome", ("failure", "cancelled", "skipped"))
 def test_unsuccessful_always_run_jobs_reject_merge(job, outcome):
     gate = _workflow("ci")["jobs"]["required"]

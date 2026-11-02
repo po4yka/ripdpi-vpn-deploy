@@ -101,12 +101,20 @@ def test_offending_commit_in_range_fails_and_is_named(repo, message, fragment):
     assert offender[:12] in result.stderr and fragment in result.stderr
 
 
-def test_title_edits_trigger_read_only_ci_and_title_result_reaches_aggregate():
+def test_title_edits_rerun_only_the_branch_required_title_check():
+    workflow = yaml.safe_load((ROOT / '.github/workflows/pr-title.yml').read_text())
+    # Edits recheck the title; every push to the head rechecks the commit range.
+    assert {'edited', 'synchronize'} <= set(workflow[True]['pull_request']['types'])
+    assert set(workflow[True]) == {'pull_request'}
+    assert workflow['permissions'] == {'contents': 'read'}
+    # An edit must not cancel and restart the complete CI plan for the same head.
     ci = yaml.safe_load((ROOT / '.github/workflows/ci.yml').read_text())
-    assert 'edited' in ci[True]['pull_request']['types']
-    assert 'pr-title' in ci['jobs']['required']['needs']
-    assert ci['permissions'] == {'contents': 'read'}
-    job = ci['jobs']['pr-title']
+    assert 'edited' not in ci[True]['pull_request']['types']
+    assert 'pr-title' not in ci['jobs']
+    policy = json.loads((ROOT / '.github/repository-policy.json').read_text())
+    required = policy['rulesets'][1]['rules'][0]['parameters']['required_status_checks']
+    job = workflow['jobs']['pr-title']
+    assert {'context': job['name'], 'integration_id': 15368} in required
     assert 'if' not in job and 'continue-on-error' not in job
     assert job['steps'][0]['with']['fetch-depth'] == 0  # the commit range needs both PR parents
     assert job['steps'][-1]['run'] == 'python3 scripts/check-pr-title.py'
