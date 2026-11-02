@@ -9,6 +9,11 @@ Transport upgrades MUST stage exact pinned runtime bytes, required assets, confi
 - **WHEN** a valid exact pinned candidate includes all required assets configuration and TLS
 - **THEN** native validation succeeds and the candidate becomes eligible for bounded activation
 
+#### Scenario: Stable upstream bytes retain an affected compiler
+
+- **WHEN** a selected stable Hysteria or rclone binary lacks the required Go TLS fix
+- **THEN** its exact stable source commit MUST be rebuilt outside managed nodes with Go 1.27.3, published with exact artifact checksums and independently reproduced; Hysteria MUST retain its application version under a distinct immutable release identity, rclone MUST retain dpkg ownership under a distinct package version, and native versions plus authenticated transport and backup restore MUST pass before acceptance
+
 #### Scenario: Second asset or configuration fails
 
 - **WHEN** a required asset download or native candidate validation fails after binary staging

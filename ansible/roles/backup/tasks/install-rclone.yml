@@ -11,7 +11,9 @@
 
     - name: Require a supported rclone package architecture
       ansible.builtin.assert:
-        that: _backup_rclone_arch.stdout in backup_rclone_packages
+        that:
+          - _backup_rclone_arch.stdout in backup_rclone_packages
+          - _backup_rclone_arch.stdout in backup_rclone_binary_sha256
         fail_msg: No pinned rclone package for this Debian architecture
 
     - name: Read the installed rclone package identity
@@ -35,7 +37,7 @@
       changed_when: _backup_rclone_installed.stdout != _backup_rclone_expected
       when: ansible_check_mode
 
-    - name: Install the checksum-pinned official Debian package
+    - name: Install the checksum-pinned rebuilt Debian package
       when:
         - not ansible_check_mode
         - _backup_rclone_installed.stdout != _backup_rclone_expected
@@ -87,3 +89,42 @@
             path: "{{ _backup_rclone_staging.path }}"
             state: absent
           when: _backup_rclone_staging.path is defined
+
+    - name: Verify the native rclone application and patched compiler
+      ansible.builtin.command:
+        argv: [/usr/bin/rclone, version]
+      register: _backup_rclone_version
+      changed_when: false
+      failed_when: >-
+        _backup_rclone_version.stdout_lines | first != 'rclone v1.75.2' or
+        '- go/version: go1.27.3' not in _backup_rclone_version.stdout_lines
+      when: not ansible_check_mode
+
+    - name: Read the installed rclone executable bytes
+      ansible.builtin.stat:
+        path: /usr/bin/rclone
+        follow: false
+        get_mime: false
+        checksum_algorithm: sha256
+      register: _backup_rclone_binary
+      when: not ansible_check_mode
+
+    - name: Require the exact root-owned patched executable
+      ansible.builtin.assert:
+        that:
+          - _backup_rclone_binary.stat.isreg | default(false)
+          - not (_backup_rclone_binary.stat.islnk | default(false))
+          - _backup_rclone_binary.stat.uid == 0
+          - _backup_rclone_binary.stat.gid == 0
+          - _backup_rclone_binary.stat.mode == '0755'
+          - _backup_rclone_binary.stat.nlink == 1
+          - _backup_rclone_binary.stat.checksum == backup_rclone_binary_sha256[_backup_rclone_arch.stdout]
+      when: not ansible_check_mode
+
+    - name: Require dpkg ownership of the patched executable
+      ansible.builtin.command:
+        argv: [dpkg-query, -S, /usr/bin/rclone]
+      register: _backup_rclone_owner
+      changed_when: false
+      failed_when: "_backup_rclone_owner.stdout != 'rclone: /usr/bin/rclone'"
+      when: not ansible_check_mode

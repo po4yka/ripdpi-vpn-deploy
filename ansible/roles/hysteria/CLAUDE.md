@@ -2,7 +2,10 @@
 
 ## Design decisions
 
-Molecule upgrades the previous stable fixture to the selected 2.13.0 runtime and checks its actual version, accepted service and both immutable release receipts. Keep download labels and post-upgrade assertions aligned.
+The stable 2.13.0 source is rebuilt with Go 1.27.3 outside managed nodes. Its
+immutable release identity is v2.13.0-go1.27.3; the application version stays
+v2.13.0. Molecule upgrades genuine previous bytes to this exact compiler build
+and checks its version, service and both receipts. Keep all binary paths aligned.
 
 ECH-required profiles bind the exact 2.13.0 runtime, owned inner identity and explicit outer name to a public SHA256 generation. The root-only ech.key enters the complete guarded transaction and LoadCredential; disabling ECH contributes exact absence authority. Candidate namespaces relocate the credential and prove a real ECH handshake. Resource profiles select fixed receive windows and explicit BBR settings; unsupported engines refuse before export.
 Changed Hysteria authority opens the whole-route recovery boundary even when normalizer/gateway configuration is unchanged. ECH-only rotations must therefore retain site compensation; unchanged convergence does not open or quiesce that boundary.

@@ -27,6 +27,12 @@ transaction. Hysteria has native ACME support in its pinned server release.
 - Keep CA distrust current for processes that use the system certificate store.
   Verify removal of the compromised trust paths and use patched stable Go
   runtimes when upstream provides them. Preserve protocol and backup authority.
+  When stable upstream binaries retain an affected compiler, rebuild the exact
+  stable source commits with Go 1.27.3 outside managed nodes. Pin published
+  artifact checksums. Give Hysteria a distinct immutable release identity while
+  retaining its application version; keep rclone under dpkg with a distinct
+  package version. Prove native versions, guarded transport acceptance and a
+  real remote backup and restore before closing the compiler finding.
 - Limit observer SSH forwarding to the local dashboard destination, with no
   agent or remote forwarding. Use the existing recoverable SSH transaction;
   do not add an independent SSH policy writer to the observer role.
@@ -111,7 +117,7 @@ transaction. Hysteria has native ACME support in its pinned server release.
   SSH worker. INT, TERM, HUP and QUIT must reclaim probe sessions before the
   collector exits or releases the fleet verification locks.
 - Use per-provider encrypted operator documents and separate runtime grants.
-  Remote backups use the checksum-pinned official rclone Debian package with
+  Remote backups use the checksum-pinned rebuilt rclone Debian package with
   B2 API v4 authorization. Keep dpkg ownership and the existing narrow grants;
   both backup entrypoints use one installer and check mode does not download.
   The decryption identity has an independently verified vault copy. Temporary

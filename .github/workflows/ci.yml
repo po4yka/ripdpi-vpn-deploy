@@ -951,7 +951,8 @@ jobs:
       cross-platform: false
 
   molecule-failure-scenarios:
-    timeout-minutes: 20
+    # The collector scenario includes native bootstrap, recovery and cleanup.
+    timeout-minutes: ${{ matrix.role == 'observability_control_plane' && 30 || 20 }}
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['molecule-failure-scenarios'] }}
     # Non-default Molecule scenarios that exercise red-path / failure

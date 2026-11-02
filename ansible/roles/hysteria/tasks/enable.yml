@@ -148,7 +148,7 @@
     name: runtime-release
   vars:
     runtime_release_stage_only: true
-    runtime_release_version: "{{ hysteria.version }}"
+    runtime_release_version: "{{ hysteria_runtime_release_version }}"
     runtime_release_install_root: "{{ hysteria_install_root }}"
     runtime_release_binary_name: hysteria
     runtime_release_public_link: /usr/local/bin/hysteria
@@ -181,7 +181,7 @@
       - '{{ hysteria_config_dir | regex_replace("^/", "") }}/config.yaml'
       - --request-stdin
     stdin: >-
-      {{ {'binary': hysteria_install_root ~ '/releases/' ~ hysteria.version ~ '/hysteria',
+      {{ {'binary': hysteria_install_root ~ '/releases/' ~ hysteria_runtime_release_version ~ '/hysteria',
           'gateway_binary': transport_egress_runtime_binary,
           'config': lookup('ansible.builtin.template', 'config.yaml.j2'),
           'unit': lookup('ansible.builtin.template', 'hysteria-server.service.j2'),

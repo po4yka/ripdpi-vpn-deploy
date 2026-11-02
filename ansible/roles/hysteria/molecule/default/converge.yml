@@ -4,6 +4,7 @@
   become: true
   vars:
     hysteria_install_root: /opt/hysteria
+    hysteria_runtime_release_version: v2.8.2
     hysteria_config_dir: /etc/hysteria
     hysteria_log_dir: /var/log/hysteria
     hysteria_port: 443
@@ -68,17 +69,17 @@
         mode: '0755'
     - name: Fetch verified Hysteria 2.13.0 amd64 fixture
       ansible.builtin.get_url:
-        url: https://github.com/HyNetworks/hysteria/releases/download/app/v2.13.0/hysteria-linux-amd64
-        dest: /var/tmp/hysteria-molecule/hysteria-v2.13.0
-        checksum: sha256:907ba8c9693edb104b20582681fb7dc15639d5b64a9cbb616a7b539190a86691
+        url: https://github.com/po4yka/ripdpi-vpn-deploy/releases/download/runtime-go1.27.3-20261102/hysteria-linux-amd64
+        dest: /var/tmp/hysteria-molecule/hysteria-v2.13.0-go1.27.3
+        checksum: sha256:f0488797bd269a238af3fdeedb07560c27c806984980c6ea2bd7d73963723274
         owner: root
         group: root
         mode: '0755'
     - name: Fetch verified Hysteria 2.13.0 arm64 fixture
       ansible.builtin.get_url:
-        url: https://github.com/HyNetworks/hysteria/releases/download/app/v2.13.0/hysteria-linux-arm64
-        dest: /var/tmp/hysteria-molecule/hysteria-v2.13.0-arm64
-        checksum: sha256:a68a61a84452ca250ce0368202521965ca9cc9d801a404f1dc9008ac6cf677a7
+        url: https://github.com/po4yka/ripdpi-vpn-deploy/releases/download/runtime-go1.27.3-20261102/hysteria-linux-arm64
+        dest: /var/tmp/hysteria-molecule/hysteria-v2.13.0-go1.27.3-arm64
+        checksum: sha256:a737d68a8b02ea74d196e8b78db408c43afc9716c899e5d1cb9fa6dc05a1c821
         owner: root
         group: root
         mode: '0755'
