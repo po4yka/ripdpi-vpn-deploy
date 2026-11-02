@@ -449,6 +449,40 @@ def test_incomplete_or_mixed_cache_is_refused(acme_cache, case, tls):
         validation.restored_cache(root, 'etc/hysteria/config.yaml')
 
 
+@pytest.mark.parametrize('product,release', [
+    ('hysteria', 'v2.13.0-go1.27.3'), ('xray', 'v26.10.31-archive'),
+    ('hysteria', 'v2.13.0'), ('xray', 'v26.10.31'),
+])
+def test_recovery_accepts_owned_immutable_release_names(monkeypatch, product, release):
+    from types import SimpleNamespace
+    seen = []
+    tx = SimpleNamespace(uid=os.geteuid(), parent=lambda path: seen.append(path))
+    def owned_node(path, uid, maximum):
+        seen.append(path)
+        assert uid == os.geteuid() and maximum == 128 * 1024 * 1024
+        return {'identity': [0, 0, 0, 0, 0o755]}
+    monkeypatch.setattr(validation, 'node', owned_node)
+    binary = '/opt/' + product + '/releases/' + release + '/' + product
+    validation.recovery_runtime(tx, binary, product)
+    assert seen == [Path(binary).parent, Path(binary)]
+
+
+@pytest.mark.parametrize('binary', [
+    '/opt/hysteria/releases/../hysteria', '/opt/hysteria/releases/./hysteria',
+    '/opt/hysteria/releases/v2.13.0/extra/hysteria',
+    '/opt/hysteria/releases/v2.13.0/xray', '/tmp/hysteria/releases/v2.13.0/hysteria',
+    '/opt/hysteria/releases/v2.13.0;id/hysteria',
+    '/opt/hysteria/releases//v2.13.0/hysteria',
+])
+def test_recovery_refuses_unsafe_path_before_filesystem_admission(monkeypatch, binary):
+    from types import SimpleNamespace
+    def forbidden(*args, **kwargs):
+        pytest.fail('unsafe path reached filesystem admission')
+    monkeypatch.setattr(validation, 'node', forbidden)
+    with pytest.raises(Refusal, match='acme-recovery-runtime'):
+        validation.recovery_runtime(SimpleNamespace(parent=forbidden), binary, 'hysteria')
+
+
 @pytest.fixture
 def cache_recovery(acme_cache, tmp_path, monkeypatch):
     import pwd

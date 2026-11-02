@@ -1326,6 +1326,11 @@ install-hooks:
 native-naive-build:
 	./scripts/build-native-naive-test.sh
 
+# Linux package producer; run through the local build gate when outside CI.
+.PHONY: security-runtime-build
+security-runtime-build:
+	python3 scripts/build-security-runtimes.py --output "$(CURDIR)/.cache/security-runtime-artifacts"
+
 # Real mtg release extraction and FakeTLS parser checks; no Telegram traffic.
 .PHONY: test-mtg-native-compatibility
 test-mtg-native-compatibility:

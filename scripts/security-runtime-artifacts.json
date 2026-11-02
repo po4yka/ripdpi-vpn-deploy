@@ -1,0 +1,12 @@
+{
+  "release": "runtime-go1.27.3-20261102",
+  "hysteria_release_identity": "v2.13.0-go1.27.3",
+  "artifacts": {
+    "hysteria-linux-amd64": "f0488797bd269a238af3fdeedb07560c27c806984980c6ea2bd7d73963723274",
+    "hysteria-linux-arm64": "a737d68a8b02ea74d196e8b78db408c43afc9716c899e5d1cb9fa6dc05a1c821",
+    "rclone-linux-amd64": "8ff248bef3adbef0612fb4c3b0e5e50517bab032b25ef010a12b90f7e4319574",
+    "rclone-1.75.2+go1.27.3-1-linux-amd64.deb": "2de89cdb74ad9d756b850ade35bd3613954eee00b4bb2fd7df1e4f3ac916f412",
+    "rclone-linux-arm64": "0bb4de3061aadf6f51639aa02800f91474ca5de87a984e90868076609e5e9562",
+    "rclone-1.75.2+go1.27.3-1-linux-arm64.deb": "7ca72896b20cc647012f759f103dabce74d8fc87e9afc30fa5a1402ce5734e9d"
+  }
+}

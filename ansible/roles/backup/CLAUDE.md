@@ -19,8 +19,9 @@ window belongs to the operator; the command never creates or releases that windo
 The controller isolates inventory/plugins and loads tracked AWG defaults as data,
 then all/vpn/cohort vars and SOPS. External host_vars are outside this intent.
 
-**Remote client pin** — both entrypoints use the same checksum-pinned official
-Debian package for amd64 or arm64. dpkg owns `/usr/bin/rclone`; runtime-release
+**Remote client pin** — both entrypoints use the same checksum-pinned Debian
+package rebuilt from stable 1.75.2 with Go 1.27.3 for amd64 or arm64. The distinct
+package version forces replacement of upstream bytes. dpkg owns `/usr/bin/rclone`; runtime-release
 does not publish a second executable. Modern restricted B2 keys need API v4,
 which the distribution package does not provide. Check mode reads dpkg identity
 without gathered facts and predicts replacement without download or byte proof.

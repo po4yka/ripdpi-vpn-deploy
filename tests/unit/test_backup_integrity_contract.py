@@ -283,12 +283,12 @@ def test_rclone_package_pin_and_package_manager_ownership():
     import yaml
     root = Path(__file__).resolve().parents[2]
     defaults = yaml.safe_load((root / "ansible/roles/backup/defaults/main.yml").read_text())
-    assert defaults["backup_rclone_version"] == "1.75.2"
+    assert defaults["backup_rclone_version"] == "1.75.2+go1.27.3-1"
     assert defaults["backup_rclone_packages"] == {
-        "amd64": {"url": "https://downloads.rclone.org/v1.75.2/rclone-v1.75.2-linux-amd64.deb",
-                  "sha256": "efbfe852181f7191eb3c9043ed1ab49c9b2d0ba045c61c926a5da111c939ec5c"},
-        "arm64": {"url": "https://downloads.rclone.org/v1.75.2/rclone-v1.75.2-linux-arm64.deb",
-                  "sha256": "b8ba161d5c837206fad79ff1aabf0a81aa02a5fb164cdbc0ff5db4160aecd278"},
+        "amd64": {"url": "https://github.com/po4yka/ripdpi-vpn-deploy/releases/download/runtime-go1.27.3-20261102/rclone-1.75.2+go1.27.3-1-linux-amd64.deb",
+                  "sha256": "2de89cdb74ad9d756b850ade35bd3613954eee00b4bb2fd7df1e4f3ac916f412"},
+        "arm64": {"url": "https://github.com/po4yka/ripdpi-vpn-deploy/releases/download/runtime-go1.27.3-20261102/rclone-1.75.2+go1.27.3-1-linux-arm64.deb",
+                  "sha256": "7ca72896b20cc647012f759f103dabce74d8fc87e9afc30fa5a1402ce5734e9d"},
     }
     tasks = yaml.safe_load((root / "ansible/roles/backup/tasks/install-rclone.yml").read_text())
     installation = next(task for task in tasks[0]["block"] if "block" in task)
@@ -304,7 +304,8 @@ def test_rclone_package_pin_and_package_manager_ownership():
 @pytest.mark.parametrize(("architecture", "installed", "changed", "success"), [
     ("amd64", None, True, True),
     ("amd64", "install ok installed\t1.60.1\tamd64", True, True),
-    ("arm64", "install ok installed\t1.75.2\tarm64", False, True),
+    ("arm64", "install ok installed\t1.75.2\tarm64", True, True),
+    ("arm64", "install ok installed\t1.75.2+go1.27.3-1\tarm64", False, True),
     ("amd64", "deinstall ok config-files\t1.75.2\tamd64", True, True),
     ("s390x", None, False, False),
 ])
@@ -340,6 +341,65 @@ def test_real_rclone_check_mode_without_facts_or_package_writes(tmp_path, archit
         assert re.search(rf"changed={int(changed)}\s", result.stdout), result.stdout
     else:
         assert "No pinned rclone package" in result.stdout
+
+
+@pytest.mark.parametrize('output,accepted', [
+    ('rclone v1.75.2\n- go/version: go1.27.3', True),
+    ('rclone v1.75.2\n- go/version: go1.27.2', False),
+    ('rclone v1.75.1\n- go/version: go1.27.3', False),
+    ('', False),
+])
+def test_native_rclone_guard_requires_application_and_compiler(tmp_path, output, accepted):
+    import subprocess
+    import sys
+    import yaml
+    root = Path(__file__).resolve().parents[2]
+    tasks = yaml.safe_load((root / 'ansible/roles/backup/tasks/install-rclone.yml').read_text())
+    guard = next(task for task in tasks[0]['block']
+                 if task['name'] == 'Verify the native rclone application and patched compiler')
+    assert guard['ansible.builtin.command']['argv'] == ['/usr/bin/rclone', 'version']
+    # Replace only the external executable. Ansible evaluates the real result guard.
+    called = tmp_path / 'native-called'
+    guard['ansible.builtin.command']['argv'] = [sys.executable, '-c',
+        'from pathlib import Path; Path(' + repr(str(called)) + ').touch(); print(' + repr(output) + ')']
+    play = tmp_path / 'native-version.yml'
+    play.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local',
+        'gather_facts': False, 'become': False, 'vars': {'ansible_python_interpreter': sys.executable},
+        'tasks': [guard]}]))
+    result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(play)],
+        capture_output=True, text=True, timeout=30,
+        env={**os.environ, 'ANSIBLE_CONFIG': str(root / 'ansible/ansible.cfg')})
+    assert called.exists(), result.stdout + result.stderr
+    assert (result.returncode == 0) is accepted, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize('override,accepted', [
+    ({}, True), ({'checksum': '0' * 64}, False), ({'islnk': True}, False),
+])
+def test_rclone_byte_guard_refuses_drift_under_unchanged_package_identity(tmp_path, override, accepted):
+    import subprocess
+    import sys
+    import yaml
+    root = Path(__file__).resolve().parents[2]
+    tasks = yaml.safe_load((root / 'ansible/roles/backup/tasks/install-rclone.yml').read_text())
+    guard = next(task for task in tasks[0]['block']
+                 if task['name'] == 'Require the exact root-owned patched executable')
+    digest = '8ff248bef3adbef0612fb4c3b0e5e50517bab032b25ef010a12b90f7e4319574'
+    observed = dict(isreg=True, islnk=False, uid=0, gid=0, mode='0755', nlink=1, checksum=digest)
+    observed.update(override)
+    play = tmp_path / 'byte-admission.yml'
+    play.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local',
+        'gather_facts': False, 'become': False, 'vars': {
+            'ansible_python_interpreter': sys.executable,
+            '_backup_rclone_binary': {'stat': observed},
+            '_backup_rclone_arch': {'stdout': 'amd64'},
+            'backup_rclone_binary_sha256': {'amd64': digest}}, 'tasks': [guard]}]))
+    result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(play)],
+        capture_output=True, text=True, timeout=30,
+        env={**os.environ, 'ANSIBLE_CONFIG': str(root / 'ansible/ansible.cfg')})
+    assert (result.returncode == 0) is accepted, result.stdout + result.stderr
+    if not accepted:
+        assert 'Assertion failed' in result.stdout, result.stdout + result.stderr
 
 
 def test_canonical_temporary_secret_path_is_pinned_before_validators(configure, monkeypatch):
