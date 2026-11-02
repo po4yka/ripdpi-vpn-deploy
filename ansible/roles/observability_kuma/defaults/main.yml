@@ -6,11 +6,11 @@ observability_kuma:
   version: "2.5.9"
   image_repository: ghcr.io/po4yka/ripdpi-vpn-deploy/observability-kuma
   image_digests:
-    x86_64: sha256:75aa3ff8d91670c6f92838dd4356428654696cf22967bc0c91369b7b668d317a
-    aarch64: sha256:a3238dd4b2ca3bf851b1ef7fbff9f465a8a4989a88544c404e4eab3a7fe89c0f
+    x86_64: sha256:82bc8172ff6bfd560ed02d976eb2d211632f33d132c18fd529cd28be49e602cb
+    aarch64: sha256:5251f0642523e6ce5dfffa2d1f0f5f0067201e3df14cc39b092b6827ecf6da38
   previous_image_references:
-    x86_64: louislam/uptime-kuma@sha256:8bdad438d293e998fd7d45004cefb3baea0f96d3bc774502bba99c17d616e1f6
-    aarch64: louislam/uptime-kuma@sha256:c95c90afb9b774cfe78af58dc7660b47f955fb7edce9fd92b048f734b0d65cdb
+    x86_64: ghcr.io/po4yka/ripdpi-vpn-deploy/observability-kuma@sha256:75aa3ff8d91670c6f92838dd4356428654696cf22967bc0c91369b7b668d317a
+    aarch64: ghcr.io/po4yka/ripdpi-vpn-deploy/observability-kuma@sha256:a3238dd4b2ca3bf851b1ef7fbff9f465a8a4989a88544c404e4eab3a7fe89c0f
   bind_address: ""
   port: 9444
   allowed_sources: []
