@@ -2,6 +2,9 @@
 # make install-hooks also installs the commit-msg hook type; without this,
 # every file hook would run a second time against the commit message file.
 default_stages: [pre-commit]
+# Keep hook installation on a stable Node release.
+default_language_version:
+  node: "26.11.1"
 # ansible-lint lints the whole ansible/ tree (about a minute), so it runs in
 # `make validate` and the `ansible` CI job instead of on every commit.
 repos:
