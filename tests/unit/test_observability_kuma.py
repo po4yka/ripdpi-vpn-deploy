@@ -32,20 +32,26 @@ PREFLIGHT_SPEC.loader.exec_module(preflight)
 
 
 @pytest.mark.parametrize('check', [False, True])
-@pytest.mark.parametrize('state', ['absent', 'owned', 'foreign'])
+@pytest.mark.parametrize('state', ['absent', 'owned', 'previous', 'unretained', 'foreign'])
 def test_container_and_image_discovery_execute_readonly_even_in_check_mode(tmp_path, state, check):
     tasks = yaml.safe_load((ROLE / 'tasks/main.yml').read_text())
     enabled = next(task['block'] for task in tasks if task['name'] == 'Converge the admitted independent observer')
     names = ['Inspect named container before taking lifecycle ownership',
-             'Refuse unrelated container name collision', 'Inspect existing exact architecture image']
+             'Refuse unrelated container name collision',
+             'Refuse an image change that loses restore authority for the running image',
+             'Inspect existing exact architecture image']
     selected = [task.copy() for task in enabled if task['name'] in names]
     trace = tmp_path / 'docker-calls'
     binary = tmp_path / 'docker'
+    image = {'previous': 'old@sha256:' + '1' * 64,
+             'unretained': 'other@sha256:' + '2' * 64}.get(state, 'fixture@sha256:' + '0' * 64)
+    container = json.dumps([{'Config': {'Image': image, 'Labels': {
+        'vpn-deploy.owner': 'foreign' if state == 'foreign' else 'observability-kuma'}}}])
     binary.write_text(f'''#!{sys.executable}
-import json,sys
+import sys
 with open({str(trace)!r},'a') as stream:stream.write(sys.argv[1]+'\\n')
 if {state!r}=='absent':raise SystemExit(1)
-print(json.dumps([{{'Config':{{'Labels':{{'vpn-deploy.owner':{'observability-kuma' if state == 'owned' else 'foreign'!r}}}}}}}]))
+print({container!r})
 ''')
     binary.chmod(0o755)
     for task in selected:
@@ -56,14 +62,16 @@ print(json.dumps([{{'Config':{{'Labels':{{'vpn-deploy.owner':{'observability-kum
         f'_observability_kuma_image.rc == {1 if state == "absent" else 0}']}})
     play = [{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False, 'become': False,
              'vars': {'ansible_python_interpreter': sys.executable, 'ansible_facts': {'architecture': 'x86_64'},
-                      'observability_kuma': {'image_repository': 'fixture', 'image_digests': {'x86_64': 'sha256:' + '0' * 64}}},
+                      'observability_kuma': {'image_repository': 'fixture', 'image_digests': {'x86_64': 'sha256:' + '0' * 64},
+                                             'previous_image_references': {'x86_64': 'old@sha256:' + '1' * 64}}},
              'tasks': selected}]
     path = tmp_path / 'discovery.yml';path.write_text(yaml.safe_dump(play))
     result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(path), *(['--check'] if check else [])],
                             capture_output=True, text=True, timeout=30,
                             env={**os.environ, 'ANSIBLE_CONFIG': str(ROOT / 'ansible/ansible.cfg')})
-    assert (result.returncode == 0) is (state != 'foreign'), result.stdout + result.stderr
-    assert trace.read_text().splitlines() == (['inspect'] if state == 'foreign' else ['inspect', 'image'])
+    refused = state in ('foreign', 'unretained')
+    assert (result.returncode == 0) is not refused, result.stdout + result.stderr
+    assert trace.read_text().splitlines() == (['inspect'] if refused else ['inspect', 'image'])
 
 
 @pytest.mark.parametrize('check', [False, True])
