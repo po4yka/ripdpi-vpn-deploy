@@ -14,7 +14,7 @@ LoadCredential=config.json:/etc/ripdpi/transport-egress/direct.json
 # the direct loopback DNS forwarder's privileged port.
 ExecStartPre=+/usr/local/libexec/ripdpi-transport-egress/policy-loader.py verify --config /etc/ripdpi/transport-egress/policy.json
 
-ExecStart=/opt/xray/releases/v26.3.27/xray run -config %d/config.json
+ExecStart=/opt/xray/releases/v26.10.31/xray run -config %d/config.json
 Restart=no
 
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE

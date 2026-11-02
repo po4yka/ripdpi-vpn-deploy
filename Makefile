@@ -701,7 +701,7 @@ SOPS_FILE     ?= $(HOME)/.config/vpn-provision/$(ENV).secrets.sops.yaml
 TFVARS        := $(TF_ROOT)/environments/$(ENV).tfvars
 TFPLAN        := $(TF_ROOT)/$(ENV).tfplan
 ZIZMOR_VERSION := 1.29.0
-PROMTOOL_VERSION := 3.14.0
+PROMTOOL_VERSION := 3.15.1
 DEPLOY_SOURCE_REVISION ?= $(shell ./scripts/deploy-source-identity.sh --revision 2>/dev/null)
 DEPLOYABLE_SOURCE_DIGEST ?= $(shell ./scripts/deploy-source-identity.sh --digest 2>/dev/null)
 
@@ -1586,7 +1586,7 @@ task-federation:
 # tooling is a failure rather than a misleading green gate.
 .PHONY: liveness-profile-check
 liveness-profile-check:
-	python3 scripts/check-liveness-profile-compatibility.py --sing-box-version 1.14.3 --xray-version 26.3.27
+	python3 scripts/check-liveness-profile-compatibility.py --sing-box-version 1.14.3 --xray-version 26.10.31
 
 # Independent checks are prerequisites, so `make -j N ci-fast` (or `check`) runs them in parallel.
 ci-fast: test-probe-matrix-mtproto actionlint-check zizmor-check zizmor-test cloud-init-schema \

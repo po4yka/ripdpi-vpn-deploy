@@ -647,7 +647,7 @@ def test_preinstall_payload_loads_shared_parser_without_guest_install(controller
         token = ast.literal_eval(wrapper.body[1].value.args[0].args[0].args[0])
         assert len(payload) < 65536
         payload = zlib.decompress(base64.b64decode(token))
-        assert b"package_version='1.102.3'" in payload
+        assert b"package_version='1.104.4'" in payload
         program = ast.parse(payload)
         # Inspect the source payload without invoking the remote host probe.
         program.body.pop()

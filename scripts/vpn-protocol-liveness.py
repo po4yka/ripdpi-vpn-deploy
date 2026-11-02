@@ -86,7 +86,7 @@ def validate_sing_box(config: dict) -> None:
         not isinstance(settings.get("config"), str)
         or not Path(settings["config"]).is_absolute()
         or not isinstance(profiles, dict)
-        or any(profile not in {"p0-reality", "p1-xhttp", "p2-hysteria2"} for profile in profiles)
+        or any(profile != "p2-hysteria2" for profile in profiles)
         or any(
             not isinstance(ports, list)
             or not ports
@@ -762,18 +762,16 @@ def main() -> int:
         print("vpn-protocol-liveness: invalid sing-box profiles", file=sys.stderr)
         return 2
 
-    if "p1-xhttp" in (config.get("sing_box") or {}).get("profiles", {}):
-        print("vpn-protocol-liveness: migration required: p1-xhttp requires xray", file=sys.stderr)
-        return 2
     if "xray" in config:
         settings = config["xray"]
         expected_xray = config.get("expected_runtime", {}).get("xray")
         if (not isinstance(settings, dict)
                 or not isinstance(settings.get("config"), str) or not Path(settings["config"]).is_absolute()
-                or not isinstance(settings.get("profiles"), dict) or set(settings["profiles"]) != {"p1-xhttp"}
-                or not isinstance(settings["profiles"]["p1-xhttp"], list) or not settings["profiles"]["p1-xhttp"]
-                or any(type(port) is not int or not 1 <= port <= 65535 for port in settings["profiles"]["p1-xhttp"])
-                or len(set(settings["profiles"]["p1-xhttp"])) != len(settings["profiles"]["p1-xhttp"])
+                or not isinstance(settings.get("profiles"), dict) or not settings["profiles"]
+                or set(settings["profiles"]) - {"p0-reality", "p1-xhttp"}
+                or any(not isinstance(ports, list) or not ports
+                       or any(type(port) is not int or not 1 <= port <= 65535 for port in ports)
+                       or len(set(ports)) != len(ports) for ports in settings["profiles"].values())
                 or not isinstance(expected_xray, str)
                 or not re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?", expected_xray)):
             print("vpn-protocol-liveness: invalid xray profile or expected_runtime.xray pin", file=sys.stderr)

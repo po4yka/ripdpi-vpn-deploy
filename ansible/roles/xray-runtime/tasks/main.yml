@@ -17,7 +17,9 @@
 - name: Assert production Xray pin was reviewed for production
   ansible.builtin.assert:
     that:
-      - (env | default(lookup('env', 'ENV'), true)) != 'prod' or xray.version in xray_runtime_production_versions
+      - >-
+        (env | default(lookup('env', 'ENV'), true)) is match('^(staging|canary|ci)(-|$)')
+        or xray.version in xray_runtime_production_versions
     fail_msg: >-
       xray.version is not a reviewed production release. Qualify it in staging
       and add it to xray_runtime_production_versions; see

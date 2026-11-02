@@ -265,12 +265,12 @@ def test_xray_molecule_uses_a_hash_pinned_local_runtime_archive() -> None:
                           if task['name'] == 'Fetch exact checksum-verified native Xray archive fixture')
     artifact = converge['pre_tasks'][artifact_index]['ansible.builtin.get_url']
     parent = converge['pre_tasks'][artifact_index-1]
-    assert artifact['url'].startswith('https://github.com/XTLS/Xray-core/releases/download/v26.3.27/')
+    assert artifact['url'].startswith('https://github.com/XTLS/Xray-core/releases/download/v26.10.31/')
     assert 'xray.linux_arm64_sha256' in artifact['checksum'] and 'xray.linux_amd64_sha256' in artifact['checksum']
-    assert artifact['dest'].endswith('xray-v26.3.27.zip')
+    assert artifact['dest'].endswith('xray-v26.10.31.zip')
     assert parent['ansible.builtin.file']['mode'] == '0755'
-    assert variables['xray']['linux_amd64_sha256'] == '23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae'
-    assert variables['xray']['linux_arm64_sha256'] == '4d30283ae614e3057f730f67cd088a42be6fdf91f8639d82cb69e48cde80413c'
+    assert variables['xray']['linux_amd64_sha256'] == 'e4bd9119f50ae7c41658b1abd0679ae06f98bd864a2907ff33f2f2cf7081b214'
+    assert variables['xray']['linux_arm64_sha256'] == '1811c8f1da0c3b6dc707ebaf1c8390e987ba39859a8f0a7aadd8526157f2ec8d'
     assert not any('src' in task.get('ansible.builtin.copy', {}) for task in converge['pre_tasks'])
     pre_task_names = {task["name"] for task in converge["pre_tasks"]}
     assert "Pre-create release dir for runtime link idempotence coverage" not in pre_task_names

@@ -771,16 +771,16 @@ def test_outer_recovery_without_inner_journal_still_requires_restored_native_bou
 
 
 @pytest.mark.parametrize('raw,expected', [
-    ('v26.3.27', ('v26.3.27-archive', 'v26.3.27')),
-    ('v26.3.27-archive', ('v26.3.27-archive', 'v26.3.27')),
-    ('v26.3.27-source-' + 'a' * 40, ('v26.3.27-source-' + 'a' * 40, 'v26.3.27')),
+    ('v26.10.31', ('v26.10.31-archive', 'v26.10.31')),
+    ('v26.10.31-archive', ('v26.10.31-archive', 'v26.10.31')),
+    ('v26.10.31-source-' + 'a' * 40, ('v26.10.31-source-' + 'a' * 40, 'v26.10.31')),
 ])
 def test_operator_rollback_selects_exact_mode_bound_identity(raw, expected):
     from transport_runtime_rollback import release_versions
     assert release_versions(raw) == expected
 
 
-@pytest.mark.parametrize('raw', [None, '../v26.3.27', 'v26.3.27-source-short', 'v26.3.27-other'])
+@pytest.mark.parametrize('raw', [None, '../v26.10.31', 'v26.10.31-source-short', 'v26.10.31-other'])
 def test_operator_rollback_rejects_ambiguous_identity(raw):
     from transport_runtime_rollback import release_versions
     with pytest.raises(accept.Refusal, match='rollback-version-invalid'):
@@ -814,7 +814,7 @@ def retained_release(base, version, name, mode, data):
 def test_operator_release_digest_is_verified_before_selection(parameter_area):
     from transport_runtime_rollback import verified_release
     root, state, _actual, uid, _gid = parameter_area
-    version = 'v26.3.27-source-' + 'a' * 40
+    version = 'v26.10.31-source-' + 'a' * 40
     release = retained_release(root, version, 'xray', 0o755, b'exact-private-byte-ownership-contract')
     binary = release / 'xray'
     with core.Transaction(state, uid=uid) as tx:
@@ -824,7 +824,7 @@ def test_operator_release_digest_is_verified_before_selection(parameter_area):
             verified_release(tx, root, version, 'xray', 0o755)
 
 
-SELECTED_RELEASE, RETAINED_RELEASE = 'v26.5.3-archive', 'v26.3.27-archive'
+SELECTED_RELEASE, RETAINED_RELEASE = 'v26.5.3-archive', 'v26.10.31-archive'
 
 
 def unit_text(release, assets, config):
@@ -839,7 +839,7 @@ def runtime_tree(root, *, bundled=True):
     (root / 'current').symlink_to(selected)
     assets = root / 'assets/geoip'
     selected_assets = retained_release(assets, 'v26.5.3', 'geoip.dat', 0o644, b'selected-geoip')
-    retained_release(assets, 'v26.3.27', 'geoip.dat', 0o644, b'retained-geoip')
+    retained_release(assets, 'v26.10.31', 'geoip.dat', 0o644, b'retained-geoip')
     (assets / 'current').symlink_to(selected_assets)
     config = root / 'etc/config.json'
     make_directories(config.parent)
@@ -867,13 +867,13 @@ def test_operator_runtime_rollback_retargets_unit_text_and_exact_link_set(parame
     unit, config, selected, retained, assets = runtime_tree(root, bundled=bundled)
     with core.Transaction(state, uid=uid) as tx:
         before = tree_snapshot(root)
-        plan = runtime_candidates(tx, 'v26.3.27', unit, config, gid, gateway_paths=[], root=root)
+        plan = runtime_candidates(tx, 'v26.10.31', unit, config, gid, gateway_paths=[], root=root)
         # Planning publishes nothing: the candidates are only a plan until the transaction applies them.
         assert tree_snapshot(root) == before
     files = [item for item in plan if 'data' in item]
     assert [(item['path'], item['gid'], item['mode']) for item in files] == [
         (str(unit), 0, 0o644), (str(config), gid, 0o640)]
-    rolled_back_assets = assets / 'releases/v26.3.27' if bundled else root / 'unmanaged-assets'
+    rolled_back_assets = assets / 'releases/v26.10.31' if bundled else root / 'unmanaged-assets'
     # Both the environment and ExecStart name the retained release; the selected one is gone.
     assert base64.b64decode(files[0]['data']).decode() == unit_text(retained, rolled_back_assets, config)
     assert str(selected) not in base64.b64decode(files[0]['data']).decode()
@@ -882,7 +882,7 @@ def test_operator_runtime_rollback_retargets_unit_text_and_exact_link_set(parame
              {'path': str(root / 'previous'), 'target': str(selected)},
              {'path': '/usr/local/bin/xray', 'target': str(root / 'current/xray')}]
     if bundled:
-        links = [{'path': str(assets / 'current'), 'target': str(assets / 'releases/v26.3.27')},
+        links = [{'path': str(assets / 'current'), 'target': str(assets / 'releases/v26.10.31')},
                  {'path': str(assets / 'previous'), 'target': str(assets / 'releases/v26.5.3')},
                  {'path': str(root / 'bundled-assets/geoip.dat'), 'target': str(assets / 'current/geoip.dat')}] + links
     assert [item for item in plan if 'target' in item] == links
@@ -910,13 +910,13 @@ def test_operator_runtime_rollback_plans_nothing_from_an_unverified_release(para
     if damage == 'xray-binary':
         (retained / 'xray').write_bytes(b'tampered-xray')
     elif damage == 'geoip-binary':
-        (assets / 'releases/v26.3.27/geoip.dat').write_bytes(b'tampered-geoip')
+        (assets / 'releases/v26.10.31/geoip.dat').write_bytes(b'tampered-geoip')
     else:
         (retained / '.runtime-release.json').unlink()
     with core.Transaction(state, uid=uid) as tx:
         before = tree_snapshot(root)
         with pytest.raises(core.Refusal, match=category):
-            runtime_candidates(tx, 'v26.3.27', unit, config, gid, gateway_paths=[], root=root)
+            runtime_candidates(tx, 'v26.10.31', unit, config, gid, gateway_paths=[], root=root)
         # Refusal publishes nothing: the runtime tree and the transaction state are untouched.
         assert tree_snapshot(root) == before
 
@@ -932,7 +932,7 @@ def test_operator_runtime_rollback_plans_every_generation_gateway(parameter_area
         gateway.write_text('[Service]\nExecStart=' + str(selected / 'xray') + ' run -config %d/config.json\n')
     with core.Transaction(state, uid=uid) as tx:
         before = tree_snapshot(root)
-        plan = runtime_candidates(tx, 'v26.3.27', unit, config, gid, gateway_paths=gateways, root=root)
+        plan = runtime_candidates(tx, 'v26.10.31', unit, config, gid, gateway_paths=gateways, root=root)
         assert tree_snapshot(root) == before
     assert [item['path'] for item in plan if item['path'].endswith('.service')] == [str(unit), *map(str, gateways)]
     for item in plan[1:1 + count]:
@@ -949,7 +949,7 @@ def test_gateway_runtime_disagreement_refuses_before_publication(parameter_area)
     with core.Transaction(state, uid=uid) as tx:
         before = tree_snapshot(root)
         with pytest.raises(core.Refusal, match='rollback-gateway-runtime-mismatch'):
-            runtime_candidates(tx, 'v26.3.27', unit, config, gid, gateway_paths=[gateway], root=root)
+            runtime_candidates(tx, 'v26.10.31', unit, config, gid, gateway_paths=[gateway], root=root)
         assert tree_snapshot(root) == before
 
 

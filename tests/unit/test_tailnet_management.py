@@ -1793,7 +1793,7 @@ def test_role_pins_the_official_signed_stable_package_source() -> None:
     defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())
     tasks = (ROLE / "tasks/bootstrap.yml").read_text()
 
-    assert defaults["tailnet_management_package_version"] == "1.102.3"
+    assert defaults["tailnet_management_package_version"] == "1.104.4"
     assert (
         defaults["tailnet_management_repository_gpg_sha256"]
         == "3e03dacf222698c60b8e2f990b809ca1b3e104de127767864284e6c228f1fb39"

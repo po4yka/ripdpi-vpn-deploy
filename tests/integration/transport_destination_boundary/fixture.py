@@ -42,6 +42,7 @@ class NativeStack:
         self.created_users = []
         self.processes = []
         self.client_count = 0
+        self.diagnostic_logs = {}
         self.created_namespace = False
         self.unit_files = []
         self.xray = shutil.which("xray")
@@ -178,10 +179,11 @@ class NativeStack:
                            ("nsswitch.conf", "hosts: dns\n"), ("hosts", "")):
             (self.state / name).write_text(body);(self.state / name).chmod(0o644)
         backend = value["backends"]["direct"]
-        gateway = {"log": {"loglevel": "none"}, "inbounds": [{"listen": "127.0.0.1", "port": 12090,
+        gateway = {"log": {"loglevel": "none"}, "inbounds": [{"listen": backend['address'], "port": backend['port'],
                    "protocol": "socks", "settings": {"auth": "password", "udp": True,
+                   "ip": backend['address'],
                    "accounts": [{"user": backend["username"], "pass": backend["password"]}]}}],
-                   "outbounds": [{"protocol": "freedom", "settings": {"domainStrategy": "ForceIP"}}]}
+                   "outbounds": [{"protocol": "freedom", "settings": {"domainStrategy": "ForceIP", "finalRules": [{"action": "allow"}]}}]}
         path = self.file("gateway.json", json.dumps(gateway), "g")
         command([self.xray, "run", "-test", "-config", str(path)])
         self.unit("gateway", [self.xray, "run", "-config", str(path)], "g")

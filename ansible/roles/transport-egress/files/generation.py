@@ -492,6 +492,7 @@ class Controller:
 
 
 def probe(listener):
+    from transport_socks import WireError, upstream_reply
     def exact(conn, size):
         value = b""
         while len(value) < size:
@@ -515,7 +516,14 @@ def probe(listener):
         target = socket.inet_aton("1.1.1.1") if listener["name"] == "direct_hysteria" else bytes(4)
         port = 53 if listener["name"] == "direct_hysteria" else 0
         conn.sendall(b"\x05\x03\x00\x01" + target + port.to_bytes(2, "big"))
-        if exact(conn, 4)[1] != 0:
+        header = exact(conn, 4)
+        try:
+            if header[3] not in (1, 4):
+                raise WireError('invalid-address-type')
+            _, address, bound_port = upstream_reply(header + exact(conn, 6 if header[3] == 1 else 18))
+        except WireError:
+            raise Refusal("readiness-association-refused") from None
+        if address != listener['address'] or not bound_port:
             raise Refusal("readiness-association-refused")
 
 

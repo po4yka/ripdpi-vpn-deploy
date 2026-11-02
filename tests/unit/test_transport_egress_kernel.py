@@ -31,8 +31,9 @@ def test_projection_contains_no_credentials_and_routes_remain_udp_capable():
     rendered = kernel.render(result['policy'])
     assert 'hook output priority 300' in rendered
     assert 'fib daddr type local tcp dport { 2222 } drop' in rendered
-    assert 'ip daddr 10.250.254.2 meta l4proto { tcp, udp } th dport 12091 meta skuid != 101 drop' in rendered
-    assert 'udp dport 12090 accept' in rendered
+    assert 'ip daddr 10.250.254.2 tcp dport 12091 meta skuid != 101 drop' in rendered
+    assert 'ip daddr 127.0.0.55 meta l4proto udp meta skuid != 101 drop' in rendered
+    assert 'udp sport 16000-17999 accept' in rendered
     assert 'ct direction reply' in rendered
     assert 'meta skuid 102 ip daddr { 0.0.0.0/8' in rendered
 
@@ -222,9 +223,36 @@ def test_actual_ansible_host_context_source_compiles_before_discovery(tmp_path):
 
 def test_backend_ipc_requires_its_owned_interface():
     rendered = kernel.render(build(context(True))['policy'])
-    assert 'meta skuid 101 oifname "lo" ip daddr 127.0.0.1 tcp dport 12090 accept' in rendered
+    assert 'meta skuid 101 oifname "lo" ip daddr 127.0.0.55 tcp dport 12090 accept' in rendered
     assert 'meta skuid 101 oifname "rpd-warp-host" ip daddr 10.250.254.2 tcp dport 12091 accept' in rendered
-    assert 'meta skuid 101 oifname "rpd-warp-host" ip daddr 10.250.254.2 udp sport 18000-18999 udp dport 12091 accept' in rendered
+    assert 'meta skuid 101 oifname "rpd-warp-host" ip saddr 10.250.254.1 ip daddr 10.250.254.2 udp sport 18000-18999 accept' in rendered
+    assert 'meta skuid 102 oifname "lo" ip saddr 127.0.0.55 ip daddr 127.0.0.1 udp dport 16000-17999 ct direction reply ct original proto-src 16000-17999 accept' in rendered
+    assert 'udp sport 12090' not in rendered and 'udp dport 12090' not in rendered
+    assert 'udp sport 12091' not in rendered and 'udp dport 12091' not in rendered
+    namespace = kernel.render(build(context(True))['policy'], True)
+    assert 'input iifname "rpd-warp-ns" ip saddr 10.250.254.1 ip daddr 10.250.254.2 udp sport 18000-18999 accept' in namespace
+    assert 'input ip daddr 10.250.254.2 meta l4proto udp drop' in namespace
+
+
+@pytest.mark.parametrize('namespace,address,uid', [(False, '127.0.0.55', 102), (True, '10.250.254.2', 103)])
+@pytest.mark.parametrize('owner', ['gateway', 'foreign', 'root', 'missing'])
+@pytest.mark.parametrize('mapped', [False, True])
+def test_dynamic_relay_address_has_one_socket_owner(monkeypatch, namespace, address, uid, owner, mapped):
+    field = '' if owner == 'missing' else f' uid:{uid if owner == "gateway" else 0 if owner == "root" else 77}'
+    if mapped:
+        address = f'[::ffff:{address}]'
+    monkeypatch.setattr(kernel, 'command', lambda *_: f'udp UNCONN 0 0 {address}:45678 0.0.0.0:*{field} ino:123\n')
+    policy = build(context(True))['policy']
+    if owner == 'gateway':
+        kernel.admit_owners(policy, namespace)
+    else:
+        with pytest.raises(kernel.BoundaryError, match='foreign-relay-owner'):
+            kernel.admit_owners(policy, namespace)
+
+
+def test_unclaimed_loopback_udp_socket_remains_outside_relay_authority(monkeypatch):
+    monkeypatch.setattr(kernel, 'command', lambda *_: 'udp UNCONN 0 0 127.0.0.1:45678 0.0.0.0:* uid:77 ino:123\n')
+    kernel.admit_owners(build(context())['policy'])
 
 
 def test_loopback_forwarder_admits_only_gateway_dns_replies():

@@ -17,7 +17,25 @@ transaction. Hysteria has native ACME support in its pinned server release.
 
 ## Decisions
 
-- Repair the independent observer security findings within the existing host and resource bounds. Use a locked, scanned, architecture-pinned Kuma image; retain the current and one previous restore image. Wait for the exact private nginx address at boot within a finite bound. Restrict SSH to local dashboard forwarding through the existing recoverable ownership transaction. Preserve monitor and encrypted backup authority.
+- Treat the live security audit as part of existing cloud service acceptance.
+  Keep exact four-host identity, recovery, resource and secret boundaries.
+  Publish a patched, architecture-pinned observer image with a locked dependency
+  tree, current OS security packages and a rebuilt healthcheck. Scan the runtime
+  image in CI before deployment; a version bump alone is not acceptance.
+  Retain the current and one previous restore image. Wait for the exact private
+  nginx address at boot within a finite bound.
+- Keep CA distrust current for processes that use the system certificate store.
+  Verify removal of the compromised trust paths and use patched stable Go
+  runtimes when upstream provides them. Preserve protocol and backup authority.
+- Limit observer SSH forwarding to the local dashboard destination, with no
+  agent or remote forwarding. Use the existing recoverable SSH transaction;
+  do not add an independent SSH policy writer to the observer role.
+- Preserve newlines in rendered Xray postrotate shell in both Ansible and local
+  rendering. Test actual shell syntax and failure propagation.
+- Reboot only the observer after its encrypted backup and independent management
+  checks. Recheck private monitoring, public HTTPS and authenticated cloud-client
+  traffic after deployment. Update the private configuration index and verify
+  an offsite encrypted restore before recording completion.
 
 - Rotate an approved exact public IPv4 SSH source through the existing firewall
   transaction. Bind the accepted file and complete live policy in the reviewed

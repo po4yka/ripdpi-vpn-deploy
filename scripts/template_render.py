@@ -229,9 +229,9 @@ def merge_render_vars() -> dict:
     merged['_transport_egress_gateway_unit_list'] = ['ripdpi-transport-direct.service']
     merged['transport_egress_frontend_units'] = ['xray.service', 'hysteria-server.service']
     merged['transport_egress_normalizer_uid'] = 1001
-    merged['transport_egress_runtime_binary'] = '/opt/xray/releases/v26.3.27/xray'
-    merged['xray_runtime_binary'] = '/opt/xray/releases/v26.3.27/xray'
-    merged['xray_runtime_bundled_asset_dir'] = '/opt/xray/assets/geoip/releases/v26.3.27'
+    merged['transport_egress_runtime_binary'] = '/opt/xray/releases/v26.10.31/xray'
+    merged['xray_runtime_binary'] = '/opt/xray/releases/v26.10.31/xray'
+    merged['xray_runtime_bundled_asset_dir'] = '/opt/xray/assets/geoip/releases/v26.10.31'
     merged['xray_bundled_asset_dir'] = merged['xray_runtime_bundled_asset_dir']
     merged['xray_asset_dir'] = (merged['geodata']['install_dir'] if merged['vpn'].get('enable_geodata', False) else merged['xray_bundled_asset_dir'])
     from transport_destination_policy import IPV4_DENY, IPV6_DENY

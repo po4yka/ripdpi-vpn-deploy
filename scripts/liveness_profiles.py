@@ -234,7 +234,7 @@ def build_profiles(standard_doc, ripdpi_doc, secrets_doc, client, required_profi
         if profile not in needed:
             continue
         selected = _outbounds(ripdpi_doc if profile == "p1-xhttp" else standard_doc, profile)
-        engine = "xray" if profile == "p1-xhttp" else "sing_box"
+        engine = "sing_box" if profile == "p2-hysteria2" else "xray"
         maps[engine][profile] = []
         for index, original in enumerate(selected, 1):
             outbound = copy.deepcopy(original)
@@ -285,6 +285,19 @@ def build_profiles(standard_doc, ripdpi_doc, secrets_doc, client, required_profi
                 standard["inbounds"].append({"type": "socks", "tag": inbound_tag, "listen": "127.0.0.1", "listen_port": proxy_port})
                 standard["outbounds"].append(outbound)
                 standard["route"]["rules"].append({"inbound": [inbound_tag], "action": "route", "outbound": outbound["tag"]})
+            elif profile == "p0-reality":
+                proxy_port = 18181 + len(xray["inbounds"])
+                inbound_tag = f"probe-reality-{index}"
+                xray["inbounds"].append({"listen": "127.0.0.1", "port": proxy_port, "protocol": "socks",
+                                         "tag": inbound_tag, "settings": {"udp": True}})
+                reality = outbound["tls"]["reality"]
+                native = {"protocol": "vless", "tag": outbound["tag"], "settings": {"vnext": [{"address": server, "port": port,
+                          "users": [{"id": xray_client["uuid"], "encryption": "none", "flow": "xtls-rprx-vision"}]}]},
+                          "streamSettings": {"network": "raw", "security": "reality", "realitySettings": {
+                              "serverName": tls["server_name"], "publicKey": reality["public_key"],
+                              "shortId": reality["short_id"], "fingerprint": tls.get("fingerprint", "chrome")}}}
+                xray["outbounds"].append(native)
+                xray["routing"]["rules"].append({"type": "field", "inboundTag": [inbound_tag], "outboundTag": outbound["tag"]})
             else:
                 transport = outbound.get("transport")
                 if (not isinstance(transport, dict) or set(transport) - {"type", "host", "path", "mode", "xmux"} or not {"type", "host", "path"} <= set(transport)

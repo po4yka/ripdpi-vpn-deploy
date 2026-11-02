@@ -57,7 +57,7 @@ def native_tools(snell_binary):
     naive = Path(os.environ.get("NAIVE_NATIVE_BINARY", str(ROOT / ".cache/p2-native-caddy/caddy")))
     for binary in (xray, hysteria, naive):
         assert binary.is_file(), "missing admitted native lifecycle runtime"
-    assert b"26.3.27" in command([xray, "version"])
+    assert b"26.10.31" in command([xray, "version"])
     assert b"v2.13.0" in command([hysteria, "version"])
     info = command([naive, "build-info"])
     assert b"v2.11.7" in info and b"c096d6a00cb2" in info
@@ -225,7 +225,8 @@ def test_actual_xray_profile_issue_revoke_and_last_device(native_tools, owned_or
         stream["finalmask"] = {"tcp": [{"type": "sudoku", "settings": {}}]}
     server = {"log": {"loglevel": "none"}, "inbounds": [{"listen": ADDRESS, "port": port, "protocol": "vless",
               "settings": {"clients": [user], "decryption": "none"}, "streamSettings": stream}],
-              "outbounds": [{"protocol": "freedom"}]}
+              "outbounds": [{"protocol": "freedom", "settings": {"finalRules": [{"action": "allow",
+                  "network": "tcp", "ip": [ADDRESS + "/32"], "port": str(origin.server.server_port)}]}}]}
     path = tmp_path / "server.json"
     write(path, server)
     runtime = MeasuredRuntime(binaries=native_tools, ca_file=cert)

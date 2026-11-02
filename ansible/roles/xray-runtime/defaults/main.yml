@@ -13,4 +13,4 @@ xray_runtime_stage_only: false
 # release flag rather than a tag suffix, so membership, not tag shape, decides.
 # scripts/check-xray-version-pin.py requires the release-line repository pin here.
 xray_runtime_production_versions:
-  - v26.3.27
+  - v26.10.31

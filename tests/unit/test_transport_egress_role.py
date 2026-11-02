@@ -209,6 +209,54 @@ def test_generation_probe_denies_authentication_without_exposing_values():
     assert not thread.is_alive()
 
 
+@pytest.mark.parametrize('variant', ['valid', 'foreign-v4', 'foreign-v6', 'zero-port', 'bad-version', 'bad-status', 'bad-reserved', 'truncated'])
+def test_generation_probe_validates_complete_udp_relay_reply(variant):
+    import socket
+    import threading
+    from transport_egress_normalizer import _frame, _expected
+    import transport_socks as wire
+    mod = load('generation')
+    listener = socket.socket()
+    listener.bind(('127.0.0.1', 0)); listener.listen()
+    port = listener.getsockname()[1]
+    frame = wire.reply('::1' if variant == 'foreign-v6' else '127.0.0.2' if variant == 'foreign-v4' else '127.0.0.1',
+                       0 if variant == 'zero-port' else 45678)
+    if variant.startswith('bad-'):
+        data = bytearray(frame)
+        data[{'bad-version': 0, 'bad-status': 1, 'bad-reserved': 2}[variant]] = 9
+        frame = bytes(data)
+    if variant == 'truncated':
+        frame = frame[:5]
+    failures = []
+    def server():
+        try:
+            with listener.accept()[0] as conn:
+                conn.settimeout(3)
+                _frame(conn, lambda data: _expected(data, b'\x05\x01\x02'))
+                conn.sendall(b'\x05\x02')
+                _frame(conn, lambda data: wire.authentication(data, 'synthetic', 'synthetic'))
+                conn.sendall(b'\x01\x00')
+                assert _frame(conn, wire.request)[1:] == (3, '0.0.0.0', 0)
+                for value in frame:
+                    conn.sendall(bytes([value]))
+        except Exception as error:
+            failures.append(error)
+        finally:
+            listener.close()
+    thread = threading.Thread(target=server); thread.start()
+    try:
+        request = {'address': '127.0.0.1', 'port': port, 'name': 'direct',
+                   'username': 'synthetic', 'password': 'synthetic', 'probe_kind': 'udp-control'}
+        if variant == 'valid':
+            mod.probe(request)
+        else:
+            with pytest.raises(mod.Refusal, match='^readiness-(association-refused|closed)$'):
+                mod.probe(request)
+    finally:
+        thread.join(5)
+    assert not thread.is_alive() and not failures
+
+
 def test_role_transaction_precedes_publication_and_readiness_is_not_is_active():
     tasks = yaml.safe_load((ROLE / 'tasks/stage.yml').read_text())[-1]['block']
     publication = next(task for task in tasks if task.get('name') == 'Validate and publish changed private candidates')['block']
@@ -647,7 +695,7 @@ def _render_gateway(name, backend, nameservers=('127.0.0.2',)):
     from template_render import template_environment
     from jinja2 import FileSystemLoader
     config = {'resolver': {'nameservers': list(nameservers)},
-              'backends': {'direct': {'address': '127.0.0.1', 'port': 12090, 'username': 'gateway-direct', 'password': 'p'},
+              'backends': {'direct': {'address': '127.0.0.55', 'port': 12090, 'username': 'gateway-direct', 'password': 'p'},
                            'warp': {'address': '10.250.254.2', 'port': 12091, 'username': 'gateway-warp', 'password': 'p'}}}
     return template_environment(FileSystemLoader(str(ROLE / 'templates'))).get_template(name).render(
         transport_egress_normalizer_config=config, _transport_egress_backend=config['backends'][backend],
@@ -708,7 +756,7 @@ def readiness_controller(mod):
     return mod.Controller({'schema_version': 1, 'normalizer_uid': 1001,
         'gateway_units': ['ripdpi-transport-direct.service'], 'frontend_units': [],
         'control_timeout_seconds': 1, 'recovery_seconds': 1},
-        {'runtime_uid': 1001, 'backends': {'direct': {'address': '127.0.0.1', 'port': 12090}},
+        {'runtime_uid': 1001, 'backends': {'direct': {'address': '127.0.0.55', 'port': 12090}},
          'listeners': [{'name': 'direct_xray', 'frontend_uid': 1003}]})
 
 

@@ -24,10 +24,12 @@ def control(command):
 
 with control(1)[0] as conn:
     conn.sendall(b'genuine-tcp-echo');assert exact(conn,16)==b'genuine-tcp-echo'
-with control(3)[0] as conn:
-    # The actual Xray frontend binds SOCKS UDP on its inbound listener port.
+conn,address,port=control(3)
+with conn:
+    address='127.0.0.1' if address in ('0.0.0.0','::') else address
+    assert address=='127.0.0.1' and 0<port<=65535 and port!=19080
     with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as udp:
         udp.settimeout(5)
         frame=b'\0\0\0\1'+socket.inet_aton('192.0.2.80')+struct.pack('!H',9000)+b'genuine-udp-echo'
-        udp.sendto(frame,('127.0.0.1',19080))
+        udp.sendto(frame,(address,port))
         reply,_=udp.recvfrom(65535);assert reply[10:]==b'genuine-udp-echo'

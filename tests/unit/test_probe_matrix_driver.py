@@ -178,7 +178,7 @@ def _setup(tmp_path: Path) -> tuple[Path, dict[str, str], str]:
         "schema_version": 1,
         "target_id": "generic-dual",
         "endpoint": "203.0.113.9",
-        "expected_xray_version": "v26.3.27",
+        "expected_xray_version": "v26.10.31",
         "expected_mtg_version": "v2.2.8",
         "expected_mtproto_helper_version": "gotd-v0.160.0",
         "protocols": {
@@ -206,7 +206,7 @@ def _setup(tmp_path: Path) -> tuple[Path, dict[str, str], str]:
     _executable(bin_dir / "xray", """#!/usr/bin/env python3
 import json, socket, sys
 if sys.argv[1:2] == ["version"]:
-    print("Xray 26.3.27 (Xray, Penetrates Everything.) d2758a0 (go1.26.1 darwin/arm64)")
+    print("Xray 26.10.31 (Xray, Penetrates Everything.) d2758a0 (go1.26.1 darwin/arm64)")
     raise SystemExit(0)
 if "-test" in sys.argv:
     raise SystemExit(0)
@@ -300,9 +300,9 @@ def test_xray_version_mismatch_is_dependency_error(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("pin,banner,returncode", [
-    ("v26.3.2", "Xray 26.3.27", 0),
-    ("v26.3.27", "unrelated v26.3.27", 0),
-    ("v26.3.27", "Xray 26.3.27", 1),
+    ("v26.3.2", "Xray 26.10.31", 0),
+    ("v26.10.31", "unrelated v26.10.31", 0),
+    ("v26.10.31", "Xray 26.10.31", 1),
 ])
 def test_xray_pin_requires_exact_successful_version_banner(tmp_path, pin, banner, returncode):
     config, env, _ = _setup(tmp_path)
@@ -323,7 +323,7 @@ def test_xray_authentication_rejection_never_becomes_filtering_claim(tmp_path: P
     _executable(bin_dir / "xray", """#!/usr/bin/env python3
 import json, pathlib, socket, sys
 if sys.argv[1:2] == ["version"]:
-    print("Xray 26.3.27")
+    print("Xray 26.10.31")
     raise SystemExit(0)
 if "-test" in sys.argv:
     raise SystemExit(0)

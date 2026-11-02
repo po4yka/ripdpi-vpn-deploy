@@ -77,12 +77,12 @@
     node_manifest_deployable_digest: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
     observability_agent:
       enabled: true
-      version: v1.153.0
+      version: v1.155.0
       release_urls:
-        amd64: https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.153.0/vmutils-linux-amd64-v1.153.0.tar.gz
-        arm64: https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.153.0/vmutils-linux-arm64-v1.153.0.tar.gz
-      linux_amd64_sha256: 85aea24a4829cf26033d810aceb7888070bd4eaff321357168ff6db24bf7c00c
-      linux_arm64_sha256: 8153c4feb73564215950a299c803d5c1e974772cd34b8c162d43ea2c5b516df5
+        amd64: https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.155.0/vmutils-linux-amd64-v1.155.0.tar.gz
+        arm64: https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.155.0/vmutils-linux-arm64-v1.155.0.tar.gz
+      linux_amd64_sha256: b6181fc16cf19835706ea5d67215eea56c1fe87350fdfd82a5ff803ea2c1a907
+      linux_arm64_sha256: 45fa04b8d616dd644c33c00698f22bbe67f9402bc474a1e6df8025f7e649d78f
       node_id: node-fixture
       environment: ci
       receiver_origin: https://10.23.0.2:9443

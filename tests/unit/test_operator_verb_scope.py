@@ -245,7 +245,7 @@ def test_make_refuses_a_limit_that_is_not_an_alias_without_executing_it(tmp_path
 def printed_recipe(*goals: str, limit: str = "node-a") -> subprocess.CompletedProcess:
     return make("-n", *goals, f"ANSIBLE_LIMIT={limit}", "DEPLOY_SOURCE_REVISION=revision",
                 "DEPLOYABLE_SOURCE_DIGEST=digest", "SECRETS_FILE=/nonexistent/runtime.yaml",
-                "ROLLBACK_XRAY_VERSION=v26.3.27")
+                "ROLLBACK_XRAY_VERSION=v26.10.31")
 
 
 def recipe_text(*goals: str) -> str:
@@ -319,7 +319,7 @@ def test_make_runs_ansible_with_the_exact_alias_and_without_inherited_tag_select
     (tools / "ansible-playbook").chmod(0o755)
     result = make(verb, *(["ANSIBLE_LIMIT=node-a"] if source == "argument" else []), f"ANSIBLE_DIR={ansible_dir}",
                   f"ANSIBLE_INVENTORY={ansible_dir}/inventory/generated.ini",
-                  f"SECRETS_FILE={tmp_path}/runtime.yaml", "ROLLBACK_XRAY_VERSION=v26.3.27",
+                  f"SECRETS_FILE={tmp_path}/runtime.yaml", "ROLLBACK_XRAY_VERSION=v26.10.31",
                   env={"PATH": f"{tools}{os.pathsep}{os.environ['PATH']}", "ANSIBLE_SKIP_TAGS": "always",
                        "ANSIBLE_RUN_TAGS": "never", **({"ANSIBLE_LIMIT": "node-a"} if source == "environment" else {})})
     assert result.returncode == 0, result.stdout + result.stderr
@@ -338,7 +338,7 @@ def test_make_runs_verbs_sharing_an_invocation_one_at_a_time_under_parallelism(t
     (tools / "ansible-playbook").chmod(0o755)
     result = make("-j4", "rollback-xray", "rollback-config", "ANSIBLE_LIMIT=node-a", f"ANSIBLE_DIR={ansible_dir}",
                   f"ANSIBLE_INVENTORY={ansible_dir}/inventory/generated.ini",
-                  f"SECRETS_FILE={tmp_path}/runtime.yaml", "ROLLBACK_XRAY_VERSION=v26.3.27",
+                  f"SECRETS_FILE={tmp_path}/runtime.yaml", "ROLLBACK_XRAY_VERSION=v26.10.31",
                   env={"PATH": f"{tools}{os.pathsep}{os.environ['PATH']}"})
     assert result.returncode == 0, result.stdout + result.stderr
     assert [line for line in calls.read_text().splitlines() if not line.startswith("inventory")] == [

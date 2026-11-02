@@ -9,8 +9,8 @@ runs:
       # Update version and archive digest together after upstream release review.
       # This is the single CI pin for template and sentinel validation.
       env:
-        XRAY_VERSION: "v26.3.27"
-        XRAY_SHA256: 23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae
+        XRAY_VERSION: "v26.10.31"
+        XRAY_SHA256: e4bd9119f50ae7c41658b1abd0679ae06f98bd864a2907ff33f2f2cf7081b214
       run: |
         set -euo pipefail
         python3 - <<'PY'

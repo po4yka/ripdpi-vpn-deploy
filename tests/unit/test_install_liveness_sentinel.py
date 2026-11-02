@@ -56,7 +56,7 @@ def setup(tmp_path, monkeypatch):
             if outbound.get("tag", "").startswith(("p0-reality-", "p1-xhttp-", "p2-hysteria2-")):
                 outbound["server"] = "192.0.2.3"
     config = {"schema_version": 2, "probe_url": "https://probe.example/health", "expected_status": 204,
-              "expected_runtime": {"sing_box": "1.14.0", "xray": "26.3.27", "awg": "1.0.0", "awg_toolchain": "d" * 64},
+              "expected_runtime": {"sing_box": "1.14.0", "xray": "26.10.31", "awg": "1.0.0", "awg_toolchain": "d" * 64},
               "policies": [{"id": "fullstack", "required_profiles": values["required_profiles"], "min_failed_vantages": 1}],
               "sentinels": [{"id": "probe-a", "ssh_target": "sentinel-a", "ssh_transport_host": "sentinel-direct",
                              "ssh_host_key_alias": "sentinel-a", "policy": "fullstack", "vantage": "external",
@@ -97,7 +97,7 @@ def setup(tmp_path, monkeypatch):
             return (values["derive_public_key"](input_bytes.decode().strip()) + "\n").encode()
         if name in ("sing-box", "xray"):
             if command[1] == "version":
-                return ("Xray 26.3.27\n" if name == "xray" else "sing-box version 1.14.0\n").encode()
+                return ("Xray 26.10.31\n" if name == "xray" else "sing-box version 1.14.0\n").encode()
             if state["parser_failure"]:
                 raise module.InstallError("fixture-parser-failed")
             assert Path(command[-1]).stat().st_mode & 0o777 == 0o600
@@ -165,10 +165,10 @@ def test_four_profiles_use_one_decrypt_and_receipt_before_assignment(setup):
 
 @pytest.mark.parametrize(("required", "formats", "engines"), [
     (["p1-xhttp"], ["ripdpi"], {"xray"}),
-    (["p0-reality"], ["sing-box"], {"sing_box"}),
+    (["p0-reality"], ["sing-box"], {"xray"}),
     (["p2-hysteria2"], ["sing-box"], {"sing_box"}),
     (["p2-amneziawg"], [], {"amneziawg"}),
-    (["p0-reality", "p2-hysteria2"], ["sing-box"], {"sing_box"}),
+    (["p0-reality", "p2-hysteria2"], ["sing-box"], {"sing_box", "xray"}),
     (["p1-xhttp", "p2-amneziawg"], ["ripdpi"], {"xray", "amneziawg"}),
     (["p1-xhttp", "p2-hysteria2"], ["sing-box", "ripdpi"], {"xray", "sing_box"}),
 ])
@@ -595,7 +595,7 @@ def test_policy_without_awg_does_not_read_key_or_resolve_endpoint(setup):
     s["values"]["private_key"] = ""
     s["install"]()
     config = json.loads(base64.b64decode(s["bundles"][0]["files"]["config.json"]))
-    assert config["expected_runtime"] == {"sing_box": "1.14.0"}
+    assert config["expected_runtime"] == {"xray": "26.10.31"}
     assert not any(Path(c[0][0]).name in ("awg", "wg", "terraform-env.sh") for c in s["calls"])
 
 

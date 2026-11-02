@@ -147,7 +147,7 @@ failure_threshold: 3
 otp_ttl_seconds: 3600
 expected_runtime:
   sing_box: 1.14.3
-  xray: 26.3.27
+  xray: 26.10.31
   awg: 1.0.0
   awg_toolchain: "<64-character source-input digest from the installed toolchain>"
 policies:
@@ -221,8 +221,10 @@ Terminal settings are restored after a read error or Ctrl-C, and unavailable ech
 control refuses input. Onboarding decrypts
 once into a private temporary directory, invokes only the canonical client
 formats required by the selected profiles, matches the supplied key to the selected peer, and validates generated profiles
-with real local parsers before any remote writes. REALITY and Hysteria2 use
-sing-box; XHTTP uses Xray with verified TLS. No full secrets document, server
+with real local parsers before any remote writes. REALITY and XHTTP use Xray;
+Hysteria2 uses sing-box. Xray supplies the hybrid REALITY ClientHello required
+by the current server. Existing P0 sentinels must regenerate their profiles;
+P0 configurations assigned to sing-box are refused. XHTTP retains verified TLS. No full secrets document, server
 private key or another client's credentials reach the sentinel.
 
 ### Disposable consumer-uplink executor

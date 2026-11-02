@@ -2,6 +2,13 @@
 
 ## Design decisions
 
+The observer dashboard intent uses the existing recoverable SSH baseline, with
+canonical algorithms, no agent or remote forwarding, and one local destination
+at 127.0.0.1:13001. It does not run VPN baseline roles on the observer. Unknown
+SSH directives still refuse. Hardware-only IPMI and firmware packages are absent
+on VPS nodes. The declared transport profiles do not need MPTCP.
+
+
 **Hybrid SSH agreement has a recoverable upgrade path** — managed policy
 prefers `sntrup761x25519-sha512@openssh.com`, supported by the OpenSSH 9.x
 baseline, with Curve25519 fallback. Finite-field DH is not offered. ML-KEM

@@ -60,7 +60,7 @@ def profile(value):
             not re.fullmatch(r'/opt/observability-vmagent(?:-[a-z0-9-]+)?', value['install_root']) or
             not isinstance(value['receiver'], str) or len(value['receiver']) > 1024 or
             not value['receiver'].startswith('https://') or '\n' in value['receiver'] or
-            value['version'] != 'v1.153.0'):
+            value['version'] != 'v1.155.0'):
         raise Refusal('sender-profile')
     return value
 
