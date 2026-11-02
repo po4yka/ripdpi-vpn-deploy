@@ -248,8 +248,10 @@ instructions.
 
 ## Local XHTTP qualification
 
-The optional bounded-pool delivery profile is restricted to the existing
-v26.10.31 native Xray engine and its typed parser fields. The stable security
-upgrade does not grant prerelease eligibility. Native mode and resource comparisons run in
+The optional bounded-pool delivery profile retains the v26.10.31 server pin and
+typed parser fields. Native Xray and the paired RIPDPI client support its
+complete field set. Install the paired consumer before distributing tuning.
+The stable security upgrade does not grant prerelease eligibility.
+Native mode and resource comparisons run in
 `make test-xhttp-delivery-matrix`; external rollout and PQE HOLD remain separate.
 See [delivery profiles](xhttp-delivery-profiles.md).
