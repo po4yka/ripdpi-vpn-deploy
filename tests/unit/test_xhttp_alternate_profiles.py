@@ -30,8 +30,8 @@ def inputs(monkeypatch):
     monkeypatch.setattr(client_payload, 'command', lambda *a, **k: b'192.0.2.10')
     options = client_payload.options('ripdpi', hosts=['upcloud:fixture'], cohorts=['fullstack'])
     # Sources are canonicalized by the materializer.
-    def emit():
-        return client_payload.materialize('laptop', options, documents={str(Path('fixture').absolute()): document}, source_paths=['fixture'])
+    def emit(*, extended=False):
+        return client_payload.materialize('laptop', options, documents={str(Path('fixture').absolute()): document}, source_paths=['fixture'], extended=extended)
     return document, context, options, emit
 
 
@@ -168,11 +168,40 @@ def test_unknown_or_unqualified_tuning_refuses(inputs, fault):
         emit()
 
 
-def test_ripdpi_never_silently_discards_native_tuning(inputs):
+@pytest.mark.parametrize('connections', [1, 2, 4])
+def test_ripdpi_retains_bounded_pool_for_both_endpoints(inputs, connections):
     document, _, _, emit = inputs
+    document['xray'].update(xhttp_mode='stream-up', xhttp_tuning=dict(
+        profile='bounded-pool', max_connections=connections))
+    payload, _ = emit()
+    expected = {'maxConnections': connections, 'hMaxRequestTimes': 0,
+                'hMaxReusableSecs': 0, 'cMaxReuseTimes': 0}
+    endpoints = [v for v in payload['outbounds'] if v['type'] == 'vless']
+    assert len(endpoints) == 2
+    assert all(v['transport']['mode'] == 'stream-up' and
+               v['transport']['xmux'] == expected for v in endpoints)
+    built = build_profiles(None, payload, document, 'laptop', ['p1-xhttp'], None, None, None,
+                           lambda _: pytest.fail('unused AWG key requested'), '/private/generation',
+                           awg_defaults={}, awg_cohort={})
+    assert [v['streamSettings']['xhttpSettings']['xmux']
+            for v in built['files']['xray.json']['outbounds']] == [expected, expected]
+
+
+def test_mixed_payload_policy_exports_tuned_tcp_reserves(inputs):
+    document, context, _, emit = inputs
     document['xray'].update(xhttp_mode='stream-up', xhttp_tuning=tuning())
-    with pytest.raises(ValueError, match='unsupported-recipient-xhttp-mode'):
-        emit()
+    context['vpn']['enable_hysteria'] = True
+    document['hysteria']['clients'].append(dict(name='laptop', password='synthetic-hysteria-laptop'))
+    context['client_payload_failover'] = json.loads(
+        (ROOT / 'contract/ripdpi-bundle.payload-failover.json').read_text())['ripdpi']['payload_failover']
+    payload, _ = emit(extended=True)
+    assert payload == json.loads((ROOT / 'tests/fixtures/xhttp-payload-tcp-reserve.json').read_text())
+    candidates = [v for v in payload['outbounds'] if v['type'] in ('vless', 'hysteria2')]
+    assert [v['type'] for v in candidates] == ['vless', 'vless', 'hysteria2']
+    assert next(v for v in payload['outbounds'] if v['tag'] == 'auto')['outbounds'] == [
+        v['tag'] for v in candidates]
+    assert payload['ripdpi']['payload_failover'] == context['client_payload_failover']
+    assert payload['route']['final'] == 'select'
 
 
 def test_alternate_tag_does_not_collide_with_another_primary_name(inputs):

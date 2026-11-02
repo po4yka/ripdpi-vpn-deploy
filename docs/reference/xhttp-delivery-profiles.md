@@ -1,6 +1,6 @@
 # Direct XHTTP delivery profiles
 
-> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-02
 
 The primary endpoint retains its existing tag. Enabling
 `nginx_xhttp.fallback_enabled` in the host profile also exports a separately
@@ -12,7 +12,7 @@ Nginx and provider/firewall listener ownership remain unchanged.
 | Output | XHTTP modes | Tuning | Selection |
 |---|---|---|---|
 | Official sing-box | none | none | supported P0/P2 only |
-| RIPDPI | auto, stream-up | none; unsupported tuning refuses | primary and enabled alternate nodes |
+| RIPDPI | auto, stream-up | bounded-pool | primary and enabled alternate nodes |
 | Native Xray v26.10.31 | auto, packet-up, stream-up | bounded-pool | one loopback SOCKS listener per endpoint |
 
 `make emit-xray CLIENT=<name>` uses the same selected-device materializer as
@@ -51,6 +51,21 @@ request-bound omission or RIPDPI importer loss is accepted. The optional profile
 is disabled by omission and is not automatically promoted to production.
 Changing server mode requires redistributing matching recipient profiles before
 activation; use the accepted baseline and its original profiles for rollback.
+
+RIPDPI receives the same complete `transport.xmux` object. Install the paired
+client with bounded-pool import and runtime support before distributing tuned
+bundles; older clients can lose these fields. The client retains the limit
+through storage and shares one pool across sessions for each endpoint backend.
+The primary and alternate have separate pools. This is a bound on each
+endpoint's TCP carriers, not a limit on logical streams or all client traffic.
+
+With an explicit payload-failover policy, keep direct XHTTP endpoints in the
+selector alongside UDP candidates. After active Hysteria2 payload failure, the paired
+client checks TCP reserves first. Recovery still requires verified response
+bytes, the configured thresholds and cooldown. A HEAD response does not qualify
+the reserve. All-candidate failure retains the encrypted selection. Endpoints
+on the same address do not survive an address-wide block; use separate nodes
+when that failure must be covered. The policy remains disabled by omission.
 
 `make test-xhttp-delivery-matrix` runs the complete endpoint suite in an owned
 isolated Linux root lab. Real native processes exercise both configured TLS
