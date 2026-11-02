@@ -323,9 +323,9 @@ def test_native_ci_plans_cover_the_complete_real_collection_once():
     weights = json.loads((ROOT / "tests/native/transport_acceptance/recovery-durations.json").read_text())
     assert weights and all(type(value) in (int, float) and math.isfinite(value) and value > 0
                            for value in weights.values())
-    assert set(weights) == {case for case in expected
-                            if case.startswith("tests/unit/test_transport_runtime_acceptance_native.py::")}
-    mean = sum(weights.values()) / len(weights)
+    compensation_paths = next(paths for name, paths in runner.SUITES if name == "compensation")
+    # Every split case is weighted: the splitter's mean for an unweighted case hid real imbalance.
+    assert set(weights) == {case for case in expected if case.split("::", 1)[0] in compensation_paths}
     largest = set(sorted(weights, key=weights.get, reverse=True)[:4])
     recovery_groups = []
     observed = set()
@@ -341,12 +341,10 @@ def test_native_ci_plans_cover_the_complete_real_collection_once():
             assert len(selected & largest) == 1
             recovery_groups.append(selected)
     assert observed == expected
-    compensation_paths = next(paths for name, paths in runner.SUITES if name == "compensation")
     assert set.union(*recovery_groups) == {case for case in expected
                                           if case.split("::", 1)[0] in compensation_paths}
-    # The pinned splitter assigns the relevant profile mean to unmeasured cases.
     # Bound estimated imbalance, not native acceptance or a fixed case allocation.
-    loads = [sum(weights.get(case, mean) for case in group) for group in recovery_groups]
+    loads = [sum(weights[case] for case in group) for group in recovery_groups]
     assert max(loads) <= sum(loads) / len(loads) * 1.1
     assert runner.suite_commands("all") == sum(
         (runner.suite_commands(plan) for plan in ("core", "recovery-1", "recovery-2", "recovery-3", "recovery-4")), []
