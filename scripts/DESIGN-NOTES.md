@@ -435,6 +435,10 @@ portable strict SSH options for transfers. Caller fields remain literal data
 through Make and argv; no general site/backup task runs during installation.
 
 **Fresh-node ownership is a separate operator transaction** —
+Schema 3 requires an explicit intent. `ownership` preserves policy;
+`observer-dashboard` selects the source-owned observer baseline and is refused
+for VPN inventories. Both use the same recovery, source and dual-path checks.
+The observer permits only the existing loopback dashboard forwarding destination.
 `ssh-ownership.py` requires the installed exact bundle generation, a clean
 source for mutation, one pinned inventory alias, and real public plus Tailnet
 contexts. It previews the policy-preserving ownership plan or applies it with

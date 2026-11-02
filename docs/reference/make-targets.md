@@ -53,7 +53,7 @@ Variables (override on command line):
   pre-deploy-check           spot-check-secrets + check-certs (auto for deploy/verify; SKIP_PRECHECK=1 to bypass)
   backup-configure          Configure one exact ANSIBLE_LIMIT during an exclusive stopped-backup window; never runs backups or timers
   dry-run                    Serial exact-node check; requires DEPLOY_SSH_CONTEXTS_FILE
-  migrate-ssh-ownership      Explicit one-node policy-preserving SSH ownership transaction
+  migrate-ssh-ownership      Exact SSH ownership or observer hardening transaction
   staging-tailnet-controller-loss-test  Prove autonomous lease recovery after controller SIGKILL
   staging-tailnet-reboot-recovery-test  Prove two-phase recovery across a real reboot
   deploy                     Serial exact-node transaction; requires promotion and fresh baseline-failure receipt mappings

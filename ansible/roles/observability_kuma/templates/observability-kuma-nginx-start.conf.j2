@@ -1,0 +1,7 @@
+# Managed by the independent observer role.
+[Unit]
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+ExecStartPre=/usr/bin/python3 -Es /usr/local/libexec/observability-kuma-wait-address.py

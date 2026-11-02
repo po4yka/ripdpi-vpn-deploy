@@ -17,6 +17,8 @@ transaction. Hysteria has native ACME support in its pinned server release.
 
 ## Decisions
 
+- Repair the independent observer security findings within the existing host and resource bounds. Use a locked, scanned, architecture-pinned Kuma image; retain the current and one previous restore image. Wait for the exact private nginx address at boot within a finite bound. Restrict SSH to local dashboard forwarding through the existing recoverable ownership transaction. Preserve monitor and encrypted backup authority.
+
 - Rotate an approved exact public IPv4 SSH source through the existing firewall
   transaction. Bind the accepted file and complete live policy in the reviewed
   plan. Replace one native rule for both activation and compensation; do not
@@ -82,7 +84,7 @@ transaction. Hysteria has native ACME support in its pinned server release.
 - Admit the operator-owned static site through one typed override. Snapshot its
   bounded, owner-controlled regular files before convergence, reject links and
   unsafe ancestry, and recheck the source tree before host writes.
-- SSH ownership schema 2 requires an explicit VPN or observer inventory section.
+- SSH ownership schema 3 requires an explicit VPN or observer inventory section.
   Keep identical source, dual-path and rollback checks for both sections.
 - Allow 7200 seconds for a complete first-convergence or preview session on
   admitted small nodes. Keep the separate SSH, native validation and transaction

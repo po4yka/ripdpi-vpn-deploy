@@ -2,6 +2,19 @@
 
 ## Design decisions
 
+The shared nginx start waits at most 60 seconds for the exact private address.
+It derives the address from the published vhost link, so a restored generation
+also restores startup readiness. Only an unassigned address waits; other
+socket failures refuse.
+This covers asynchronous private-interface setup after boot without widening
+the listener or enabling non-local binds. Disable removes only this role drop-in.
+
+Restore admits only the exact current image and one explicitly retained previous
+architecture reference. It never trusts an arbitrary repository digest. The
+previous local image is retained for isolated old-backup recovery; fresh-host
+recovery must preload that exact image through an authorized operation.
+
+
 Panel-only convergence retires only the delivery heartbeat, its private token/config and unit files. Co-hosted node and pipeline heartbeats retain their independent authority.
 
 Explicit panel-only mode has N+1 node/pipeline monitors and no Telegram authority or delivery heartbeat. Its pipeline proves current node samples and advancing rule evaluation, not notification delivery. The collector disables Alertmanager/relay and retains expected-target recording rules.
@@ -12,10 +25,11 @@ Explicit panel-only mode has N+1 node/pipeline monitors and no Telegram authorit
   fail admission before convergence.
   Both the canonical playbook and isolated operator inventory use the
   `observability-kuma` group; the role rejects membership in the VPN group.
-- Uptime Kuma 2.5.5, stable release dated 2026-09-16, uses the upstream
-  `2.5.5-slim-rootless` architecture manifests. Defaults pin the verified linux
-  amd64 and arm64 image digests, never a floating tag. Image updates require a
-  quiesced encrypted backup before switching the container image.
+- Uptime Kuma 2.5.9 uses the repository-owned panel image in
+  `images/observability-kuma`. Defaults pin the scanned linux amd64 and arm64
+  runnable child digests. Each child has a separate provenance index. The image
+  omits unused notification tooling; image updates require a quiesced encrypted
+  backup before switching the container image.
 - The container exposes port 3001 only through host loopback 13001. Existing
   authenticated operator access (for example an existing SSH tunnel) is required
   for the upstream setup/login UI. Do not expose that port, websocket endpoint,

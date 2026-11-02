@@ -1,6 +1,8 @@
 """Keep sensitive operator identifiers and forbidden labels out of git."""
 
+import base64
 import gzip
+import json
 import ipaddress
 import re
 import subprocess
@@ -38,6 +40,20 @@ def _read_tracked_content(path: Path) -> str:
         return path.readlink().as_posix().lower()
     if path.suffix == ".gz":
         return gzip.decompress(path.read_bytes()).decode("utf-8").lower()
+    if path.name == "package-lock.json":
+        def semantic_fields(value):
+            integrity = value.get("integrity")
+            if isinstance(integrity, str):
+                match = re.fullmatch(r"(sha256|sha384|sha512)-([A-Za-z0-9+/]+={0,2})", integrity)
+                if match:
+                    try:
+                        digest = base64.b64decode(match[2], validate=True)
+                    except ValueError:
+                        digest = b""
+                    if len(digest) == {"sha256": 32, "sha384": 48, "sha512": 64}[match[1]]:
+                        value.pop("integrity")
+            return value
+        return json.dumps(json.loads(path.read_text(), object_hook=semantic_fields)).lower()
     return path.read_text(errors="ignore").lower()
 
 
@@ -70,6 +86,19 @@ def test_policy_rejects_corrupt_gzip_content(tmp_path):
     path.write_bytes(b"invalid gzip")
     with pytest.raises(gzip.BadGzipFile):
         _read_tracked_content(path)
+
+
+@pytest.mark.parametrize("valid_digest", [False, True])
+def test_policy_ignores_only_opaque_lock_integrity_and_keeps_semantic_labels(tmp_path, valid_digest):
+    path = tmp_path / "package-lock.json"
+    integrity = "sha512-" + FORBIDDEN[3] + "A" * 83 + "=="
+    if not valid_digest:
+        integrity += "invalid"
+    path.write_text(json.dumps({"name": FORBIDDEN[0], "packages": {"node_modules/library": {
+        "integrity": integrity, "resolved": "https://example.invalid/" + FORBIDDEN[4]}}}))
+    content = _read_tracked_content(path)
+    assert (FORBIDDEN[3] in content) is (not valid_digest)
+    assert FORBIDDEN[0] in content and FORBIDDEN[4] in content
 
 
 def test_tracked_files_do_not_contain_forbidden_identifiers():

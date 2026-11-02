@@ -3,6 +3,7 @@
 import ast
 import importlib.util
 import io
+import json
 import ipaddress
 import os
 import signal
@@ -427,7 +428,7 @@ def render(name, **overrides):
 
 def test_container_exact_arch_pin_loopback_and_resource_bounds():
     unit = render('observability-kuma.service.j2')
-    assert '@sha256:c95c90afb9b774cfe78af58dc7660b47f955fb7edce9fd92b048f734b0d65cdb' in unit
+    assert 'ghcr.io/po4yka/ripdpi-vpn-deploy/observability-kuma@sha256:a3238dd4b2ca3bf851b1ef7fbff9f465a8a4989a88544c404e4eab3a7fe89c0f' in unit
     for option in ['--publish 127.0.0.1:13001:3001', '--memory 536870912', '--memory-swap 536870912', '--cpus 0.25', '--pids-limit 128', '--user 1000:1000', '--cap-drop ALL', '--read-only', '--log-driver none']:
         assert option in unit
     assert 'docker.sock' not in unit and '--privileged' not in unit and '--network host' not in unit
@@ -666,3 +667,191 @@ def test_backup_restore_reuses_admission_ancestor_check():
     source = (ROLE / 'files/observability-kuma-backup.py').read_text()
     assert "private_directory(config['directory'])" in source
     assert 'private_directory(RESTORES)' in source
+
+
+@pytest.mark.parametrize("selection", ["current", "previous", "foreign-current", "foreign-previous", "other-architecture"])
+def test_restore_accepts_only_explicit_current_and_previous_images(backup_runtime, monkeypatch, selection):
+    import hashlib
+
+    config, credentials, _ = backup_runtime
+    current = "ghcr.io/example/observer@sha256:" + "a" * 64
+    previous = "louislam/uptime-kuma@sha256:" + "b" * 64
+    choices = {"current": current, "previous": previous,
+               "foreign-current": "ghcr.io/example/observer@sha256:" + "c" * 64,
+               "foreign-previous": "louislam/uptime-kuma@sha256:" + "c" * 64,
+               "other-architecture": "ghcr.io/example/observer@sha256:" + "d" * 64}
+    config.update(image=current, restore_images=[current, previous])
+    identity = "20261102T000000Z-" + "e" * 32
+    directory = Path(config["directory"])
+    archive = b"synthetic encrypted archive"
+    (directory / (identity + ".tar.age")).write_bytes(archive)
+    (directory / (identity + ".json")).write_text(json.dumps({"schema_version": 1, "sha256": hashlib.sha256(archive).hexdigest(), "image": choices[selection]}))
+    restores = credentials / "restores"
+    restores.mkdir()
+    monkeypatch.setattr(backup, "RESTORES", restores)
+    monkeypatch.setattr(backup.shutil, "disk_usage", lambda path: SimpleNamespace(free=9 * 1024**3))
+    class DecryptionBoundary(Exception):
+        pass
+    def decrypt(*args, **kwargs):
+        assert selection in ["current", "previous"], "Unapproved image reached decryption"
+        raise DecryptionBoundary
+    monkeypatch.setattr(backup.subprocess, "Popen", decrypt)
+    if selection in ["current", "previous"]:
+        with pytest.raises(DecryptionBoundary):
+            backup.restore(config, credentials, identity)
+    else:
+        with pytest.raises(ValueError, match="archive-integrity"):
+            backup.restore(config, credentials, identity)
+
+
+@pytest.mark.parametrize("architecture", ["x86_64", "aarch64"])
+@pytest.mark.parametrize("foreign", [False, True])
+def test_observer_admission_rejects_foreign_previous_image(tmp_path, architecture, foreign):
+    import copy
+
+    role = ROOT / "ansible/roles/observability_kuma"
+    values = yaml.safe_load((role / "defaults/main.yml").read_text())["observability_kuma"]
+    values.update(host_alias="localhost", admission_approved=True, backup_directory="/srv/observer-backup")
+    if foreign:
+        values["previous_image_references"][architecture] = "example.invalid/observer@sha256:" + "f" * 64
+    admission = copy.deepcopy(yaml.safe_load((role / "tasks/main.yml").read_text())[0])
+    play = [{"hosts": "localhost", "connection": "local", "gather_facts": False,
+             "vars": {"observability_kuma": values, "ansible_facts": {"architecture": architecture}},
+             "tasks": [admission]}]
+    path = tmp_path / "admission.yml"
+    path.write_text(yaml.safe_dump(play))
+    result = subprocess.run(["ansible-playbook", "-i", "localhost,", str(path)], capture_output=True, text=True, timeout=30,
+                            env={**os.environ, "ANSIBLE_CONFIG": str(ROOT / "ansible/ansible.cfg")})
+    assert (result.returncode == 0) is (not foreign), result.stdout + result.stderr
+
+
+def load_address_waiter():
+    spec = importlib.util.spec_from_file_location("kuma_wait_address", ROLE / "files/observability-kuma-wait-address.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("address", ["127.0.0.1", "::1"])
+def test_ingress_wait_accepts_assigned_native_loopback(tmp_path, address):
+    values = yaml.safe_load((ROLE / "defaults/main.yml").read_text())["observability_kuma"]
+    values.update(bind_address=address, allowed_sources=[])
+    path = tmp_path / "nginx.conf"
+    path.write_text(render("observability-kuma.conf.j2", observability_kuma=values))
+    module = load_address_waiter()
+    assert module.listener_address(path) == address
+    module.wait_address(module.listener_address(path))
+
+
+@pytest.mark.parametrize("failure", ["delayed", "timeout", "denied"])
+def test_ingress_wait_only_waits_for_unassigned_address(monkeypatch, failure):
+    import errno
+
+    module = load_address_waiter()
+    attempts = []
+    class Probe:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def bind(self, endpoint):
+            attempts.append(endpoint)
+            if failure == "denied":
+                raise PermissionError(errno.EACCES, "denied")
+            if failure == "timeout" or len(attempts) < 3:
+                raise OSError(errno.EADDRNOTAVAIL, "not assigned")
+    monkeypatch.setattr(module.socket, "socket", lambda *args: Probe())
+    clock = iter([0, 61] if failure == "timeout" else [0, 1, 2])
+    monkeypatch.setattr(module.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(module.time, "sleep", lambda duration: None)
+    if failure == "delayed":
+        module.wait_address("192.0.2.10")
+        assert attempts == [("192.0.2.10", 0)] * 3
+    else:
+        with pytest.raises(TimeoutError if failure == "timeout" else PermissionError):
+            module.wait_address("192.0.2.10")
+        assert len(attempts) == 1
+
+
+def test_ingress_boot_wait_uses_exact_private_address_and_is_removed_on_disable():
+    unit = render("observability-kuma-nginx-start.conf.j2")
+    assert "ExecStartPre=/usr/bin/python3 -Es /usr/local/libexec/observability-kuma-wait-address.py\n" in unit
+    tasks = yaml.safe_load((ROLE / "tasks/main.yml").read_text())
+    disabled = next(t["block"] for t in tasks if t["name"].startswith("Remove only disabled observer ingress"))
+    removal = next(t for t in disabled if t["name"] == "Remove only disabled observer startup policy")
+    assert removal["loop"] == ["/etc/systemd/system/nginx.service.d/observability-kuma.conf", "/usr/local/libexec/observability-kuma-wait-address.py"]
+
+
+@pytest.mark.parametrize("previous_policy", [False, True])
+def test_failed_ingress_migration_preserves_boot_policy_pair(tmp_path, previous_policy):
+    import copy
+
+    module = load_address_waiter()
+    old = tmp_path / "old.conf"
+    candidate = tmp_path / "candidate.conf"
+    current = tmp_path / "current.conf"
+    policy = tmp_path / "startup.conf"
+    old.write_text(render("observability-kuma.conf.j2"))
+    values = yaml.safe_load((ROLE / "defaults/main.yml").read_text())["observability_kuma"]
+    values.update(bind_address="100.64.0.9", allowed_sources=["100.64.0.1/32"])
+    candidate.write_text(render_template(ROLE / "templates/observability-kuma.conf.j2", {
+        "observability_kuma": values, "_observability_kuma_tls_generation": "b" * 64}))
+    current.symlink_to(old)
+    if previous_policy:
+        policy.write_text("previous startup policy\n")
+    tasks = yaml.safe_load((ROLE / "tasks/main.yml").read_text())
+    enabled = next(t["block"] for t in tasks if t["name"] == "Converge the admitted independent observer")
+    activation = next(t for t in enabled if "rescue" in t)
+    rejection = tmp_path / "nginx-rejected"
+    selected = copy.deepcopy([t for t in enabled if t is activation or t["name"] == "Require private address readiness before shared nginx starts"])
+    for task in selected:
+        if "block" in task:
+            for step in task["block"] + task["rescue"]:
+                operation = step.get("ansible.builtin.file")
+                if operation:
+                    operation["dest" if "dest" in operation else "path"] = str(current)
+                    if "src" in operation and "_observability_kuma_previous_ingress" not in operation["src"]:
+                        operation["src"] = str(candidate)
+                if "ansible.builtin.command" in step:
+                    step["ansible.builtin.command"]["argv"] = [sys.executable, "-c", f"from pathlib import Path;Path({str(rejection)!r}).write_text('rejected');raise SystemExit(1)"]
+        else:
+            task["ansible.builtin.template"].update(src=str(ROLE / "templates/observability-kuma-nginx-start.conf.j2"),
+                dest=str(policy), owner=str(os.getuid()), group=str(os.getgid()))
+    play = [{"hosts": "localhost", "connection": "local", "gather_facts": False, "become": False,
+        "vars": {"_observability_kuma_previous_ingress": {"stat": {"exists": True, "islnk": True, "lnk_source": str(old)}}},
+        "tasks": selected}]
+    path = tmp_path / "migration.yml"
+    path.write_text(yaml.safe_dump(play))
+    result = subprocess.run(["ansible-playbook", "-i", "localhost,", str(path)], capture_output=True, text=True, timeout=30,
+        env={**os.environ, "ANSIBLE_CONFIG": str(ROOT / "ansible/ansible.cfg")})
+    assert result.returncode != 0
+    assert rejection.read_text() == "rejected"
+    assert current.resolve() == old
+    assert module.listener_address(current) == "100.64.0.8"
+    assert policy.exists() is previous_policy
+    if previous_policy:
+        assert policy.read_text() == "previous startup policy\n"
+
+
+@pytest.mark.parametrize("listener", ["", "listen 0.0.0.0:9444 ssl;", "listen 127.0.0.1:9444 ssl;\nlisten [::1]:9444 ssl;"])
+def test_boot_address_parser_refuses_missing_wildcard_or_multiple_listeners(tmp_path, listener):
+    path = tmp_path / "nginx.conf"
+    path.write_text(listener)
+    with pytest.raises(ValueError):
+        load_address_waiter().listener_address(path)
+
+
+def test_render_check_sends_only_observer_vhost_to_nginx(monkeypatch, tmp_path):
+    import shutil
+
+    spec = importlib.util.spec_from_file_location("check_templates", ROOT / "scripts/check-templates-render.py")
+    checker = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(checker)
+    templates = tmp_path / "ansible/roles/observability_kuma/templates"
+    templates.mkdir(parents=True)
+    for name in ["observability-kuma.conf.j2", "observability-kuma-nginx-start.conf.j2"]:
+        shutil.copyfile(ROLE / "templates" / name, templates / name)
+    monkeypatch.setattr(checker, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(checker, "ROLES_DIR", tmp_path / "ansible/roles")
+    checked = []
+    monkeypatch.setattr(checker, "validate_nginx", lambda text, label: checked.append(label))
+    assert checker.main() == 0
+    assert checked == ["ansible/roles/observability_kuma/templates/observability-kuma.conf.j2"]

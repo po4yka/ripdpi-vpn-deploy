@@ -445,7 +445,7 @@ def test_authenticated_pin_uses_real_ssh_keygen_and_hashed_known_hosts(manifest,
             'port': 2222, 'user': 'deploy', 'key': str(private)}
     with Journal(value) as journal:
         runtime = Runtime(value, path, journal)
-        monkeypatch.setattr(runtime, 'source', lambda: {'DEPLOYABLE_SOURCE_DIGEST': 'a' * 64})
+        monkeypatch.setattr(runtime, 'source', lambda: {'DEPLOYABLE_SOURCE_DIGEST': 'a' * 64, 'DEPLOY_SOURCE_REVISION': value['source_revision']})
         result = runtime.pin_binding({'public_ipv4': ['192.0.2.10']}, host)
         assert result['known_hosts_sha256'] == hashlib.sha256(pins.read_bytes()).hexdigest()
         assert (journal.directory / 'reviewed-known-hosts').read_bytes() == pins.read_bytes()
@@ -470,6 +470,24 @@ def test_authenticated_pin_uses_real_ssh_keygen_and_hashed_known_hosts(manifest,
             runtime.management(host)
         assert [goal for goal, _ in calls] == ['install-ssh-recovery', 'bootstrap-tailnet']
         assert calls[0][1]['SSH_RECOVERY_INVENTORY_SECTION'] == 'vpn'
+        # Render/provider boundaries stay synthetic; execute ownership publication.
+        monkeypatch.setattr(runtime, 'inventory_render', lambda handoff: host)
+        def confirmed_make(goal, *, extra):
+            if goal == 'bootstrap-tailnet':
+                prepared = document(extra['TAILNET_BOOTSTRAP_CONFIG'])
+                from pathlib import Path
+                Path(prepared['output']).write_bytes(canonical({'status': 'configured', 'contexts': []}))
+                Path(prepared['output']).chmod(0o600)
+            elif goal == 'migrate-ssh-ownership':
+                ownership = document(extra['SSH_OWNERSHIP_CONFIG'])
+                assert ownership['schema_version'] == 3
+                assert ownership['intent'] == 'ownership'
+                assert ownership['mode'] == 'deploy'
+                assert ownership['inventory_section'] == 'vpn'
+                calls.append((goal, ownership))
+        monkeypatch.setattr(runtime, 'make', confirmed_make)
+        runtime.management(host)
+        assert calls[-1][0] == 'migrate-ssh-ownership'
         config['host_key_sha256'] = 'b' * 64
         configuration.write_bytes(canonical(config))
         with pytest.raises(RecoveryError, match='authenticated-host-pin-required'):
