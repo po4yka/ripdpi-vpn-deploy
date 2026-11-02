@@ -9,6 +9,11 @@ Transport upgrades MUST stage exact pinned runtime bytes, required assets, confi
 - **WHEN** a valid exact pinned candidate includes all required assets configuration and TLS
 - **THEN** native validation succeeds and the candidate becomes eligible for bounded activation
 
+#### Scenario: Stable upstream bytes retain an affected compiler
+
+- **WHEN** a selected stable Hysteria or rclone binary lacks the required Go TLS fix
+- **THEN** its exact stable source commit MUST be rebuilt outside managed nodes with Go 1.27.3, published with exact artifact checksums and independently reproduced; Hysteria MUST retain its application version under a distinct immutable release identity, rclone MUST retain dpkg ownership under a distinct package version, and native versions plus authenticated transport and backup restore MUST pass before acceptance
+
 #### Scenario: Second asset or configuration fails
 
 - **WHEN** a required asset download or native candidate validation fails after binary staging
@@ -60,3 +65,40 @@ The controller MUST allow a 7200-second session for the complete exact-host `dry
 
 - **WHEN** the full-site command exceeds 7200 seconds
 - **THEN** the controller MUST stop its owned session and descendants, reclaim its private snapshots, and report failure; an incomplete preview MUST NOT authorize deployment.
+
+### Requirement: REQ-PROTO-RTA-SECURITY — Effective runtime maintenance
+
+Security maintenance MUST retain pinned runtime provenance and current CA
+trust. Xray log rotation MUST render valid shell under Ansible whitespace
+settings, retain guarded recovery and propagate errors. Required OS reboot
+MUST use exact-host maintenance and retain post-reboot management and service
+proof. Successful source checks alone MUST NOT accept deployment.
+
+#### Scenario: Protected log rotation
+
+- **WHEN** logrotate executes the protected Xray postrotate script
+- **THEN** it MUST parse correctly and request admitted recovery only for an active service, preserving error status.
+
+#### Scenario: Security rollout completes
+
+- **WHEN** reviewed security updates are deployed
+- **THEN** fresh target checks, encrypted actual configuration capture and an offsite restore MUST confirm the updated service scope.
+
+
+#### Scenario: Authenticated gateway returns an independent UDP relay
+
+- **WHEN** the reviewed Xray gateway returns an ephemeral UDP ASSOCIATE port
+- **THEN** the normalizer MUST use that nonzero port at the exact configured backend IP while keeping the authenticated control socket, recipient source pinning and destination policy.
+- **AND** a foreign relay address or zero port MUST refuse before UDP delivery while retaining the existing quarantine and capacity rules.
+- **AND** the direct gateway MUST claim only `127.0.0.55` for TCP control and UDP relays; kernel admission MUST retain the normalizer UID, exact interface and source pool, and accept gateway responses only in conntrack reply direction. Foreign UDP socket owners on the claimed relay address MUST refuse activation.
+- **AND** private generation readiness MUST parse the complete authenticated UDP reply and refuse a foreign address or zero port.
+
+#### Scenario: REALITY requires a hybrid ClientHello
+
+- **WHEN** the stable server requires an X25519MLKEM768 key share and the selected sing-box engine removes that share
+- **THEN** P0 acceptance MUST execute the generated named-client profile with the pinned compatible Xray engine, preserve authenticated TCP and UDP plus wrong-credential refusal, and reject old P0 sentinel assignments to sing-box.
+
+#### Scenario: IPv4 TCP IP options do not reach local handshake processing
+
+- **WHEN** a VPN node converges the approved kernel mitigation
+- **THEN** IPv4 TCP packets with IP options MUST drop before normal input acceptance, ordinary TCP without IPv4 IP options, UDP including IPv4 IP options, IPv6, and TCP-header options MUST retain their normal policy, and MPTCP MUST remain disabled wherever the kernel provides its control. This mitigation MUST NOT be reported as a kernel patch.

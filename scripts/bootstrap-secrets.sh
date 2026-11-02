@@ -285,7 +285,7 @@ transport_egress_secrets:
   warp_gateway_password: "${EGRESS_WARP_GATEWAY}"
 
 xray:
-  version: "v26.3.27"
+  version: "v26.10.31"
   linux_amd64_sha256: "REPLACE_WITH_RELEASE_SHA256"
   linux_arm64_sha256: "REPLACE_WITH_RELEASE_SHA256"
   source_commit: "REPLACE_WITH_40_OR_64_HEX_COMMIT"

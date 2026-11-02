@@ -19,7 +19,7 @@ def build(context, input_only=False):
     warp = bool(vpn.get('enable_warp_outbound', False) and xray)
     if not xray and not hysteria:
         raise ValueError('no-enabled-frontend')
-    backends = {'direct': {'address': '127.0.0.1', 'port': 12090, 'username': 'gateway-direct', 'password': secrets['direct_gateway_password'], 'udp_source_port_min': 16000, 'udp_source_port_max': 17999}}
+    backends = {'direct': {'address': '127.0.0.55', 'port': 12090, 'username': 'gateway-direct', 'password': secrets['direct_gateway_password'], 'udp_source_port_min': 16000, 'udp_source_port_max': 17999}}
     listeners = []
     for enabled, name, user, port, pool, backend in [(xray, 'direct_xray', 'xray', 12080, 13000, 'direct'), (hysteria, 'direct_hysteria', 'hysteria', 12081, 14000, 'direct'), (warp, 'warp_xray', 'xray', 12082, 15000, 'warp')]:
         if enabled:

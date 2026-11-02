@@ -55,6 +55,7 @@
                'linux_arm64_sha256': _probe_matrix_xray_archive.stat.checksum
              }) }}
   vars:
+    env: ci-probe-target
     xray:
       version: vtest
     xray_runtime_release_urls:

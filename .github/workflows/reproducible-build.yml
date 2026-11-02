@@ -6,12 +6,21 @@ name: reproducible-build
 # release tag is silently re-cut with different bytes, this job fails the
 # CI before the operator deploys it.
 #
-# Scope: xray-core, hysteria, RealiTLScanner. AmneziaWG sha256s are not
+# Scope: xray-core, hysteria, rclone, RealiTLScanner. AmneziaWG sha256s are not
 # pinned in v1 schema and are out of scope here.
 
 on:
   workflow_call:
+    inputs:
+      artifact_producer_only:
+        type: boolean
+        default: false
   workflow_dispatch:
+    inputs:
+      artifact_producer_only:
+        description: Build and verify artifacts before their first publication
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -21,7 +30,64 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  security-runtimes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.27.3"
+          cache: false
+      - name: Rebuild exact stable sources with the patched compiler
+        run: make security-runtime-build
+      - name: Require exact published artifact bytes
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          built = json.loads(Path(".cache/security-runtime-artifacts/build.json").read_text())
+          expected = json.loads(Path("scripts/security-runtime-artifacts.json").read_text())
+          if built["artifacts"] != expected["artifacts"]:
+              raise SystemExit("patched runtime artifact bytes differ from the approved pins")
+          PY
+      - name: Prove actual dpkg replacement and native compiler version
+        run: |
+          set -euo pipefail
+          { go version; dpkg-deb --version; dpkg-query -W dpkg liblzma5; } > .cache/security-runtime-artifacts/packaging-toolchain.txt
+          package_root="$(mktemp -d)"
+          trap 'sudo rm -rf -- "$package_root"' EXIT
+          mkdir -p "$package_root/var/lib/dpkg"
+          touch "$package_root/var/lib/dpkg/status"
+          curl --fail --silent --show-error --location --connect-timeout 10 --max-time 120 \
+            https://github.com/rclone/rclone/releases/download/v1.75.2/rclone-v1.75.2-linux-amd64.deb \
+            --output "$package_root/previous.deb"
+          echo "efbfe852181f7191eb3c9043ed1ab49c9b2d0ba045c61c926a5da111c939ec5c  $package_root/previous.deb" | sha256sum -c -
+          sudo dpkg --root="$package_root" --log="$package_root/dpkg.log" --unpack "$package_root/previous.deb"
+          test "$(dpkg-query --admindir="$package_root/var/lib/dpkg" -W '-f=${Version}' rclone)" = 1.75.2
+          sudo dpkg --root="$package_root" --log="$package_root/dpkg.log" \
+            --unpack .cache/security-runtime-artifacts/rclone-1.75.2+go1.27.3-1-linux-amd64.deb
+          test "$(dpkg-query --admindir="$package_root/var/lib/dpkg" -W '-f=${Version}' rclone)" = 1.75.2+go1.27.3-1
+          "$package_root/usr/bin/rclone" version | tee "$package_root/native-version"
+          grep -Fx 'rclone v1.75.2' "$package_root/native-version"
+          grep -Fx -- '- go/version: go1.27.3' "$package_root/native-version"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
+        with:
+          name: security-runtime-build
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            .cache/security-runtime-artifacts/build.json
+            .cache/security-runtime-artifacts/SHA256SUMS
+            .cache/security-runtime-artifacts/packaging-toolchain.txt
+            .cache/security-runtime-artifacts/hysteria-linux-*
+            .cache/security-runtime-artifacts/rclone-linux-*
+            .cache/security-runtime-artifacts/rclone-*.deb
+            .cache/security-runtime-artifacts/*-LICENSE
   xray-core:
+    if: ${{ !inputs.artifact_producer_only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -107,6 +173,7 @@ jobs:
           fi
 
   hysteria:
+    if: ${{ !inputs.artifact_producer_only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -147,15 +214,20 @@ jobs:
         run: |
           set -euo pipefail
           ver="$PIN_VERSION"
-          url="https://github.com/apernet/hysteria/releases/download/app/${ver}/hysteria-linux-amd64"
+          url="https://github.com/po4yka/ripdpi-vpn-deploy/releases/download/runtime-go1.27.3-20261102/hysteria-linux-amd64"
           curl -fsSL -o hysteria-bin "$url"
           asset_sha="$(sha256sum hysteria-bin | awk '{print $1}')"
           echo "release asset sha256: ${asset_sha}"
           echo "schema pin:           $PIN_SHA"
           [[ "$asset_sha" == "$PIN_SHA" ]] \
             || { echo "::error::release-asset sha256 differs from schema pin"; exit 1; }
+          chmod 0755 hysteria-bin
+          ./hysteria-bin version > hysteria-version.txt
+          grep -Fx "Version:$(printf '\t')${ver}" hysteria-version.txt
+          grep -Fx "Toolchain:$(printf '\t')go1.27.3" hysteria-version.txt
 
   realitlscanner:
+    if: ${{ !inputs.artifact_producer_only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

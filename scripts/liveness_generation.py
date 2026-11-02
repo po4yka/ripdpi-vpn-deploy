@@ -239,9 +239,9 @@ def _configuration(root, generation, config, metadata, profile_files):
     _target_identity(config["target_identity"], metadata["provenance"], metadata["required_profiles"])
     runtime = config.get("expected_runtime")
     required_runtime = set()
-    if required & {"p0-reality", "p2-hysteria2"}:
+    if "p2-hysteria2" in required:
         required_runtime.add("sing_box")
-    if "p1-xhttp" in required:
+    if required & {"p0-reality", "p1-xhttp"}:
         required_runtime.add("xray")
     if "p2-amneziawg" in required:
         required_runtime.update(("awg", "awg_toolchain"))
@@ -251,7 +251,7 @@ def _configuration(root, generation, config, metadata, profile_files):
         pattern = r"[0-9a-f]{64}" if name == "awg_toolchain" else r"\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?"
         if not isinstance(value, str) or re.fullmatch(pattern, value) is None:
             raise GenerationError("candidate-runtime")
-    bindings = (("sing_box", "sing-box.json", {"p0-reality", "p2-hysteria2"}, "sing_box"), ("xray", "xray.json", {"p1-xhttp"}, "xray"), ("amneziawg", "awg.conf", {"p2-amneziawg"}, "awg"))
+    bindings = (("sing_box", "sing-box.json", {"p2-hysteria2"}, "sing_box"), ("xray", "xray.json", {"p0-reality", "p1-xhttp"}, "xray"), ("amneziawg", "awg.conf", {"p2-amneziawg"}, "awg"))
     for section, filename, logical, runtime_name in bindings:
         selected = required & logical
         if not selected:

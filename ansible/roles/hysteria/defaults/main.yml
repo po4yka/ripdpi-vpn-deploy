@@ -19,8 +19,10 @@ hysteria:
 # These remain role-owned rather than secret inputs: versions and digest pins
 # come from the Hysteria contract above, while Molecule can supply deterministic
 # local artifacts through this narrow consumer seam.
+# This immutable identity belongs to the exact stable source and compiler build.
+hysteria_runtime_release_version: v2.13.0-go1.27.3
 hysteria_release_urls:
-  amd64: "https://github.com/apernet/hysteria/releases/download/app/{{ hysteria.version }}/hysteria-linux-amd64"
-  arm64: "https://github.com/apernet/hysteria/releases/download/app/{{ hysteria.version }}/hysteria-linux-arm64"
+  amd64: "https://github.com/po4yka/ripdpi-vpn-deploy/releases/download/runtime-go1.27.3-20261102/hysteria-linux-amd64"
+  arm64: "https://github.com/po4yka/ripdpi-vpn-deploy/releases/download/runtime-go1.27.3-20261102/hysteria-linux-arm64"
 
 hysteria_role_enabled: true

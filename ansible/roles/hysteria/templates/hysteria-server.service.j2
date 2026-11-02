@@ -19,7 +19,7 @@ Environment=HYSTERIA_LOG_LEVEL=warn
 {% if hysteria.ech is defined %}
 LoadCredential=hysteria-ech:{{ hysteria_config_dir }}/ech.key
 {% endif %}
-ExecStart={{ hysteria_install_root }}/releases/{{ hysteria.version }}/hysteria server -c {{ hysteria_config_dir }}/config.yaml
+ExecStart={{ hysteria_install_root }}/releases/{{ hysteria_runtime_release_version }}/hysteria server -c {{ hysteria_config_dir }}/config.yaml
 Restart=on-failure
 RestartSec=5s
 

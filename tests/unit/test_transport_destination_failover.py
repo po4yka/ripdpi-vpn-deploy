@@ -13,7 +13,7 @@ import pytest
 import transport_egress_normalizer as normalizer
 import transport_socks as wire
 from transport_destination_policy import DestinationPolicy
-from test_transport_destination_boundary import auth, config
+from test_transport_destination_boundary import auth, config, fixture_loopback_transport
 
 
 class Destination:
@@ -81,7 +81,7 @@ class Gateway:
     def __init__(self, routes, on_request=None):
         self.routes, self.on_request = routes, on_request
         self.listener = socket.socket()
-        self.listener.bind(("127.0.0.1", 0))
+        self.listener.bind(("127.0.0.55", 0))
         self.listener.listen()
         self.listener.settimeout(0.05)
         self.port = self.listener.getsockname()[1]

@@ -20,7 +20,7 @@ REALITY listener by tailing `access.log` for a rejected/graylisted handshake.
 That contradicts how REALITY actually works — and our own threat model. The
 re-architecture forced a choice between two implementations.
 
-**Verified mechanism (the constraint that drives the decision).** Pinned
+**Verified mechanism (the constraint that drives the decision).** Reviewed in
 `Xray-core v26.3.27`, which vendors `github.com/xtls/reality
 v0.0.0-20260322125925-9234c772ba8f` (per Xray-core's `go.mod`). On the server
 side, when an incoming ClientHello fails REALITY authentication (`func Server`

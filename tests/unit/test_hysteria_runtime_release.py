@@ -67,6 +67,9 @@ def test_hysteria_delegates_pinned_binary_activation_to_runtime_release() -> Non
     contract = runtime_task["vars"]
     assert contract["runtime_release_install_root"] == "{{ hysteria_install_root }}"
     assert contract["runtime_release_binary_name"] == "hysteria"
+    assert contract["runtime_release_version"] == "{{ hysteria_runtime_release_version }}"
+    recovery = next(task for task in tasks if task['name'] == 'Admit an explicitly requested fresh native ACME cache recovery')
+    assert 'hysteria_runtime_release_version' in recovery['ansible.builtin.command']['stdin']
     assert contract["runtime_release_public_link"] == "/usr/local/bin/hysteria"
     assert contract["runtime_release_artifact_type"] == "binary"
     assert (
@@ -83,7 +86,7 @@ def test_hysteria_delegates_pinned_binary_activation_to_runtime_release() -> Non
     assert activation_index < names.index("Validate Hysteria candidate before quiescing the accepted route")
     assert not any(task.get("notify") == "Restart hysteria" for task in tasks[:activation_index + 1])
     unit = (ROOT / "ansible/roles/hysteria/templates/hysteria-server.service.j2").read_text()
-    assert "ExecStart={{ hysteria_install_root }}/releases/{{ hysteria.version }}/hysteria" in unit
+    assert "ExecStart={{ hysteria_install_root }}/releases/{{ hysteria_runtime_release_version }}/hysteria" in unit
     assert "ExecStart=/usr/local/bin" not in unit
     assert "ansible.builtin.get_url" not in ROLE_TASKS.read_text(encoding="utf-8")
 
@@ -112,9 +115,10 @@ def test_hysteria_molecule_uses_verified_local_artifacts() -> None:
     assert override['version'] == 'v2.13.0'
     for architecture in ('amd64', 'arm64'):
         suffix = '-arm64' if architecture == 'arm64' else ''
-        artifact = artifacts['/var/tmp/hysteria-molecule/hysteria-v2.13.0'+suffix]
+        artifact = artifacts['/var/tmp/hysteria-molecule/hysteria-v2.13.0-go1.27.3'+suffix]
         assert artifact['checksum'] == 'sha256:'+override['linux_'+architecture+'_sha256']
-        assert artifact['url'].endswith('/app/v2.13.0/hysteria-linux-'+architecture)
+        assert artifact['url'] == ('https://github.com/po4yka/ripdpi-vpn-deploy/releases/download/'
+                                   'runtime-go1.27.3-20261102/hysteria-linux-' + architecture)
     assert not any('content' in task.get('ansible.builtin.copy', {}) for task in converge['pre_tasks'])
 
 
@@ -179,13 +183,13 @@ def test_hysteria_molecule_runs_check_mode_in_a_global_ansible_process() -> None
     assert include["ansible.builtin.include_role"]["name"] == "hysteria"
     variables = check_mode["vars"]
     assert variables["hysteria"]["version"] == "v2.13.0"
-    assert variables["hysteria_release_urls"]["amd64"].endswith("hysteria-v2.13.0")
-    assert variables["hysteria_release_urls"]["arm64"].endswith("hysteria-v2.13.0-arm64")
+    assert variables["hysteria_release_urls"]["amd64"].endswith("hysteria-v2.13.0-go1.27.3")
+    assert variables["hysteria_release_urls"]["arm64"].endswith("hysteria-v2.13.0-go1.27.3-arm64")
     assert variables["hysteria"]["linux_amd64_sha256"] == (
-        "907ba8c9693edb104b20582681fb7dc15639d5b64a9cbb616a7b539190a86691"
+        "f0488797bd269a238af3fdeedb07560c27c806984980c6ea2bd7d73963723274"
     )
     assert variables["hysteria"]["linux_arm64_sha256"] == (
-        "a68a61a84452ca250ce0368202521965ca9cc9d801a404f1dc9008ac6cf677a7"
+        "a737d68a8b02ea74d196e8b78db408c43afc9716c899e5d1cb9fa6dc05a1c821"
     )
     state_assertion = next(
         task
@@ -204,4 +208,4 @@ def test_hysteria_molecule_runs_check_mode_in_a_global_ansible_process() -> None
                  for task in converge['pre_tasks'] if 'ansible.builtin.get_url' in task}
     for architecture in ('amd64', 'arm64'):
         suffix = '-arm64' if architecture == 'arm64' else ''
-        assert artifacts['/var/tmp/hysteria-molecule/hysteria-v2.13.0'+suffix]['checksum'] == 'sha256:'+variables['hysteria']['linux_'+architecture+'_sha256']
+        assert artifacts['/var/tmp/hysteria-molecule/hysteria-v2.13.0-go1.27.3'+suffix]['checksum'] == 'sha256:'+variables['hysteria']['linux_'+architecture+'_sha256']

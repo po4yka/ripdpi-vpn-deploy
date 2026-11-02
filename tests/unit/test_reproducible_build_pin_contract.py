@@ -27,3 +27,15 @@ def test_pin_readers_reject_untrusted_version_and_sha_grammar():
     assert "invalid hysteria sha256 pin" in source
     assert "invalid RealiTLScanner version pin" in source
     assert "invalid RealiTLScanner sha256 pin" in source
+
+
+def test_producer_only_dispatch_preserves_the_default_full_gate():
+    import yaml
+    workflow = yaml.safe_load(WORKFLOW.read_text())
+    triggers = workflow[True]
+    for trigger in ('workflow_dispatch', 'workflow_call'):
+        intent = triggers[trigger]['inputs']['artifact_producer_only']
+        assert intent['type'] == 'boolean' and intent['default'] is False
+    assert 'if' not in workflow['jobs']['security-runtimes']
+    for job in ('xray-core', 'hysteria', 'realitlscanner'):
+        assert workflow['jobs'][job]['if'] == '${{ !inputs.artifact_producer_only }}'

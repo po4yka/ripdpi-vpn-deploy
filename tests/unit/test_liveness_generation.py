@@ -49,9 +49,8 @@ def candidate(root, generation=None):
                        "runner_sha256": provenance["runner_sha256"], "public_profile_digest": "b" * 64}
     files = {
         "runner.py": runner,
-        "config.json": json.dumps({"schema_version": 2, "sentinel": "fixture-sentinel", "expected_runtime": {"sing_box": "1.12.0", "xray": "25.8.3"},
-                                   "sing_box": {"config": str(root / "generations" / generation / "profiles/sing-box.json"), "profiles": {"p0-reality": [18080]}},
-                                   "xray": {"config": str(root / "generations" / generation / "profiles/xray.json"), "profiles": {"p1-xhttp": [18180]}},
+        "config.json": json.dumps({"schema_version": 2, "sentinel": "fixture-sentinel", "expected_runtime": {"xray": "25.8.3"},
+                                   "xray": {"config": str(root / "generations" / generation / "profiles/xray.json"), "profiles": {"p0-reality": [18080], "p1-xhttp": [18180]}},
                                    "provenance": provenance, "target_identity": target_identity}),
         "metadata.json": json.dumps({
             "generation_id": generation,
@@ -60,7 +59,6 @@ def candidate(root, generation=None):
             "provenance": provenance,
             "target_identity": target_identity,
         }),
-        "profiles/sing-box.json": '{"fixture": true}\n',
         "profiles/xray.json": '{"fixture": true}\n',
     }
     for name, content in files.items():
@@ -101,7 +99,7 @@ def test_generation_commits_after_probe_and_retry_does_not_probe_again(engine, r
     assert not (root / "pending.json").exists()
     installed = root / "generations" / generation
     assert (root / "current").readlink() == Path("generations") / generation
-    assert (installed / "profiles/sing-box.json").read_text() == '{"fixture": true}\n'
+    assert (installed / "profiles/xray.json").read_text() == '{"fixture": true}\n'
     assert not (installed / "runner.py").stat().st_mode & 0o222
     assert engine.install_generation(root, generation, stage, probe) == receipt
     assert len(calls) == 1
@@ -215,7 +213,7 @@ def test_failed_initial_probe_restores_previous_generation(engine, root, failure
 @pytest.mark.parametrize("invalid", ["symlink", "hardlink", "world-readable", "identity"])
 def test_invalid_candidate_cannot_change_current_or_invoke_probe(engine, root, invalid):
     generation, stage = candidate(root)
-    profile = stage / "profiles/sing-box.json"
+    profile = stage / "profiles/xray.json"
     if invalid == "symlink":
         profile.unlink()
         profile.symlink_to(stage / "config.json")
@@ -329,7 +327,7 @@ def test_sudoers_validation_precedes_bootstrap_and_activation(engine, root):
 def test_committed_retry_rejects_changed_candidate(engine, root):
     generation, stage = candidate(root)
     engine.install_generation(root, generation, stage, healthy)
-    (stage / "profiles/sing-box.json").write_text('{"fixture": "changed"}\n')
+    (stage / "profiles/xray.json").write_text('{"fixture": "changed"}\n')
     with pytest.raises(engine.GenerationError):
         engine.install_generation(root, generation, stage, healthy)
 
@@ -397,7 +395,7 @@ def test_copy_failure_leaves_no_partial_generation_and_retry_succeeds(engine, ro
     write = engine._write
 
     def fail_profile_copy(path, *args, **kwargs):
-        if path.name == "sing-box.json" and "generations" in path.parts:
+        if path.name == "xray.json" and "generations" in path.parts:
             raise OSError("fixture full disk")
         return write(path, *args, **kwargs)
 

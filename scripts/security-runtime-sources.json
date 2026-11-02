@@ -1,0 +1,18 @@
+{
+  "go_version": "1.27.3",
+  "source_date_epoch": 1793577600,
+  "release": "runtime-go1.27.3-20261102",
+  "hysteria": {
+    "version": "v2.13.0",
+    "repository": "HyNetworks/hysteria",
+    "commit": "ca8fbd874fd6ca82413948de6dc5924405e103e1",
+    "sha256": "9458e0ec205b7f1b6ff842d73abbea6a4f256c4f9ce731e743291ba16339bf1e"
+  },
+  "rclone": {
+    "version": "v1.75.2",
+    "package_version": "1.75.2+go1.27.3-1",
+    "repository": "rclone/rclone",
+    "commit": "be8d6044eacb843b74d335db0c5fbe09222031fe",
+    "sha256": "df4670e174b0de36ca877a66935bf91db5f05a6ff019ac1b540b9bf575317434"
+  }
+}

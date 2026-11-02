@@ -360,7 +360,7 @@
     - name: Confirm genuine runtime refuses injected frontend candidate
       ansible.builtin.command:
         argv:
-          - /opt/xray/releases/v26.3.27-archive/xray
+          - /opt/xray/releases/v26.10.31-archive/xray
           - run
           - -test
           - -config
@@ -406,13 +406,14 @@
         path: '{{ item }}'
         checksum_algorithm: sha256
       loop:
-        - /opt/xray/releases/v26.3.27-archive/xray
-        - /opt/xray/assets/geoip/releases/v26.3.27/geoip.dat
+        - /opt/xray/releases/v26.10.31-archive/xray
+        - /opt/xray/assets/geoip/releases/v26.10.31/geoip.dat
       register: accepted_authority
     - name: Install a different actual stable runtime before a rejected candidate
       ansible.builtin.include_role:
         name: xray-runtime
       vars:
+        env: ci-transport-egress-upgrade
         xray:
           version: v26.2.6
           linux_amd64_sha256: 29ce535b56e207a406ffa1c2d4842dcc410be003eff8ec508bb732abc9f8e385
@@ -454,8 +455,8 @@
         path: '{{ item }}'
         checksum_algorithm: sha256
       loop:
-        - /opt/xray/releases/v26.3.27-archive/xray
-        - /opt/xray/assets/geoip/releases/v26.3.27/geoip.dat
+        - /opt/xray/releases/v26.10.31-archive/xray
+        - /opt/xray/assets/geoip/releases/v26.10.31/geoip.dat
       register: preserved_authority
     - name: Require accepted executable and asset bytes preserved
       ansible.builtin.assert:

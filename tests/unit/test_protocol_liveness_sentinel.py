@@ -142,7 +142,7 @@ print("204 0.040000", end="")
     _write_executable(
         bin_dir / "sing-box",
         f"""#!/usr/bin/env python3
-import os, pathlib, signal, socket, sys
+import json, os, pathlib, signal, socket, sys
 with pathlib.Path(os.environ["CALL_LOG"]).open("a") as log:
     log.write("sing-box " + " ".join(sys.argv[1:]) + "\\n")
 if sys.argv[1:2] == ["version"]:
@@ -152,7 +152,8 @@ if {sing_log_auth!r}:
     print("authentication rejected", file=sys.stderr)
 pathlib.Path(os.environ["SING_PID_FILE"]).write_text(str(os.getpid()))
 listeners = []
-for port in (18081, 18082, 18083, 18084):
+config = json.loads(pathlib.Path(sys.argv[sys.argv.index("-c") + 1]).read_text())
+for port in [inbound["listen_port"] for inbound in config["inbounds"]]:
     listener = socket.socket()
     listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     listener.bind(("127.0.0.1", port))
@@ -170,7 +171,7 @@ import os, sys
 if sys.argv[1:] == ["version"]:
     with open(os.environ["CALL_LOG"], "a", encoding="utf-8") as log:
         log.write("xray version\\n")
-    print("Xray 26.3.27 (Xray, Penetrates Everything.)")
+    print("Xray 26.10.31 (Xray, Penetrates Everything.)")
     raise SystemExit(0)
 import json, pathlib, signal, socket
 with pathlib.Path(os.environ["CALL_LOG"]).open("a") as log:
@@ -272,15 +273,11 @@ signal.pause()
     awg.write_text(f"[Interface]\nPrivateKey = {secret}\n")
     awg.chmod(0o600)
     toolchain_id = _toolchain_fixture(tmp_path, bin_dir)
-    sing_profiles = {}
+    sing_profiles = {"p2-hysteria2": [18082]}
     profile_config = tmp_path / "sing-box.json"
-    profile_config.write_text("{}")
-    for index, profile in enumerate(
-        ("p0-reality", "p2-hysteria2"), start=1
-    ):
-        sing_profiles[profile] = [18080 + index]
+    profile_config.write_text(json.dumps({"inbounds": [{"listen_port": 18082}]}))
     xray_config = tmp_path / "xray.json"
-    xray_config.write_text(json.dumps(_xray_document([18181])))
+    xray_config.write_text(json.dumps(_xray_document([18081, 18181])))
     xray_config.chmod(0o600)
     config.write_text(
         json.dumps(
@@ -303,9 +300,9 @@ signal.pause()
                 "expected_status": 204,
                 "timeout_seconds": 15,
                 "degraded_after_ms": 3000,
-                "expected_runtime": {"sing_box": "1.14.0", "xray": "26.3.27", "awg": "1.0.0", "awg_toolchain": toolchain_id},
+                "expected_runtime": {"sing_box": "1.14.0", "xray": "26.10.31", "awg": "1.0.0", "awg_toolchain": toolchain_id},
                 "sing_box": {"config": str(profile_config), "profiles": sing_profiles},
-                "xray": {"config": str(xray_config), "profiles": {"p1-xhttp": [18181]}},
+                "xray": {"config": str(xray_config), "profiles": {"p0-reality": [18081], "p1-xhttp": [18181]}},
                 "amneziawg": {"config": str(awg), "addresses": ["10.66.66.2/32", "fd42:42:42::2/128"], "mtu": 1420,
                                "dns_servers": ["1.1.1.1", "1.0.0.1"]},
             }
@@ -390,7 +387,7 @@ def test_sentinel_reports_authenticated_data_plane_success_without_secrets(
     calls = (tmp_path / "calls.log").read_text()
     assert "--resolve" not in calls
     assert calls.count("sing-box run") == 1
-    assert payload["runtime"]["xray"] == "26.3.27"
+    assert payload["runtime"]["xray"] == "26.10.31"
     assert payload["runtime"]["awg_toolchain"] == json.loads(config.read_text())["expected_runtime"]["awg_toolchain"]
     assert calls.index("xray run -test -config") < calls.index("xray run -config")
     assert subprocess.run(["ps", "-p", (tmp_path / "xray.pid").read_text().strip()], capture_output=True).returncode != 0
@@ -414,11 +411,11 @@ def test_runtime_version_requires_successful_stdout(monkeypatch, code, stdout, s
 @pytest.mark.parametrize(
     ("responses", "expected", "calls"),
     [
-        ([OSError("transient launch failure"), subprocess.CompletedProcess(["xray", "version"], 0, "Xray 26.3.27\n", "")], "26.3.27", 2),
-        ([subprocess.TimeoutExpired(["xray", "version"], 5), subprocess.CompletedProcess(["xray", "version"], 0, "Xray 26.3.27\n", "")], "26.3.27", 2),
+        ([OSError("transient launch failure"), subprocess.CompletedProcess(["xray", "version"], 0, "Xray 26.10.31\n", "")], "26.10.31", 2),
+        ([subprocess.TimeoutExpired(["xray", "version"], 5), subprocess.CompletedProcess(["xray", "version"], 0, "Xray 26.10.31\n", "")], "26.10.31", 2),
         ([OSError("first launch failure"), subprocess.TimeoutExpired(["xray", "version"], 5)], "missing", 2),
-        ([subprocess.CompletedProcess(["xray", "version"], 0, "unrelated 26.3.27\n", "")], "unknown", 1),
-        ([subprocess.CompletedProcess(["xray", "version"], 1, "Xray 26.3.27\n", "")], "unknown", 1),
+        ([subprocess.CompletedProcess(["xray", "version"], 0, "unrelated 26.10.31\n", "")], "unknown", 1),
+        ([subprocess.CompletedProcess(["xray", "version"], 1, "Xray 26.10.31\n", "")], "unknown", 1),
     ],
 )
 def test_xray_version_retries_only_transient_launch_failures(monkeypatch, responses, expected, calls):
@@ -452,7 +449,7 @@ def test_existing_loopback_listener_cannot_supply_runtime_success(monkeypatch):
         listener.listen()
         port = listener.getsockname()[1]
         monkeypatch.setattr(module.subprocess, "Popen", lambda *_a, **_k: pytest.fail("must reject occupied port before starting runtime"))
-        result = module.probe_runtime_profiles("sing-box", {"config": "/fixture", "profiles": {"p0-reality": [port]}}, {}, True)
+        result = module.probe_runtime_profiles("xray", {"config": "/fixture", "profiles": {"p0-reality": [port]}}, {}, True)
         assert result[0]["verdict"] == "error"
         assert result[0]["error_kind"] == "listener_in_use"
         assert result[0]["payload_transport"] == "unknown"
@@ -506,14 +503,15 @@ def test_awg_namespace_curl_requires_both_families_and_resolves_hostname_inside_
     assert all(result["verdict"] == "ok" for result in awg["family_results"].values())
 
 
-def test_legacy_sing_box_xhttp_requires_explicit_migration(tmp_path):
+@pytest.mark.parametrize("profile", ["p0-reality", "p1-xhttp"])
+def test_sing_box_refuses_transports_that_require_xray(tmp_path, profile):
     config, env = _setup(tmp_path)
     document = json.loads(config.read_text())
-    document["sing_box"]["profiles"]["p1-xhttp"] = [18083]
+    document["sing_box"]["profiles"][profile] = [18083]
     config.write_text(json.dumps(document))
     result = _run(config, env)
     assert result.returncode == 2
-    assert "p1-xhttp requires xray" in result.stderr
+    assert "invalid sing-box profiles" in result.stderr
     assert not (tmp_path / "calls.log").exists()
 
 
@@ -708,7 +706,7 @@ def test_invalid_xray_profile_is_rejected_before_any_probe(tmp_path, invalid):
     elif invalid == "relative-path":
         document["xray"]["config"] = "xray.json"
     elif invalid == "wrong-profile":
-        document["xray"]["profiles"] = {"p0-reality": [18181]}
+        document["xray"]["profiles"] = {"p2-hysteria2": [18181]}
     else:
         document["xray"]["profiles"]["p1-xhttp"] = {
             "empty-ports": [], "duplicate-port": [18181, 18181], "boolean-port": [True],
@@ -721,9 +719,9 @@ def test_invalid_xray_profile_is_rejected_before_any_probe(tmp_path, invalid):
 
 
 @pytest.mark.parametrize("pin,banner,code", [
-    ("26.3.2", "Xray 26.3.27", 0),
-    ("26.3.27", "unrelated 26.3.27", 0),
-    ("26.3.27", "Xray 26.3.27", 1),
+    ("26.3.2", "Xray 26.10.31", 0),
+    ("26.10.31", "unrelated 26.10.31", 0),
+    ("26.10.31", "Xray 26.10.31", 1),
 ])
 def test_xray_version_requires_exact_successful_product_banner(tmp_path, pin, banner, code):
     config, env = _setup(tmp_path)
@@ -754,7 +752,7 @@ def test_xray_endpoint_variants_require_healthy_control_for_blocking(tmp_path, b
     config, env = _setup(tmp_path, blocked_ports=blocked, control_curl_fails=control_fails)
     document = json.loads(config.read_text())
     document["xray"]["profiles"]["p1-xhttp"] = [18181, 18182]
-    Path(document["xray"]["config"]).write_text(json.dumps(_xray_document([18181, 18182])))
+    Path(document["xray"]["config"]).write_text(json.dumps(_xray_document([18081, 18181, 18182])))
     config.write_text(json.dumps(document))
     payload = json.loads(_run(config, env).stdout)
     p1 = next(p for p in payload["profiles"] if p["profile"] == "p1-xhttp")
@@ -799,7 +797,8 @@ def test_transport_timeout_is_blocked_only_when_direct_control_succeeds(
     )
     document = json.loads(config.read_text())
     document["timeout_seconds"] = 3
-    document["sing_box"]["profiles"]["p0-reality"] = [18081, 18084]
+    document["xray"]["profiles"]["p0-reality"] = [18081, 18084]
+    Path(document["xray"]["config"]).write_text(json.dumps(_xray_document([18081, 18084, 18181])))
     config.write_text(json.dumps(document))
 
     result = _run(config, env)
@@ -827,7 +826,8 @@ def test_transport_timeout_is_blocked_only_when_direct_control_succeeds(
 def test_profile_stays_alive_when_one_endpoint_variant_succeeds(tmp_path: Path) -> None:
     config, env = _setup(tmp_path, blocked_ports=(18081,))
     document = json.loads(config.read_text())
-    document["sing_box"]["profiles"]["p0-reality"] = [18081, 18084]
+    document["xray"]["profiles"]["p0-reality"] = [18081, 18084]
+    Path(document["xray"]["config"]).write_text(json.dumps(_xray_document([18081, 18084, 18181])))
     config.write_text(json.dumps(document))
 
     result = _run(config, env)
@@ -908,7 +908,7 @@ def test_authentication_failure_is_error_not_blocked(tmp_path: Path) -> None:
 
     logged = tmp_path / "logged"
     logged.mkdir()
-    config, env = _setup(logged, blocked_ports=(18081,), sing_log_auth=True)
+    config, env = _setup(logged, blocked_ports=(18081,), xray_log_auth=True)
 
     result = _run(config, env)
 
@@ -986,34 +986,31 @@ def test_socks_runtime_process_is_removed_on_signal(tmp_path: Path, runtime: str
                          blocked_ports=(18181,) if runtime == "xray" else (),
                          blocked_delay_seconds=30 if runtime == "xray" else 0)
     process = subprocess.Popen(
-        _launch(config),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
+        _launch(config), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        env=env, start_new_session=True,
     )
-    pid_file = tmp_path / f"{runtime}.pid"
-    marker = "--socks5-hostname 127.0.0.1:" + ("18081" if runtime == "sing" else "18181")
-    for _ in range(200):
-        if (
-            pid_file.exists()
-            and marker in (tmp_path / "calls.log").read_text()
-        ):
-            break
-        time.sleep(0.05)
-    else:
-        process.kill()
-        stdout, stderr = process.communicate()
-        raise AssertionError(
-            f"{runtime} probe did not start: stdout={stdout!r}, stderr={stderr!r}"
-        )
-
-    process.send_signal(signal.SIGTERM)
-    process.communicate(timeout=8)
-
-    assert process.returncode == 130
-    sing_pid = pid_file.read_text().strip()
-    assert subprocess.run(["ps", "-p", sing_pid], capture_output=True).returncode != 0
+    try:
+        pid_file = tmp_path / f"{runtime}.pid"
+        marker = "--socks5-hostname 127.0.0.1:" + ("18082" if runtime == "sing" else "18181")
+        for _ in range(200):
+            if pid_file.exists() and marker in (tmp_path / "calls.log").read_text():
+                break
+            time.sleep(0.05)
+        else:
+            raise AssertionError(f"{runtime} probe did not start")
+        process.send_signal(signal.SIGTERM)
+        process.communicate(timeout=8)
+        assert process.returncode == 130
+        runtime_pid = pid_file.read_text().strip()
+        assert subprocess.run(["ps", "-p", runtime_pid], capture_output=True).returncode != 0
+    finally:
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGTERM)
+            try:
+                process.communicate(timeout=8)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.communicate(timeout=3)
 
 
 @pytest.mark.parametrize("failure", ["timeout", "signal", "collision"])

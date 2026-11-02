@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+ACME recovery admits the same safe immutable release names as acquisition,
+including archive and patched-compiler identities. The exact product/root shape,
+root ownership and executable mode still gate access; dot and parent names refuse.
+
 Hysteria probe clients use lazy SOCKS startup because an active server PID can precede initial ACME issuance. Live ACME acceptance still requires system trust, the exact SNI, authentication and canary traffic within the original deadline.
 
 Explicit fresh ACME recovery keeps its directory-commit journal outside accepted runtime authority. Its warm probe uses the unchanged ACME policy and a PID1-owned disposable cache bind mount, then proves system trust, SNI and authenticated forwarding. A pending restore blocks ordinary Hysteria candidate admission.

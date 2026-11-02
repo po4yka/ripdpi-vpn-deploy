@@ -100,7 +100,7 @@ done
 # ---------------------------------------------------------------------------
 xray_version="$(python3 -c "
 import yaml; d=yaml.safe_load(open('$EXAMPLE')) or {}
-print((d.get('xray') or {}).get('version') or 'v26.3.27')
+print((d.get('xray') or {}).get('version') or 'v26.10.31')
 ")"
 hys_version="$(python3 -c "
 import yaml; d=yaml.safe_load(open('$EXAMPLE')) or {}
@@ -111,7 +111,7 @@ print((d.get('hysteria') or {}).get('version') or 'v2.13.0')
 # Compute release-asset sha256 on the fly.
 # ---------------------------------------------------------------------------
 xray_url="https://github.com/XTLS/Xray-core/releases/download/${xray_version}/Xray-linux-64.zip"
-hys_url="https://github.com/apernet/hysteria/releases/download/app/${hys_version}/hysteria-linux-amd64"
+hys_url="https://github.com/po4yka/ripdpi-vpn-deploy/releases/download/runtime-go1.27.3-20261102/hysteria-linux-amd64"
 echo "ci-bootstrap: fetching sha256 for ${xray_version} + ${hys_version}" >&2
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT

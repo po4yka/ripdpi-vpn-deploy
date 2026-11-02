@@ -239,7 +239,7 @@ def test_native_provisioning_is_version_pinned_and_precedes_selected_tests():
     assert "make $NATIVE_GOALS" in steps[run]["run"]
     assert build < run
     script = (ROOT / "scripts/build-native-transport-semantics.sh").read_text()
-    assert "907ba8c9693edb104b20582681fb7dc15639d5b64a9cbb616a7b539190a86691" in script
+    assert "f0488797bd269a238af3fdeedb07560c27c806984980c6ea2bd7d73963723274" in script
     assert "sha256sum -c -" in script and "GOTOOLCHAIN=local" in script
     assert (script.index('git -C "$destination" rev-parse HEAD')
             < script.index('python3 "$corrected_build" prepare')

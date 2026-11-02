@@ -143,7 +143,7 @@ while True:time.sleep(1)
 
 CLIENT = r'''
 import json,os,socket,struct,sys
-p=json.load(sys.stdin);os.setgroups([]);os.setgid(p['uid']);os.setuid(p['uid'])
+p=json.load(sys.stdin);os.setgroups([]);os.setgid(p['uid']);os.seteuid(p['uid'])
 def exact(c,n):
  out=b''
  while len(out)<n:
@@ -153,19 +153,22 @@ def exact(c,n):
  return out
 try:
  with socket.create_connection(('10.250.254.2',12091),timeout=2) as c:
+  # Keep normalizer ownership on the control socket; vary only UDP ownership.
+  os.seteuid(0);os.setuid(p.get('udp_uid',p['uid']))
   c.sendall(b'\x05\x01\x02');assert exact(c,2)==b'\x05\x02'
   u=b'gateway-warp';pw=p['password'].encode()
   c.sendall(bytes([1,len(u)])+u+bytes([len(pw)])+pw);assert exact(c,2)==b'\x01\x00'
   udp=p['network']=='udp';command=3 if udp else 1
   c.sendall(bytes([5,command,0,1])+socket.inet_aton('0.0.0.0' if udp else '192.0.2.80')+struct.pack('!H',0 if udp else 9000))
-  h=exact(c,4);assert h[:3]==b'\x05\x00\x00'
-  exact(c,4 if h[3]==1 else 16);exact(c,2)
+  h=exact(c,4);assert h==b'\x05\x00\x00\x01'
+  relay_address=socket.inet_ntoa(exact(c,4));relay_port=int.from_bytes(exact(c,2),'big')
+  if udp:assert relay_address=='10.250.254.2' and relay_port and relay_port!=12091
   payload=b'actual-warp-tun-'+p['network'].encode()
   if udp:
    with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as d:
     d.settimeout(2);d.bind(('10.250.254.1',p['source_port']))
     frame=b'\0\0\0\1'+socket.inet_aton('192.0.2.80')+struct.pack('!H',9000)+payload
-    d.sendto(frame,('10.250.254.2',12091));reply,_=d.recvfrom(65535);assert reply[10:]==payload
+    d.sendto(frame,(relay_address,relay_port));reply,_=d.recvfrom(65535);assert reply[10:]==payload
   else:
    c.sendall(payload);assert exact(c,len(payload))==payload
 except (OSError,AssertionError):sys.exit(1)
@@ -216,14 +219,14 @@ def main():
                         admit()
                         binary = Path(shutil.which('xray') or '')
                         if not binary.is_file() or hashlib.sha256(binary.read_bytes()).hexdigest() != {
-                                'x86_64': '8255dd939c34cf966cc91517b6324dd3c8d0bcf49ffac8beca049a38c46845ed',
-                                'aarch64': 'c2d20a7045250497083afea0d79db0672f6c89a25aaaf37c92de034d6b764b04',
+                                'x86_64': 'cc4b84d3069569f297a61f04b914f2bb37e9d202fd7b84cb50def1fc30fd40e1',
+                                'aarch64': '5939649960deaf535bcd5f7ce0467a2b1d63b72a2758a6f42eade714ae8d5328',
                             }.get(os.uname().machine):
                             raise RuntimeError('exact-native-xray-required')
                         target = work/'xray';shutil.copyfile(binary,target);target.chmod(0o555)
                         cfg = gateway_config(work, {'log':{'loglevel':'none'},'inbounds':[{'listen':'10.250.254.2','port':12091,'protocol':'socks',
                             'settings':{'auth':'password','udp':True,'ip':'10.250.254.2','accounts':[{'user':'gateway-warp','pass':secret['warp_gateway_password']}]}}],
-                            'outbounds':[{'protocol':'freedom','settings':{'domainStrategy':'ForceIP'}}]}, gids['w'])
+                            'outbounds':[{'protocol':'freedom','settings':{'domainStrategy':'ForceIP','finalRules':[{'action':'allow'}]}}]}, gids['w'])
                         def start_gateway():
                             # Enter namespace while privileged, then drop identity before the genuine binary.
                             script = 'import os,sys;os.setgroups([]);os.setgid(int(sys.argv[1]));os.setuid(int(sys.argv[2]));os.execv(sys.argv[3],sys.argv[3:])'
@@ -233,11 +236,14 @@ def main():
                             return result
                         peer = subprocess.Popen(['ip','netns','exec',peer_ns,sys.executable,'-c',PEER],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);processes.append(peer)
                         time.sleep(.2);gateway = start_gateway()
-                        def client(network,port):
+                        def client(network,port,udp_uid=None):
                             data={'uid':uids['n'],'password':secret['warp_gateway_password'],'network':network,'source_port':port}
+                            if udp_uid is not None:data['udp_uid']=udp_uid
                             result=subprocess.run([sys.executable,'-c',CLIENT],input=json.dumps(data),text=True,capture_output=True,timeout=8)
                             return result.returncode==0
                         with worker(pump,gateway_fd,peer_fd,counts):
+                            assert not client('udp',18000,uids['x']),'foreign-UID-reached-native-relay'
+                            assert not client('udp',19000),'foreign-source-pool-reached-native-relay'
                             assert client('tcp',18000) and client('udp',18001),'native-tun-public-completion-failed'
                             before=counts['tun_frames'];assert before>0
                             old_index=policy['warp']['tunnel_ifindex']

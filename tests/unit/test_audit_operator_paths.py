@@ -140,14 +140,14 @@ def test_drift_requires_nonempty_exact_host_selection_and_preserves_failure(tmp_
         assert result.returncode == 23
 
 
-@pytest.mark.parametrize('version,success', [('26.3.27',True),('26.3.270',False)])
+@pytest.mark.parametrize('version,success', [('26.10.31',True),('26.10.310',False)])
 def test_binary_version_pins_compare_complete_versions(tmp_path, version, success):
     xray_tasks = yaml.safe_load((ROOT / 'ansible/roles/xray/tasks/drift.yml').read_text())
     drift_play = yaml.safe_load((ROOT / 'ansible/playbooks/diff-secrets.yml').read_text())[0]
     tasks = [xray_tasks[-1],next(t for t in drift_play['tasks'] if t['name']=='Compare Hysteria binary version with its pin')]
     play = tmp_path / 'versions.yml'
     play.write_text(yaml.safe_dump([{'hosts':'localhost','gather_facts':False,'connection':'local',
-        'vars':{'vpn':{'enable_hysteria':True}, 'xray':{'version':'v26.3.27'},
+        'vars':{'vpn':{'enable_hysteria':True}, 'xray':{'version':'v26.10.31'},
                 'hysteria':{'version':'v2.9.0'},
                 '_xray_drift_version':{'stdout_lines':[f'Xray {version} fixture']},
                 '_hysteria_drift_version':{'stdout':'Version: v2.9.0\n'}},'tasks':tasks}]))

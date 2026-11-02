@@ -20,6 +20,7 @@ from transport_semantics import ech_keys_config, hostname_valid, hysteria_errors
 
 ROOT = Path(__file__).resolve().parent.parent
 PINS = json.loads((ROOT / "scripts/hysteria-runtimes.json").read_text())
+RUNTIME_PINS = json.loads((ROOT / "scripts/security-runtime-artifacts.json").read_text())
 
 
 def verified_binary(binary):
@@ -28,6 +29,8 @@ def verified_binary(binary):
         platform.machine()
     )
     digest = PINS["hysteria"]["sha256"].get(sys.platform + "-" + str(architecture))
+    if sys.platform == "linux":
+        digest = RUNTIME_PINS["artifacts"].get("hysteria-linux-" + str(architecture))
     descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
     try:
         info = os.fstat(descriptor)

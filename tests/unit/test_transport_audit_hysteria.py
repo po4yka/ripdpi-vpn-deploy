@@ -103,7 +103,7 @@ def test_liveness_retains_exact_hints_and_binds_rates_in_digest():
     outbound = arguments["standard_doc"]["outbounds"][1]
     outbound.update(up_mbps=200, down_mbps=100)
     first = module.build_profiles(**arguments)
-    selected = first["files"]["sing-box.json"]["outbounds"][1]
+    selected = next(item for item in first["files"]["sing-box.json"]["outbounds"] if item["type"] == "hysteria2")
     assert (selected["up_mbps"], selected["down_mbps"]) == (200, 100)
     arguments["secrets_doc"]["hysteria"]["bandwidth_down"] = "201 mbps"
     outbound["up_mbps"] = 201

@@ -536,3 +536,18 @@ def test_cli_validates_the_current_checkout():
 
     assert result.returncode == 0, result.stderr
     assert "Xray breaking-change guards satisfied" in result.stdout
+
+
+def test_active_freedom_guard_checks_the_real_gateway(monkeypatch, capsys):
+    checker = _load_checker()
+    original = checker.render_template
+    def render(path, values):
+        rendered = original(path, values)
+        if path.name == "gateway.json.j2":
+            data = json.loads(rendered)
+            del data["outbounds"][0]["settings"]["finalRules"]
+            return json.dumps(data)
+        return rendered
+    monkeypatch.setattr(checker, "render_template", render)
+    assert checker.main() == 1
+    assert "freedom-final-rules-allow" in capsys.readouterr().err

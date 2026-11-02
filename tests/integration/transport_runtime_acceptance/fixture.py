@@ -24,24 +24,25 @@ import yaml
 from scripts.template_render import merge_render_vars, render_template
 
 ROOT = Path(__file__).resolve().parents[3]
+HYSTERIA_RELEASE_ID = json.loads((ROOT / 'scripts/security-runtime-artifacts.json').read_text())['hysteria_release_identity']
 LIBRARY = ROOT / 'ansible/roles/runtime-release/files'
 OWNED_ORIGIN = 'https://owned.example'
 XRAY_PINS = {
-    'v26.3.27': '23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae',
+    'v26.10.31': 'e4bd9119f50ae7c41658b1abd0679ae06f98bd864a2907ff33f2f2cf7081b214',
     'v26.5.3': 'f9d7dd7492791430d48a9828fb36f32663577af787e8b363a1548dece21a7897',
 }
 HYSTERIA_PINS = {
     'v2.8.2': 'b11bf0fb5f84a3f5c6baff3696e899539e68af4cee868c9203cfb896784ad3b0',
-    'v2.13.0': '907ba8c9693edb104b20582681fb7dc15639d5b64a9cbb616a7b539190a86691',
+    'v2.13.0': 'f0488797bd269a238af3fdeedb07560c27c806984980c6ea2bd7d73963723274',
 }
 
 ARM_XRAY_PINS = {
-    'v26.3.27': '4d30283ae614e3057f730f67cd088a42be6fdf91f8639d82cb69e48cde80413c',
+    'v26.10.31': '1811c8f1da0c3b6dc707ebaf1c8390e987ba39859a8f0a7aadd8526157f2ec8d',
     'v26.5.3': 'd6766870478cddaeb770625bf1a61dae2d5c0a1bc160abb21455698137f6071c',
 }
 ARM_HYSTERIA_PINS = {
     'v2.8.2': '802d77ae3ca37bdc235ec848edfaaa7cb9109007d9044f50b0746239269cb8cf',
-    'v2.13.0': 'a68a61a84452ca250ce0368202521965ca9cc9d801a404f1dc9008ac6cf677a7',
+    'v2.13.0': 'a737d68a8b02ea74d196e8b78db408c43afc9716c899e5d1cb9fa6dc05a1c821',
 }
 ARCH = 'arm64' if os.uname().machine == 'aarch64' else 'amd64'
 XRAY_PINS = ARM_XRAY_PINS if ARCH == 'arm64' else XRAY_PINS
@@ -96,10 +97,11 @@ def artifacts(directory):
     directory.mkdir(mode=0o755, parents=True, exist_ok=True)
     for name, pins in [('xray', XRAY_PINS), ('hysteria', HYSTERIA_PINS)]:
         for version, digest in pins.items():
-            path = directory / (name + '-' + version + ('.zip' if name == 'xray' else ''))
+            identity = HYSTERIA_RELEASE_ID if name == 'hysteria' and version == 'v2.13.0' else version
+            path = directory / (name + '-' + identity + ('.zip' if name == 'xray' else ''))
             if not path.exists():
                 url = ('https://github.com/XTLS/Xray-core/releases/download/' + version + '/Xray-linux-' + ('arm64-v8a' if ARCH == 'arm64' else '64') + '.zip'
-                       if name == 'xray' else 'https://github.com/apernet/hysteria/releases/download/app/' + version + '/hysteria-linux-' + ARCH)
+                       if name == 'xray' else ('https://github.com/po4yka/ripdpi-vpn-deploy/releases/download/runtime-go1.27.3-20261102/' if version == 'v2.13.0' else 'https://github.com/apernet/hysteria/releases/download/app/' + version + '/') + 'hysteria-linux-' + ARCH)
                 command(['curl', '--fail', '--silent', '--show-error', '--location', '--connect-timeout', '10',
                          '--max-time', '120', url, '--output', str(path)], timeout=125)
             if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
@@ -148,12 +150,12 @@ class Lab:
                                    enable_hysteria=False, enable_geodata=False,
                                    enable_warp_outbound=False, build_xray_from_source=False,
                                    xray_flow_mode='vision', xray_finalmask=False)
-        self.context['xray'].update(version='v26.3.27', linux_amd64_sha256=XRAY_PINS['v26.3.27'],
-                                    linux_arm64_sha256=XRAY_PINS['v26.3.27'], target='192.0.2.90:8444',
+        self.context['xray'].update(version='v26.10.31', linux_amd64_sha256=XRAY_PINS['v26.10.31'],
+                                    linux_arm64_sha256=XRAY_PINS['v26.10.31'], target='192.0.2.90:8444',
                                     server_names=['owned.example'], cohorts=[],
                                     clients=[{'name': 'native-device', 'uuid': str(uuid.uuid4()), 'short_id': secrets.token_hex(4)}])
-        self.context['xray_runtime_release_urls'] = {'amd64': 'file://' + str(self.artifacts / 'xray-v26.3.27.zip'),
-                                                  'arm64': 'file://' + str(self.artifacts / 'xray-v26.3.27.zip')}
+        self.context['xray_runtime_release_urls'] = {'amd64': 'file://' + str(self.artifacts / 'xray-v26.10.31.zip'),
+                                                  'arm64': 'file://' + str(self.artifacts / 'xray-v26.10.31.zip')}
         # Rotation evidence reads the access log, which production renders as `none`
         # unless the policy rate-limiter consumes it.
         self.context.update(xray_access_log_enabled=True)
@@ -203,7 +205,7 @@ class Lab:
         if existing.exists():
             # CI owns this exact artifact. Preserve its original inode and never
             # adopt or replace an unknown installer binary.
-            with zipfile.ZipFile(self.artifacts / 'xray-v26.3.27.zip') as archive:
+            with zipfile.ZipFile(self.artifacts / 'xray-v26.10.31.zip') as archive:
                 expected = hashlib.sha256(archive.read('xray')).digest()
             if existing.is_symlink() or hashlib.sha256(existing.read_bytes()).digest() != expected:
                 raise RuntimeError('native-fixture-cli-unowned')
@@ -269,10 +271,11 @@ server.serve_forever()
                                            str(canary), str(self.cert), str(self.key)]))
         runtime = self.private / 'initial-xray'
         runtime.mkdir(mode=0o755)
-        command(['unzip', '-q', str(self.artifacts / 'xray-v26.3.27.zip'), '-d', str(runtime)])
+        command(['unzip', '-q', str(self.artifacts / 'xray-v26.10.31.zip'), '-d', str(runtime)])
         key_fields = dict(line.split(': ', 1) for line in command([str(runtime / 'xray'), 'x25519']).splitlines() if ': ' in line)
         self.context['xray']['reality_private_key'] = key_fields['PrivateKey']
         self.context['hysteria'].pop('resource_profile', None)
+        self.context['hysteria_runtime_release_version'] = 'v2.8.2'
         self.context['hysteria'].update(version='v2.8.2', linux_amd64_sha256=HYSTERIA_PINS['v2.8.2'],
             linux_arm64_sha256=HYSTERIA_PINS['v2.8.2'], cert_pem=self.cert.read_text(), key_pem=self.key.read_text(),
             masquerade_url=OWNED_ORIGIN, clients=[{'name': 'native-device-h', 'password': secrets.token_hex(24)}])
@@ -402,9 +405,10 @@ server.serve_forever()
                                         linux_arm64_sha256=XRAY_PINS['v26.5.3'])
             self.context['xray_runtime_release_urls'] = dict.fromkeys(('amd64','arm64'), 'file://' + str(self.artifacts / 'xray-v26.5.3.zip'))
         else:
+            self.context['hysteria_runtime_release_version'] = HYSTERIA_RELEASE_ID
             self.context['hysteria'].update(version='v2.13.0', linux_amd64_sha256=HYSTERIA_PINS['v2.13.0'],
                                            linux_arm64_sha256=HYSTERIA_PINS['v2.13.0'])
-            self.context['hysteria_release_urls'] = dict.fromkeys(('amd64','arm64'), 'file://' + str(self.artifacts / 'hysteria-v2.13.0'))
+            self.context['hysteria_release_urls'] = dict.fromkeys(('amd64','arm64'), 'file://' + str(self.artifacts / ('hysteria-' + HYSTERIA_RELEASE_ID)))
 
     def enable_hysteria_hopping(self):
         self.context['vpn']['enable_hysteria'] = True

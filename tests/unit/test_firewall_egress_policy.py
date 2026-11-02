@@ -51,6 +51,16 @@ def test_firewall_uses_effective_custom_ssh_port() -> None:
     assert "tcp dport 22 ip saddr" not in rendered
 
 
+@pytest.mark.parametrize("policy", ["permissive", "logged", "strict"])
+def test_ipv4_tcp_ip_options_drop_runs_before_all_normal_input_acceptance(policy):
+    rendered = _render(policy)
+    guard = rendered.split("  chain ipv4_tcp_options_guard {", 1)[1].split("\n  }", 1)[0]
+    assert "type filter hook input priority -310; policy accept;" in guard
+    assert 'ip protocol tcp ip hdrlength > 5 counter drop comment "ipv4-tcp-ip-options"' in guard
+    assert guard.count("drop") == 1
+    assert "type filter hook input priority 0;" in rendered
+
+
 def test_echo_flood_drop_precedes_established_accept_for_both_families() -> None:
     rendered = _render()
     established = rendered.index("ct state established,related accept")

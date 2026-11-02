@@ -49,7 +49,7 @@ def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(
             lab.context['hysteria']['key_pem'] = wrong_key.read_text()
         assert lab.converge(profile, allow_failure=True) != 0
         initial_root = Path('/opt/xray' if profile == 'xray' else '/opt/hysteria')
-        initial_version = 'v26.3.27-archive' if profile == 'xray' else 'v2.8.2'
+        initial_version = 'v26.10.31-archive' if profile == 'xray' else 'v2.8.2'
         assert (initial_root / 'releases' / initial_version / profile).is_file()
         assert not os.path.lexists(initial_root / 'current')
         assert not Path('/var/lib/ripdpi/transport-runtime/accepted.json').exists()
@@ -117,7 +117,7 @@ def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(
             exercise_gateway_rollback_compensation()
             result = subprocess.run(['/usr/bin/python3', '-Es',
                 '/usr/local/libexec/ripdpi-transport-egress/transport_runtime_rollback.py',
-                'runtime', '--version', 'v26.3.27'], capture_output=True, timeout=90)
+                'runtime', '--version', 'v26.10.31'], capture_output=True, timeout=90)
             assert result.returncode == 0, 'native-runtime-rollback-refused'
             assert os.readlink(root / 'current') == previous
             from transport_runtime_accept import gateway_units
@@ -196,7 +196,7 @@ def exercise_gateway_rollback_compensation():
     config = Path('/etc/xray/config.json')
     with Transaction(STATE) as tx:
         tx.accepted()
-        candidate = runtime_candidates(tx, 'v26.3.27', paths[0], config, config.stat().st_gid,
+        candidate = runtime_candidates(tx, 'v26.10.31', paths[0], config, config.stat().st_gid,
                                        gateway_paths=paths[1:])
         # A real sandbox refusal in a gateway must compensate every runtime unit.
         gateway = next(item for item in candidate if item['path'] == str(paths[1]))
@@ -221,7 +221,7 @@ p=read_parameters()
 config=Path('/etc/xray/config.json')
 with Transaction(STATE) as tx:
  tx.accepted()
- plan=runtime_candidates(tx,'v26.3.27',Path('/etc/systemd/system/xray.service'),config,config.stat().st_gid,
+ plan=runtime_candidates(tx,'v26.10.31',Path('/etc/systemd/system/xray.service'),config,config.stat().st_gid,
   gateway_paths=[Path('/etc/systemd/system',name) for name in gateway_units()])
  owner=RollbackAdapter(plan,p['probe_url'],p['expected_status'],p['timeout'],p['clients'])
  def checkpoint(stage):
@@ -252,7 +252,7 @@ def test_native_site_retirement_and_remaining_upgrade_commit_once():
         assert lab.converge('hysteria', site=True) == 0
         accepted = json.loads((state / 'accepted.json').read_bytes())
         assert accepted['nodes']['/etc/systemd/system/xray.service'] is None
-        assert os.readlink('/opt/hysteria/current').endswith('/v2.13.0')
+        assert os.readlink('/opt/hysteria/current').endswith('/' + fixture.HYSTERIA_RELEASE_ID)
         assert json.loads((state / 'last.json').read_bytes())['before_receipt'] == initial
         assert not (state / 'outer.json').exists()
         baseline = (state / 'accepted.json').read_bytes()
@@ -552,7 +552,7 @@ def test_native_ech_admission_retains_custom_configuration_directory():
         lab.upgrade('hysteria')
         directory = Path('/etc/hysteria/profile')
         lab.context['hysteria_config_dir'] = str(directory)
-        authority = generate(lab.artifacts / 'hysteria-v2.13.0', 'outer.example', 'owned.example')
+        authority = generate(lab.artifacts / ('hysteria-' + fixture.HYSTERIA_RELEASE_ID), 'outer.example', 'owned.example')
         lab.context['hysteria']['ech'] = authority
         assert lab.converge('hysteria') == 0
         key = directory / 'ech.key'
@@ -574,7 +574,7 @@ def test_native_ech_rotation_idempotence_and_complete_compensation():
         from transport_runtime_accept import fields
         assert lab.converge('hysteria') == 0
         lab.upgrade('hysteria')
-        binary = lab.artifacts / 'hysteria-v2.13.0'
+        binary = lab.artifacts / ('hysteria-' + fixture.HYSTERIA_RELEASE_ID)
         ech = generate(binary, 'outer.example', 'owned.example')
         lab.context['hysteria'].update(ech=ech, resource_profile='bbr-conservative')
         assert lab.converge('hysteria') == 0

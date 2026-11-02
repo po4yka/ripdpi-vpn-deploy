@@ -203,7 +203,11 @@ def restored_cache(root, config_relative):
 
 def recovery_runtime(tx, binary, product):
     path = Path(binary)
-    if re.fullmatch('/opt/' + product + r'/releases/v?[0-9]+\.[0-9]+\.[0-9]+/' + product, str(path)) is None:
+    parts = path.parts
+    if (str(path) != binary or len(parts) != 6
+            or parts[:4] != ('/', 'opt', product, 'releases') or parts[-1] != product
+            or parts[4] in {'.', '..'}
+            or re.fullmatch(r'[A-Za-z0-9._+-]+', parts[4]) is None):
         raise Refusal('acme-recovery-runtime')
     tx.parent(path.parent)
     observed = node(path, tx.uid, maximum=128 * 1024 * 1024)

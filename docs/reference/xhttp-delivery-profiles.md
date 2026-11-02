@@ -13,7 +13,7 @@ Nginx and provider/firewall listener ownership remain unchanged.
 |---|---|---|---|
 | Official sing-box | none | none | supported P0/P2 only |
 | RIPDPI | auto, stream-up | none; unsupported tuning refuses | primary and enabled alternate nodes |
-| Native Xray v26.3.27 | auto, packet-up, stream-up | bounded-pool | one loopback SOCKS listener per endpoint |
+| Native Xray v26.10.31 | auto, packet-up, stream-up | bounded-pool | one loopback SOCKS listener per endpoint |
 
 `make emit-xray CLIENT=<name>` uses the same selected-device materializer as
 bundle emission. This isolated Make entry point accepts literal `HOSTS`,
@@ -39,7 +39,7 @@ xray:
 ```
 
 The admitted bound is integer connections 1–4, with mode `stream-up`.
-Both fields are required, unknown fields refuse, and only v26.3.27 is qualified.
+Both fields are required, unknown fields refuse, and only v26.10.31 is qualified.
 The native outbound receives `maxConnections` and fixed zero (unlimited reuse)
 for `hMaxRequestTimes`, `hMaxReusableSecs` and `cMaxReuseTimes`.
 Short request/age rotation was rejected in the actual runtime: retiring a pool
