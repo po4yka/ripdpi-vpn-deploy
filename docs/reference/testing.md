@@ -691,10 +691,11 @@ firewall hopping and compensation suites in a fresh Linux root with systemd,
 real TUN and nftables. Set `TRANSPORT_NATIVE_ISOLATED=1` only for an owned
 throwaway environment. The selected CI job provisions checksum-verified Xray
 and Hysteria plus both immutable AWG source pairs, then removes its exact
-labelled container. Core and recovery-1 to recovery-4 run in independent containers;
-the four recovery groups partition the complete real collection without overlap.
+labelled container. Core-1 (completion), core-2 (DHCPv6 preflight, lifecycle and
+hopping) and recovery-1 to recovery-4 run in independent containers; the four
+recovery groups partition the complete real collection without overlap.
 Each phase retains a 40-minute bound. The local default runs their entire union.
-All three CI plans are selected with the native consumer group and required by
+All six CI plans are selected with the native consumer group and required by
 the aggregate check. The separate `transport-native-acceptance` roadmap target
 retains its complete local acceptance scope.
 
@@ -727,7 +728,7 @@ versions, production reachability or physical-client behavior.
 claiming native traffic. `test_awg_corrected_native_build.py` checks the native
 build receipt and alias. Each native AWG builder runs the actual pinned Go
 completion and segmentation functions with the reviewed test overlay before
-compilation. The complete native core plan also runs
+compilation. The complete native core-1 plan also runs
 `tests/native/transport_acceptance/test_awg_udp_checksum.py`. It requires the
 zero-producing IPv6 UDP tuple and an adjacent control to deliver six real DNS
 replies, with complete pre-NAT checksums and no checksum errors. Keep offloads,

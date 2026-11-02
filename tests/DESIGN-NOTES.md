@@ -974,8 +974,11 @@ metadata failure classification remains covered by the shared monitor tests.
 Bulk four-transport probes supply the canonical driver socket timeout explicitly;
 they retain its three-second default while expanding byte payloads.
 
-The required four-transport CI matrix runs core coverage and four complete,
-disjoint compensation partitions in independent owned containers. Each phase
+The required four-transport CI matrix runs core coverage as two plans (core-1:
+completion; core-2: DHCPv6 preflight, lifecycle and hopping) and four complete,
+disjoint compensation partitions in independent owned containers. One core plan
+ran 21.8 minutes and set the native critical path; the split keeps whole suites
+together because each suite has its own cleanup check and progress journal. Each phase
 retains its 40-minute bound; the local default executes their complete union.
 A real collection regression rejects gaps and overlaps as native cases expand.
 
