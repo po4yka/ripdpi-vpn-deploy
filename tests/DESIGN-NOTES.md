@@ -33,7 +33,7 @@ recovery step minus the measured transaction intervals of that group. Groups
 without such cases had a residual within 0.3 minutes, so the transaction
 intervals transfer between the two lanes. These are observed wall-clock intervals,
 not pytest phase timings or acceptance evidence. A case without a weight received
-pytest-split 0.11.0's mean (about 4.6 minutes) and hid a 25.7-to-16.8-minute
+pytest-split 0.11.0's mean (about 4.6 minutes) and hid a 26.0-to-16.8-minute
 spread between recovery groups, so `test_four_transport_runner.py` requires a
 weight for every compensation case; derive a new case's weight the same way. The
 recovery runner requires this profile so a missing file cannot silently restore
