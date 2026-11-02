@@ -102,3 +102,10 @@ proof. Successful source checks alone MUST NOT accept deployment.
 
 - **WHEN** a VPN node converges the approved kernel mitigation
 - **THEN** IPv4 TCP packets with IP options MUST drop before normal input acceptance, ordinary TCP without IPv4 IP options, UDP including IPv4 IP options, IPv6, and TCP-header options MUST retain their normal policy, and MPTCP MUST remain disabled wherever the kernel provides its control. This mitigation MUST NOT be reported as a kernel patch.
+
+#### Scenario: Upgrade an accepted sentinel runtime contract
+
+- **WHEN** an accepted P0 sentinel generation uses the previous runtime contract
+- **THEN** receipt lookup and upgrade MUST authenticate its exact private files, metadata, runner, target identity and full private receipt digest without applying the new runtime parser to that history.
+- **AND** new candidates and active probes MUST still require the current Xray contract; missing receipts or changed history MUST refuse before activation.
+- **AND** failed probes and interrupted installation MUST restore the exact previous bootstrap bytes, modes and current generation.

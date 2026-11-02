@@ -210,6 +210,9 @@ native parsers, exact target identity and receipt reconciliation intact.
 
 **Sentinel activation is generation-bound** — `liveness_generation.py` owns the
 shared probe budget, fixed launcher, lock, rollback snapshot and committed receipt.
+New candidates and active probes require the current runtime configuration.
+Previous generations are authenticated as immutable files against their private
+receipt digest; a runtime contract change must not reinterpret accepted history.
 Onboarding publishes its local assignment only after exact receipt reconciliation;
 active evaluator evidence never substitutes controller identity for server state.
 
