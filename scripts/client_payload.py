@@ -260,7 +260,7 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
             if native and x.get('version') != 'v26.10.31':
                 raise ValueError('unsupported-native-xhttp-version')
             # No unsupported field may silently disappear in a recipient importer.
-            if not native and (mode not in ('auto', 'stream-up') or tuning):
+            if not native and mode not in ('auto', 'stream-up'):
                 raise ValueError('unsupported-recipient-xhttp-mode')
             for endpoint in xhttp_endpoints(d, c):
                 server_name = endpoint['host']

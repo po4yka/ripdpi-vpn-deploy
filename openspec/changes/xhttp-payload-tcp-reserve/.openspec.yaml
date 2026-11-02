@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-02
+goal: XRY-1793635470456809 Deliver bounded XHTTP pools with payload-verified TCP
+  reserves
