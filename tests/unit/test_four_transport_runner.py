@@ -323,13 +323,13 @@ def test_native_ci_plans_cover_the_complete_real_collection_once():
     weights = json.loads((ROOT / "tests/native/transport_acceptance/recovery-durations.json").read_text())
     assert weights and all(type(value) in (int, float) and math.isfinite(value) and value > 0
                            for value in weights.values())
-    assert set(weights) == {case for case in expected
-                            if case.startswith("tests/unit/test_transport_runtime_acceptance_native.py::")}
-    mean = sum(weights.values()) / len(weights)
+    compensation_paths = next(paths for name, paths in runner.SUITES if name == "compensation")
+    # Every split case is weighted: the splitter's mean for an unweighted case hid real imbalance.
+    assert set(weights) == {case for case in expected if case.split("::", 1)[0] in compensation_paths}
     largest = set(sorted(weights, key=weights.get, reverse=True)[:4])
     recovery_groups = []
     observed = set()
-    for plan in ("core", "recovery-1", "recovery-2", "recovery-3", "recovery-4"):
+    for plan in ("core-1", "core-2", "recovery-1", "recovery-2", "recovery-3", "recovery-4"):
         selected = set()
         for _name, paths, options in runner.suite_commands(plan):
             cases = collect(paths, options)
@@ -341,20 +341,18 @@ def test_native_ci_plans_cover_the_complete_real_collection_once():
             assert len(selected & largest) == 1
             recovery_groups.append(selected)
     assert observed == expected
-    compensation_paths = next(paths for name, paths in runner.SUITES if name == "compensation")
     assert set.union(*recovery_groups) == {case for case in expected
                                           if case.split("::", 1)[0] in compensation_paths}
-    # The pinned splitter assigns the relevant profile mean to unmeasured cases.
     # Bound estimated imbalance, not native acceptance or a fixed case allocation.
-    loads = [sum(weights.get(case, mean) for case in group) for group in recovery_groups]
+    loads = [sum(weights[case] for case in group) for group in recovery_groups]
     assert max(loads) <= sum(loads) / len(loads) * 1.1
     assert runner.suite_commands("all") == sum(
-        (runner.suite_commands(plan) for plan in ("core", "recovery-1", "recovery-2", "recovery-3", "recovery-4")), []
+        (runner.suite_commands(plan) for plan in ("core-1", "core-2", "recovery-1", "recovery-2", "recovery-3", "recovery-4")), []
     )
     import yaml
     jobs = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
     job = jobs["transport-native-acceptance"]
-    assert job["strategy"]["matrix"]["plan"] == ["core", "recovery-1", "recovery-2", "recovery-3", "recovery-4"]
+    assert job["strategy"]["matrix"]["plan"] == ["core-1", "core-2", "recovery-1", "recovery-2", "recovery-3", "recovery-4"]
     assert job["strategy"]["fail-fast"] is False
     assert "transport-native-acceptance" in jobs["required"]["needs"]
 
@@ -672,9 +670,13 @@ def test_real_pytest_junit_preserves_dhcp_receiver_refusal_for_runner(tmp_path, 
                                            "readiness": {"stage": stage, "authority_mismatch": 0}}]
 
 
-@pytest.mark.parametrize('early_pass,full_pass', [(True, True), (True, False), (False, True)])
+@pytest.mark.parametrize('early_pass,full_pass,plan', [
+    (True, True, 'core-2'), (True, False, 'core-2'), (False, True, 'core-2'),
+    # core-1 owns no hopping suite, so a failing DHCPv6 preflight never runs there.
+    (False, True, 'core-1'),
+])
 def test_runner_early_regression_never_substitutes_full_suite_or_accepts_failure(
-    tmp_path, monkeypatch, early_pass, full_pass
+    tmp_path, monkeypatch, early_pass, full_pass, plan
 ):
     """Real pytest children prove scheduling; no native traffic is claimed here."""
     area = tmp_path / 'tests/native/transport_acceptance'
@@ -716,7 +718,7 @@ def test_runner_early_regression_never_substitutes_full_suite_or_accepts_failure
     monkeypatch.setattr(runner.sys, 'platform', 'linux')
     monkeypatch.setattr(runner.os, 'geteuid', lambda: 0)
     monkeypatch.setenv('TRANSPORT_NATIVE_ISOLATED', '1')
-    monkeypatch.setenv('TRANSPORT_NATIVE_PLAN', 'core')
+    monkeypatch.setenv('TRANSPORT_NATIVE_PLAN', plan)
     monkeypatch.setenv('TRANSPORT_NATIVE_EVIDENCE', str(output))
     monkeypatch.setattr(runner, 'preflight', lambda evidence: {})
     monkeypatch.setattr(runner, 'resources', dict)
@@ -743,20 +745,22 @@ def test_runner_early_regression_never_substitutes_full_suite_or_accepts_failure
         return actual_run(argv, **kwargs)
 
     monkeypatch.setattr(runner.subprocess, 'run', portable_pytest)
-    if early_pass and full_pass:
+    preflight = plan == 'core-2'
+    started = early_pass or not preflight
+    if started and full_pass:
         runner.main()
     else:
         with pytest.raises(RuntimeError, match='native-suite-failed:'):
             runner.main()
     evidence = json.loads(output.read_text())
-    assert evidence['success'] is (early_pass and full_pass)
+    assert evidence['success'] is (started and full_pass)
     assert evidence['cleanup'] is True
     assert 'dhcpv6-preflight' not in evidence['suites']
     assert 'route_diagnostic' not in evidence
     assert event_file.read_text().splitlines() == (
-        ['bootstrap', 'established', 'full'] if early_pass else ['bootstrap', 'established'])
-    assert len(observed) == (2 if early_pass else 1)
-    if early_pass:
+        (['bootstrap', 'established'] if preflight else []) + (['full'] if started else []))
+    assert len(observed) == preflight + started
+    if started:
         assert set(evidence['suites']) == {'hopping'}
         assert diagnostic_logs == ['hopping.log']
         assert evidence['dhcpv6_diagnostics'] == []

@@ -23,13 +23,21 @@ fixed failure categories, and readiness never adds counted probe connections.
 
 Four-transport recovery uses four complete, disjoint partitions with the same
 2400-second suite limit. `tests/native/transport_acceptance/recovery-durations.json`
-contains 18 scheduling estimates derived from public CI completion timestamps for
-source `a8ec8492068ea8fda535c68455b93dbd75e8ec3c`, across its two complete runtime
-partitions. Each interval starts at the preceding completion, or the group-start
-line for the first case. These are observed wall-clock intervals, not pytest
-phase timings or acceptance evidence. Unmeasured cases use pytest-split 0.11.0's
-mean of relevant weights; do not invent measurements for them. The recovery runner
-requires this profile so a missing file cannot silently restore count balancing.
+contains one scheduling estimate for each case of the compensation suite. The 18
+transaction cases are medians of 34 successful `transport-runtime-acceptance`
+runs from 2026-10-30 to 2026-11-02, read from public CI completion timestamps.
+Each interval starts at the preceding completion, or the group-start line for the
+first case. The four-transport recovery runner prints no per-case lines, so the
+three orchestrator and rotation cases are residuals: the median duration of the
+recovery step minus the measured transaction intervals of that group. Groups
+without such cases had a residual within 0.3 minutes, so the transaction
+intervals transfer between the two lanes. These are observed wall-clock intervals,
+not pytest phase timings or acceptance evidence. A case without a weight received
+pytest-split 0.11.0's mean (about 4.6 minutes) and hid a 25.7-to-16.8-minute
+spread between recovery groups, so `test_four_transport_runner.py` requires a
+weight for every compensation case; derive a new case's weight the same way. The
+recovery runner requires this profile so a missing file cannot silently restore
+count balancing.
 Real collection checks keep the complete disjoint union, separate the three
 largest weights and bound estimated load imbalance; actual native CI still owns
 runtime completion. Timeout evidence retains only source-admitted test names,
@@ -966,8 +974,11 @@ metadata failure classification remains covered by the shared monitor tests.
 Bulk four-transport probes supply the canonical driver socket timeout explicitly;
 they retain its three-second default while expanding byte payloads.
 
-The required four-transport CI matrix runs core coverage and four complete,
-disjoint compensation partitions in independent owned containers. Each phase
+The required four-transport CI matrix runs core coverage as two plans (core-1:
+completion; core-2: DHCPv6 preflight, lifecycle and hopping) and four complete,
+disjoint compensation partitions in independent owned containers. One core plan
+ran 21.8 minutes and set the native critical path; the split keeps whole suites
+together because each suite has its own cleanup check and progress journal. Each phase
 retains its 40-minute bound; the local default executes their complete union.
 A real collection regression rejects gaps and overlaps as native cases expand.
 
