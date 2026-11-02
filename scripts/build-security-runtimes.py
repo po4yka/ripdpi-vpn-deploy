@@ -36,7 +36,7 @@ def build(output):
         raise ValueError("build requires the exact pinned Go compiler")
     if not output.is_absolute() or output.exists():
         raise ValueError("output must be a new absolute directory")
-    output.mkdir(mode=0o700)
+    output.mkdir(mode=0o700, parents=True)
     work = output / "work"
     work.mkdir(mode=0o700)
     temporary = work / "tmp"
