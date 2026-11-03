@@ -152,6 +152,17 @@
       when: _observability_kuma_existing.rc == 0
       no_log: true
 
+    - name: Refuse an image change that loses restore authority for the running image
+      ansible.builtin.assert:
+        that:
+          - >-
+            (_observability_kuma_existing.stdout | from_json)[0].Config.Image in
+            [observability_kuma.image_repository ~ '@' ~ observability_kuma.image_digests[ansible_facts['architecture']],
+             observability_kuma.previous_image_references[ansible_facts['architecture']]]
+        fail_msg: Running observer image is neither the pinned nor the retained previous image.
+      when: _observability_kuma_existing.rc == 0
+      no_log: true
+
     - name: Inspect observer units in check mode
       ansible.builtin.command:
         argv: [systemctl, show, "{{ item }}", --property=LoadState, --value]

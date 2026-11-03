@@ -232,11 +232,6 @@ def _target_identity(value, provenance, required):
 
 def _configuration(root, generation, config, metadata, profile_files):
     required = set(metadata["required_profiles"])
-    if not isinstance(config.get("sentinel"), str) or re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}", config["sentinel"]) is None or config.get("provenance") != metadata["provenance"]:
-        raise GenerationError("candidate-config-identity")
-    if config.get("schema_version") != 2 or config.get("target_identity") != metadata.get("target_identity"):
-        raise GenerationError("candidate-config-identity")
-    _target_identity(config["target_identity"], metadata["provenance"], metadata["required_profiles"])
     runtime = config.get("expected_runtime")
     required_runtime = set()
     if "p2-hysteria2" in required:
@@ -269,7 +264,7 @@ def _configuration(root, generation, config, metadata, profile_files):
                 raise GenerationError("candidate-profiles-invalid")
 
 
-def _candidate(root, generation, directory):
+def _generation_files(root, generation, directory):
     _directory(directory, private=True)
     expected = {"runner.py", "config.json", "metadata.json", "profiles"}
     if {p.name for p in directory.iterdir()} != expected:
@@ -296,11 +291,21 @@ def _candidate(root, generation, directory):
         raise GenerationError("candidate-user")
     _provenance(metadata.get("provenance"), hashlib.sha256(contents["runner.py"]).hexdigest())
     _target_identity(metadata.get("target_identity"), metadata["provenance"], required)
-    _configuration(root, generation, config, metadata, profiles)
+    if not isinstance(config.get("sentinel"), str) or re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}", config["sentinel"]) is None or config.get("provenance") != metadata["provenance"]:
+        raise GenerationError("candidate-config-identity")
+    if config.get("schema_version") != 2 or config.get("target_identity") != metadata["target_identity"]:
+        raise GenerationError("candidate-config-identity")
     digest = hashlib.sha256()
     for name, content in contents.items():
         digest.update(name.encode() + b"\0" + len(content).to_bytes(8, "big") + content)
     return metadata, contents, digest.hexdigest()
+
+
+def _candidate(root, generation, directory):
+    metadata, contents, digest = _generation_files(root, generation, directory)
+    profiles = {name.removeprefix("profiles/") for name in contents if name.startswith("profiles/")}
+    _configuration(root, generation, json.loads(contents["config.json"]), metadata, profiles)
+    return metadata, contents, digest
 
 
 def _command(command, timeout):
@@ -469,12 +474,12 @@ def committed_receipt(root, generation_id):
         current = _current(root)
         if current != generation:
             if current is not None:
-                old_metadata, _, old_digest = _candidate(root, current, root / "generations" / current)
+                old_metadata, _, old_digest = _generation_files(root, current, root / "generations" / current)
                 _receipt(root, current, old_digest, old_metadata)
             if os.path.lexists(root / "receipts" / f"{generation}.json"):
                 raise GenerationError("generation-not-current")
             raise GenerationError("generation-uncommitted")
-        metadata, contents, digest = _candidate(root, generation, root / "generations" / generation)
+        metadata, contents, digest = _generation_files(root, generation, root / "generations" / generation)
         receipt = _receipt(root, generation, digest, metadata)
         if receipt["runner_sha256"] != hashlib.sha256(contents["runner.py"]).hexdigest() or receipt["provenance"] != metadata["provenance"]:
             raise GenerationError("receipt-identity-invalid")
@@ -499,7 +504,7 @@ def install_generation(root, generation_id, staged_dir, probe_callback):
         bootstrap = _bootstrap(root, metadata["ssh_user"])
         previous = _current(root)
         if previous is not None:
-            previous_metadata, _, previous_digest = _candidate(root, previous, root / "generations" / previous)
+            previous_metadata, _, previous_digest = _generation_files(root, previous, root / "generations" / previous)
             _receipt(root, previous, previous_digest, previous_metadata)
         snapshots = _snapshot(root)
         destination = root / "generations" / generation

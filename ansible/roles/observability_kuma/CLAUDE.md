@@ -14,6 +14,9 @@ Restore admits only the exact current image and one explicitly retained previous
 architecture reference. It never trusts an arbitrary repository digest. The
 previous local image is retained for isolated old-backup recovery; fresh-host
 recovery must preload that exact image through an authorized operation.
+Convergence refuses, also in check mode, when the running container uses
+neither image: its pre-switch backup would then have no admitted restore image.
+On a digest update, set the previous reference to the image the host runs.
 
 
 Panel-only convergence retires only the delivery heartbeat, its private token/config and unit files. Co-hosted node and pipeline heartbeats retain their independent authority.

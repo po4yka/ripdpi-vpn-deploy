@@ -614,14 +614,15 @@ def test_firewall_role_installs_persistent_fail_closed_recovery_units():
     )
     assert "_firewall_tailnet_recovery_units.changed" not in required
     reload = tasks.split(
-        "- name: Reload systemd after Tailnet recovery dependency changes", 1
+        "- name: Reload systemd after firewall unit installation", 1
     )[1]
     reload = reload.split("- name:", 1)[0]
-    assert "_firewall_tailnet_boot_required_by.changed" in reload
+    assert "daemon_reload: true" in reload
+    assert "when:" not in reload
     assert (
         tasks.index("- name: Install exact nftables boot recovery requirement")
         < tasks.index(
-            "- name: Reload systemd after Tailnet recovery dependency changes"
+            "- name: Reload systemd after firewall unit installation"
         )
         < tasks.index("- name: Enable persistent Tailnet firewall recovery")
     )

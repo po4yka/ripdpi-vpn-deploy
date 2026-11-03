@@ -33,9 +33,25 @@ transaction. Hysteria has native ACME support in its pinned server release.
   retaining its application version; keep rclone under dpkg with a distinct
   package version. Prove native versions, guarded transport acceptance and a
   real remote backup and restore before closing the compiler finding.
+- Authenticate accepted sentinel generations through their private full-file
+  receipt digest. Keep current runtime validation on new candidates and active
+  probes. Preserve exact prior bootstrap bytes and modes when an upgrade fails;
+  do not reinterpret accepted runtime history with a new configuration parser.
 - Limit observer SSH forwarding to the local dashboard destination, with no
   agent or remote forwarding. Use the existing recoverable SSH transaction;
   do not add an independent SSH policy writer to the observer role.
+- Apply observer kernel prerequisites through one exact-host operator Ansible
+  configuration outside the Kuma role. Use a dedicated inet table with the
+  reviewed IPv4 TCP IP-options guard and a separate persistent MPTCP policy.
+  Bind existing ruleset loaders and their configuration before installation.
+  Order the guard after those loaders and before network preparation; normal
+  loader reloads must retain it. Never flush or replace foreign tables. Identify
+  existing MPTCP socket owners, plan any required native service maintenance,
+  restore previously running services, and require zero MPTCP sockets before
+  acceptance. Keep SSH, private ingress, monitor authority and resource limits.
+  Test real packet boundaries and seal all prerequisite files in encrypted
+  operator recovery. Record boot ordering as structural evidence until a real
+  boot tests it; do not report the mitigation as an installed kernel patch.
 - Preserve newlines in rendered Xray postrotate shell in both Ansible and local
   rendering. Test actual shell syntax and failure propagation.
 - Reboot only the observer after its encrypted backup and independent management
@@ -210,3 +226,8 @@ rule evaluation, without a notification receipt.
 Changing a live supplied certificate owner into an ACME owner is outside this
 fresh-node rollout. Such a node must be recreated under a reviewed plan; do not
 adopt a foreign active certificate receipt or restore old bytes over new TLS.
+
+The firewall role clears the stock global-flush stop command through one owned
+systemd drop-in. It reloads service definitions on every convergence and refuses
+remaining stop hooks. The loader still replaces only its owned tables; independent
+transport guards and dynamic bans survive its complete service lifecycle.
