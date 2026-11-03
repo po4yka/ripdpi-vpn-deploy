@@ -1,15 +1,15 @@
 # Runbook — disaster recovery / restore
 
-> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-11-03
 
 ## Purpose and scope
 
 Recover a working node after host loss, either by rebuilding from git plus
 the encrypted secrets (the designed path) or by restoring the restic
-snapshot, inside the 15 to 30 minute target.
-
-The architecture targets **15–30 minute restore** from a clean operator
-workstation back to a fully functional VPN node. Two paths.
+snapshot. Recovery time includes access admission, certificate issuance,
+client handover and authenticated acceptance; no fixed duration is guaranteed.
+The [verified snapshot](../reference/deployment-status.md#configuration-and-recovery)
+separates server restore checks from operator-kit and Kuma recovery.
 
 ## Preconditions
 
@@ -29,6 +29,21 @@ Every target below that uses cloud credentials, inventory, SSH or decrypted secr
 - The Terraform state file for the chosen provider and `ENV` (or willingness to import an existing VPS through `scripts/terraform-env.sh`). `prod` retains Terraform's legacy `default` workspace; other environments use same-named workspaces.
 - Optional: a recent restic snapshot from the old VPS, if you want to
   restore configs verbatim instead of re-rendering from secrets.
+
+## Operator-kit and observer recovery
+
+Recover the independent decryption factor before opening the operator kit.
+Verify the downloaded archive and its manifest in a private temporary location.
+Restore the current catalog, source recovery chain, scoped SOPS files and exact
+Terraform environment state. Do not overwrite active state or apply Terraform
+as a restore test. Follow [the local kit contract](local-operator-kit.md).
+
+A VPN restic restore does not restore the independent Kuma observer. Keep the
+matching Kuma database and image digest together. Test them in an isolated
+instance without network or published ports before activation. Provision its
+age restore credential only for the approved restore window, remove the
+credential afterwards, and confirm no restore unit remains active. See
+[observer backup and restore](../reference/observability-operations.md#backup-restore-and-upgrades).
 
 ## Fresh-node prerequisites
 
@@ -322,7 +337,8 @@ remote target was breached, or the password leaked):
   Lower if you sync remote more often.
 - **RTO** (time to recover): 15–30 minutes for path A on a pre-funded
   provider account. Add provider-account-creation time if you don't have
-  a sub-account already.
+  a sub-account already. This is a planning target, not a measured guarantee
+  for the four-host service; include admission and client acceptance time.
 
 If your operational target is tighter than 30 minutes RTO, you should be
 running multi-VPS already. See `add-fallback.md`.

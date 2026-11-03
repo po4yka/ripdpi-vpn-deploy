@@ -1,12 +1,13 @@
 # Resource-bounded observability on existing hosts
 
-> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-03
 
 The active topology is schema 2: one to ten VPN nodes, exactly one also with
 `collector` capability, and a typed `uptime-kuma` observer on an independent
-existing host. The observer is not a Terraform fleet node. No new server,
-volume, paid monitoring account, public DNS or public monitoring listener is
-part of this workflow.
+existing host. The observer is outside the VPN fleet inventory. Its server
+and backup volume
+are separately owned by Terraform. Component lifecycle commands do not create
+servers, volumes, paid monitoring accounts, DNS or public monitoring listeners.
 
 The tracked `observability_contract.enabled_environments` admits `staging` and
 the approved rebuild workspaces `p0-upcloud`, `p1-scaleway`, `p2-vultr` and
@@ -24,18 +25,19 @@ the replacement has positive acceptance. The old dedicated topology and
 The `deadman` operator component and dedicated host bootstrap are retired.
 Old task receipts and retained encrypted credentials do not accept this design.
 
-Source completion is limited to deployable code and isolated real-runtime acceptance,
-as requested on 2026-10-15. It does not accept external host deployment, real
-Telegram delivery, human receipts, live VPN performance or cutover. Those
-remain prerequisites for a separately authorized rollout. The original external
-acceptance task is cancelled; the source successor is `MON-1792080593038468`.
+The source acceptance completed under `MON-1792080593038468` in October.
+It did not accept an external deployment. A later, separately authorized
+service rollout installed vmagent 1.155.0, the collector and the independent
+observer. Its final panel-only checks passed on 2026-11-03; see the
+[deployment snapshot](deployment-status.md). Telegram delivery and human
+notification receipts were outside that selected mode. Do not reopen the
+cancelled historical acceptance task to operate this service.
 
-Rollout remains on hold pending replacement acceptance. The previous Prometheus
-Agent 3.14.0 failed to deliver unsent pre-restart samples in the real outage
-drill. The approved replacement is vmagent 1.155.0 with a byte-bounded persistent
-queue, not a one-hour WAL. Retained files and replay logs do not prove delivery:
-require actual historical samples after clean and abrupt restarts, measured
-queue overhead, and the unchanged resource and live acceptance gates.
+The previous Prometheus Agent 3.14.0 failed to deliver unsent pre-restart
+samples in an outage drill. The accepted sender is vmagent 1.155.0 with a
+byte-bounded persistent queue. Retained files and replay logs alone do not
+prove delivery. Future sender changes still require historical sample checks
+after clean and abrupt restarts and the selected resource and live gates.
 
 ## Current contract and task history
 
@@ -108,8 +110,17 @@ configuration. Defaults describe the current contract; they are deliberately
 inert, not a ready deployment. Pin the real vmagent, Prometheus and Alertmanager
 archives and digests independently. Use distinct sender certificates and one
 Kuma token per monitor.
-`observability_kuma_secrets` holds observer TLS, N+2 monitor bindings, a distinct
-secondary Telegram credential, and the existing backup recipient.
+For each architecture, keep the selected version, URL, checksum,
+`archive_members` and `promtool_archive_members` on the same release. A copied
+member path from an older release can fail extraction even when the new
+archive checksum is correct. Review all these fields before rotation.
+
+Set `observability_kuma_secrets.notification_mode` explicitly. `panel-only`
+uses N node monitor bindings plus one pipeline binding and the existing backup
+recipient. It has no delivery monitor or Telegram credential. The optional
+`telegram` mode uses N+2 bindings and a distinct secondary Telegram credential.
+The collector alerting selection and push producer kinds must agree with this
+mode; missing credentials do not select panel-only mode implicitly.
 
 Before collector installation, converge `firewall_tailnet_collector_ingress`
 through the ordinary full-site dry-run and deployment. Its private override
@@ -310,13 +321,16 @@ metrics, status pages or query parameters. TLS verifies the private IP SAN.
 Token-bearing access/error/application logging is disabled.
 
 Use upstream authenticated UI setup and monitor configuration; do not edit
-SQLite or add an unapproved provisioning client. Create N node monitors,
-one pipeline monitor and one delivery monitor (five initially, twelve maximum).
+SQLite or add an unapproved provisioning client. Create N node monitors and
+one pipeline monitor in panel-only mode: four for the accepted three-node
+fleet. Only Telegram mode adds one delivery monitor, for N+2 monitors total
+(twelve maximum).
 Set distinct cryptographically random 20–128-character URL-safe tokens using
 the authenticated monitor editor; do not keep a shorter autogenerated default.
 Save tokens under their exact `node_id`/`kind` SOPS bindings.
-Configure native Telegram with a separate secondary bot, not the primary token.
-Missing authority to issue that token is a deployment blocker.
+Only in Telegram mode, configure native Telegram with a separate secondary
+bot, not the primary token. Missing authority to issue that token blocks that
+mode. It does not add a bot requirement to panel-only operation.
 
 Node/pipeline producers run every 60 seconds. Configure their Kuma interval
 and retry interval to 120 seconds, retries zero; observe the <=180-second down
@@ -327,10 +341,12 @@ check counts (three), not seconds, and require observed pinned-runtime evidence.
 Never-started monitors are part of acceptance.
 
 A node checks its own declared local services and sends directly to Kuma.
-The collector never synthesizes another node's heartbeat. Pipeline success
-requires fresh expected node scrapes, Alertmanager visibility, successful recent
-rule evaluation and a newly consumed synthetic rule-to-relay receipt.
-Delivery success requires a real relay edit with advancing sequence and a real
+The collector never synthesizes another node's heartbeat. Panel-only pipeline
+success requires fresh expected node scrapes and successful
+recent rule evaluation. Telegram mode additionally requires Alertmanager
+visibility and a newly consumed synthetic rule-to-relay receipt.
+Only Telegram-mode delivery success requires a real relay edit with advancing
+sequence and a real
 send receipt younger than 26 hours; a new silent send occurs daily. An edit is
 not proof of the send path. A send-only failure can take 26 hours plus the
 delivery detection window to appear. API acceptance is not human receipt.
@@ -341,7 +357,8 @@ acknowledgement. Stale receipts, missing targets and failed local checks withhol
 success. Token possession can forge freshness; private ingress and rotation
 reduce but do not eliminate that risk.
 
-The surviving primary route reports observer/push failure as external coverage
+In Telegram mode, the surviving primary route reports observer/push failure
+as external coverage
 unavailable, not confirmed VPN failure. Healthy process status is not proof of
 working alert evaluation or Telegram delivery. Both routes share Telegram; both
 observer and collector loss cannot guarantee notification. Shared private-network
@@ -364,7 +381,11 @@ Disable and rotation stop the backup timer and wait for backup recovery before
 their final observer action. A previously inactive observer stays inactive.
 
 The restore helper requires an explicitly provisioned systemd age-identity
-credential and a selected backup ID. It restores into a new private directory,
+credential and a selected backup ID. This is an on-demand operator credential,
+not a persistent identity on the observer. Provision it for the authorized
+restore window, remove it afterwards and verify that no restore instance is
+active. The idle template can retain its credential reference while the private
+identity file remains absent. It restores into a new private directory,
 rejects traversal/links/special files, and verifies an isolated instance with no
 network or published ports. Thus notifications cannot leave the restored
 instance. Retain both datasets; do not run original and restored monitors with
@@ -429,8 +450,9 @@ response is not the required real alert delivery/expiry staging evidence.
 2. With exact-host access permission, measure collector and observer admission,
    verify private connectivity/runtime/backup storage and record matched VPN baselines.
 3. With deployment and credential authority, configure the independent observer
-   and N+2 real monitors. Verify private UI/ingress separation, actual secondary
-   human receipt, persistence and encrypted isolated restore.
+   with N+1 real monitors for panel-only mode or N+2 for Telegram mode. Verify
+   private UI/ingress separation, persistence and encrypted isolated restore.
+   Telegram mode also requires the actual secondary human receipt.
 4. Deploy the collector and node agents serially on existing hosts. Require
    qualified heartbeats and fresh expected-target metrics after each.
 5. Perform explicitly scoped missing-push, collector, observer, stale-receipt,
@@ -439,7 +461,8 @@ response is not the required real alert delivery/expiry staging evidence.
 6. Compare three matched baseline/enabled authenticated VPN runs: median
    throughput loss <=5%, p95 latency increase <=10%, no attributable new
    connection failures or VPN restarts. Unresolvable noise is unverified.
-7. Request cutover only after real failure/recovery and human acceptance.
+7. Request cutover only after the agreed failure/recovery and operator acceptance.
+   Human notification receipts apply only when the selected mode sends notifications.
    Do not disable or delete working old routes or their secrets automatically.
 
 Collector rollback uses the retained exact generation and digest-bound private

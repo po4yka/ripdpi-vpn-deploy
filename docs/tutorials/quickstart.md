@@ -1,10 +1,13 @@
-# Quickstart — zero to working VPN in ~30 minutes
+# Quickstart — provision and deploy the first VPN node
 
-> **Status:** Current · **Type:** tutorial · **Tier:** CORE · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** tutorial · **Tier:** CORE · **Reviewed:** 2026-11-03
 
 This walks through deploying the full P0+P1+P2 stack to a single UpCloud VPS.
 All commands run from your operator workstation; you should never SSH the
-target VPS by hand for routine setup.
+target VPS by hand for routine setup. This tutorial is a single-node learning
+path, not the four-host service layout in the
+[deployment snapshot](../reference/deployment-status.md). Console admission,
+MFA, issuance and acceptance can take longer than the deployment commands.
 
 ## 0. Prerequisites
 
@@ -30,8 +33,11 @@ export UPCLOUD_USERNAME='vpn-deploy'
 export UPCLOUD_PASSWORD='…'
 ```
 
-Putting these in a shell login file (`.zshenv`) is fine; they must NEVER
-appear in `*.tfvars`, in Terraform state, or in this repo.
+Load these variables from the approved encrypted operator authority for the
+selected command. Do not store durable plaintext credentials in shell login
+files or paste them into shell history. They must not appear in `*.tfvars`,
+Terraform inputs or Git. Protect provider-generated state secrets separately;
+see [the local operator kit](../how-to/local-operator-kit.md).
 
 ## 2. Generate keys
 
@@ -48,8 +54,7 @@ ssh-keygen -t ed25519 -f ~/.ssh/vpn_deploy -N '' -C 'vpn-deploy operator'
 export ANSIBLE_SSH_PRIVATE_KEY_FILE=~/.ssh/vpn_deploy
 
 # 2c. REALITY keypair (one-time per server)
-docker run --rm ghcr.io/xtls/xray-core x25519
-# or, if Xray is locally installed: xray x25519
+xray x25519  # Use the reviewed, checksum-verified pinned binary in a private terminal.
 ```
 
 Record the REALITY private key for the secrets file (next step) and the
@@ -164,7 +169,7 @@ This section walks a first node from plan to smoke test. Re-deploys,
 tag-scoped runs, adding a device and the acceptance checklist live in
 [the deploy guide](../how-to/deploy.md); do not maintain a second copy here.
 
-Before changing an existing fleet, read [../explanation/deployment-status.md](../reference/deployment-status.md).
+Before changing an existing fleet, read [the deployment snapshot](../reference/deployment-status.md).
 It records the last verified snapshot, named environments,
 management-path invariant, live validation boundary, and observed operator
 limitations without publishing endpoints or secrets. It does not establish
@@ -245,10 +250,10 @@ also leaves the block unsuccessful:
 )
 ```
 
-[The deployment snapshot](../reference/deployment-status.md#snapshot-operator-limitations)
-records historical check-mode failures. Diagnose current `dry-run` errors against
-current source and node state; a recorded limitation does not authorize bypassing
-a failed prerequisite.
+Diagnose `dry-run` errors against current source and exact node state. A
+historical failure does not authorize bypassing a failed prerequisite. The
+[deployment snapshot](../reference/deployment-status.md#evidence-and-refresh-boundary)
+keeps current runtime evidence separate from source and local tool failures.
 
 ## 7. Generate a client config
 

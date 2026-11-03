@@ -1,6 +1,6 @@
 # Testing — what's covered and what isn't
 
-> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-03
 
 The repo's defense-in-depth philosophy applies to its own correctness: every
 config, role, and script is checked at multiple layers before it can hit a
@@ -95,7 +95,7 @@ matrix records coverage and commands rather than manually maintained totals.
 | **Kill-switch validation** | **`scripts/check-singbox-killswitch.py`** (operator-driven) | static JSON analysis | n/a | Verifies full-device TUN capture without partial selectors, strict routes, non-direct outbound graph and tunneled DNS. Device runtime acceptance remains separate. |
 | **Network protocol audit** | Focused pytest and Linux namespace packet tests | real sockets, real certificates, relocated Ansible tasks and rendered NAT policies | `docs/archive/network-protocol-audit-2026-10.md` | Covers the complete confirmed-finding ledger and preserves conditional and live evidence gaps. |
 | **sing-box client compatibility** | official sing-box 1.14.3 parser (sha256-pinned in CI) | complete emitted test profile | n/a | Rejects removed DNS/inbound fields and unsupported transports before a profile can ship. |
-| **Sentinel profile compatibility** | official sing-box 1.14.3 and Xray 26.3.27 parsers (SHA256-verified assets in CI) | canonical emitters plus named-client materialization | `make liveness-profile-check` | Required by `ci-fast`; verifies REALITY/Hysteria2 and XHTTP syntax with real binaries. This is not external traffic or AWG/device acceptance. |
+| **Sentinel profile compatibility** | official sing-box 1.14.3 and Xray 26.10.31 parsers (SHA256-verified assets in CI); REALITY and XHTTP select Xray | canonical emitters plus named-client materialization | `make liveness-profile-check` | Required by `ci-fast`; verifies REALITY/Hysteria2 and XHTTP syntax with real binaries. This is not external traffic or AWG/device acceptance. |
 | **vpnd Python CLI** | `make vpnd-lint` (Ruff + mypy) | `make vpnd-parity-check` after complete pytest | `make vpnd-test` (blocking CI on Linux x86_64/arm64 and macOS arm64) | Covers all command/parser, runner, registry, secrets, descriptor/atomic-file, recipient/QR, diagnostics, docs/cache/completions/man-page and matrix lifecycle contracts. The transfer manifest maps all 206 baseline functions to passed Python node IDs; Hypothesis preserves properties and explicit regression seeds. |
 | **vpnd mutation testing (weekly)** | `make vpnd-mutants` (`.github/workflows/mutants.yml`) | real unmutated pytest baseline | full `pyproject.toml` mutation scope | Pinned mutmut 3.8 runs in a disposable tracked working-tree copy with sibling docs, fixtures and scripts; stage new inputs first. The wrapper rejects partial selections. Exit 2 means completed structured results contain survivors; empty, uncovered, interrupted, timed-out or technically failed results fail. Logs/reports are retained per run for 14 days. |
 | **vpnd release SBOM** | shared `.github/actions/vpnd-sbom` in required CI and release publication | exact hash-locked Python runtime inventory | pinned CycloneDX generation | Verifies package version, direct pins, runtime components and unchanged `vpnd/requirements.txt` before publishing `dist/sbom.json`. The five runtime packages have reviewed license-file/SPDX and official non-yanked source checks under `make vpnd-dependency-check`. Deployment inventories remain separate under `make emit-sbom`. |
@@ -272,17 +272,18 @@ repeat the recipe at the merged source SHA, which may differ from the PR head.
 | `make source-drift` | fail-closed comparison of both the clean checkout's exact source revision and deployable digest with each selected live node manifest; also runs automatically after `make deploy` and `make verify`. Equal digests with different revisions fail. |
 | scheduled Monday 08:00 UTC | **mutmut** (`.github/workflows/mutants.yml`) — full baseline and configured mutations; verified survivors create a tracking issue, technical failures fail the workflow |
 
-The repository-safe record of the last observed production deployment is
-[../explanation/deployment-status.md](deployment-status.md). It distinguishes provider-live
-Terraform refresh, configuration-to-state comparison, Ansible convergence,
-host verification, and outside-in client-path evidence. At `infra-v1.0.0`,
-`make dry-run` also has a documented check-mode-only firewall discovery
-failure; a live deploy does not turn that false failure into a passing test.
 | scheduled Monday 12:00 UTC | **drift-since-tag --repo-only** (`.github/workflows/drift.yml`) — repository-level drift detection; opens/updates a rolling issue |
 | scheduled Monday 10:23 UTC | **AmneziaWG arm64 floor watch** (`.github/workflows/amneziawg-arm64-floor.yml`) — flags issue-state or release-note fix claims for physical revalidation; never relaxes guards |
 | weekly weekend | **Renovate** opens dependency-update PRs for supported managers, including grouped Terraform providers and Python tooling/runtime dependencies, GitHub Actions digest pins, and Hysteria Realm / Snell sing-box pins via regex managers. |
 | `make smoke-test` | end-to-end real-traffic dial through every enabled profile |
 | `make check-killswitch BUNDLE=…` | per-client validation of emitted sing-box bundle (5 rules: auto_route, strict_route, sniff, final ≠ direct, DNS detour ≠ direct, no IPv6-only outbound) |
+
+The repository-safe record of the last observed production deployment is
+[the deployment snapshot](deployment-status.md). It distinguishes provider-live
+Terraform refresh, configuration-to-state comparison, Ansible convergence,
+host verification and authenticated client-path evidence. The current snapshot
+records hosted Linux CI separately from local Mac tool and environment failures.
+A successful live deploy does not turn a failed local check into a pass.
 
 ## CI runtime limits and superseded runs
 
@@ -532,7 +533,7 @@ without group/other write permission. Prepare the owned test image with a truste
 `/var/log` (mode `0755`); a group-writable parent must continue to refuse.
 
 `make test-xhttp-delivery-matrix` runs all fourteen native XHTTP cases in an owned
-isolated Linux root lab with systemd, exact Xray 26.3.27/Hysteria 2.13.0,
+isolated Linux root lab with systemd, the repository-pinned Xray/Hysteria engines,
 nginx, nftables, iproute2 (including tc), OpenSSL, curl and pinned Python
 dependencies. It covers primary/alternate delivery, TLS/privacy/rollback,
 three untuned modes and bounded-pool comparisons at 1, 2 and 4 connections.

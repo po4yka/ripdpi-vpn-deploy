@@ -1,6 +1,6 @@
 # Secrets — SOPS + age model
 
-> **Status:** Current · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-11-03
 
 This page is the one home for the secrets model. Two how-to guides build on
 it and do not restate it: [the local operator kit](../how-to/local-operator-kit.md)
@@ -34,6 +34,11 @@ explicitly supported convenience for this checkout and is excluded by
 For the complete MacBook operator kit, including access records, configuration,
 identities and recovery, follow [the local kit contract](../how-to/local-operator-kit.md).
 It extends this layout without changing command defaults or the secrets schema.
+The deployed service uses one private catalog and distinct active SOPS sources
+per node, with separate monitoring and operator authorities. Do not merge their
+credentials into one shared runtime file. The catalog also records necessary
+direct-tool working identities; SOPS does not encrypt an identity while a tool
+reads it. Keep those exceptions private and recoverable independently.
 Keep VPN secrets out of Git, Terraform variables/outputs, cloud-init `user_data`,
 and debug logs; provider credentials come only from environment variables.
 Terraform state and saved plans remain sensitive: providers can persist generated
