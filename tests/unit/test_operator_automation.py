@@ -302,9 +302,10 @@ if goal=='deploy':
     write(root / '.gitignore', 'secrets/\n__pycache__/\nansible/inventory/generated.ini\n')
     for name in ('sops', 'extra', 'pins', 'contexts'):
         write(kit / name, '{}')
+    write(kit / 'extra', '{"ansible_port":22}')
     if getattr(request, 'param', None) == 'override-transport':
         write(kit / 'extra', json.dumps({'ansible_host': '100.64.0.1', 'ansible_port': 2222}))
-        write(kit / 'extra-b', '{}')
+        write(kit / 'extra-b', '{"ansible_port":22}')
         write(kit / 'expected-transport', '100.64.0.1')
     if getattr(request, 'param', None) == 'known-inputs':
         site = kit / 'site'
