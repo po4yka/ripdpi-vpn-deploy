@@ -83,7 +83,7 @@ def collect(*, docker=False):
                 try:
                     actual = json.loads(output)['terraform_version']
                 except (ValueError, KeyError, TypeError):
-                    pass
+                    actual = None
             else:
                 match = re.search(pattern, output)
                 if match:
