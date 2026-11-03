@@ -693,15 +693,6 @@ def test_yamllint_excludes_git_ignored_local_state():
     assert "  state-backups/\n" in config
 
 
-def test_check_prereqs_rejects_terraform_older_than_project_floor():
-    root = Path(__file__).resolve().parents[2]
-    makefile = (root / "Makefile").read_text()
-    target = makefile.split("check-prereqs:", 1)[1].split("\n\ninit:", 1)[0]
-
-    assert "terraform version -json" in target
-    assert "Terraform >= 1.15 required" in target
-
-
 def test_live_ansible_targets_require_a_nonempty_generated_inventory():
     root = Path(__file__).resolve().parents[2]
     makefile = (root / "Makefile").read_text()

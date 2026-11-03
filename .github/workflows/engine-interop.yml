@@ -1,0 +1,95 @@
+---
+name: engine-interop
+on:
+  workflow_call: {}
+  schedule:
+    - cron: '23 6 * * 1'
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  supported-client:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-ci-python
+      - name: Read fixed engine revisions
+        id: pins
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          p = json.load(open('tools/engine-interop.json'))
+          names = ('client_revision', 'xray_revision', 'go_version', 'rust_version')
+          for name in names:
+              pattern = '[0-9a-f]{40}' if name.endswith('_revision') else r'\d+\.\d+\.\d+'
+              if not isinstance(p[name], str) or not re.fullmatch(pattern, p[name]):
+                  raise SystemExit('invalid engine revision')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              for name in names:
+                  f.write(name + '=' + p[name] + '\n')
+          PY
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: po4yka/RIPDPI
+          ref: ${{ steps.pins.outputs.client_revision }}
+          path: client
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: XTLS/Xray-core
+          ref: ${{ steps.pins.outputs.xray_revision }}
+          fetch-depth: 0
+          path: candidate
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: ${{ steps.pins.outputs.go_version }}
+          cache: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8  # v1
+        with:
+          toolchain: ${{ steps.pins.outputs.rust_version }}
+      - name: Install native test prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends cmake ninja-build pkg-config libclang-dev
+      - name: Run real client TCP, Vision, XUDP and rejection checks
+        run: python3 scripts/check-engine-interop.py --client client --candidate candidate
+  release-archives:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-ci-python
+      - name: Verify actual Prometheus consumer archives for both architectures
+        run: |
+          umask 077
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess, yaml
+          tasks = yaml.safe_load(pathlib.Path('ansible/roles/observability_control_plane/molecule/enabled/tasks/fixture-contract.yml').read_bytes())
+          owners = [t['ansible.builtin.set_fact']['observability_control_plane'] for t in tasks
+                    if 'observability_control_plane' in t.get('ansible.builtin.set_fact', {})]
+          if len(owners) != 1:
+              raise SystemExit('ambiguous archive consumer')
+          p = owners[0]['prometheus']
+          directory = pathlib.Path(os.environ['RUNNER_TEMP']) / 'release-inputs'
+          directory.mkdir(mode=0o700)
+          config = {'schema_version': 1, 'component': 'prometheus', 'version': p['version'], 'artifacts': {}}
+          for arch in ('amd64', 'arm64'):
+              path = directory / (arch + '.tar.gz')
+              subprocess.run(['curl', '--fail', '--location', '--proto', '=https', '--connect-timeout', '10',
+                              '--max-time', '180', '--output', str(path), p['urls'][arch]], check=True)
+              path.chmod(0o600)
+              config['artifacts'][arch] = {'url': p['urls'][arch], 'path': str(path), 'sha256': p['sha256'][arch], 'format': 'tar'}
+          source = directory / 'config.json'
+          source.write_text(json.dumps(config));source.chmod(0o600)
+          subprocess.run(['python3', 'scripts/release-inputs.py', 'prepare', '--config', str(source),
+                          '--output', str(directory / 'consumer.json')], check=True)
+          result = json.loads((directory / 'consumer.json').read_bytes())['ansible_variables']['observability_control_plane']['prometheus']
+          if result != p:
+              raise SystemExit('release archive consumer mapping drift')
+          PY

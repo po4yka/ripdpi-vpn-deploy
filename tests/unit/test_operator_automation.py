@@ -184,13 +184,19 @@ def test_operator_kit_refuses_changes_during_verification(kit, monkeypatch):
     assert not (Path(config['kit']) / 'receipts' / 'false-claim.json').exists()
 
 
-@pytest.mark.parametrize('fault', ['none', 'wide-key', 'public', 'corrupt-download', 'anonymous'])
+@pytest.mark.parametrize('fault', ['none', 'single-request', 'wide-key', 'public', 'corrupt-download', 'anonymous'])
 def test_offsite_backup_exercises_upload_download_scope_and_manifest(kit, authority, monkeypatch, fault):
     module, config = kit
     directory, _, _ = authority
     remote = directory / 'remote.age'
+    mode = directory / 'upload-mode'
+    if fault == 'single-request':
+        write(Path(config['kit']) / 'config/opaque.bin', os.urandom(11 * 1024 * 1024))
     executable = write(directory / 'rclone', '#!/usr/bin/env python3\nimport pathlib,sys\n'
-                       f'pathlib.Path({str(remote)!r}).write_bytes(pathlib.Path(sys.argv[4]).read_bytes())\n', 0o700)
+                       'source=pathlib.Path(sys.argv[4])\n'
+                       'cutoff=int(sys.argv[sys.argv.index("--b2-upload-cutoff")+1].removesuffix("Mi"))*1024*1024\n'
+                       f'pathlib.Path({str(mode)!r}).write_text("single" if source.stat().st_size <= cutoff else "multipart")\n'
+                       f'pathlib.Path({str(remote)!r}).write_bytes(source.read_bytes())\n', 0o700)
     config.update(rclone=str(executable), rclone_sha256=hashlib.sha256(executable.read_bytes()).hexdigest(),
                   bucket_id='abc123', bucket_name='private-recovery-fixture')
     monkeypatch.setenv('B2_APPLICATION_KEY_ID', 'synthetic-id')
@@ -228,7 +234,7 @@ def test_offsite_backup_exercises_upload_download_scope_and_manifest(kit, author
             return Response(json.dumps(data).encode())
     monkeypatch.setattr(module.urllib.request, 'build_opener', lambda *_: Backend())
     output = Path(config['kit']) / 'receipts' / 'remote-verified.json'
-    if fault == 'none':
+    if fault in ('none', 'single-request'):
         result = module.backup(config, output, remote=True)
         assert result['phase'] == 'offsite-download-decrypt-manifest-verified'
         receipt = json.loads(output.read_text())
@@ -236,6 +242,9 @@ def test_offsite_backup_exercises_upload_download_scope_and_manifest(kit, author
         catalog = json.loads((Path(config['kit']) / 'catalog.json').read_text())
         assert catalog['offsite_operator_kit']['receipt'] == 'receipts/remote-verified.json'
         assert catalog['offsite_operator_kit']['post_snapshot_acknowledgement_only']
+        if fault == 'single-request':
+            assert remote.stat().st_size > 10 * 1024 * 1024
+            assert mode.read_text() == 'single'
     else:
         with pytest.raises(private.MaintenanceError):
             module.backup(config, output, remote=True)

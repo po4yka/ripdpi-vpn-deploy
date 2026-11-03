@@ -208,10 +208,12 @@ class Storage:
         code = encrypted_command([config['rclone'], '--config', '/dev/null', 'copyto', str(archive),
                                   'kit:' + config['bucket_name'] + '/' + name,
                                   '--ignore-times', '--transfers', '1', '--checkers', '1',
-                                  '--b2-upload-cutoff', '10Mi', '--b2-chunk-size', '10Mi',
+                                  # Verified ciphertext is at most 257 MiB; use one upload request.
+                                  '--b2-upload-cutoff', '512Mi', '--b2-chunk-size', '10Mi',
                                   '--b2-upload-concurrency', '1', '--retries', '2', '--low-level-retries', '2',
-                                  '--contimeout', '10s', '--timeout', '30s'], log, config['recipient'],
-                                 environment=environment, cwd=config['kit'], timeout=600)
+                                  '--contimeout', '10s', '--timeout', '30s', '--stats', '30s',
+                                  '--stats-one-line', '--stats-log-level', 'NOTICE'], log, config['recipient'],
+                                 environment=environment, cwd=config['kit'], timeout=900)
         if code:
             raise MaintenanceError('operator-kit-upload-failed')
         rows = self.call('b2_list_file_names', {'bucketId': config['bucket_id'], 'prefix': name,

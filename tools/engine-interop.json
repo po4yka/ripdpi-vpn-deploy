@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "client_revision": "336ed2bbc39047824c02ae6de58405bc1bf01a70",
+  "xray_revision": "a4a3dff5b20c2faae567b742c172c7b95e75c083",
+  "xray_version": "v26.10.31",
+  "go_version": "1.27.3",
+  "rust_version": "1.98.1"
+}

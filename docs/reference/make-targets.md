@@ -35,7 +35,7 @@ Variables (override on command line):
   DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE  Deploy-only mode-0600 JSON mapping: exact alias → fresh private baseline failure receipt
 
 ── DAY-1 ──────────────────────────────────────────────────────────────
-  check-prereqs              Verify required CLI tools are installed
+  check-prereqs              Check exact local tool/package pins without fleet configuration
   bootstrap-secrets …        Generate full crypto + SOPS-encrypt
   setup-yubikey [REENCRYPT=1]  Hardware-backed age identity on YubiKey
   scan-targets {SEEDS=…|CIDR=…|CRAWL=…}  Discover REALITY targets (RealiTLScanner)

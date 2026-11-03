@@ -11,6 +11,26 @@ The operation requires the exact-node authorization described in
 
 ## Prepare an existing-node operation
 
+First run `make check-prereqs` with a clean Make environment. This command does
+not load `.fleet.mk` or inventory. It checks the active and child Python
+environments, the exact tool pins in `mise.toml`, and the installed package pins
+in `requirements.txt`. Exit status 2 means the environment is not ready; it is
+separate from a failed behavior test. Use the pinned Python installation and
+install the hash-locked requirements before repeating the check.
+
+For Docker-based validation, also run
+`mise exec -- python3 scripts/check-prereqs.py --docker`. It checks the existing
+Linux daemon and Python SDK connection without creating a container. If the CLI
+works but the SDK cannot connect, select the active context endpoint with
+`DOCKER_HOST`. This check does not prove image architecture support or Molecule
+success.
+
+Restore the reviewed state for each selected provider workspace, then run
+`make PROVIDER=<provider> ENV=<workspace> init` in this controller checkout.
+This prepares local workspace metadata; it does not create a VPS. Client profile
+export reads these workspace outputs. `make validate` uses a separate,
+backend-free data directory and does not prepare them.
+
 Create a private JSON configuration with these fields:
 
 | Field | Value |
