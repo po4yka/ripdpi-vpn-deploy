@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import ExitStack
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import fcntl
 import hashlib
 import json
@@ -247,10 +247,22 @@ def cleanup_retained(plan, journal):
 def protocol_gate(plan, journal, node):
     recheck(plan)
     with journal.operation('protocol-gate', {'host': node['host'], 'source': plan['source']}):
+        hosts = fleet_inspection.select_hosts(ROOT / 'ansible/inventory/generated.ini', [node['host']])
+        command = fleet_inspection.ssh_command(hosts[0], Path(node['known_hosts']))
+        raw = fleet_inspection.bounded_command(command, timeout=30,
+                    input_bytes=Path(fleet_inspection.__file__).read_bytes(),
+                    environment=command_environment())
+        now = datetime.now(timezone.utc)
+        report = fleet_inspection.validate_report(fleet_inspection.decode_json(raw), now)
+        manifest = report['manifest']
+        if (now - fleet_inspection.parse_time(report['observed_at']) > timedelta(seconds=30)
+                or manifest.get('status') != 'observed'
+                or manifest.get('source_revision') != plan['source']['revision']
+                or manifest.get('deployable_digest') != plan['source']['deployable_digest']):
+            raise MaintenanceError('deployed-source-acceptance-failed')
         selected = [{'current': node['provider'] + ':' + node['environment'],
                      'inventory_alias': node['host']}]
-        if healthy_survivors(plan['liveness_config'], selected,
-                             generation=plan['source']) != {node['host']}:
+        if healthy_survivors(plan['liveness_config'], selected) != {node['host']}:
             raise MaintenanceError('authenticated-protocol-acceptance-failed')
     journal.observe('protocol_acceptance', {'host': node['host'],
                                           'at': datetime.now(timezone.utc).isoformat(),

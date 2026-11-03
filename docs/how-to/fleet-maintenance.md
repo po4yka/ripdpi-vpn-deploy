@@ -55,9 +55,13 @@ make maintenance ACTION=status PLAN="$MAINTENANCE_PLAN"
 
 The worker runs canonical decrypt, full dry-run, full deploy, verify,
 security-verify, smoke-test, fresh authenticated protocol acceptance and cleanup
-per node. The protocol gate admits only the exact deployed source revision and
-digest, target address and alias, expected runtime and complete positive profile
-proofs, including tunnel DNS. A failure stops before the next node. Probe
+per node. Strict SSH inspection first confirms the target's exact deployed
+source revision and digest. A separate fresh protocol report must match the
+frozen probe generation, target address and alias, expected client runtime and
+complete positive profile proofs, including tunnel DNS. Static probe provenance
+does not establish the server's current source. A changed wire profile that the
+supported client cannot use fails this gate and needs canonical client refresh
+before further rollout. A failure stops before the next node. Probe
 transports use the canonical liveness policy; review and freeze every SSH
 dependency in `liveness_inputs`. Shared resource locks prevent
 two admitted operations from using the same node or inventory concurrently.

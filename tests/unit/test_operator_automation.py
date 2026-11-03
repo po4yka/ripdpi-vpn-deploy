@@ -277,7 +277,7 @@ def maintenance(authority, isolated_synthetic_git_config, request):
     write(root / '.gitignore', 'secrets/\n__pycache__/\n')
     write(root / 'Makefile', '.PHONY: decrypt dry-run deploy verify security-verify smoke-test clean\n'
           'decrypt dry-run deploy verify security-verify smoke-test clean:\n\t@python3 boundary.py $@\n')
-    write(root / 'boundary.py', '''import os,pathlib,sys,time
+    write(root / 'boundary.py', '''import os,pathlib,sys,time,subprocess,json
 root=pathlib.Path('secrets/local');goal=sys.argv[1];host=os.environ['ANSIBLE_LIMIT']
 with (root/'calls').open('a') as f:f.write(host+':'+goal+'\\n')
 print('encrypted-diagnostic-fixture',flush=True)
@@ -286,6 +286,9 @@ if goal=='decrypt':secret.write_text('synthetic-credential');secret.chmod(0o600)
 if goal=='clean':secret.unlink(missing_ok=True)
 if (root/'delay').exists() and goal=='deploy':time.sleep(.5)
 if (root/'fail').exists() and (root/'fail').read_text()==host+':'+goal:sys.exit(9)
+if goal=='deploy':
+ rev,gen=subprocess.check_output(['bash','scripts/deploy-source-identity.sh'],text=True).split()
+ (root/(host+'-manifest.json')).write_text(json.dumps({'schema_version':2,'status':'observed','source_revision':rev,'deployable_digest':gen}))
 ''')
     kit = root / 'secrets/local'
     kit.mkdir(mode=0o700, parents=True)
@@ -332,12 +335,23 @@ if (root/'fail').exists() and (root/'fail').read_text()==host+':'+goal:sys.exit(
             'awg_target': {'provider': provider, 'environment': 'prod', 'instance': 'awg0'}})
     write(kit / 'liveness.yml', yaml.safe_dump(live))
     write(kit / 'bin/ssh', '''#!/usr/bin/env python3
-import json,pathlib,sys,time,subprocess
-k=pathlib.Path('secrets/local');name=sys.argv[sys.argv.index('--')+1]
+import json,pathlib,sys,time,datetime
+k=pathlib.Path('secrets/local')
+if '--' not in sys.argv:
+ sys.stdin.read()
+ sys.path.insert(0,'scripts');import fleet_inspection
+ name='node-a' if sys.argv[-2]=='192.0.2.1' else 'node-b'
+ manifest=json.loads((k/(name+'-manifest.json')).read_bytes())
+ if (k/'wrong-source').exists():manifest['deployable_digest']='0'*64
+ print(json.dumps({'schema_version':1,'observed_at':datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00','Z'),
+  'services':{unit:{'status':'unknown'} for unit in fleet_inspection.SERVICES},'manifest':manifest,
+  'listeners':{'status':'unknown'},'backup':{'latest_snapshot':{'status':'unknown'},'restore':{'status':'unknown'}}}))
+ sys.exit(0)
+name=sys.argv[sys.argv.index('--')+1]
 import yaml
 c=yaml.safe_load((k/'liveness.yml').read_bytes());s=next(s for s in c['sentinels'] if s['id']==name)
-rev,gen=subprocess.check_output(['bash','scripts/deploy-source-identity.sh'],text=True).split()
-target={**s['target'],'source_revision':rev,'deployable_digest':gen,'applied_at':int(time.time()),
+rev='b'*40
+target={**s['target'],'source_revision':rev,
  'required_profiles':['p2-amneziawg'],'runner_sha256':'c'*64,'public_profile_digest':'d'*64}
 report={'schema_version':2,'sentinel':name,'observed_at':int(time.time()),'control':{'verdict':'ok'},
  'runtime':c['expected_runtime'],'provenance':{'controller_revision':rev,'runner_sha256':'c'*64,
@@ -426,6 +440,18 @@ def test_protocol_failure_stops_before_next_node_and_keeps_cleanup(maintenance):
     assert observed['accepted_nodes'] == []
     assert 'node-b:deploy' not in (kit / 'calls').read_text()
     assert json.loads((state / 'journal.json').read_text())['intent']['name'] == 'protocol-gate'
+    assert not list((kit / 'runtime').iterdir())
+
+
+def test_healthy_old_client_cannot_hide_wrong_deployed_server_source(maintenance):
+    _, kit, _, command, finish = maintenance
+    approval = preview(maintenance)
+    write(kit / 'wrong-source', 'wrong-source')
+    assert command('start', '--approval', approval).returncode == 0
+    observed = finish()
+    assert observed['status'] == 'failed'
+    assert observed['accepted_nodes'] == []
+    assert 'node-b:deploy' not in (kit / 'calls').read_text()
     assert not list((kit / 'runtime').iterdir())
 
 
