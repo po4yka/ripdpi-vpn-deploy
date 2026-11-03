@@ -26,7 +26,7 @@ import yaml
 from operator_maintenance_io import (MaintenanceError, ROOT, command_environment, digest_file,
                                     document, encrypted_command, private_directory,
                                     read_bytes, require_success, write_document)
-from recovery_io import Journal, RecoveryError, digest, unique
+from recovery_io import Journal, RecoveryError, digest, unique, module
 
 FIELDS = {'schema_version', 'id', 'expires_at', 'state_directory', 'runtime_parent',
           'log_recipient', 'age_identity', 'nodes', 'liveness_config', 'liveness_inputs'}
@@ -248,6 +248,10 @@ def protocol_gate(plan, journal, node):
     recheck(plan)
     with journal.operation('protocol-gate', {'host': node['host'], 'source': plan['source']}):
         hosts = fleet_inspection.select_hosts(ROOT / 'ansible/inventory/generated.ini', [node['host']])
+        module('validate-ansible-extra-vars').validate(Path(node['extra_vars']))
+        values = yaml.load(read_bytes(node['extra_vars']), Loader=UniqueLoader)
+        hosts[0]['transport'] = values.get('ansible_host', hosts[0]['transport'])
+        hosts[0]['port'] = values.get('ansible_port', hosts[0]['port'])
         command = fleet_inspection.ssh_command(hosts[0], Path(node['known_hosts']))
         raw = fleet_inspection.bounded_command(command, timeout=30,
                     input_bytes=Path(fleet_inspection.__file__).read_bytes(),

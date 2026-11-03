@@ -302,6 +302,10 @@ if goal=='deploy':
     write(root / '.gitignore', 'secrets/\n__pycache__/\nansible/inventory/generated.ini\n')
     for name in ('sops', 'extra', 'pins', 'contexts'):
         write(kit / name, '{}')
+    if getattr(request, 'param', None) == 'override-transport':
+        write(kit / 'extra', json.dumps({'ansible_host': '100.64.0.1', 'ansible_port': 2222}))
+        write(kit / 'extra-b', '{}')
+        write(kit / 'expected-transport', '100.64.0.1')
     if getattr(request, 'param', None) == 'known-inputs':
         site = kit / 'site'
         site.mkdir(mode=0o700)
@@ -328,6 +332,8 @@ if goal=='deploy':
         config['nodes'].append({'host': name, 'environment': 'prod', 'provider': provider,
             'sops_file': str(kit / 'sops'), 'extra_vars': str(kit / 'extra'),
             'known_hosts': str(kit / 'pins'), 'ssh_contexts': str(kit / 'contexts'), 'inputs': []})
+        if name == 'node-b' and (kit / 'extra-b').exists():
+            config['nodes'][-1]['extra_vars'] = str(kit / 'extra-b')
         address = '192.0.2.' + str(len(live['sentinels']) + 1)
         live['sentinels'].append({'id': name, 'ssh_target': name, 'vantage': 'external', 'policy': 'udp',
             'target': {'inventory_alias': name, 'public_service_address_sha256': hashlib.sha256(address.encode()).hexdigest(),
@@ -340,7 +346,9 @@ k=pathlib.Path('secrets/local')
 if '--' not in sys.argv:
  sys.stdin.read()
  sys.path.insert(0,'scripts');import fleet_inspection
- name='node-a' if sys.argv[-2]=='192.0.2.1' else 'node-b'
+ name='node-a' if any('HostKeyAlias=192.0.2.1' == arg or 'HostKeyAlias=[192.0.2.1]:2222' == arg for arg in sys.argv) else 'node-b'
+ if name=='node-a' and (k/'expected-transport').exists():
+  assert sys.argv[-2]=='100.64.0.1' and sys.argv[sys.argv.index('-p')+1]=='2222'
  manifest=json.loads((k/(name+'-manifest.json')).read_bytes())
  if (k/'wrong-source').exists():manifest['deployable_digest']='0'*64
  print(json.dumps({'schema_version':1,'observed_at':datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00','Z'),
@@ -397,6 +405,7 @@ def preview(maintenance):
     return state['review_sha256']
 
 
+@pytest.mark.parametrize('maintenance', ['default', 'override-transport'], indirect=True)
 def test_detached_maintenance_requires_review_and_accepts_nodes_in_order(maintenance):
     root, kit, state, command, finish = maintenance
     assert command('start').returncode != 0
