@@ -1083,6 +1083,11 @@ jobs:
     if: ${{ fromJSON(needs.selection.outputs.checks)['reproducible-build'] }}
     uses: ./.github/workflows/reproducible-build.yml
 
+  engine-interop:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['engine-interop'] }}
+    uses: ./.github/workflows/engine-interop.yml
+
   required:
     timeout-minutes: 3
     name: required checks
@@ -1119,6 +1124,7 @@ jobs:
       - image-scan
       - contract-sync
       - reproducible-build
+      - engine-interop
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1

@@ -7,6 +7,16 @@ endif
 .PHONY: workspace-status
 workspace-status:
 	@python3 scripts/workspace-status.py
+else ifneq ($(filter check-prereqs,$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error prerequisite diagnostics requires exactly one goal)
+endif
+ifneq ($(strip $(foreach variable,$(.VARIABLES),$(if $(filter command line,$(origin $(variable))),$(variable)))),)
+$(error prerequisite diagnostics does not accept command-line variables)
+endif
+.PHONY: check-prereqs
+check-prereqs:
+	@python3 scripts/check-prereqs.py
 else ifneq ($(filter maintenance release-inputs operator-kit routine-backup,$(MAKECMDGOALS)),)
 ifneq ($(words $(MAKECMDGOALS)),1)
 $(error operator automation requires exactly one goal)
@@ -819,7 +829,7 @@ help:
 	@echo "  DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE  Deploy-only mode-0600 JSON mapping: exact alias → fresh private baseline failure receipt"
 	@echo ""
 	@echo "── DAY-1 ──────────────────────────────────────────────────────────────"
-	@echo "  check-prereqs              Verify required CLI tools are installed"
+	@echo "  check-prereqs              Check exact local tool/package pins without fleet configuration"
 	@echo "  bootstrap-secrets …        Generate full crypto + SOPS-encrypt"
 	@echo "  setup-yubikey [REENCRYPT=1]  Hardware-backed age identity on YubiKey"
 	@echo "  scan-targets {SEEDS=…|CIDR=…|CRAWL=…}  Discover REALITY targets (RealiTLScanner)"
@@ -974,12 +984,7 @@ help:
 	@echo "  molecule-full-stack        site.yml end-to-end inside a Docker container"
 
 check-prereqs:
-	@for tool in terraform ansible ansible-playbook ansible-lint sops age gitleaks jq ssh python3; do \
-	  command -v $$tool >/dev/null 2>&1 || { echo "missing: $$tool"; exit 1; }; \
-	done
-	@terraform version -json | python3 -c 'import json, sys; version = tuple(int(part) for part in json.load(sys.stdin)["terraform_version"].split(".")[:2]); sys.exit(0 if version >= (1, 15) else 1)' || { echo "Terraform >= 1.15 required (run: mise exec -- make check-prereqs)"; exit 1; }
-	@python3 -c 'import yaml' >/dev/null 2>&1 || { echo "missing: Python module PyYAML"; exit 1; }
-	@echo "all prereqs present"
+	@python3 scripts/check-prereqs.py
 
 init:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) $(TF_ENV) init

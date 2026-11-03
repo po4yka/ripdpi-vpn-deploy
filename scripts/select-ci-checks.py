@@ -26,6 +26,7 @@ CHECKS = {
     "images": {"image-scan"},
     "pins": {"reproducible-build"},
     "contract": {"contract-sync"},
+    "engine": {"engine-interop"},
 }
 # Edges name downstream consumers, not upstream prerequisites. Selecting Ansible
 # includes every role and both full-stack scenarios: role cross-imports and
@@ -33,8 +34,8 @@ CHECKS = {
 CONSUMERS = {
     "ansible": {"native", "images"},
     "terraform": {"native"},
-    "pins": {"ansible", "python-vpnd"},
-    "contract": {"ansible", "python-vpnd"},
+    "pins": {"ansible", "python-vpnd", "engine"},
+    "contract": {"ansible", "python-vpnd", "engine"},
 }
 PATHS = (
     ("docs/", {"python-vpnd"}),  # vpnd packages the entire tracked Markdown directory.
@@ -116,6 +117,9 @@ def plan(paths, portable_tests=frozenset()):
         return full_plan("Empty diff cannot authorize selective checks", 0)
     components = set()
     for path in paths:
+        if path == 'tools/engine-interop.json':
+            components.add('engine')
+            continue
         if path in COMMON_ONLY or path in portable_tests:
             continue
         if Path(path).name in INSTRUCTION_NAMES and not path.startswith("docs/"):

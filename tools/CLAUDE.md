@@ -4,6 +4,9 @@
 
 Compiled helpers live here only when the operator-facing `scripts/` layer cannot implement a protocol safely with its shell/Python runtime. Each helper has a single stdin/stdout JSON interface, locked dependencies, and a reproducible Make build target. `tools/tasking/` is different: it pins the mdtask/OpenSpec CLIs installed by `make task-tools` (node_modules stay ignored), and `./taskctl` is the only entry point into it.
 
+Internal engine CI pins live in `engine-interop.json`. Keep them outside
+`contract/`, which is mirrored to the Android client.
+
 ## What's done well
 
 - Secrets are accepted on stdin, never command arguments or environment variables.

@@ -19,6 +19,16 @@ spec.loader.exec_module(selection)
 JOBS = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
 
 
+def test_selected_engine_checks_run_through_the_required_reusable_workflow():
+    workflow = yaml.load((ROOT / '.github/workflows/engine-interop.yml').read_text(), Loader=yaml.BaseLoader)
+    assert 'workflow_call' in workflow['on']
+    assert set(workflow['jobs']) == {'supported-client', 'release-archives'}
+    assert JOBS['engine-interop']['uses'] == './.github/workflows/engine-interop.yml'
+    assert JOBS['engine-interop']['needs'] == 'selection'
+    assert JOBS['engine-interop']['if'] == "${{ fromJSON(needs.selection.outputs.checks)['engine-interop'] }}"
+    assert 'engine-interop' in JOBS['required']['needs']
+
+
 @pytest.mark.parametrize(
     "path,selected,unselected",
     [
@@ -57,12 +67,12 @@ JOBS = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
         ),
         (
             "contract/bundle-schema.json",
-            {"contract-sync", "molecule", "vpnd-test"},
+            {"contract-sync", "molecule", "vpnd-test", "engine-interop"},
             {"terraform"},
         ),
         (
             "secrets/prod.secrets.example.yaml",
-            {"reproducible-build", "molecule", "native-runtime", "transport-runtime-acceptance", "vpnd-test"},
+            {"reproducible-build", "molecule", "native-runtime", "transport-runtime-acceptance", "vpnd-test", "engine-interop"},
             {"go-helper"},
         ),
         (
@@ -71,6 +81,7 @@ JOBS = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
             {"molecule", "vpnd-test", "tf-test"},
         ),
         ("tests/bats/example.bats", {"bats-test"}, {"molecule", "vpnd-test"}),
+        ('tools/engine-interop.json', {'engine-interop'}, {'contract-sync', 'molecule', 'tf-test'}),
         (
             "images/debian13/Dockerfile",
             {"molecule", "image-scan"},
