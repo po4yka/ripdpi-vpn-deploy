@@ -2,6 +2,8 @@
 """Inventory-bound readiness, convergence and source parity for Make deploys."""
 
 import ast
+from contextlib import contextmanager
+from contextvars import ContextVar
 import hashlib
 import json
 import os
@@ -26,6 +28,46 @@ from sshd_transaction_limits import TRANSACTION_TIMEOUT_SECONDS
 
 class DeployError(Exception):
     """Categorical public errors; never include inputs or subprocess output."""
+
+
+APPROVED_INPUTS = ContextVar('approved_deploy_inputs', default=None)
+
+
+@contextmanager
+def approved_inputs():
+    """Bind actual controller snapshots to an optional maintenance approval."""
+    value = None
+    path = os.environ.get('DEPLOY_APPROVED_INPUTS_FILE')
+    if path:
+        try:
+            value = json.loads(read_input(path, private=True, exact_mode=0o600),
+                               object_pairs_hook=unique_object)
+            if (not isinstance(value, dict) or set(value) != {'files', 'trees'}
+                    or not all(isinstance(value[key], dict) for key in ('files', 'trees'))):
+                raise ValueError
+            for name, entry in value['files'].items():
+                if (not Path(name).is_absolute() or not isinstance(entry, dict)
+                        or set(entry) != {'sha256', 'private'} or type(entry['private']) is not bool
+                        or not isinstance(entry['sha256'], str)
+                        or not re.fullmatch('[0-9a-f]{64}', entry['sha256'])):
+                    raise ValueError
+            normalized = {str(Path(name).absolute()): entry for name, entry in value['files'].items()}
+            if len(normalized) != len(value['files']):
+                raise ValueError
+            value['files'] = normalized
+            for name, entries in value['trees'].items():
+                if (not Path(name).is_absolute() or not isinstance(entries, dict)
+                        or any(not isinstance(key, str) or (item is not None and
+                               (not isinstance(item, str) or not re.fullmatch('[0-9a-f]{64}', item)))
+                               for key, item in entries.items())):
+                    raise ValueError
+        except (ValueError, TypeError, UnicodeError):
+            raise DeployError('invalid approved deployment inputs') from None
+    token = APPROVED_INPUTS.set(value)
+    try:
+        yield
+    finally:
+        APPROVED_INPUTS.reset(token)
 
 
 def unique_object(pairs):
@@ -145,8 +187,10 @@ def validate_yaml(data, *, empty=False):
         raise DeployError("YAML input must be a mapping")
 
 
-def read_input(path, *, private=False, exact_mode=None, limit=fleet_inspection.LIMIT):
+def read_input(path, *, private=False, exact_mode=None, limit=fleet_inspection.LIMIT, allow_empty=False):
     """Allow trusted macOS directory aliases, but never follow the final file."""
+    if type(allow_empty) is not bool:
+        raise DeployError('invalid empty-input policy')
     original = Path(path).expanduser().absolute()
     try:
         for parent in reversed(original.parents):
@@ -171,8 +215,12 @@ def read_input(path, *, private=False, exact_mode=None, limit=fleet_inspection.L
             finally:
                 os.close(canonical)
             data = stream.read(limit + 1)
-            if not data or len(data) > limit:
+            if (not data and not allow_empty) or len(data) > limit:
                 raise DeployError("empty or oversized input")
+            approved = APPROVED_INPUTS.get()
+            expected = approved['files'].get(str(original)) if approved is not None else None
+            if expected is not None and hashlib.sha256(data).hexdigest() != expected['sha256']:
+                raise DeployError('approved deployment input changed')
             return data
     except (OSError, fleet_inspection.InspectionError):
         raise DeployError("unreadable or unsafe input") from None
@@ -628,6 +676,7 @@ def prepare_network_exposure_inputs(root, directory, values, hosts, environment)
     return result, [artifact_fence, key_fence]
 
 
+@approved_inputs()
 def controller(mode):
     if os.environ.get("ANSIBLE_DEBUG", "false").lower() not in ("false", "0", "no", "off"):
         raise DeployError("Ansible debug is not supported")
@@ -668,6 +717,12 @@ def controller(mode):
             if "nginx_xhttp_public_site_dir" in override_values:
                 original_site = override_values["nginx_xhttp_public_site_dir"]
                 entries, fingerprint = read_site(original_site)
+                approved = APPROVED_INPUTS.get()
+                if approved is not None:
+                    actual = {name: None if content is None else hashlib.sha256(content).hexdigest()
+                              for name, content in entries.items()}
+                    if actual != approved['trees'].get(original_site):
+                        raise DeployError('approved public site changed')
                 site_fence = (original_site, fingerprint)
                 snapshot = directory / "public-site"
                 for relative, content in entries.items():

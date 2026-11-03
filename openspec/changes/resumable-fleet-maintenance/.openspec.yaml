@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-03
+goal: OPS-1793686022000048 Deliver resumable fleet maintenance and verified
+  operator recovery
