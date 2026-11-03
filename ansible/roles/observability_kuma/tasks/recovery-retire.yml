@@ -1,0 +1,99 @@
+---
+- name: Inspect dedicated recovery files before retirement
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+  loop:
+    - /etc/systemd/system/observability-kuma-recovery.timer
+    - /etc/systemd/system/observability-kuma-recovery.service
+    - /etc/observability-kuma/recovery-storage.json
+    - /etc/observability-kuma/recovery-age-identity
+    - /etc/observability-kuma/recovery.json
+  register: _kuma_recovery_retiring
+
+- name: Inspect retained recovery workspace before retirement
+  ansible.builtin.stat:
+    path: /var/lib/observability-kuma-restores/scheduled
+    follow: false
+  register: _kuma_retire_workspace
+
+- name: Retire installed recovery and reconcile its retained plaintext
+  when: >-
+    _kuma_retire_workspace.stat.exists or
+    _kuma_recovery_retiring.results | selectattr('stat.exists') | list | length > 0
+  block:
+    - name: Admit retained workspace before reading its marker
+      ansible.builtin.assert:
+        that:
+          - _kuma_retire_workspace.stat.isdir | default(false)
+          - _kuma_retire_workspace.stat.uid | default(-1) == 0
+          - _kuma_retire_workspace.stat.mode | default('') == '0700'
+        fail_msg: Recovery retirement requires its existing private workspace.
+
+    - name: Inspect recovery ownership marker before access removal
+      ansible.builtin.stat:
+        path: /var/lib/observability-kuma-restores/scheduled/.owner
+        follow: false
+      register: _kuma_retire_owner
+
+    - name: Require private owned recovery marker before reading it
+      ansible.builtin.assert:
+        that:
+          - _kuma_retire_owner.stat.isreg | default(false)
+          - _kuma_retire_owner.stat.uid | default(-1) == 0
+          - _kuma_retire_owner.stat.nlink | default(0) == 1
+          - _kuma_retire_owner.stat.mode | default('') == '0600'
+          - _kuma_retire_owner.stat.size | default(0) <= 64
+        fail_msg: Recovery access retirement requires its existing owned marker.
+
+    - name: Read existing recovery retirement authority
+      ansible.builtin.slurp:
+        src: /var/lib/observability-kuma-restores/scheduled/.owner
+      register: _kuma_retire_owner_content
+      no_log: true
+
+    - name: Refuse retirement of foreign files
+      ansible.builtin.assert:
+        that:
+          - _kuma_retire_owner_content.content | b64decode == "observability-kuma-recovery-v1\n"
+          - >-
+            _kuma_recovery_retiring.results | selectattr('stat.exists') |
+            rejectattr('stat.isreg') | list | length == 0
+          - >-
+            _kuma_recovery_retiring.results | selectattr('stat.exists') |
+            rejectattr('stat.uid', 'equalto', 0) | list | length == 0
+          - >-
+            _kuma_recovery_retiring.results | selectattr('stat.exists') |
+            rejectattr('stat.nlink', 'equalto', 1) | list | length == 0
+        fail_msg: Dedicated recovery retirement found foreign file authority.
+
+    - name: Install current fixed workspace cleanup before retiring its access
+      ansible.builtin.copy:
+        src: observability-kuma-recovery-workspace.py
+        dest: /usr/local/libexec/observability-kuma-recovery-workspace.py
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Clean persisted plaintext even when no recovery service was active
+      ansible.builtin.command:
+        argv: [/usr/bin/python3, /usr/local/libexec/observability-kuma-recovery-workspace.py]
+      register: _kuma_recovery_workspace_cleanup
+      changed_when: (_kuma_recovery_workspace_cleanup.stdout | from_json).removed > 0
+
+- name: Remove disabled dedicated recovery access after units are quiesced
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/observability-kuma-recovery.timer
+    - /etc/systemd/system/observability-kuma-recovery.service
+    - /etc/observability-kuma/recovery-storage.json
+    - /etc/observability-kuma/recovery-age-identity
+    - /etc/observability-kuma/recovery.json
+  register: _kuma_recovery_retired
+
+- name: Reload unit manager after dedicated recovery retirement # noqa no-handler
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: _kuma_recovery_retired.changed

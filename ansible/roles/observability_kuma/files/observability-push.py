@@ -64,6 +64,9 @@ def validate_config(config):
     if config["kind"] == "pipeline":
         if not 1 <= len(config["expected_nodes"]) <= 10 or len(set(config["expected_nodes"])) != len(config["expected_nodes"]) or any(not ALIAS.fullmatch(item) for item in config["expected_nodes"]):
             raise Refusal("expected-nodes")
+    recovery = config.get('require_observer_recovery', False)
+    if type(recovery) is not bool or recovery and config['kind'] != 'pipeline':
+        raise Refusal('observer-recovery-scope')
     return config
 
 
@@ -159,6 +162,16 @@ def conditions(config, credentials, previous, clock, fetcher=fetch, runner=subpr
         stamp = min(evaluations)
         if stamp <= previous.get("sequence", 0):
             raise Refusal("pipeline-evaluation-stale")
+    if config.get('require_observer_recovery', False):
+        ca = credential(credentials, 'observer-ca')
+        recovery = fetcher(config['origin'] + '/internal/recovery', ca=ca)
+        if (not isinstance(recovery, dict) or set(recovery) != {'schema_version', 'status', 'verified_at', 'backup_at', 'valid_until'}
+                or recovery['schema_version'] != 1 or recovery['status'] != 'ok'
+                or not fresh(recovery['verified_at'], clock(), 93600)
+                or not fresh(recovery['backup_at'], clock(), 93600)
+                or type(recovery['valid_until']) is not int
+                or not clock() < recovery['valid_until'] <= min(recovery['verified_at'], recovery['backup_at']) + 93600):
+            raise Refusal('observer-recovery')
     return stamp
 
 

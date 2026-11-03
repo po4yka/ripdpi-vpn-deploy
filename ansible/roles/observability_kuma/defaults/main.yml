@@ -23,6 +23,13 @@ observability_kuma:
   data_allowance_bytes: 3221225472
   reserve_minimum_bytes: 5368709120
 observability_kuma_secrets: {}
+observability_kuma_recovery:
+  enabled: false
+  bucket_id: ""
+  bucket_name: ""
+  max_backup_age_seconds: 93600
+  readers: []
+  operator_recipients: []
 observability_push_disable_kinds: [node, pipeline, delivery]
 # Include tasks_from: producers on VPN/collector hosts, not the observer role.
 observability_push:
@@ -35,3 +42,4 @@ observability_push:
   relay_origin: http://127.0.0.1:19095
   relay_auth_path: /etc/observability-control-plane/credentials/telegram-relay-auth-token
   textfile_dir: /var/lib/node_exporter/textfile
+  require_observer_recovery: false

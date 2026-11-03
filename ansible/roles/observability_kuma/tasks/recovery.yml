@@ -1,0 +1,167 @@
+---
+- name: Configure explicit independent observer recovery
+  when: observability_kuma_recovery.enabled | bool
+  block:
+    - name: Inspect existing scheduled workspace authority
+      ansible.builtin.stat:
+        path: /var/lib/observability-kuma-restores/scheduled/.owner
+        follow: false
+      register: _kuma_recovery_owner
+
+    - name: Inspect existing scheduled workspace
+      ansible.builtin.stat:
+        path: /var/lib/observability-kuma-restores/scheduled
+        follow: false
+      register: _kuma_recovery_directory
+
+    - name: Read only an admitted existing workspace marker
+      ansible.builtin.slurp:
+        src: /var/lib/observability-kuma-restores/scheduled/.owner
+      register: _kuma_recovery_owner_content
+      no_log: true
+      when:
+        - _kuma_recovery_owner.stat.exists
+        - _kuma_recovery_owner.stat.isreg | default(false)
+        - _kuma_recovery_owner.stat.uid | default(-1) == 0
+        - _kuma_recovery_owner.stat.nlink | default(0) == 1
+        - _kuma_recovery_owner.stat.mode | default('') == '0600'
+        - _kuma_recovery_owner.stat.size | default(0) <= 64
+
+    - name: Refuse adoption of foreign scheduled workspace data
+      ansible.builtin.assert:
+        that:
+          - >-
+            not _kuma_recovery_directory.stat.exists or
+            (_kuma_recovery_directory.stat.isdir | default(false) and
+             _kuma_recovery_directory.stat.uid | default(-1) == 0 and
+             _kuma_recovery_directory.stat.mode | default('') == '0700' and
+             _kuma_recovery_owner_content.content | default('') | b64decode == "observability-kuma-recovery-v1\n")
+        fail_msg: Scheduled recovery workspace is not an admitted role-owned directory.
+
+    - name: Inspect existing private recovery health directory
+      ansible.builtin.stat:
+        path: /var/lib/observability-kuma-recovery-health
+        follow: false
+      register: _kuma_recovery_health
+
+    - name: Inspect existing recovery health ownership marker
+      ansible.builtin.stat:
+        path: /var/lib/observability-kuma-recovery-health/.owner
+        follow: false
+      register: _kuma_recovery_health_owner
+
+    - name: Read only an admitted existing recovery health marker
+      ansible.builtin.slurp:
+        src: /var/lib/observability-kuma-recovery-health/.owner
+      register: _kuma_recovery_health_owner_content
+      no_log: true
+      when:
+        - _kuma_recovery_health_owner.stat.exists
+        - _kuma_recovery_health_owner.stat.isreg | default(false)
+        - _kuma_recovery_health_owner.stat.uid | default(-1) == 0
+        - _kuma_recovery_health_owner.stat.nlink | default(0) == 1
+        - _kuma_recovery_health_owner.stat.mode | default('') == '0600'
+        - _kuma_recovery_health_owner.stat.size | default(0) <= 64
+
+    - name: Refuse adoption of foreign recovery health data
+      ansible.builtin.assert:
+        that:
+          - >-
+            not _kuma_recovery_health.stat.exists or
+            (_kuma_recovery_health.stat.isdir | default(false) and
+             _kuma_recovery_health.stat.uid | default(-1) == 0 and
+             _kuma_recovery_health.stat.gr_name | default('') == 'www-data' and
+             _kuma_recovery_health.stat.mode | default('') == '2750' and
+             _kuma_recovery_health_owner_content.content | default('') | b64decode == "observability-kuma-recovery-v1\n")
+        fail_msg: Recovery health is not an admitted role-owned directory.
+
+    - name: Create scheduled recovery and private health directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: root
+        group: "{{ item.group }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - {path: /var/lib/observability-kuma-restores/scheduled, group: root, mode: "0700"}
+        - {path: /var/lib/observability-kuma-recovery-health, group: www-data, mode: "02750"}
+
+    - name: Publish explicit scheduled workspace and health ownership markers
+      ansible.builtin.copy:
+        content: "observability-kuma-recovery-v1\n"
+        dest: "{{ item }}/.owner"
+        owner: root
+        group: root
+        mode: "0600"
+      loop:
+        - /var/lib/observability-kuma-restores/scheduled
+        - /var/lib/observability-kuma-recovery-health
+
+    - name: Install only dedicated observer recovery credentials
+      ansible.builtin.copy:
+        content: "{{ item.content }}"
+        dest: "/etc/observability-kuma/{{ item.name }}"
+        owner: root
+        group: root
+        mode: "0600"
+      loop:
+        - {name: recovery-storage.json, content: "{{ observability_kuma_secrets.backup.storage | to_json }}"}
+        - {name: recovery-age-identity, content: "{{ observability_kuma_secrets.backup.age_identity }}"}
+      no_log: true
+      diff: false
+
+    - name: Install fixed non-secret recovery configuration
+      ansible.builtin.copy:
+        content: >-
+          {{ {'directory': observability_kuma.backup_directory,
+          'bucket_id': observability_kuma_recovery.bucket_id,
+          'bucket_name': observability_kuma_recovery.bucket_name,
+          'recipient': observability_kuma_secrets.backup.age_recipient,
+          'operator_recipients': observability_kuma_recovery.operator_recipients,
+          'max_backup_age_seconds': observability_kuma_recovery.max_backup_age_seconds,
+          'restore_images': [observability_kuma.image_repository ~ '@' ~ observability_kuma.image_digests[ansible_facts['architecture']],
+          observability_kuma.previous_image_references[ansible_facts['architecture']]]} | to_nice_json }}
+        dest: /etc/observability-kuma/recovery.json
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Install periodic recovery service and timer
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/systemd/system/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - observability-kuma-recovery.service
+        - observability-kuma-recovery.timer
+      register: _kuma_recovery_unit_templates
+
+    - name: Require planned recovery timer when check mode lacks it
+      ansible.builtin.assert:
+        that:
+          - >-
+            (_kuma_recovery_unit_templates.results |
+             selectattr('item', 'equalto', 'observability-kuma-recovery.timer') |
+             map(attribute='changed') | first) | bool
+        fail_msg: Check mode found no recovery timer and no planned installation.
+      when:
+        - ansible_check_mode
+        - >-
+          (_observability_kuma_existing_units.results |
+           selectattr('item', 'equalto', 'observability-kuma-recovery.timer') |
+           map(attribute='stdout') | first) == 'not-found'
+
+    - name: Validate periodic recovery units before activation
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/systemd-analyze
+          - verify
+          - /etc/systemd/system/observability-kuma-recovery.service
+          - /etc/systemd/system/observability-kuma-recovery.timer
+      changed_when: false
+
+- name: Retire only disabled dedicated recovery access
+  ansible.builtin.include_tasks: recovery-retire.yml
+  when: not observability_kuma_recovery.enabled | bool

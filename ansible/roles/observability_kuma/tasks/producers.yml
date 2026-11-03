@@ -68,6 +68,7 @@
       'kind': item, 'node_id': observability_push.node_id, 'origin': observability_push.origin,
       'services': observability_push.services, 'expected_nodes': observability_push.expected_nodes,
       'prometheus_origin': observability_push.prometheus_origin, 'relay_origin': observability_push.relay_origin,
+      'require_observer_recovery': (observability_push.require_observer_recovery | default(false) | bool) if item == 'pipeline' else false,
       'textfile_dir': observability_push.textfile_dir} | to_nice_json }}
     dest: "/etc/observability-push/{{ item }}.json"
     owner: root

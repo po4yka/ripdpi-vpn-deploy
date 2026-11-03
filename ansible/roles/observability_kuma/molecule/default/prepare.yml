@@ -23,6 +23,47 @@
         - /etc/observability-kuma
         - /var/lib/node_exporter/textfile
         - /var/lib/observability-kuma-restores
+        - /var/lib/observability-kuma-restores/scheduled
+
+    - name: Seed owned scheduled recovery authority before disable
+      ansible.builtin.copy:
+        dest: /var/lib/observability-kuma-restores/scheduled/.owner
+        content: "observability-kuma-recovery-v1\n"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Seed only synthetic dedicated recovery credentials for retirement
+      ansible.builtin.copy:
+        dest: "/etc/observability-kuma/{{ item }}"
+        content: synthetic-recovery-retirement-fixture
+        owner: root
+        group: root
+        mode: "0600"
+      loop:
+        - recovery-age-identity
+        - recovery-storage.json
+        - recovery.json
+
+    - name: Seed isolated plaintext retained by an inactive recovery
+      ansible.builtin.file:
+        path: /var/lib/observability-kuma-restores/scheduled/data
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Seed owned interrupted recovery and preserved backup markers
+      ansible.builtin.copy:
+        dest: "{{ item }}"
+        content: owned-retention-test-marker
+        owner: root
+        group: root
+        mode: "0600"
+      loop:
+        - /var/lib/observability-kuma-restores/scheduled/data/kuma.db
+        - /var/lib/observability-kuma-restores/scheduled/cipher.age
+        - /var/lib/observability-kuma-restores/backup-retention-marker.age
 
     - name: Seed retained non-secret data markers
       ansible.builtin.copy:
@@ -50,12 +91,13 @@
         mode: "0644"
       loop:
         - observability-kuma
+        - observability-kuma-recovery
         - observability-push-node
         - vpn-unrelated-fixture
 
     - name: Seed owned timer fixture
       ansible.builtin.copy:
-        dest: /etc/systemd/system/observability-push-node.timer
+        dest: "/etc/systemd/system/{{ item }}.timer"
         content: |
           [Unit]
           Description=Disabled timer lifecycle fixture only
@@ -66,6 +108,9 @@
         owner: root
         group: root
         mode: "0644"
+      loop:
+        - observability-push-node
+        - observability-kuma-recovery
 
     - name: Install actual production extractor and its shared path validator
       ansible.builtin.copy:
@@ -145,6 +190,13 @@
         - observability-push-node.service
         - observability-push-node.timer
         - vpn-unrelated-fixture.service
+
+    - name: Confirm scheduled recovery is inactive with persisted plaintext
+      ansible.builtin.command:
+        argv: [/usr/bin/systemctl, is-active, observability-kuma-recovery.service]
+      register: inactive_recovery
+      changed_when: false
+      failed_when: inactive_recovery.stdout | trim != 'inactive'
 
     - name: Start quiesced backup and its timer before disable convergence
       ansible.builtin.systemd_service:

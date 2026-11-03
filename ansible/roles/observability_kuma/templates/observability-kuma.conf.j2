@@ -21,6 +21,18 @@ server {
     allow {{ source }};
 {% endfor %}
     deny all;
+{% if observability_kuma_recovery.enabled %}
+    location = /internal/recovery {
+{% for source in observability_kuma_recovery.readers %}
+        allow {{ source }};
+{% endfor %}
+        deny all;
+        limit_except GET { deny all; }
+        default_type application/json;
+        add_header Cache-Control "no-store" always;
+        alias /var/lib/observability-kuma-recovery-health/status.json;
+    }
+{% endif %}
     location ~ "^/api/push/[A-Za-z0-9_-]{20,128}$" {
         limit_except GET { deny all; }
         if ($args != "") { return 400; }

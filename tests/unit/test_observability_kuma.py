@@ -92,7 +92,8 @@ def test_first_check_defers_only_exact_planned_units(tmp_path, check, service, t
              'Enable daily quiesced encrypted backup']
     selected = [task.copy() for task in enabled if task['name'] in names]
     trace = tmp_path / 'activation-calls';binary = tmp_path / 'systemctl'
-    states = {'observability-kuma.service': service, 'observability-kuma-backup.timer': timer}
+    states = {'observability-kuma.service': service, 'observability-kuma-backup.timer': timer,
+              'observability-kuma-recovery.timer': 'not-found'}
     binary.write_text(f'#!{sys.executable}\nimport sys\nprint({states!r}[sys.argv[2]])\nraise SystemExit({probe_rc})\n')
     binary.chmod(0o755)
     for task in selected:
@@ -105,6 +106,7 @@ def test_first_check_defers_only_exact_planned_units(tmp_path, check, service, t
             task['check_mode'] = False;task['changed_when'] = False
     play = [{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False, 'become': False,
              'vars': {'ansible_python_interpreter': sys.executable,
+                      'observability_kuma_recovery': {'enabled': False},
                       '_observability_kuma_unit': {'changed': service_planned},
                       '_observability_kuma_backup_unit_templates': {'results': [{'item': 'observability-kuma-backup.timer', 'changed': timer_planned}]}},
              'tasks': selected}]
@@ -519,12 +521,13 @@ def test_restore_keeps_parents_writable_until_archive_is_complete(tmp_path, monk
 def test_observer_disable_and_rotation_serialize_active_backups():
     tasks = yaml.safe_load((ROLE / 'tasks/main.yml').read_text())
     inspect = next(task for task in tasks if task['name'] == 'Inspect observer units for safe disable on absent deployment')
-    assert inspect['loop'] == ['observability-kuma-backup.timer', 'observability-kuma-backup.service', 'observability-kuma.service']
+    assert inspect['loop'] == ['observability-kuma-recovery.timer', 'observability-kuma-recovery.service',
+                               'observability-kuma-backup.timer', 'observability-kuma-backup.service', 'observability-kuma.service']
     disable = next(task for task in tasks if task['name'] == 'Stop observer without removing secret data or backup when disabled')
-    assert disable['ansible.builtin.systemd_service']['enabled'] == "{{ omit if item.item == 'observability-kuma-backup.service' else false }}"
+    assert disable['ansible.builtin.systemd_service']['enabled'] == "{{ omit if item.item in ['observability-kuma-backup.service', 'observability-kuma-recovery.service'] else false }}"
     converge = next(task['block'] for task in tasks if task['name'] == 'Converge the admitted independent observer')
     quiesce = next(task for task in converge if task['name'] == 'Quiesce timer then active backup before changing runtime or image')
-    assert quiesce['ansible.builtin.systemd_service']['enabled'] == "{{ false if item.item == 'observability-kuma-backup.timer' else omit }}"
+    assert quiesce['ansible.builtin.systemd_service']['enabled'] == "{{ false if item.item in ['observability-kuma-backup.timer', 'observability-kuma-recovery.timer'] else omit }}"
     names = [task['name'] for task in converge]
     assert names.index('Quiesce timer then active backup before changing runtime or image') < names.index('Require consistent encrypted backup before a pinned image change')
     assert names.index('Quiesce timer then active backup before changing runtime or image') < names.index('Install private backup configuration')
@@ -815,8 +818,8 @@ def test_failed_ingress_migration_preserves_boot_policy_pair(tmp_path, previous_
     old.write_text(render("observability-kuma.conf.j2"))
     values = yaml.safe_load((ROLE / "defaults/main.yml").read_text())["observability_kuma"]
     values.update(bind_address="100.64.0.9", allowed_sources=["100.64.0.1/32"])
-    candidate.write_text(render_template(ROLE / "templates/observability-kuma.conf.j2", {
-        "observability_kuma": values, "_observability_kuma_tls_generation": "b" * 64}))
+    candidate.write_text(render('observability-kuma.conf.j2', observability_kuma=values,
+                                _observability_kuma_tls_generation='b' * 64))
     current.symlink_to(old)
     if previous_policy:
         policy.write_text("previous startup policy\n")
