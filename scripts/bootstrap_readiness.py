@@ -85,7 +85,7 @@ finally:
 
 def run_command(command, *, timeout, environment=None, cwd=None, capture=False, stream=False,
                 input_data=None, defer_cancellation=False, output_limit=65536, forward_stderr=False,
-                stderr_output=None):
+                stderr_output=None, output_fd=None):
     """Bound an owned session, retaining its leader until descendants stop."""
     if not defer_cancellation:
         check_cancelled()
@@ -95,8 +95,12 @@ def run_command(command, *, timeout, environment=None, cwd=None, capture=False, 
         raise ReadinessError("command input invalid")
     if stderr_output is not None and (not capture or type(stderr_output) is not bytearray):
         raise ReadinessError("command stderr capture invalid")
+    if output_fd is not None:
+        if type(output_fd) is not int or output_fd < 0 or capture or stream or forward_stderr:
+            raise ReadinessError("command output descriptor invalid")
+        os.fstat(output_fd)
     output = bytearray()
-    target = subprocess.PIPE if capture else (None if stream else subprocess.DEVNULL)
+    target = output_fd if output_fd is not None else (subprocess.PIPE if capture else (None if stream else subprocess.DEVNULL))
     input_stream, descriptors = None, []
     try:
         if input_data is not None:
