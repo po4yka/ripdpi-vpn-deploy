@@ -20,10 +20,10 @@ import urllib.parse
 import urllib.request
 
 from operator_maintenance_io import (LIMIT, MaintenanceError, command_environment, digest_file,
-                                    document, encrypted_command, new_file, private_directory,
+                                    encrypted_command, new_file, private_directory,
                                     read_bytes, update_document, write_document)
 from bootstrap_readiness import ReadinessError
-from recovery_io import canonical, unique
+from recovery_io import canonical, unique, document
 
 FIELDS = {'schema_version', 'kit', 'recipient', 'identity', 'rclone', 'rclone_sha256',
           'bucket_id', 'bucket_name', 'required_paths'}

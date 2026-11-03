@@ -15,7 +15,8 @@ import tarfile
 from urllib.parse import urlsplit
 import zipfile
 
-from operator_maintenance_io import MaintenanceError, document, read_bytes, write_document
+from operator_maintenance_io import MaintenanceError, read_bytes, write_document
+from recovery_io import document
 
 MEMBERS = {
     'prometheus': {'archive_members': 'prometheus-{version}.linux-{arch}/prometheus',

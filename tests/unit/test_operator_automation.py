@@ -393,7 +393,7 @@ print(json.dumps(report))
             if not observed['worker_active']:
                 return observed
             time.sleep(.05)
-        pytest.fail('maintenance worker did not finish')
+        raise AssertionError('maintenance worker did not finish')
     return root, kit, state, command, finish
 
 

@@ -24,9 +24,9 @@ from fleet_rotation_liveness import healthy_survivors, RotationError
 from public_site_inputs import read_site
 import yaml
 from operator_maintenance_io import (MaintenanceError, ROOT, command_environment, digest_file,
-                                    document, encrypted_command, private_directory,
+                                    encrypted_command, private_directory,
                                     read_bytes, require_success, write_document)
-from recovery_io import Journal, RecoveryError, digest, unique, module
+from recovery_io import Journal, RecoveryError, digest, unique, module, document
 
 FIELDS = {'schema_version', 'id', 'expires_at', 'state_directory', 'runtime_parent',
           'log_recipient', 'age_identity', 'nodes', 'liveness_config', 'liveness_inputs'}
@@ -172,8 +172,9 @@ def locks(plan, stack):
     private_directory(parent)
     for name in plan['resources']:
         path = parent / (hashlib.sha256(name.encode()).hexdigest() + '.lock')
-        fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
-        stack.callback(os.close, fd)
+        stream = stack.enter_context(open(path, 'r+b', opener=lambda name, flags:
+            os.open(name, flags | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)))
+        fd = stream.fileno()
         info = os.fstat(fd)
         if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
                 or info.st_nlink != 1 or stat.S_IMODE(info.st_mode) != 0o600):
@@ -273,6 +274,30 @@ def protocol_gate(plan, journal, node):
                                           'source': plan['source']})
 
 
+def cleanup_node(plan, journal, node, environment, secret, runtime, state, logs):
+    complete = False
+    try:
+        logs.append(stage(plan, journal, node, 'clean', environment))
+        if os.path.lexists(secret):
+            raise MaintenanceError('plaintext-cleanup-failed')
+        runtime.rmdir()
+        journal.observe('runtime', None)
+        state['cleanup'] = 'absent'
+        complete = True
+    finally:
+        if not complete:
+            state['cleanup'] = 'failed'
+            try:
+                cleanup_retained(plan, journal)
+                state['cleanup'] = 'absent-after-canonical-clean-failure'
+            except (OSError, RecoveryError):
+                # Retain foreign or changed material and report failed cleanup.
+                pass
+            state['status'] = 'failed'
+            journal.observe('maintenance', state)
+            raise MaintenanceError('plaintext-cleanup-failed') from None
+
+
 def execute(plan, action, approval, *, ready_fd=None):
     with ExitStack() as stack:
         locks(plan, stack)
@@ -304,7 +329,6 @@ def execute(plan, action, approval, *, ready_fd=None):
                                         'environment': node['environment']})
             secret = runtime / 'credentials.yaml'
             environment = node_environment(plan, node, secret)
-            primary = None
             logs = []
             try:
                 logs.append(stage(plan, journal, node, 'decrypt', environment))
@@ -312,32 +336,16 @@ def execute(plan, action, approval, *, ready_fd=None):
                     logs.append(stage(plan, journal, node, goal, environment))
                 if action != 'preview':
                     protocol_gate(plan, journal, node)
-            except BaseException as error:
-                primary = error
+            finally:
+                primary = sys.exception()
                 failed_intent = journal.state['intent']
-                journal.state['observed']['failed_stage'] = failed_intent
-            try:
-                logs.append(stage(plan, journal, node, 'clean', environment))
-                if os.path.lexists(secret):
-                    raise MaintenanceError('plaintext-cleanup-failed')
-                runtime.rmdir()
-                journal.observe('runtime', None)
-                state['cleanup'] = 'absent'
-            except BaseException:
-                state['cleanup'] = 'failed'
-                try:
-                    cleanup_retained(plan, journal)
-                    state['cleanup'] = 'absent-after-canonical-clean-failure'
-                except (OSError, RecoveryError):
-                    pass
-                state['status'] = 'failed'
-                journal.observe('maintenance', state)
-                raise MaintenanceError('plaintext-cleanup-failed') from None
-            if primary is not None:
-                state['status'] = 'failed'
-                journal.state['intent'] = failed_intent
-                journal.observe('maintenance', state)
-                raise primary
+                if primary is not None:
+                    journal.state['observed']['failed_stage'] = failed_intent
+                cleanup_node(plan, journal, node, environment, secret, runtime, state, logs)
+                if primary is not None:
+                    state['status'] = 'failed'
+                    journal.state['intent'] = failed_intent
+                    journal.observe('maintenance', state)
             if action != 'preview':
                 state['accepted_nodes'].append(node['host'])
             state.setdefault('logs', []).extend(logs)

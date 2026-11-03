@@ -14,7 +14,6 @@ import tempfile
 
 from bootstrap_readiness import run_command
 from recovery_io import RecoveryError, canonical, module
-from recovery_io import document as document
 
 ROOT = Path(__file__).resolve().parents[1]
 LIMIT = 256 * 1024 * 1024
@@ -84,6 +83,7 @@ def new_file(path):
                 if (opened.st_dev, opened.st_ino) == (named.st_dev, named.st_ino):
                     os.unlink(path.name, dir_fd=parent_fd)
             except FileNotFoundError:
+                # A failed writer can have removed its own incomplete output.
                 pass
         os.close(parent_fd)
 
@@ -146,7 +146,7 @@ def encrypted_command(command, destination, recipient, *, environment, cwd, time
     def bounded_writer():
         resource.setrlimit(resource.RLIMIT_FSIZE, (64 * 1024 * 1024, 64 * 1024 * 1024))
 
-    error = None
+    code, error = None, None
     with new_file(destination) as output:
         age = subprocess.Popen(['age', '--encrypt', '--recipient', recipient],
                                stdin=subprocess.PIPE, stdout=output, stderr=subprocess.DEVNULL,
@@ -157,18 +157,20 @@ def encrypted_command(command, destination, recipient, *, environment, cwd, time
                 code, _ = run_command(command, timeout=timeout, environment=environment, cwd=cwd,
                                       output_fd=age.stdin.fileno(), defer_cancellation=defer_cancellation)
             except BaseException as caught:
+                # Defer cancellation until the authenticated diagnostic is published.
                 error = caught
             finally:
                 age.stdin.close()
-            if age.wait(timeout=30):
-                raise MaintenanceError('diagnostic-encryption-failed')
-        except BaseException:
+                if age.wait(timeout=30):
+                    raise MaintenanceError('diagnostic-encryption-failed')
+        finally:
             if age.poll() is None:
                 age.kill()
             age.wait(timeout=5)
-            raise
     if error is not None:
         raise error
+    if code is None:
+        raise MaintenanceError('command-outcome-missing')
     return code
 
 
