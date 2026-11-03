@@ -37,7 +37,9 @@ data shaping are Python and use only stdlib + pinned `PyYAML`, `Jinja2`, or
 
 **SOPS gate everywhere** — anything that reads decrypted secrets refuses
 without `VPN_SECRETS_FILE` or the Make-resolved `SECRETS_FILE` produced by
-`make decrypt`. Never assume `/tmp`, and never re-implement decryption.
+`make decrypt`. Never assume `/tmp`, and never re-implement decryption. Operator kit maintenance
+uses its own private audit plan and age archive identity. It does not decrypt
+SOPS documents, create runtime VPN secrets or supply Ansible authority.
 
 **Destroy confirms a parsed hostname** — `destroy.sh` reads only a quoted
 `server_name` from the tfvars file and refuses before Terraform when there is

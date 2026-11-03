@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-03
+goal: SCR-1793686598981597 Verify operator release inputs and encrypted recovery
+  evidence
