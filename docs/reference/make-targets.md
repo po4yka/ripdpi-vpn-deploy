@@ -18,6 +18,11 @@ environment or from the git-ignored `.fleet.mk`.
 vpn-deploy Makefile
   repository-policy-plan     Preview managed GitHub rules, merge settings, and release integrity
   repository-policy-apply    Apply reviewed GitHub repository policy and verify readback
+  operator-release-check    Verify local release archives and selected APT policy
+  operator-diagnostics      Capture bounded encrypted command diagnostics
+  operator-kit-check        Check selected catalog-bound private material
+  operator-kit-seal         Seal selected private material with a manifest
+  operator-kit-verify-backup Download and verify the selected encrypted B2 copy
   workspace-status  Read-only local checkout provenance (no fetch or fleet configuration)
 
 Variables (override on command line):

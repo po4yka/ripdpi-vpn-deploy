@@ -485,6 +485,16 @@ keep private error details out of diagnostics, including during interruption.
 
 ## Operator boundaries — cross-cutting decisions
 
+**Operator maintenance is explicit and local by default.** `operator-maintenance.py`
+uses a private versioned plan and bypasses ambient fleet Make configuration.
+`operator_private.py` retains bounded failed-command stderr/status and owns its
+unreaped process-group leader through cleanup. Existing inspection capture does
+not supply that contract; source-build cleanup has a different coupled guardian.
+Use the existing `private_client_artifact.new_output` publisher and age armor.
+Kit results cover selected catalog-bound material, not fresh host health. B2
+reads require explicit authority; separate narrow environments keep cloud keys
+out of age and unrelated commands.
+
 Taskctl validates the exact OpenSpec tool version and reviewed generated-skill hashes together. Dependency security updates change the version pin without overwriting repository-customized workflow skills or their generation provenance.
 
 Executable recovery admits one exact UpCloud replacement with a surviving

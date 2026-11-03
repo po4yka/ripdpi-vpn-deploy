@@ -152,6 +152,10 @@ is not part of the snapshot that it acknowledges. The
 [deployment snapshot](../reference/deployment-status.md#configuration-and-recovery)
 records the last completed service-wide check, not an automatic backup schedule.
 
+Use [operator maintenance](operator-maintenance.md#check-seal-and-verify-selected-recovery-material)
+for the supported selected-file check, seal and downloaded-backup verification
+commands. Their results state coverage; they do not discover every catalog field.
+
 ## Agent procedure and completion
 
 1. Read this contract before collecting or moving operator material, issuing or

@@ -9,6 +9,8 @@ Use [the ordinary re-deploy recipe](../../../docs/how-to/deploy.md#ordinary-re-d
 
 ## Freeze scope and inputs
 
+After an interruption or checkout change, first follow [continuation](../../../docs/how-to/operator-maintenance.md#continue-after-an-interruption). Reconcile pending transactions before retrying.
+
 1. Run root workspace discovery and resolve the selected task/change, clean immutable source, deployable digest, exact inventory aliases, provider/environment and changed layer. Preserve prior authorization within its resource, action, cost and time bounds; inspect current identities and capabilities at action time. `ENV` selects a Terraform workspace, not Ansible host scope.
 2. Check the existing recovery generation, confirmed Tailnet identity, completed SSH ownership migration and fresh dual-path contexts. Route missing first-enrollment state to `vpn-bootstrap` within existing authority. Ordinary deploy validates installed state; it cannot invent enrollment or repair missing receipts.
 3. Prepare the selected private runtime secrets and all three exact-alias mappings: `DEPLOY_SSH_CONTEXTS_FILE`, `DEPLOY_PROMOTION_CONFIG_FILE`, and `DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE`. Use fresh baseline-failure output sinks. Clear enrollment credentials. Keep plaintext, keys, state and token-bearing output out of the transcript; preserve unique device identities.
