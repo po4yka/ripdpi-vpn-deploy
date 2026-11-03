@@ -43,7 +43,7 @@ Every target below that uses cloud credentials, inventory, SSH or decrypted secr
 | Lost SSH access (key deleted) | Operator | see § "Lost SSH access" below |
 | Lost SOPS age private key | Operator | see § "Lost age key" below; if Shamir-split (`docs/how-to/age-recovery.md`) or YubiKey-backed (`docs/reference/secrets.md`), reconstruct first |
 | Lost Terraform state file | Operator | see § "State loss" below |
-| 3x-ui / Marzban / Remnawave panel exposed | Architecture deviation | this stack has no panel by design; if you added one, take it offline NOW |
+| 3x-ui / Marzban / Remnawave panel exposed | Architecture deviation | no public VPN admin panel is permitted; isolate the exposed route and review credentials. The private Kuma panel does not authorize public access |
 | Suspected DPI active probing | Threat-model | `make probing-summary` for class breakdown; rerun `make validate-target` for SNI hygiene; consider rotating SNI target; check honeypot textfile metrics |
 | DPI rule-set drift suspected | Threat-model | `make tspu-canary` from an in-cohort test client (diff vs yesterday) |
 | Access-network allowlist rolled out (only listed destinations reachable) | Threat-model | P3 reachability — automation can't help; switch to another access network or stand up a domestic relay |
@@ -166,6 +166,20 @@ escalation, persistent attacker, unknown process):
 
 The "disposable nodes" property of this stack means step 5 is fast: it's
 the same procedure as a normal first-time deploy.
+
+## Kernel or firewall security advisory
+
+Inspect the running kernel separately from installed packages. Record the
+vendor patch status and the exact mitigation. A disabled MPTCP setting and an
+early IPv4 TCP-options drop are mitigations, not proof of a patched kernel.
+The [deployment snapshot](../reference/deployment-status.md#runtime-and-hardening)
+records the last accepted state and its remaining reboot qualification gap.
+
+Before a firewall service restart or reload, check ownership of the VPN and
+independent host-guard tables. Preserve foreign tables and timed sets; do not
+flush the complete ruleset. Verify the effective systemd stop action as well
+as the rules on disk. Repeat the affected native packet and authenticated VPN
+checks after an authorized change. Package presence alone is not live protection.
 
 ## Verification
 

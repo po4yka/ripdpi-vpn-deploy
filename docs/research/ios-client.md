@@ -2,6 +2,11 @@
 
 > **Status:** Research · **Type:** research · **Tier:** — · **Reviewed:** 2026-10-21
 
+This dated research predates the November service rebuild. Use the
+[deployment snapshot](../reference/deployment-status.md) for accepted runtime
+versions and current roles. Qualify the selected client before delivery; the
+historical comparison below is not current device acceptance.
+
 **Research date:** 2026-07-13
 
 **Evidence basis:** conclusions retained from the dated first-party review.
@@ -14,7 +19,7 @@ AmneziaWG keys, or private subscription URLs are recorded here.
 
 The deployed fleet exposes four independent client paths. Its current release
 and verification boundary are recorded in
-[../explanation/deployment-status.md](../reference/deployment-status.md); this client comparison does not
+[the deployment snapshot](../reference/deployment-status.md); this client comparison does not
 by itself prove path reachability.
 
 | Profile | Public client surface | Required client capability |

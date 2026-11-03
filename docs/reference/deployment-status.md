@@ -1,161 +1,136 @@
 # Deployment status — last verified snapshot
 
-> **Status:** Snapshot (2026-08-23) · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Snapshot (2026-11-03) · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-03
 
-This document records the last verified deployment snapshot, observed on
-**2026-08-23** at source commit
-`0c22a24cff5733947900ad345da4b9fe830a528e`. It does not establish the current
-fleet, deployed revision, or service health as of a later date. Repository
-`main`, a green CI run, and this snapshot are separate evidence.
+This page records the security-remediation deployment and final checks completed
+on **2026-11-03**. It replaces the August deployment snapshot. It is not a live
+health report. Later source changes, provider changes and credential rotations
+need their own checks. Private endpoints, identifiers and secret values remain
+in the ignored operator kit.
 
-The snapshot intentionally excludes public and private addresses,
-hostnames, client identifiers, credentials, certificates, Terraform state,
-and decrypted SOPS values. Those remain in git-ignored operator files.
+## Source and fleet
 
-## Snapshot release
+The three VPN nodes run core source
+`464c5a5dce47d7945b70e8587248410df1dff9de`, merged in [PR #477](https://github.com/po4yka/ripdpi-vpn-deploy/pull/477).
+The tested PR tree and merged tree matched. The [merged-source Linux CI run](https://github.com/po4yka/ripdpi-vpn-deploy/actions/runs/41527356199)
+completed with **81 successful jobs**, no failures and no skipped jobs.
+Later commits on `main` are not evidence of further production deployment.
 
-| Field | Value |
+| Host | Provider | Runtime purpose |
+|---|---|---|
+| node-a | UpCloud | P0 VLESS + REALITY + Vision |
+| node-b | Scaleway | Public HTTPS site, P1 XHTTP and private monitoring collector |
+| node-c | Vultr | P2 Hysteria2 and AmneziaWG |
+| observer-a | UpCloud | Independent private Uptime Kuma panel and encrypted panel backups |
+
+Hetzner remains a supported provider; no server or volume there was part of
+this snapshot. Personal devices and Raspberry Pi do not host the service.
+Terraform owns resources and DNS. Tailscale carries management and private
+monitoring traffic. Authenticated VPN probes use public service endpoints.
+
+Monitoring components have separate source authorities. Do not report one
+whole-host revision for the observer:
+
+| Component | Accepted source |
 |---|---|
-| Last verified deployment | 2026-08-23 |
-| Git release | post-`infra-v1.0.0` `main` |
-| Deployed source commit | `0c22a24cff5733947900ad345da4b9fe830a528e` (`fix(infra): start ssh unit before first-boot reload in cloud-init`, includes all audit remediation through #86) |
-| Source validation | PR #87 CI fully green, CodeQL and Scorecard passing on the deployed commit |
-| Release state | full-fleet recreation: every server was deliberately destroyed and rebuilt from git + secrets |
+| VPN core, node agents, collector and firewall loader lifecycle | `464c5a5dce47d7945b70e8587248410df1dff9de` |
+| Kuma application deployment | `67c3ef3adc484b8d782ddcf3365c6d90b04e18d6` |
+| Observer host kernel prerequisites | `11fe97ba8c973e5af2dc8aedc20c908248c3344b` |
 
-At verification, every server in the fleet had been deliberately destroyed
-and rebuilt from git + secrets through the sanctioned disposable-node path;
-no prior-generation node survived that recreation.
+## Runtime and hardening
 
-## Fleet at verification
+| Component | Verified deployment |
+|---|---|
+| Xray | v26.10.31 |
+| Hysteria | 2.13.0, rebuilt with Go 1.27.3 |
+| rclone | 1.75.2+go1.27.3-1 |
+| vmagent | 1.155.0, built with Go 1.27.3 |
+| Collector Prometheus | 3.15.1, built with Go 1.27.3 |
+| Tailscale | 1.104.4; installed package and APT preference agree on all four hosts |
+| Kuma | 2.5.9, scanned architecture-specific pinned image; matching database/image restore passed |
 
-| Provider | Terraform environment | Ansible cohort | Runtime purpose |
-|---|---|---|---|
-| UpCloud | `p0-upcloud` | `p0-self-steal` | P0 VLESS + REALITY + Vision with owned loopback self-steal target |
-| Scaleway | `p1-scaleway` | `p1-web` | P1 nginx landing site + direct XHTTP |
-| Vultr | `p2-vultr` | `p2-udp` | P2 Hysteria2 + AmneziaWG |
+Xray was updated in serial canaries on node-a, node-b and node-c, with
+checks and retained rollback after each. The owner approved a one-time
+exception to the 48-hour staging soak; the normal
+[Xray release policy](xray-release-line.md#production-rollout-policy) still applies.
+The current RIPDPI engine passed TCP, Vision and UDP interoperability tests
+against the new server. Those tests did not require a client-engine change.
+P0 probes use Xray; incompatible sing-box REALITY profiles are refused.
 
-Tailscale is the management plane only. The generated inventory preserves the
-Terraform-owned public endpoint as `vpn_service_address`; local extra vars may
-override only `ansible_host` for Tailscale administration. Watchdog and other
-data-plane probes therefore continue to target the public service address.
+All four hosts had no failed systemd units and no pending reboot in the final
+capture. Key-only SSH and private admin listeners were verified. Operator API
+credentials and CA signing keys were absent from the captured server configuration.
+MPTCP was disabled. An early input rule dropped IPv4 TCP packets with IP options.
+Firewall loader stop/reload preserved independently owned tables and timed sets.
 
-## Observed convergence
+The CVE-2026-98432 kernel fix remained pending at this observation. Installed
+kernel 6.8.0-147 used the verified mitigations above; it was not reported as
+patched. A later vendor release requires fresh review and deployment. There was
+no production reboot test after installation of the kernel guard.
+Distribution restic, Docker and containerd compiler versions were recorded
+separately; they were not all rebuilt with Go 1.27.3. The backup TLS path used
+the patched rclone child process.
 
-All results and operational notes in this section describe the 2026-08-23
-rollout. Follow the current runbooks linked below for a new operation; the
-historical command examples do not supply today's deployment prerequisites.
+## Functional and monitoring checks
 
-### Terraform
+- REALITY, XHTTP, Hysteria2 and AmneziaWG passed authenticated cloud-sentinel
+  traffic and DNS checks. AmneziaWG had a fresh handshake.
+- Each VPN node passed the final security and smoke checks.
+- Owned site names resolved through two independent DNS-over-HTTPS resolvers.
+  HTTPS returned the expected HTML and CSS with a trusted chain and hostname.
+  HTTP redirected to HTTPS. The observed certificate expires on 2027-01-27.
+- Metrics were fresh, expected target identities matched and rule evaluation
+  was healthy. Remote-write queue and drop checks passed.
+- Kuma had three node monitors and one pipeline monitor, all UP. The panel-only
+  deployment has no Telegram bots or human-notification delivery claim.
+- The panel UI bound only to host loopback. The private push ingress exposed
+  no public administration route.
 
-On 2026-08-23 all three servers were destroyed and recreated through the
-sanctioned disposable-node path (`scripts/destroy.sh` with its interactive
-confirmations, then plan + apply per environment).
+These results prove the recorded cloud vantage. They do not prove a new
+physical Android session, every personal client or a filtered access path.
+Previously accepted resource observations were retained; no long load test
+or extended soak was repeated for this final acceptance.
 
-- The operator egress CIDR in every environment tfvars was rotated from the
-  stale address to the current one before the firewall applies; the Vultr
-  control-plane allowlist was updated in the provider console to the same new
-  exact address.
-- Scaleway assigned P1 the same IPv4 as the previous generation, but its IPv6
-  changed; P0 and P2 received entirely new public addresses.
-- A fresh Ubuntu 24.04 image socket-activates SSH, leaving `ssh.service`
-  inactive during cloud-init first boot. The fail-closed bootstrap marker
-  chain died at `systemctl reload ssh`, which is fixed on `main` by #87
-  (enable the unit before the reload) and verified live on the recreated P1.
-- The recreated P1 required a DNS AAAA rotation for the owned site identity;
-  the `verify.yml` hostname-resolution gate caught the stale record and went
-  green after the update.
+## Configuration and recovery
 
-### Ansible
+The final capture covered **1,805 files on four hosts**. It was encrypted and
+checked by decrypting and comparing its manifest. The operator audit checked
+**47 SOPS documents**, current per-node authority, four Terraform states and
+their encrypted recovery copies. Source recovery from the encrypted bundle
+chain passed. No unexpected plaintext secret files were found in the scanned
+local scope. Direct-tool SSH and age working identities remained documented
+mode-0600 exceptions protected by FileVault.
 
-The complete site deployment and both post-deploy gates completed without an
-unreachable or failed host:
+Each VPN node completed a fresh backup, offsite copy and restore check. The
+current Kuma image passed an isolated database restore without network or
+published ports. The complete operator-kit offsite snapshot was downloaded,
+decrypted and manifest-verified: **2,864 files**, with anonymous download denied.
+Private data used the private backup bucket. The separate public bucket held
+only a constant health object, not configuration or backups.
 
-| Gate | P0 | P1 | P2 |
-|---|---:|---:|---:|
-| `make deploy` | `failed=0` | `failed=0` | `failed=0` |
-| automatic `make source-drift` | `ok=4 changed=0 failed=0` | `ok=4 changed=0 failed=0` | `ok=4 changed=0 failed=0` |
-| `make verify` | `ok=16 failed=0` | `ok=19 failed=0` | `ok=13 failed=0` |
-| `make security-verify` | `ok=17 failed=0` | `ok=17 failed=0` | `ok=17 failed=0` |
+The operator kit holds exact resource IDs, paths, checksums, component profiles,
+SSH pins, grant records and restore evidence. Its catalog identifies current
+sources separately from failed attempts and superseded preparation. Post-upload
+acknowledgements are recorded separately from the uploaded snapshot, so a backup
+does not claim to contain its own delivery receipt.
 
-Deployment ran with the validated decoy-origin override
-(`secrets/local/decoy-origin.yml`, see ../reference/deploy-profiles.md "Decoy site
-identity") so the `nginx-xhttp` and `hysteria` identity asserts hold against
-the real owned origin.
+## Evidence and refresh boundary
 
-First-provision dry-run note: three check-mode-only failures are expected on
-fresh nodes because package-install/download/directory tasks are skipped under
-`--check` while their dependents still evaluate (baseline timesyncd enable,
-xray archive unpack destination, hysteria binary staging). They do not occur
-in a real run and are not repo-to-live drift.
+The private kit's `catalog.json` points to the final delivery record
+`receipts/security-remediation-20261102/final-delivery-acceptance-pr477.json` and
+the underlying live, source, configuration and recovery receipts. This public
+summary includes categorical results only.
 
-Outside-in probes after convergence: P0 REALITY TCP/443 reachable, P1 site
-answers HTTPS 200 with the correct SNI identity, P2 exposes exactly its
-listener contract (Hysteria2 UDP/443, AmneziaWG UDP/51820).
+The full local `make check` was not green: it retained known Mac environment
+failures. Eight tool-version failures passed when rerun with the pinned
+Prometheus tool. The successful hosted Linux run remains separate evidence;
+it does not turn a failed local command into a pass. The final APT security
+candidate query used the trusted host cache, not a new repository refresh or
+a general operating-system upgrade.
 
-SSH host keys were regenerated on every node by design. Before accepting a new
-key or replacing an existing pin, independently verify the fingerprint and exact
-node identity through an authenticated provider console. Preserve the old pin
-until that verification succeeds, then update only the verified host/port entry
-and any verified Tailnet alias. Terraform's first-boot adapter (`make wait`)
-uses `StrictHostKeyChecking=accept-new` and rejects changed keys; ordinary
-deployment requires reviewed pins with strict checking. All public endpoints
-changed except the P1 IPv4 — client devices must
-re-fetch the subscription or update endpoints manually. Static `/sub/`
-payloads rendered by `scripts/issue-sub-token.sh` are stored once as hashed
-files and are not regenerated on fetch; before telling any device to re-fetch,
-rerun the issuer for every outstanding token with
-`scripts/issue-sub-token.sh <client> --refresh-token <token>` so the stored
-payload picks up the current Terraform outputs. Since the encrypted
-`client_registry` exists (change `sec-1787489155988233-client-config-registry`),
-a bare `--refresh-token` resolves the original format, hosts, and cohorts from
-the registry and fails closed for unregistered tokens; explicit `--format`
-flags override and are audit-logged. For tokens issued before the registry
-existed there is no recorded option set — re-issue those tokens with the full
-original invocation (`--format`, `--expires`, the correct `PROVIDER`/`ENV`
-pair, and for `--format ripdpi` the emitter environment: `HOSTS`, plus
-`COHORTS`/`SOPS_FILES` if non-default). Use
-`make client-drift CLIENT=<device>` before refreshing to check whether the
-last delivery still matches current inputs.
-
-Secret schema validation, placeholder checks, certificate checks, and private
-key/certificate matching passed before deployment. The decrypted SOPS file was
-shredded with `make clean`, and local Terraform plan artifacts were removed.
-
-## Verification boundary
-
-The results above prove configuration convergence, service health, hardening,
-and the authenticated probes implemented by the repository. They do not by
-themselves prove every transport from a filtered client network. Outside-in P1
-XHTTP, public P2 UDP/AmneziaWG, and filtered-vantage SNI survival remain
-separate client-path checks.
-
-No `vpn-deploy-known-good-*` tag was created for this rollout. The release tag
-identifies source code; it is not a substitute for future live drift evidence.
-
-## Snapshot operator limitations
-
-The Vultr allowlist entry is intentionally tied to the exact operator address
-admitted on 2026-08-23 and must be updated in the provider console whenever
-that address changes; the API rejects all requests from unlisted addresses.
-Fresh-node dry-runs show the three documented check-mode-only failures listed
-above until the first real convergence.
-
-## Refresh procedure
-
-Refreshing the snapshot requires an explicitly authorized live operation;
-editing this document does not refresh the evidence.
-
-1. Confirm the intended reviewed source revision, clean checkout, and its
-   required CI using [../reference/testing.md](../reference/testing.md#ci-dependency-selection).
-2. Follow [../how-to/deploy.md](../how-to/deploy.md) for the current deployment
-   prerequisites and gate sequence, or [../tutorials/quickstart.md](../tutorials/quickstart.md) for
-   first provisioning. These own inventory selection, SSH recovery, Tailnet
-   bootstrap, private socket contexts, promotion inputs, and failure receipts.
-   Apply the required origin inputs from
-   [../reference/deploy-profiles.md](../reference/deploy-profiles.md#decoy-site-identity).
-3. Record the observed deployment date, exact deployed source revision,
-   selected fleet, convergence and source-drift gates, and any unresolved
-   client-path checks. Preserve the distinction between source/CI evidence
-   and live or client-path evidence.
-4. Complete the runbook cleanup. Update this snapshot only from those
-   observed results; never copy live endpoints or secret material into it.
+To refresh this snapshot, obtain authorization for the exact live scope, follow
+[deployment acceptance](../how-to/deploy.md#acceptance-scope-and-completion),
+record current component revisions and authenticated traffic, and repeat only
+the affected security, monitoring and recovery checks. Keep secret values,
+public endpoints and raw diagnostics in the private operator kit. A documentation
+update alone does not refresh a live observation or require redeployment.

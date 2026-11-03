@@ -2,9 +2,9 @@
 
 > **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
 
-The sanitized mapping and last observed convergence state of the active
-three-provider fleet are recorded in
-[../explanation/deployment-status.md](deployment-status.md). Provider support in this file is
+The sanitized mapping and last observed convergence state of the accepted
+four-host, three-provider fleet are recorded in
+[the deployment snapshot](deployment-status.md). Provider support in this file is
 a capability statement; only a refreshed plan against the named environment
 is evidence of current provider state.
 

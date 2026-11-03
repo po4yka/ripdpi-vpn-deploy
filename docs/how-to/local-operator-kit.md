@@ -1,6 +1,6 @@
 # Local operator kit
 
-> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-11-03
 
 ## Contract
 
@@ -23,7 +23,7 @@ brackets are technical resource or device IDs, not personal or network labels.
 ```text
 secrets/local/
   README.md                            # private index and recovery order
-  catalog.yaml                         # private metadata; no secret values
+  catalog.json                         # private metadata; no secret values
   config/
     age.key                            # existing software identity, if used
     .sops.yaml                         # real recipient policy
@@ -122,8 +122,11 @@ isolate secrets from tools running as the same user.
 Keep durable secrets in SOPS/age, except identities that a tool must read directly.
 Use temporary plaintext only for the operation that needs it. `make clean`
 removes the selected `SECRETS_FILE`, not every runtime or client artifact.
-Account for other temporary output explicitly. Exclude `runtime/`, temporary
+Account for other temporary output explicitly. Exclude raw `runtime/`, temporary
 plans and plaintext delivery artifacts from backups and file synchronization.
+Seal closed setup logs and scripts into a separate encrypted recovery archive
+when they are needed for recovery. Exclude active writers and direct-tool
+working identities, and verify the archive manifest after decryption.
 Deletion alone is not proof that snapshots or prior copies no longer contain data.
 
 Keep an encrypted backup independent of this MacBook, and keep its recovery
@@ -140,6 +143,14 @@ verify the selected account/resource before live use. Test recovery in a private
 temporary location without overwriting active files or applying Terraform.
 Record the backup time, restored scope, result and remaining gaps; a local
 restore does not prove remote access or deployment health.
+
+Bind the current catalog to actual captured host configuration, per-component
+source revisions and active SOPS inputs. Keep superseded candidates as history.
+Check the independent offsite copy by downloading, decrypting and comparing
+its full manifest. Record the delivery acknowledgement after publication; it
+is not part of the snapshot that it acknowledges. The
+[deployment snapshot](../reference/deployment-status.md#configuration-and-recovery)
+records the last completed service-wide check, not an automatic backup schedule.
 
 ## Agent procedure and completion
 

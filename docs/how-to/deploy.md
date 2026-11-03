@@ -1,6 +1,6 @@
 # Runbook — deploy
 
-> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-11-03
 
 ## Purpose and scope
 
@@ -19,7 +19,7 @@ Run commands from the repository root in the pinned Bash session from the
 
 For the last verified release snapshot, provider-to-role mapping, recorded gate
 results, and unresolved operator limitations, start with
-[../explanation/deployment-status.md](../reference/deployment-status.md).
+[the deployment snapshot](../reference/deployment-status.md).
 
 ## Preconditions
 
@@ -389,10 +389,10 @@ SSH. Keep extensions in a separately reviewed source change rather than these
 ambient locations. `ANSIBLE_DEBUG` is rejected; normal Ansible check/diff output
 remains visible. A dirty or changed source after waiting prevents deployment.
 
-`infra-v1.0.0` also has a known check-mode-only failure in firewall SSH-port
-discovery. Do not weaken or skip the gate. Confirm the failure matches the
-record in [../explanation/deployment-status.md](../reference/deployment-status.md#snapshot-operator-limitations)
-and fix the source before treating `make dry-run` as green.
+Do not waive a failed `dry-run` because an older release had a check-mode
+limitation. Diagnose the exact current source, toolchain and node state. A
+successful live deploy does not turn a failed local check into a pass; record
+the distinction in [the deployment snapshot](../reference/deployment-status.md#evidence-and-refresh-boundary).
 
 ### Managed public TLS during DNS cutover
 

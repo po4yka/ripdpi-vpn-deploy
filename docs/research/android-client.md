@@ -2,10 +2,15 @@
 
 > **Status:** Research · **Type:** research · **Tier:** — · **Reviewed:** 2026-10-21
 
+This dated research predates the November service rebuild. Use the
+[deployment snapshot](../reference/deployment-status.md) for accepted runtime
+versions and current roles. Qualify the selected client before delivery; the
+historical comparison below is not current device acceptance.
+
 **Research snapshot:** 2026-08-08
 
 **Scope:** Android clients for the P0/P1/P2 fleet recorded in
-[../explanation/deployment-status.md](../reference/deployment-status.md). This is a compatibility and
+[the deployment snapshot](../reference/deployment-status.md). This is a compatibility and
 operational-readiness assessment, not evidence that every client has passed the
 live acceptance matrix on the intended handset and network paths.
 

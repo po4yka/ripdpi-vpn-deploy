@@ -1,6 +1,6 @@
 # Restricted Tailnet management
 
-> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-11-03
 
 This opt-in role adds a second path to the existing OpenSSH listener. It does
 not enable Tailscale SSH, replace host keys, change the SSH port, take over DNS
@@ -256,10 +256,17 @@ boundary, not a daemon boot failure: rebooting alone cannot create this
 management path. Installation and enrollment must use the canonical one-node
 bootstrap flow above; do not install ad hoc through the provider console.
 
-The package defaults pin Tailscale stable `1.102.3` and the official repository
+The package defaults pin Tailscale stable `1.104.4` and the official repository
 key digest. Updating either pin requires reviewing the official stable package
 repository, focused controller tests, the role's Molecule scenario, full CI and
 fresh staging proof before production use.
+
+An existing-node package update must also reconcile the root-owned APT
+preference with the accepted version. Verify both the installed version and
+`apt-cache policy tailscale`; an old priority-1001 pin can propose a downgrade
+even while the daemon runs the new binary. Ordinary verify-only Tailnet role
+execution does not repair the bootstrap package policy. Keep enrollment,
+routes and the daemon unchanged when only correcting an accepted package pin.
 
 
 ## Existing managed firewall bootstrap
