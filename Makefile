@@ -7,6 +7,16 @@ endif
 .PHONY: workspace-status
 workspace-status:
 	@python3 scripts/workspace-status.py
+else ifneq ($(filter operator-release-check operator-diagnostics operator-kit-check operator-kit-seal operator-kit-verify-backup,$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error operator maintenance requires exactly one goal)
+endif
+ifneq ($(strip $(foreach variable,$(.VARIABLES),$(if $(filter command line,$(origin $(variable))),$(variable)))),)
+$(error operator maintenance uses environment inputs, not command-line variables)
+endif
+.PHONY: operator-release-check operator-diagnostics operator-kit-check operator-kit-seal operator-kit-verify-backup
+operator-release-check operator-diagnostics operator-kit-check operator-kit-seal operator-kit-verify-backup:
+	@python3 scripts/operator-maintenance.py "$@"
 else ifneq ($(filter repository-policy-plan repository-policy-apply,$(MAKECMDGOALS)),)
 ifneq ($(words $(MAKECMDGOALS)),1)
 $(error repository policy requires exactly one make goal)
@@ -743,6 +753,11 @@ help:
 	@echo "vpn-deploy Makefile"
 	@echo "  repository-policy-plan     Preview managed GitHub rules, merge settings, and release integrity"
 	@echo "  repository-policy-apply    Apply reviewed GitHub repository policy and verify readback"
+	@echo "  operator-release-check    Verify local release archives and selected APT policy"
+	@echo "  operator-diagnostics      Capture bounded encrypted command diagnostics"
+	@echo "  operator-kit-check        Check selected catalog-bound private material"
+	@echo "  operator-kit-seal         Seal selected private material with a manifest"
+	@echo "  operator-kit-verify-backup Download and verify the selected encrypted B2 copy"
 	@echo "  workspace-status  Read-only local checkout provenance (no fetch or fleet configuration)"
 	@echo ""
 	@echo "Variables (override on command line):"

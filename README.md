@@ -91,6 +91,7 @@ credentials, source and state recovery outside Git tracking.
 |---|---|
 | Understand what was deployed and what remains unverified | [Deployment snapshot](docs/reference/deployment-status.md) |
 | Set up the workstation and build the first node | [Contributor setup](CONTRIBUTING.md#first-time-setup), [quickstart](docs/tutorials/quickstart.md) |
+| Resume an interruption or check release and recovery inputs | [Operator maintenance](docs/how-to/operator-maintenance.md) |
 | Deploy a reviewed change to an existing node | [Deployment runbook](docs/how-to/deploy.md) |
 | Configure public HTTPS or inspect certificate renewal | [Certificates](docs/how-to/certificates.md) |
 | Operate the private collector and Kuma | [Observability operations](docs/reference/observability-operations.md) |

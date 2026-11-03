@@ -395,6 +395,32 @@ class TaskctlFixture(TestCase):
 
 
 class TaskctlContractTest(TaskctlFixture):
+    def test_missing_pinned_tools_fail_before_history_processes(self) -> None:
+        self.add_simple_task()
+        with mock.patch.object(subprocess, "run", side_effect=AssertionError("history process started")):
+            with self.assertRaisesRegex(taskctl.ContractError, "missing pinned mdtask"):
+                taskctl.validate_repository(self.root, base=None)
+
+    def test_simple_portfolio_does_not_require_openspec(self) -> None:
+        self.add_simple_task()
+        self.write_board()
+        binary = self.root / "tools/tasking/node_modules/.bin/mdtask"
+        binary.parent.mkdir(parents=True)
+        binary.write_text("#!/bin/sh\nexit 0\n")
+        binary.chmod(0o700)
+        documents, steps = taskctl.validate_repository(self.root, base=None)
+        self.assertEqual((len(documents), len(steps)), (1, 1))
+
+    def test_missing_openspec_fails_before_history_when_required(self) -> None:
+        self.add_active_spec_task()
+        binary = self.root / "tools/tasking/node_modules/.bin/mdtask"
+        binary.parent.mkdir(parents=True)
+        binary.write_text("#!/bin/sh\nexit 0\n")
+        binary.chmod(0o700)
+        with mock.patch.object(subprocess, "run", side_effect=AssertionError("history process started")):
+            with self.assertRaisesRegex(taskctl.ContractError, "missing pinned openspec"):
+                taskctl.validate_repository(self.root, base=None)
+
     def test_valid_simple_task_and_generated_board(self) -> None:
         self.add_simple_task()
         self.write_board()

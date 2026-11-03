@@ -3952,6 +3952,12 @@ def validate_deleted_history(root: Path, base: str) -> None:
 def validate_repository(
     root: Path, *, base: str | None, upstreams: bool = True
 ) -> tuple[list[Document], list[Step]]:
+    # Tool admission must precede the expensive terminal-history scan.
+    if upstreams:
+        tool_binary(root, "mdtask")
+        if any(read_document(path).values.get("spec_mode") == "required"
+               for path in issue_paths(root)):
+            tool_binary(root, "openspec")
     documents, steps = load_state(root)
     expected = render_board(root, documents, steps)
     board = root / "docs/tasks/board.md"
