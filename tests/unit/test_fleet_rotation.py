@@ -247,6 +247,14 @@ def test_udp_only_survivor_uses_canonical_authenticated_evidence(liveness):
     assert helper.healthy_survivors(path, nodes) == {"node-c"}
 
 
+@pytest.mark.parametrize('mismatch', [False, True])
+def test_rollout_accepts_only_fresh_report_of_exact_candidate_generation(liveness, mismatch):
+    helper, _live, path, _config, report, nodes = liveness
+    generation = {'revision': 'b' * 40, 'deployable_digest': 'e' * 64}
+    report['target_identity']['deployable_digest'] = '0' * 64 if mismatch else 'e' * 64
+    assert helper.healthy_survivors(path, nodes, generation=generation) == (set() if mismatch else {'node-c'})
+
+
 @pytest.mark.parametrize("mutation", ["stale", "future", "wrong-target", "runtime", "auth", "dns",
                                      "handshake", "control", "degraded", "family", "missing-profile"])
 def test_canonical_invalid_or_degraded_reports_do_not_count(liveness, mutation):

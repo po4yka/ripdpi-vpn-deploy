@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import copy
 import hashlib
 import importlib.util
 import os
@@ -62,7 +63,7 @@ def liveness_module():
     return module
 
 
-def healthy_survivors(config_path, nodes, *, excluded=()):
+def healthy_survivors(config_path, nodes, *, excluded=(), generation=None):
     """Count only complete fresh positive witnesses, never persisted decisions."""
     if not nodes:
         return set()
@@ -115,6 +116,22 @@ def healthy_survivors(config_path, nodes, *, excluded=()):
         raw = raw_reports.get(sentinel["id"])
         if raw is None:
             continue
+        if generation is not None:
+            # A rollout creates a new binding timestamp. Admit it only from a
+            # fresh authenticated report of the exact requested source.
+            try:
+                candidate = live.json.loads(raw)
+                target = candidate['target_identity']
+                if (target['source_revision'] != generation['revision']
+                        or target['deployable_digest'] != generation['deployable_digest']
+                        or type(target['applied_at']) is not int
+                        or not 1 <= target['applied_at'] <= now):
+                    continue
+                sentinel = copy.deepcopy(sentinel)
+                sentinel['target']['applied_at'] = target['applied_at']
+                sentinel['target']['deployable_digest'] = generation['deployable_digest']
+            except (KeyError, TypeError, ValueError):
+                continue
         report, error = live.validate_report(raw, sentinel, config, now)
         if error or report is None or report["control"]["verdict"] != "ok":
             continue

@@ -145,8 +145,10 @@ def validate_yaml(data, *, empty=False):
         raise DeployError("YAML input must be a mapping")
 
 
-def read_input(path, *, private=False, exact_mode=None, limit=fleet_inspection.LIMIT):
+def read_input(path, *, private=False, exact_mode=None, limit=fleet_inspection.LIMIT, allow_empty=False):
     """Allow trusted macOS directory aliases, but never follow the final file."""
+    if type(allow_empty) is not bool:
+        raise DeployError('invalid empty-input policy')
     original = Path(path).expanduser().absolute()
     try:
         for parent in reversed(original.parents):
@@ -171,7 +173,7 @@ def read_input(path, *, private=False, exact_mode=None, limit=fleet_inspection.L
             finally:
                 os.close(canonical)
             data = stream.read(limit + 1)
-            if not data or len(data) > limit:
+            if (not data and not allow_empty) or len(data) > limit:
                 raise DeployError("empty or oversized input")
             return data
     except (OSError, fleet_inspection.InspectionError):

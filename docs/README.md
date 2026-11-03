@@ -48,6 +48,7 @@ Complete one task against real infrastructure. Every guide names its preconditio
 | [Runbook: idle-cycle access-attempt measurement spike](how-to/idle-cycle-measurement.md) | Measurement spike for the bare-HTTPS idle-cycle access-attempt pattern: driver, log collection, correlation | RESEARCH |
 | [Runbook — incidents](how-to/incident.md) | Decision matrix for lost SSH, lost age key, state loss and suspected compromise | CORE |
 | [Local operator kit](how-to/local-operator-kit.md) | The private operator kit contract: where authoritative material lives, how to catalogue and recover it | — |
+| [Existing-node maintenance and operator recovery](how-to/fleet-maintenance.md) | Resume exact maintenance, verify release inputs and restore the encrypted operator kit | CORE |
 | [Multi-cohort host](how-to/multi-cohort.md) | Run several VLESS+REALITY inbounds on one host, each with its own port, flow mode, finalmask and clients | — |
 | [Multi-operator RBAC](how-to/multi-operator.md) | Per-scope SOPS rules, role-scoped secrets files and audit-log boundaries for more than one operator | TACTICAL |
 | [Per-ASN payload-size throttling probe](how-to/payload-throttle.md) | Probe for a silent per-path throughput penalty above a response-size threshold | — |
