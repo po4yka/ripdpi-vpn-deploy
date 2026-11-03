@@ -25,7 +25,7 @@ from public_site_inputs import read_site
 import yaml
 from operator_maintenance_io import (MaintenanceError, ROOT, command_environment, digest_file,
                                     encrypted_command, private_directory,
-                                    read_bytes, require_success, write_document)
+                                    new_file, read_bytes, require_success, write_document)
 from recovery_io import Journal, RecoveryError, digest, unique, module, document
 
 FIELDS = {'schema_version', 'id', 'expires_at', 'state_directory', 'runtime_parent',
@@ -39,6 +39,7 @@ PATH_ENV = {'sops_file': 'SOPS_FILE', 'extra_vars': 'ANSIBLE_EXTRA_VARS_FILE',
             'tailnet_handoff': 'DEPLOY_CI_TAILNET_HANDOFF',
             'failure_receipts': 'DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE'}
 STAGES = ('dry-run', 'deploy', 'verify', 'security-verify', 'smoke-test')
+ATTEMPT_INPUTS = {'approved-inputs.json', 'approved.sops.yaml', 'approved-age.key'}
 SAFE = re.compile(r'[A-Za-z0-9_./:+-]+\Z')
 
 
@@ -188,9 +189,24 @@ def locks(plan, stack):
 def node_environment(plan, node, secret):
     values = {variable: literal(node[field]) for field, variable in PATH_ENV.items() if field in node}
     values.update(ENV=node['environment'], PROVIDER=node['provider'], ANSIBLE_LIMIT=node['host'],
-                  SECRETS_FILE=str(secret), SOPS_AGE_KEY_FILE=plan['age_identity'],
-                  AGE_KEY=plan['age_identity'], ANSIBLE_TAGS='', SKIP_PRECHECK='0', TAG_ON_SUCCESS='0')
+                  SECRETS_FILE=str(secret), SOPS_FILE=str(secret.parent / 'approved.sops.yaml'),
+                  SOPS_AGE_KEY_FILE=str(secret.parent / 'approved-age.key'),
+                  AGE_KEY=str(secret.parent / 'approved-age.key'),
+                  DEPLOY_APPROVED_INPUTS_FILE=str(secret.parent / 'approved-inputs.json'),
+                  ANSIBLE_TAGS='', SKIP_PRECHECK='0', TAG_ON_SUCCESS='0')
     return command_environment(values)
+
+
+def prepare_attempt(plan, node, runtime):
+    for original, name in ((node['sops_file'], 'approved.sops.yaml'),
+                           (plan['age_identity'], 'approved-age.key')):
+        data = read_bytes(original)
+        if hashlib.sha256(data).hexdigest() != plan['inputs'][original]['sha256']:
+            raise MaintenanceError('frozen-input-changed')
+        with new_file(runtime / name) as stream:
+            stream.write(data)
+    write_document(runtime / 'approved-inputs.json',
+                   {'files': plan['inputs'], 'trees': plan['site_trees']})
 
 
 def stage(plan, journal, node, goal, environment):
@@ -227,7 +243,8 @@ def cleanup_retained(plan, journal):
         raise MaintenanceError('invalid-retained-environment')
     selected = []
     for name in os.listdir(path):
-        if name != secret.name and not re.fullmatch(r'\.vpn-' + re.escape(environment) + r'\.secrets\.[A-Za-z0-9]{6,}', name):
+        if (name != secret.name and name not in ATTEMPT_INPUTS
+                and not re.fullmatch(r'\.vpn-' + re.escape(environment) + r'\.secrets\.[A-Za-z0-9]{6,}', name)):
             raise MaintenanceError('foreign-runtime-material')
         target = path / name
         fd = os.open(target, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
@@ -280,8 +297,7 @@ def cleanup_node(plan, journal, node, environment, secret, runtime, state, logs)
         logs.append(stage(plan, journal, node, 'clean', environment))
         if os.path.lexists(secret):
             raise MaintenanceError('plaintext-cleanup-failed')
-        runtime.rmdir()
-        journal.observe('runtime', None)
+        cleanup_retained(plan, journal)
         state['cleanup'] = 'absent'
         complete = True
     finally:
@@ -331,6 +347,7 @@ def execute(plan, action, approval, *, ready_fd=None):
             environment = node_environment(plan, node, secret)
             logs = []
             try:
+                prepare_attempt(plan, node, runtime)
                 logs.append(stage(plan, journal, node, 'decrypt', environment))
                 for goal in (('dry-run',) if action == 'preview' else STAGES):
                     logs.append(stage(plan, journal, node, goal, environment))

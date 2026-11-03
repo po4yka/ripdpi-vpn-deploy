@@ -544,6 +544,8 @@ def test_retained_cleanup_only_removes_owned_decrypt_outputs(authority):
         journal.observe('runtime', {'path': str(attempt), 'identity': [info.st_dev, info.st_ino], 'environment': 'prod'})
         write(attempt / 'credentials.yaml', 'synthetic-secret')
         write(attempt / '.vpn-prod.secrets.abcdef', 'interrupted-sops-output')
+        for name in module.ATTEMPT_INPUTS:
+            write(attempt / name, 'owned-input-copy')
         foreign = write(attempt / 'unrelated', 'preserve')
         with pytest.raises(private.MaintenanceError, match='foreign-runtime-material'):
             module.cleanup_retained(plan, journal)
@@ -552,6 +554,33 @@ def test_retained_cleanup_only_removes_owned_decrypt_outputs(authority):
         module.cleanup_retained(plan, journal)
         assert not attempt.exists()
         assert journal.state['observed']['runtime'] is None
+
+
+@pytest.mark.parametrize('replace_before_copy', [False, True])
+def test_decrypt_consumes_only_approved_attempt_copies(authority, replace_before_copy):
+    module = load('fleet-maintenance')
+    directory, identity, _ = authority
+    encrypted = write(directory / 'authority.sops.yaml', 'approved encrypted bytes')
+    attempt = directory / 'attempt'
+    attempt.mkdir(mode=0o700)
+    plan = {'age_identity': str(identity), 'site_trees': {},
+            'inputs': {str(path): {'private': True, 'sha256': private.digest_file(path)}
+                       for path in (identity, encrypted)}}
+    node = {'sops_file': str(encrypted), 'environment': 'prod', 'provider': 'upcloud', 'host': 'node-a'}
+    if replace_before_copy:
+        encrypted.write_text('unapproved encrypted bytes')
+        with pytest.raises(private.MaintenanceError, match='frozen-input-changed'):
+            module.prepare_attempt(plan, node, attempt)
+        assert not list(attempt.iterdir())
+    else:
+        module.prepare_attempt(plan, node, attempt)
+        encrypted.write_text('later authority replacement')
+        env = module.node_environment(plan, node, attempt / 'credentials.yaml')
+        assert Path(env['SOPS_FILE']).read_bytes() == b'approved encrypted bytes'
+        assert private.digest_file(env['SOPS_AGE_KEY_FILE']) == plan['inputs'][str(identity)]['sha256']
+        assert env['AGE_KEY'] == env['SOPS_AGE_KEY_FILE']
+        assert json.loads(Path(env['DEPLOY_APPROVED_INPUTS_FILE']).read_bytes()) == {
+            'files': plan['inputs'], 'trees': {}}
 
 
 def test_failed_age_writer_cannot_produce_a_success_receipt(authority, monkeypatch):

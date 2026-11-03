@@ -36,6 +36,10 @@ preview. The command does not claim discovery of arbitrary script dependencies.
 The optional `promotion_config`, `tailnet_handoff` and `failure_receipts` fields
 map to the existing canonical deployment inputs. Use absolute literal paths.
 The command also freezes the generated inventory and its selected SSH keys.
+The canonical controller compares the bytes it consumes with those approved
+hashes, including the public site tree. Each attempt decrypts verified private
+copies of the encrypted secrets and age identity. A concurrent replacement of
+an original file cannot become a new deployment authority.
 
 ```bash
 make maintenance ACTION=prepare CONFIG="$MAINTENANCE_CONFIG" PLAN="$MAINTENANCE_PLAN"

@@ -237,7 +237,7 @@ if len(sys.argv) > 1 and sys.argv[1] == 'scripts/deploy-controller.py':
     sys.argv = sys.argv[1:]
     sys.path.insert(0, str(pathlib.Path(sys.argv[0]).resolve().parent))
     namespace = runpy.run_path(sys.argv[0])
-    globals_ = namespace['controller'].__globals__
+    globals_ = namespace['controller'].__wrapped__.__globals__
     original = globals_['checked']
     def record_site(command, **options):
         if command[0] == 'ansible-playbook' and pathlib.Path(command[1]).name.endswith('-site.json'):
@@ -784,6 +784,45 @@ pathlib.Path({str(record)!r}).write_text(json.dumps({{
     assert Path(published["path"]) != site
     assert not Path(published["path"]).exists()
     assert (site / "404.html").read_text() == "missing page"
+
+
+@pytest.mark.parametrize('changed', ['none', 'inventory', 'overrides', 'overrides-alias', 'site'])
+def test_approved_inputs_bind_actual_controller_reads_before_transport(workspace, changed):
+    root = workspace['root']
+    site = root.parent / 'approved-site'
+    write(site / '404.html', 'approved page')
+    overrides = write(root.parent / 'approved-overrides.yml', yaml.safe_dump({
+        'nginx_xhttp_public_site_dir': str(site), 'ansible_port': 2222}))
+    paths = [workspace['inventory'], overrides]
+    approved = write(root.parent / 'approved-inputs.json', json.dumps({
+        'files': {str(path): {'private': True, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
+                  for path in paths},
+        'trees': {str(site): {'.': None, '404.html': hashlib.sha256(b'approved page').hexdigest()}}}))
+    workspace['env']['DEPLOY_APPROVED_INPUTS_FILE'] = str(approved)
+    if changed == 'overrides-alias':
+        value = json.loads(approved.read_bytes())
+        value['files'][str(overrides.parent) + '//' + overrides.name] = value['files'].pop(str(overrides))
+        approved.write_text(json.dumps(value))
+    if changed != 'none':
+        # A valid atomic publication after the worker's last approval check,
+        # before the canonical controller snapshots the original path.
+        path, content = {
+            'inventory': (workspace['inventory'], workspace['inventory'].read_text().replace('2222', '2223')),
+            'overrides': (overrides, yaml.safe_dump({'nginx_xhttp_public_site_dir': str(site), 'ansible_port': 2223})),
+            'overrides-alias': (overrides, yaml.safe_dump({'nginx_xhttp_public_site_dir': str(site), 'ansible_port': 2223})),
+            'site': (site / '404.html', 'unapproved replacement'),
+        }[changed]
+        replacement = write(path.with_name(path.name + '.next'), content)
+        os.replace(replacement, path)
+    result = invoke(workspace, target='deploy', limit='node-one', ANSIBLE_EXTRA_VARS_FILE=str(overrides))
+    if changed == 'none':
+        assert result.returncode == 0, result.stderr
+        assert any(entry['program'] == 'ansible-playbook' for entry in calls(workspace))
+    else:
+        assert result.returncode != 0
+        assert 'approved' in result.stderr and 'changed' in result.stderr
+        assert not any(entry['program'] in {'ssh', 'ansible-playbook', 'audit-log.sh'}
+                       for entry in calls(workspace))
 
 
 def test_owned_site_change_after_precheck_refuses_before_host_contact(workspace):
