@@ -225,6 +225,8 @@ def capture(argv, *, timeout=60, limit=16 * 1024 * 1024, data=b"", env=None):
                 try:
                     os.killpg(child.pid, signal.SIGKILL)
                 except ProcessLookupError:
+                    # The group can already be empty after command exit. The
+                    # state check below still verifies that no live member remains.
                     pass
                 except PermissionError:
                     # Darwin refuses signals to a zombie-only group. Confirm that
