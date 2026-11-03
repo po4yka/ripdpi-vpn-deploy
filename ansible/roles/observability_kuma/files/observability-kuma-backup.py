@@ -16,6 +16,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+import tempfile
 import time
 import uuid
 
@@ -40,6 +41,58 @@ def command(argv):
 def archive_digest(path):
     with path.open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def publish_manifest(directory, identity, manifest):
+    destination = directory / (identity + '.json')
+    if os.path.lexists(destination):
+        raise ValueError('backup-completion-already-present')
+    descriptor, staging = tempfile.mkstemp(prefix='.' + identity + '-', suffix='.pending', dir=directory)
+    with os.fdopen(descriptor, 'w') as sink:
+        json.dump(manifest, sink)
+        sink.flush()
+        os.fsync(sink.fileno())
+    # A partial staging file is forensic material, never a completed backup.
+    os.rename(staging, destination)
+    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def tree_manifest(root):
+    entries, total = {}, 0
+    for parent, directories, files in os.walk(root, followlinks=False):
+        for name in sorted(directories + files):
+            path = Path(parent) / name
+            info = path.lstat()
+            relative = path.relative_to(root).as_posix()
+            if len(entries) >= 100000 or info.st_uid not in (0, 1000, os.geteuid()):
+                raise ValueError('dataset-authority-or-count')
+            if stat.S_ISDIR(info.st_mode):
+                entries[relative] = None
+                continue
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                raise ValueError('dataset-regular-file-required')
+            total += info.st_size
+            if total > MAX_DATA:
+                raise ValueError('dataset-size-limit')
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(descriptor, 'rb') as stream:
+                opened = os.fstat(stream.fileno())
+                if (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino):
+                    raise ValueError('dataset-changed')
+                checksum = hashlib.file_digest(stream, 'sha256').hexdigest()
+                after = os.fstat(stream.fileno())
+                named = path.lstat()
+                identity = lambda item: (item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns)
+                if identity(info) != identity(after) or identity(info) != identity(named):
+                    raise ValueError('dataset-changed')
+            entries[relative] = {'sha256': checksum, 'bytes': info.st_size}
+    canonical = json.dumps(entries, sort_keys=True, separators=(',', ':')).encode()
+    return {'contents_sha256': hashlib.sha256(canonical).hexdigest(),
+            'entries': len(entries), 'plaintext_bytes': total}
 
 
 def sync_lifecycle_directory():
@@ -122,12 +175,11 @@ def backup(config, credentials):
                     tar.kill()
                     tar.wait()
         # Manifest preserves the matching pre-upgrade architecture image.
-        manifest = {'schema_version': 1, 'image': config['image'], 'sha256': archive_digest(output), 'created_at': time.time()}
-        descriptor = os.open(destination / (identity + '.json'), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        with os.fdopen(descriptor, 'w') as sink:
-            json.dump(manifest, sink)
-            sink.flush()
-            os.fsync(sink.fileno())
+        manifest = {'schema_version': 1, 'image': config['image'], 'sha256': archive_digest(output),
+                    'created_at': time.time(),
+                    'recipient': private_regular(credentials / 'backup-recipient').read_text().strip(),
+                    **tree_manifest(DATA)}
+        publish_manifest(destination, identity, manifest)
     finally:
         # Repeated TERM must not interrupt our own restoration; forced death is
         # covered by the unit's separately executed, locked ExecStopPost.
@@ -139,7 +191,7 @@ def backup(config, credentials):
     print('encrypted backup completed: ' + identity)
 
 
-def extract_private(stream, destination):
+def extract_private(stream, destination, *, container_owner=True):
     total = 0
     count = 0
     with tarfile.open(fileobj=stream, mode='r|') as archive:
@@ -162,10 +214,11 @@ def extract_private(stream, destination):
     # Keep every parent root-owned until all writes finish. The restore unit
     # intentionally lacks CAP_DAC_OVERRIDE, so changing a mode-0700 parent to
     # UID 1000 during extraction would prevent later child creation.
-    for parent, _directories, files in os.walk(destination, topdown=False):
-        for name in files:
-            os.chown(Path(parent) / name, 1000, 1000)
-        os.chown(parent, 1000, 1000)
+    if container_owner:
+        for parent, _directories, files in os.walk(destination, topdown=False):
+            for name in files:
+                os.chown(Path(parent) / name, 1000, 1000)
+            os.chown(parent, 1000, 1000)
 
 
 def restore(config, credentials, identity):

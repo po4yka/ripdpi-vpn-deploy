@@ -209,16 +209,27 @@ def test_real_tls_acknowledgement_and_redirect_refusal(tmp_path):
         thread.join(timeout=2)
 
 
-@pytest.mark.parametrize('case', ['healthy', 'stale', 'failed-node', 'rules-error', 'delivery'])
+@pytest.mark.parametrize('case', ['healthy', 'stale', 'failed-node', 'rules-error', 'delivery',
+                                'recovery-ok', 'recovery-failed', 'recovery-stale', 'backup-stale',
+                                'recovery-short-policy-expired', 'recovery-invalid-deadline'])
 def test_panel_only_pipeline_has_real_fresh_conditions_without_relay_authority(inputs, case):
     config, directory = inputs
     config.update(kind='pipeline', notification_mode='panel-only')
+    if case.startswith('recovery-') or case == 'backup-stale':
+        config['require_observer_recovery'] = True
     (directory / 'relay-auth-token').unlink()
     if case == 'delivery': config['kind'] = 'delivery'
     calls = []
     def fetch(url, **kwargs):
         calls.append(url)
         assert '19095' not in url and 'relay' not in url and 'observability-alertmanager' not in url
+        if url.endswith('/internal/recovery'):
+            assert kwargs['ca'] == (directory / 'observer-ca').read_text()
+            return {'schema_version': 1, 'status': 'failed' if case == 'recovery-failed' else 'ok',
+                    'verified_at': 1000 - 93601 if case == 'recovery-stale' else 990,
+                    'backup_at': 1000 - 93601 if case == 'backup-stale' else 990,
+                    'valid_until': (1000 if case == 'recovery-short-policy-expired' else
+                                    1000000 if case == 'recovery-invalid-deadline' else 1200)}
         if '/api/v1/query?' in url:
             return {'status': 'success', 'data': {'resultType': 'vector', 'result': [{'value': [1000, '0' if case == 'failed-node' else '1']}]}}
         if url.endswith('/api/v1/rules'):
@@ -228,7 +239,7 @@ def test_panel_only_pipeline_has_real_fresh_conditions_without_relay_authority(i
     if case == 'stale':
         (directory / 'state').write_text(json.dumps({'sequence': 980, 'last_success': 999}))
     before = (directory / 'state').read_bytes() if (directory / 'state').exists() else None
-    if case == 'healthy':
+    if case in ('healthy', 'recovery-ok'):
         result = push.run(config, directory, directory / 'state', now=1000, fetcher=fetch, runner=runner)
         assert result == {'sequence': 980, 'last_success': 1000}
         assert any('/api/push/' in url for url in calls)

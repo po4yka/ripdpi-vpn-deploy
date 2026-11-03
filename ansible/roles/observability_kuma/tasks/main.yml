@@ -37,10 +37,15 @@
       - observability_kuma.backup_directory not in ['/', '/var', '/var/lib', '/etc', '/home', '/root']
     fail_msg: Observer needs exact independent host approval and fixed bounded runtime.
 
+- name: Admit independent recovery before any observer mutation
+  ansible.builtin.include_tasks: recovery-contract.yml
+
 - name: Inspect observer units for safe disable on absent deployment
   ansible.builtin.stat:
     path: "/etc/systemd/system/{{ item }}"
   loop:
+    - observability-kuma-recovery.timer
+    - observability-kuma-recovery.service
     - observability-kuma-backup.timer
     - observability-kuma-backup.service
     - observability-kuma.service
@@ -50,12 +55,16 @@
 - name: Stop observer without removing secret data or backup when disabled
   ansible.builtin.systemd_service:
     name: "{{ item.item }}"
-    enabled: "{{ omit if item.item == 'observability-kuma-backup.service' else false }}"
+    enabled: "{{ omit if item.item in ['observability-kuma-backup.service', 'observability-kuma-recovery.service'] else false }}"
     state: stopped
   when:
     - not observability_kuma.enabled | bool
     - item.stat.exists
   loop: "{{ _observability_kuma_disable_units.results | default([]) }}"
+
+- name: Retire dedicated recovery access after disabling the observer
+  ansible.builtin.include_tasks: recovery-retire.yml
+  when: not observability_kuma.enabled | bool
 
 - name: Remove only disabled observer ingress while retaining secret generations
   when: not observability_kuma.enabled | bool
@@ -177,12 +186,15 @@
       loop:
         - observability-kuma.service
         - observability-kuma-backup.timer
+        - observability-kuma-recovery.timer
       when: ansible_check_mode
 
     - name: Inspect backup units before serializing observer convergence
       ansible.builtin.stat:
         path: "/etc/systemd/system/{{ item }}"
       loop:
+        - observability-kuma-recovery.timer
+        - observability-kuma-recovery.service
         - observability-kuma-backup.timer
         - observability-kuma-backup.service
       register: _observability_kuma_backup_units
@@ -190,7 +202,7 @@
     - name: Quiesce timer then active backup before changing runtime or image
       ansible.builtin.systemd_service:
         name: "{{ item.item }}"
-        enabled: "{{ false if item.item == 'observability-kuma-backup.timer' else omit }}"
+        enabled: "{{ false if item.item in ['observability-kuma-backup.timer', 'observability-kuma-recovery.timer'] else omit }}"
         state: stopped
       when: item.stat.exists
       loop: "{{ _observability_kuma_backup_units.results }}"
@@ -218,6 +230,24 @@
         - {path: /var/lib/observability-kuma, owner: "1000"}
         - {path: /var/lib/observability-kuma-restores, owner: root}
 
+    - name: Install scoped observer backup and recovery helpers
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "/usr/local/libexec/{{ item }}"
+        owner: root
+        group: root
+        mode: "0750"
+      loop:
+        - observability-kuma-backup.py
+        - observability-kuma-preflight.py
+        - observability-kuma-recovery.py
+        - observability-kuma-recovery-contract.py
+        - observability-kuma-storage-contract.py
+        - observability-kuma-recovery-workspace.py
+
+    - name: Configure independent periodic recovery before ingress publication
+      ansible.builtin.include_tasks: recovery.yml
+
     - name: Install exact private address readiness check
       ansible.builtin.copy:
         src: observability-kuma-wait-address.py
@@ -238,7 +268,10 @@
       ansible.builtin.set_fact:
         _observability_kuma_tls_generation: >-
           {{ {'tls': observability_kuma_secrets.tls, 'address': observability_kuma.bind_address,
-          'sources': observability_kuma.allowed_sources, 'version': 1} | to_json | hash('sha256') }}
+          'sources': observability_kuma.allowed_sources,
+          'recovery': observability_kuma_recovery.enabled,
+          'recovery_readers': observability_kuma_recovery.readers if observability_kuma_recovery.enabled else [],
+          'version': 2} | to_json | hash('sha256') }}
       no_log: true
 
     - name: Create private immutable ingress generation directory
@@ -453,17 +486,6 @@
           - /etc/systemd/system/observability-kuma.service
       changed_when: false
 
-    - name: Install secret-safe backup and isolated restore helper
-      ansible.builtin.copy:
-        src: "{{ item }}"
-        dest: "/usr/local/libexec/{{ item }}"
-        owner: root
-        group: root
-        mode: "0750"
-      loop:
-        - observability-kuma-backup.py
-        - observability-kuma-preflight.py
-
     - name: Install private backup configuration
       ansible.builtin.copy:
         content: >-
@@ -550,3 +572,17 @@
       until:
         - _observability_kuma_ready.status == 200
         - _observability_kuma_ready.json.type | default('') == 'entryPage'
+
+    - name: Enable periodic independent observer recovery after convergence
+      ansible.builtin.systemd_service:
+        name: observability-kuma-recovery.timer
+        state: started
+        enabled: true
+        daemon_reload: true
+      when:
+        - observability_kuma_recovery.enabled | bool
+        - >-
+          not ansible_check_mode or
+          (_observability_kuma_existing_units.results |
+           selectattr('item', 'equalto', 'observability-kuma-recovery.timer') |
+           map(attribute='stdout') | first) == 'loaded'

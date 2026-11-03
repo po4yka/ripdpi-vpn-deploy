@@ -22,6 +22,8 @@
       ansible.builtin.command:
         argv: [/usr/bin/systemctl, is-active, "{{ item }}"]
       loop:
+        - observability-kuma-recovery.timer
+        - observability-kuma-recovery.service
         - observability-kuma-backup.timer
         - observability-kuma-backup.service
         - observability-kuma.service
@@ -48,6 +50,8 @@
       ansible.builtin.command:
         argv: [/usr/bin/systemctl, is-enabled, "{{ item }}"]
       loop:
+        - observability-kuma-recovery.service
+        - observability-kuma-recovery.timer
         - observability-push-node.service
         - observability-push-node.timer
       register: retired
@@ -58,12 +62,25 @@
       ansible.builtin.stat:
         path: "{{ item }}"
       loop:
+        - /etc/systemd/system/observability-kuma-recovery.service
+        - /etc/systemd/system/observability-kuma-recovery.timer
+        - /etc/observability-kuma/recovery-age-identity
+        - /etc/observability-kuma/recovery-storage.json
+        - /etc/observability-kuma/recovery.json
+        - /var/lib/observability-kuma-restores/scheduled/data
+        - /var/lib/observability-kuma-restores/scheduled/cipher.age
         - /etc/systemd/system/observability-push-node.service
         - /etc/systemd/system/observability-push-node.timer
         - /etc/observability-push/node.token
         - /etc/observability-push/node.json
       register: retired_file
       failed_when: retired_file.stat.exists
+
+    - name: Verify isolated cleanup preserved the separate backup marker
+      ansible.builtin.slurp:
+        src: /var/lib/observability-kuma-restores/backup-retention-marker.age
+      register: retained_backup
+      failed_when: retained_backup.content | b64decode != 'owned-retention-test-marker'
 
     - name: Confirm backup finalizer actually restarted observer before final stop
       ansible.builtin.slurp:

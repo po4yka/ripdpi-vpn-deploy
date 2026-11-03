@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily downloaded observer recovery check
+
+[Timer]
+OnCalendar=*-*-* 04:00:00 UTC
+RandomizedDelaySec=5m
+Persistent=true
+AccuracySec=1m
+Unit=observability-kuma-recovery.service
+
+[Install]
+WantedBy=timers.target

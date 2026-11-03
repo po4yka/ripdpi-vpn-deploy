@@ -2,6 +2,12 @@
 
 ## Design decisions
 
+Scheduled recovery uses a Kuma-only age identity and a storage key restricted to
+`kuma/`; it never receives the operator-kit identity. Downloaded ciphertext,
+the complete restored manifest and SQLite including WAL must pass before health
+publication. The fixed owned workspace is cleaned on failure and by ExecStopPost.
+Only explicit collector Tailnet addresses can read the private recovery status.
+
 An ExecCondition waits at most 60 seconds for the exact private address before
 the vendor nginx configuration test. Refusal exits 255 to fail the unit.
 It derives the address from the published vhost link, so a restored generation

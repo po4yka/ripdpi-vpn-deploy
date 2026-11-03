@@ -392,6 +392,33 @@ instance. Retain both datasets; do not run original and restored monitors with
 outbound access simultaneously. Activate restored data only after exact-host
 and credential approval.
 
+### Scheduled download and SQLite recovery
+
+Opt in with `observability_kuma_recovery.enabled` and explicit private bucket,
+reader addresses, operator public recipients and maximum backup age. Supply a
+separate Kuma-only age identity and a native storage key restricted to `kuma/`
+with exactly `listBuckets`, `readBucketEncryption`, `readFiles` and `writeFiles`.
+The controller verifies the identity and actual provider grant before it sends
+credentials to the observer. The observer never receives the operator-kit key.
+
+The daily recovery job uploads the latest completed encrypted backup, downloads
+its exact object ID, verifies private access, authenticates decryption and
+compares the full restored manifest. It checks SQLite integrity and the required
+application tables with WAL included. It uses only an isolated owned directory;
+it does not start a second application or change the live data. The separate
+on-demand restore above remains the application startup test.
+
+Create a fresh backup after changing its recipient. Scheduled recovery rejects
+old-recipient, stale or incomplete backup metadata. Keep the old local recovery
+identity for historical backups. Success is published only after temporary data
+is removed. Failed service exit also runs cleanup. Disable quiesces the job and
+removes only its admitted credentials and units; it retains encrypted backups.
+
+Set `observability_push.require_observer_recovery` on the collector pipeline.
+Only explicit exact Tailnet readers can fetch `/internal/recovery` on the private
+observer endpoint. A failed check or backup/verification older than 26 hours
+prevents a success heartbeat. An unchanged healthy result sends no extra notice.
+
 ## Finite maintenance silences
 
 Alerting requires `observability_control_plane.alerting.silence_gateway.enabled`

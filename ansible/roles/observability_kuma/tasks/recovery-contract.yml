@@ -1,0 +1,26 @@
+---
+- name: Admit recovery policy and provider grant on controller before host mutation
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - "{{ role_path }}/files/observability-kuma-recovery-preflight.py"
+    stdin: >-
+      {{ {'scope': observability_kuma_recovery,
+      'identity': observability_kuma_secrets.backup.age_identity,
+      'storage': observability_kuma_secrets.backup.storage,
+      'config': {'directory': observability_kuma.backup_directory,
+      'bucket_id': observability_kuma_recovery.bucket_id,
+      'bucket_name': observability_kuma_recovery.bucket_name,
+      'recipient': observability_kuma_secrets.backup.age_recipient,
+      'operator_recipients': observability_kuma_recovery.operator_recipients,
+      'max_backup_age_seconds': observability_kuma_recovery.max_backup_age_seconds,
+      'restore_images': [observability_kuma.image_repository ~ '@' ~ observability_kuma.image_digests[ansible_facts['architecture']],
+      observability_kuma.previous_image_references[ansible_facts['architecture']]]}} | to_json }}
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  check_mode: false
+  no_log: true
+  when:
+    - observability_kuma.enabled | bool
+    - observability_kuma_recovery.enabled | bool
