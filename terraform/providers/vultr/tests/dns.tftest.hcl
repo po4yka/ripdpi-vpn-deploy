@@ -96,7 +96,7 @@ run "reject_unsupported_type" {
   command = plan
   variables {
     dns_zone            = "example.com"
-    managed_dns_records = { one = { name = "h2", type = "TXT", data = "value", ttl = 300 } }
+    managed_dns_records = { one = { name = "h2", type = "MX", data = "mail.example.com", ttl = 300 } }
   }
   expect_failures = [var.managed_dns_records]
 }
@@ -167,4 +167,51 @@ run "retain_imported_priority_metadata" {
     condition     = vultr_dns_record.managed["apex-a"].priority == -1 && vultr_dns_record.managed["apex-aaaa"].priority == null
     error_message = "Imported provider priority metadata must not create a DNS write during adoption."
   }
+}
+
+run "accept_mail_policy_and_caa_records" {
+  command = plan
+  variables {
+    dns_zone = "example.com"
+    managed_dns_records = {
+      spf       = { name = "", type = "TXT", data = "\"v=spf1 -all\"", ttl = 300 }
+      dmarc     = { name = "_dmarc", type = "TXT", data = "\"v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s\"", ttl = 300 }
+      caa-issue = { name = "", type = "CAA", data = "0 issue \"letsencrypt.org\"", ttl = 300 }
+      caa-wild  = { name = "", type = "CAA", data = "0 issuewild \";\"", ttl = 300 }
+    }
+  }
+  assert {
+    condition     = vultr_dns_record.managed["dmarc"].name == "_dmarc" && vultr_dns_record.managed["caa-wild"].data == "0 issuewild \";\""
+    error_message = "TXT and CAA records, including several CAA tags on one name, must plan unchanged."
+  }
+}
+
+run "reject_unquoted_txt" {
+  command = plan
+  variables {
+    dns_zone            = "example.com"
+    managed_dns_records = { spf = { name = "", type = "TXT", data = "v=spf1 -all", ttl = 300 } }
+  }
+  expect_failures = [var.managed_dns_records]
+}
+
+run "reject_unknown_caa_tag" {
+  command = plan
+  variables {
+    dns_zone            = "example.com"
+    managed_dns_records = { caa = { name = "", type = "CAA", data = "0 issuer \"letsencrypt.org\"", ttl = 300 } }
+  }
+  expect_failures = [var.managed_dns_records]
+}
+
+run "reject_duplicate_caa_record" {
+  command = plan
+  variables {
+    dns_zone = "example.com"
+    managed_dns_records = {
+      one = { name = "", type = "CAA", data = "0 issue \"letsencrypt.org\"", ttl = 300 }
+      two = { name = "", type = "CAA", data = "0 issue \"letsencrypt.org\"", ttl = 300 }
+    }
+  }
+  expect_failures = [var.managed_dns_records]
 }
