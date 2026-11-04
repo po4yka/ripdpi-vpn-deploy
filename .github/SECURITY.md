@@ -41,6 +41,29 @@ Contributors can also submit a focused pull request for:
 - CI gate gaps (a class of bug we should be testing for and aren't).
 - Suggestions for stronger gitleaks rules.
 
+## Daily dependency and image checks
+
+`daily-security.yml` runs each day at 06:17 UTC and supports manual dispatch.
+The vulnerability-only filesystem scan includes Python requirements, npm locks
+with development dependencies, and Go modules. It reports all severities,
+including unfixed dependency findings. The existing image inventory covers
+Molecule and both observer architectures; its fixable HIGH/CRITICAL gate stays
+unchanged. No image is rebuilt and no live host or fleet credential is used.
+
+An automated issue is assigned to the repository owner for findings or scan
+failures. A comment notifies subscribers when the result changes. Identical
+results cause no issue writes. A complete successful clean run closes the issue;
+missing or malformed reports cannot count as recovery. Reports remain attached
+to the workflow run for 14 days; issues contain counts and run links only.
+
+For email delivery, enable email for participating notifications in GitHub
+account settings and keep the issue subscription enabled. The workflow needs
+no SMTP credentials. A failed notification job remains visible as a failed run.
+Only runs of the current default-branch revision update the shared issue.
+Manual feature-branch and historical runs retain reports without changing it.
+Reports belong to one run attempt. To retry a complete scan, use **Re-run all
+jobs**; partial retries cannot use earlier clean reports to close the issue.
+
 ## Disclosure
 
 After we've shipped a fix:

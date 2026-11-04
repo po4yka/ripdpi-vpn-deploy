@@ -10,6 +10,8 @@
 
 **Heavy scanners stay off** — AIDE, rkhunter, and ClamAV are documented as deferred controls. Do not install or enable them without a separate reviewed implementation.
 
+**Isolation scores are diagnostic** — `systemd-analyze security` reports unit configuration, not service vulnerabilities. Retain nonzero and unavailable results privately; check mode produces no collected isolation report.
+
 ## What's done well
 
 - Lynis is the only package installed by default, and only for this explicit audit playbook.
