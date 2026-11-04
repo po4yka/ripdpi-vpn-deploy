@@ -4,6 +4,7 @@ server {
     listen 80;
     listen [::]:80;
     server_name {{ nginx_xhttp.acme.domains | join(' ') }};
+    server_tokens off;
     access_log off;
     error_log /dev/null crit;
     location ^~ /.well-known/acme-challenge/ {
