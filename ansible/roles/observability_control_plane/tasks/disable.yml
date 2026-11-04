@@ -57,6 +57,15 @@
     - not ansible_check_mode
     - "'observability-ingress.service' in ansible_facts.services"
 
+- name: Stop and disable the loopback node-label relay
+  ansible.builtin.systemd_service:
+    name: observability-prometheus-relay
+    enabled: false
+    state: stopped
+  when:
+    - not ansible_check_mode
+    - "'observability-prometheus-relay.service' in ansible_facts.services"
+
 - name: Stop and disable existing Alertmanager service
   ansible.builtin.systemd_service:
     name: observability-alertmanager
@@ -125,6 +134,8 @@
   loop:
     - /etc/systemd/system/observability-prometheus.service
     - /etc/systemd/system/observability-ingress.service
+    - /etc/systemd/system/observability-prometheus-relay.service
+    - "{{ observability_control_plane.relay_binary_link }}"
     - /etc/systemd/system/observability-disk-guard.service
     - /etc/systemd/system/observability-collector.slice
     - /usr/local/libexec/observability-disk-guard.py

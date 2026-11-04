@@ -12,6 +12,12 @@ observability_control_plane:
   ingress_port: 9443
   ingress_address: ""
   prometheus_listen: 127.0.0.1:9090
+  # Loopback vmagent relay between ingress and Prometheus. It overrides the
+  # payload node label with the certificate-bound path identity.
+  relay_listen: 127.0.0.1:19091
+  relay_install_root: /opt/observability-collector-vmagent
+  relay_binary_link: /usr/local/libexec/observability-collector-vmagent
+  relay_queue_dir: /var/lib/observability-prometheus/relay-queue
   remote_write_path_prefix: /remote-write/v1/nodes
   request_body_limit: 8m
   request_concurrency: 4
@@ -35,6 +41,11 @@ observability_control_plane:
     sha256: {amd64: "", arm64: ""}
     archive_members: {amd64: "", arm64: ""}
     promtool_archive_members: {amd64: "", arm64: ""}
+  relay:
+    version: ""
+    urls: {amd64: "", arm64: ""}
+    sha256: {amd64: "", arm64: ""}
+    archive_members: {amd64: "", arm64: ""}
   tls:
     server_cert_pem: ""
     server_key_pem: ""

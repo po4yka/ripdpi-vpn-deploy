@@ -28,6 +28,16 @@
       - observability_control_plane.prometheus.sha256.arm64 is match('^[0-9a-fA-F]{64}$')
       - observability_control_plane.prometheus.archive_members.amd64 is match('^[A-Za-z0-9._+/+-]+$')
       - observability_control_plane.prometheus.archive_members.arm64 is match('^[A-Za-z0-9._+/+-]+$')
+      - observability_control_plane.relay_listen == '127.0.0.1:19091'
+      - observability_control_plane.relay_install_root == '/opt/observability-collector-vmagent'
+      - observability_control_plane.relay_queue_dir == observability_control_plane.data_dir ~ '/relay-queue'
+      - observability_control_plane.relay.version is match('^v[0-9]+[.][0-9]+[.][0-9]+$')
+      - observability_control_plane.relay.urls.amd64 is match('^https://|^file://')
+      - observability_control_plane.relay.urls.arm64 is match('^https://|^file://')
+      - observability_control_plane.relay.sha256.amd64 is match('^[0-9a-fA-F]{64}$')
+      - observability_control_plane.relay.sha256.arm64 is match('^[0-9a-fA-F]{64}$')
+      - observability_control_plane.relay.archive_members.amd64 == 'vmagent-prod'
+      - observability_control_plane.relay.archive_members.arm64 == 'vmagent-prod'
       - observability_control_plane.tls.server_cert_pem | length > 0
       - observability_control_plane.tls.server_key_pem | length > 0
       - observability_control_plane.tls.client_ca_pem | length > 0
@@ -38,7 +48,7 @@
         list | unique | length == observability_control_plane.ingest_identities | length
     fail_msg: >-
       observability_control_plane requires exact bounded receiver settings,
-      a pinned Prometheus archive, private ingress IP SAN identity,
+      pinned Prometheus and node-label relay archives, private ingress IP SAN identity,
       and complete mTLS/CRL material before it writes a host.
   no_log: true
 
@@ -220,6 +230,7 @@
     - name: Begin collector runtime activation transaction
       ansible.builtin.set_fact:
         _observability_prometheus_runtime_ready: false
+        _observability_relay_runtime_ready: false
 
     - name: Capture the collector release before binary activation
       ansible.builtin.stat:
@@ -246,6 +257,32 @@
     - name: Preserve the collector binary activation result
       ansible.builtin.set_fact:
         _observability_prometheus_runtime_changed: "{{ runtime_release_changed | bool }}"
+
+    - name: Capture the node-label relay release before binary activation
+      ansible.builtin.stat:
+        path: "{{ observability_control_plane.relay_install_root }}/current"
+        follow: false
+      register: _observability_relay_previous_release
+
+    - name: Install pinned node-label relay through runtime-release
+      ansible.builtin.include_role:
+        name: runtime-release
+      vars:
+        runtime_release_version: "{{ observability_control_plane.relay.version }}"
+        runtime_release_install_root: "{{ observability_control_plane.relay_install_root }}"
+        runtime_release_binary_name: vmagent-prod
+        runtime_release_public_link: "{{ observability_control_plane.relay_binary_link }}"
+        runtime_release_urls: "{{ observability_control_plane.relay.urls }}"
+        runtime_release_sha256: "{{ observability_control_plane.relay.sha256 }}"
+        runtime_release_arch_slugs: {amd64: linux-amd64, arm64: linux-arm64}
+        runtime_release_artifact_filename: vmutils.tar.gz
+        runtime_release_artifact_type: archive
+        runtime_release_archive_members: "{{ observability_control_plane.relay.archive_members }}"
+        runtime_release_archive_strip_components: 0
+
+    - name: Preserve the node-label relay binary activation result
+      ansible.builtin.set_fact:
+        _observability_relay_runtime_changed: "{{ runtime_release_changed | bool }}"
 
     - name: Create private control-plane directories
       ansible.builtin.file:
@@ -510,6 +547,104 @@
     - name: Remove disabled alerting artifacts
       ansible.builtin.include_tasks: alerting-disable.yml
       when: not (observability_control_plane.alerting.enabled | bool)
+
+    - name: Create the node-label relay shutdown queue
+      ansible.builtin.file:
+        path: "{{ observability_control_plane.relay_queue_dir }}"
+        state: directory
+        owner: "{{ observability_control_plane.service_user }}"
+        group: "{{ observability_control_plane.service_group }}"
+        mode: '0700'
+
+    - name: Inspect previous node-label relay unit
+      ansible.builtin.stat:
+        path: /etc/systemd/system/observability-prometheus-relay.service
+        follow: false
+      register: _observability_relay_previous_unit
+
+    - name: Capture previous node-label relay unit
+      ansible.builtin.slurp:
+        src: /etc/systemd/system/observability-prometheus-relay.service
+      register: _observability_relay_previous_unit_bytes
+      when: _observability_relay_previous_unit.stat.exists
+
+    - name: Activate the loopback node-label relay with rollback
+      block:
+        - name: Install node-label relay service unit
+          ansible.builtin.template:
+            src: observability-prometheus-relay.service.j2
+            dest: /etc/systemd/system/observability-prometheus-relay.service
+            owner: root
+            group: root
+            mode: '0644'
+          register: _observability_relay_unit
+
+        - name: Start or restart the node-label relay
+          ansible.builtin.systemd_service:
+            name: observability-prometheus-relay
+            daemon_reload: "{{ _observability_relay_unit.changed }}"
+            enabled: true
+            state: >-
+              {{ 'restarted' if (_observability_relay_unit.changed or
+              _observability_relay_runtime_changed) else 'started' }}
+
+        - name: Require loopback-only node-label relay readiness
+          ansible.builtin.uri:
+            url: "http://{{ observability_control_plane.relay_listen }}/ready"
+            status_code: 200
+            return_content: false
+            use_proxy: false
+          register: _observability_relay_ready
+          retries: 5
+          delay: 2
+          until: _observability_relay_ready.status == 200
+      rescue:
+        - name: Restore the previous node-label relay binary after failed activation
+          ansible.builtin.file:
+            src: "{{ _observability_relay_previous_release.stat.lnk_source }}"
+            dest: "{{ observability_control_plane.relay_install_root }}/current"
+            state: link
+            force: true
+          when:
+            - _observability_relay_runtime_changed | bool
+            - _observability_relay_previous_release.stat.islnk | default(false)
+
+        - name: Restore previous node-label relay unit after failed activation
+          ansible.builtin.copy:
+            content: "{{ _observability_relay_previous_unit_bytes.content | b64decode }}"
+            dest: /etc/systemd/system/observability-prometheus-relay.service
+            owner: root
+            group: root
+            mode: '0644'
+          when: _observability_relay_previous_unit.stat.exists
+
+        - name: Restart the previous node-label relay
+          ansible.builtin.systemd_service:
+            name: observability-prometheus-relay
+            daemon_reload: true
+            state: restarted
+          when: _observability_relay_previous_unit.stat.exists
+
+        - name: Stop an unaccepted first node-label relay activation
+          ansible.builtin.systemd_service:
+            name: observability-prometheus-relay
+            state: stopped
+            enabled: false
+          when: not _observability_relay_previous_unit.stat.exists
+
+        - name: Remove the unaccepted first node-label relay unit
+          ansible.builtin.file:
+            path: /etc/systemd/system/observability-prometheus-relay.service
+            state: absent
+          when: not _observability_relay_previous_unit.stat.exists
+
+        - name: Fail closed after rejected node-label relay activation
+          ansible.builtin.fail:
+            msg: Node-label relay did not become ready; ingress was not published against it.
+
+    - name: Commit ready node-label relay activation
+      ansible.builtin.set_fact:
+        _observability_relay_runtime_ready: true
 
     - name: Create unprivileged isolated ingress group
       ansible.builtin.group:

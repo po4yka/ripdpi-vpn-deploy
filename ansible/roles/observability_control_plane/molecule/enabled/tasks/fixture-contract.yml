@@ -94,6 +94,21 @@
         promtool_archive_members:
           amd64: prometheus-3.15.1.linux-amd64/promtool
           arm64: prometheus-3.15.1.linux-arm64/promtool
+      relay_listen: 127.0.0.1:19091
+      relay_install_root: /opt/observability-collector-vmagent
+      relay_binary_link: /usr/local/libexec/observability-collector-vmagent
+      relay_queue_dir: /var/lib/observability-prometheus/relay-queue
+      relay:
+        version: v1.155.0
+        urls:
+          amd64: https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.155.0/vmutils-linux-amd64-v1.155.0.tar.gz
+          arm64: https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.155.0/vmutils-linux-arm64-v1.155.0.tar.gz
+        sha256:
+          amd64: b6181fc16cf19835706ea5d67215eea56c1fe87350fdfd82a5ff803ea2c1a907
+          arm64: 45fa04b8d616dd644c33c00698f22bbe67f9402bc474a1e6df8025f7e649d78f
+        archive_members:
+          amd64: vmagent-prod
+          arm64: vmagent-prod
       tls:
         server_cert_pem: "{{ control_plane_fixture_tls.results[0].content | b64decode }}"
         server_key_pem: "{{ control_plane_fixture_tls.results[1].content | b64decode }}"

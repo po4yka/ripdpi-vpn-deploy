@@ -46,7 +46,13 @@ Prometheus binds only `127.0.0.1:9090`; an isolated unprivileged nginx master
 accepts only private-IP mTLS `POST /remote-write/v1/nodes/<node_id>` on 9443.
 The existing nginx binary runs with its own configuration, pid and temporary
 directory; shared VPN nginx units, sites and 80/443 listeners are never touched.
-Its IP SAN is verified without DNS or SNI. Prometheus generations are content-addressed and
+Its IP SAN is verified without DNS or SNI. Ingress forwards only to a loopback
+vmagent relay (`127.0.0.1:19091`, own pin and `/opt/observability-collector-vmagent`
+root) with `extra_label=node=<cert-bound id>`; vmagent overrides any payload
+`node` label. Do not use `$1` after the `rewrite ^` regex, which resets captures.
+The relay disables its on-disk queue so a Prometheus outage returns 429 to the
+sender's durable queue; Prometheus rejections after relay acceptance are lost.
+Prometheus generations are content-addressed and
 immutable; rollback repoints `current.yml` directly at the prior generation.
 The exact certificate subject maps to one technical node id. TLS validation
 uses the client CA, CRL, `clientAuth` purpose and the exact private server IP SAN.
