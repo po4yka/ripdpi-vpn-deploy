@@ -23,7 +23,7 @@ from awg_device_binding import public_key, resolve_binding
 from template_render import merge_render_vars, render_template, template_environment
 from test_awg_device_binding import document, key
 from test_awg_device_binding_native import native_config
-from test_awg_dualstack_native import ECHO, LAB_AWG_DESTINATION_DENY_V6, PROBE, path_evidence
+from test_awg_dualstack_native import ECHO, LAB_AWG_DESTINATION_DENY_V4, LAB_AWG_DESTINATION_DENY_V6, PROBE, path_evidence
 from test_transport_semantics_native import command, exact_awg_sources
 
 pytestmark = pytest.mark.native_runtime
@@ -215,6 +215,7 @@ def test_failed_complete_config_restores_addresses_mtu_service_and_private_bytes
         values=merge_render_vars()
         # The lab uplink stands in for the public internet with ULA fd88::/64.
         values.update(amneziawg_secrets={'instances':[item]},firewall_awg_uplink_interface='up0',
+                      firewall_awg_destination_deny_v4=LAB_AWG_DESTINATION_DENY_V4,
                       firewall_awg_destination_deny_v6=LAB_AWG_DESTINATION_DENY_V6,
                       security_controls={'fail2ban':False},
                       _firewall_effective_check_mode=True,_firewall_tailnet_ssh_sets_was_absent=True,
