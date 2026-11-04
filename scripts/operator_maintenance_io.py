@@ -156,7 +156,7 @@ def encrypted_command(command, destination, recipient, *, environment, cwd, time
             try:
                 code, _ = run_command(command, timeout=timeout, environment=environment, cwd=cwd,
                                       output_fd=age.stdin.fileno(), defer_cancellation=defer_cancellation)
-            except BaseException as caught:
+            except (Exception, KeyboardInterrupt, SystemExit) as caught:
                 # Defer cancellation until the authenticated diagnostic is published.
                 error = caught
             finally:
