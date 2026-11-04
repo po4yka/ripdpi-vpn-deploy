@@ -23,6 +23,54 @@ def test_scenario_retains_all_real_https_verification_and_prepare_phase():
     assert 'Atom feed carries the declared media type and publication identity' in source
 
 
+@pytest.mark.parametrize(('task_name', 'failure'), [
+    ('New public pages are served', ''),
+    ('New public pages are served', 'page'),
+    ('The seeded model news page is readable by nginx and served', ''),
+    ('The seeded model news page is readable by nginx and served', 'file-mode'),
+    ('The seeded model news page is readable by nginx and served', 'directory-mode'),
+    ('The model news units are valid and the timer is enabled', ''),
+    ('The model news units are valid and the timer is enabled', 'unit'),
+    ('The model news units are valid and the timer is enabled', 'timer'),
+])
+def test_model_news_verification_reports_each_failed_check(tmp_path, task_name, failure):
+    verify = yaml.safe_load((SCENARIO / 'verify.yml').read_text())[0]
+    task = next(task for task in verify['tasks'] if task['name'] == task_name)
+    binaries = tmp_path / 'bin'
+    binaries.mkdir()
+    stub = '''#!/bin/bash
+case ${0##*/} in
+  curl)
+    if [[ $* == *--write-out* ]]; then
+      if [[ $FAILURE == page && ${!#} == */notes/ ]]; then printf 404; else printf 200; fi
+    else
+      printf 'The first refresh runs within an hour'
+    fi ;;
+  stat)
+    if [[ ${!#} == */news.html ]]; then
+      if [[ $FAILURE == file-mode ]]; then printf WRONG; else printf 'model-news www-data 640'; fi
+    else
+      if [[ $FAILURE == directory-mode ]]; then printf WRONG; else printf 'model-news www-data 2750'; fi
+    fi ;;
+  systemd-analyze) [[ $FAILURE != unit ]] ;;
+  systemctl) if [[ $FAILURE == timer ]]; then printf disabled; else printf enabled; fi ;;
+  id) printf 1000 ;;
+esac
+'''
+    for name in ('curl', 'stat', 'systemd-analyze', 'systemctl', 'id'):
+        binary = binaries / name
+        binary.write_text(stub)
+        binary.chmod(0o755)
+    shell = task['ansible.builtin.shell']
+    result = subprocess.run(
+        [shell['executable'], '-c', shell['cmd']],
+        env={**os.environ, 'PATH': str(binaries) + os.pathsep + os.environ['PATH'], 'FAILURE': failure},
+        capture_output=True, text=True, timeout=10,
+    )
+
+    assert (result.returncode != 0) is bool(failure), result.stdout + result.stderr
+
+
 def _run(path):
     env = os.environ.copy()
     env['ANSIBLE_STDOUT_CALLBACK'] = 'default'

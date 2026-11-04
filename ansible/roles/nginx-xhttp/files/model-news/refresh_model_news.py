@@ -84,7 +84,10 @@ def parse_date(value: str | None) -> datetime | None:
             return None
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+    try:
+        return parsed.astimezone(timezone.utc)
+    except OverflowError:
+        return None
 
 
 def feed_entries(body: bytes) -> list[dict]:

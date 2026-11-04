@@ -172,6 +172,27 @@ def test_malformed_entry_link_drops_only_that_entry(
     assert "alert(1)" not in page
 
 
+@pytest.mark.parametrize("date", ["0001-01-01T00:00:00+01:00", "9999-12-31T23:59:59-01:00"])
+def test_date_overflow_drops_only_that_entry_and_keeps_other_sources(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, date: str
+) -> None:
+    feed = f"""<rss><channel>
+    <item><title>Invalid date</title><link>https://news.example/invalid</link>
+    <pubDate>{date}</pubDate></item>
+    <item><title>Healthy headline</title><link>https://news.example/valid</link>
+    <pubDate>Tue, 03 Nov 2026 13:41:00 GMT</pubDate></item>
+    </channel></rss>""".encode()
+    _serve(monkeypatch, {"https://news.example/feed": feed, HUB_URL: HUB})
+
+    status, output = _run(tmp_path, [SOURCES[1], SOURCES[0]])
+
+    assert status == 0
+    page = output.read_text()
+    assert "Invalid date" not in page
+    assert "Healthy headline" in page
+    assert "lab/Model-New" in page
+
+
 def test_slow_source_is_cut_off_by_the_wall_clock_limit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

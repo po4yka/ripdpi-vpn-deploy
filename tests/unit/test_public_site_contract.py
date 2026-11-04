@@ -501,8 +501,13 @@ def test_archive_groups_every_note_under_its_topic() -> None:
 def test_model_news_toggle_owns_link_location_and_sitemap_entry() -> None:
     enabled = renderer.merge_render_vars()
     disabled = {**enabled, "nginx_xhttp_model_news_enabled": False}
+    enabled_string = {**enabled, "nginx_xhttp_model_news_enabled": "true"}
+    disabled_string = {**enabled, "nginx_xhttp_model_news_enabled": "false"}
     operator_tree = {**enabled, "nginx_xhttp_public_site_dir": "/srv/operator-site"}
-    for variables, present in ((enabled, True), (disabled, False), (operator_tree, None)):
+    for variables, present in (
+        (enabled, True), (disabled, False), (enabled_string, True),
+        (disabled_string, False), (operator_tree, None),
+    ):
         variables["public_site_canonical_url"] = "https://notes.example.test"
         header = renderer.render_template(SITE_TEMPLATES / "about.html.j2", variables)
         sitemap = renderer.render_template(SITE_TEMPLATES / "sitemap.xml.j2", variables)
