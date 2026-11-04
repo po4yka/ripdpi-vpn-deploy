@@ -3,7 +3,8 @@
 
 Reads the rclone configuration on stdin, authorizes its B2 key and requires the
 exact append-only grant: no deleteFiles, one private bucket, and a name prefix
-equal to this node's replica directory. A same-host local remote has no remote grant to check.
+equal to this node's replica directory, plus a bucket lifecycle that keeps hidden
+versions for at least 30 days. A same-host local remote has no remote grant to check.
 Prints one refusal category on failure.
 """
 import argparse
@@ -14,6 +15,7 @@ import sys
 from urllib import request
 
 CAPABILITIES = {'listBuckets', 'listFiles', 'readFiles', 'writeFiles'}
+RETENTION_DAYS = 30
 AUTHORIZE = 'https://api.backblazeb2.com/b2api/v4/b2_authorize_account'
 
 
@@ -60,6 +62,11 @@ def check(config_text, remote, path, host, opener):
                    {'accountId': auth['accountId'], 'bucketName': bucket})['buckets']
     if len(buckets) != 1 or buckets[0]['bucketType'] != 'allPrivate':
         raise ValueError('private-bucket-required')
+    # Hidden versions are the only copy left after a compromised node's sync deletes.
+    rules = [rule for rule in buckets[0].get('lifecycleRules') or [] if prefix.startswith(rule['fileNamePrefix'])]
+    if (len(rules) != 1 or rules[0].get('daysFromUploadingToHiding') is not None
+            or (rules[0].get('daysFromHidingToDeleting') or 0) < RETENTION_DAYS):
+        raise ValueError('hidden-version-retention-required')
     return 'backup-storage-grant-accepted'
 
 
@@ -72,7 +79,7 @@ def main():
     opener = request.build_opener(request.ProxyHandler({}), NoRedirect())
     try:
         outcome = check(sys.stdin.read(), args.remote, args.path, args.host, opener)
-    except (ValueError, KeyError, OSError, configparser.Error) as error:
+    except Exception as error:  # every failure is a refusal with one category
         category = str(error) if isinstance(error, ValueError) else type(error).__name__
         print(f'backup-storage-grant-refused: {category}', file=sys.stderr)
         return 1
