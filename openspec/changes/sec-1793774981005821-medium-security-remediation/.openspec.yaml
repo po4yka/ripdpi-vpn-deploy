@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-11-04
+goal: SEC-1793774981005821 Remediate medium security audit findings
