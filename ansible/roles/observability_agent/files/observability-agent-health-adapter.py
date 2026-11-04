@@ -530,8 +530,8 @@ def _parse_certificate_expiry(path: Path) -> int:
         raise HealthAdapterError("invalid certificate evidence") from error
 
 
-def _render_certificate(node: str, expires_at: int | None) -> list[str]:
-    labels = {"node": node, "role": "observability-sender"}
+def _render_certificate(node: str, role: str, expires_at: int | None) -> list[str]:
+    labels = {"node": node, "role": role}
     result = [
         _sample(
             "vpn_certificate_collection_success",
@@ -639,6 +639,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--restore-drill-max-age-seconds", type=int, required=True)
     parser.add_argument("--backup-snapshot-max-age-seconds", type=int, required=True)
     parser.add_argument("--certificate", type=Path, required=True)
+    parser.add_argument(
+        "--reality-self-steal-certificate",
+        type=Path,
+        help="Public self-steal certificate chain; omit when self-steal is disabled.",
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--required-service", action="append", default=[])
     args = parser.parse_args(argv)
@@ -694,6 +699,14 @@ def main(argv: list[str] | None = None) -> int:
     except HealthAdapterError:
         certificate_expiry = None
         failed = True
+    self_steal_expiry = None
+    if args.reality_self_steal_certificate is not None:
+        try:
+            self_steal_expiry = _parse_certificate_expiry(
+                args.reality_self_steal_certificate
+            )
+        except HealthAdapterError:
+            failed = True
     lines = [
         "# Managed by observability-agent-health-adapter.",
         *_deadline(args.node_id, "health-adapter", now, 180),
@@ -738,7 +751,12 @@ def main(argv: list[str] | None = None) -> int:
         ),
         *_render_backup_stage(args.node_id, backup),
         *_render_restore(args.node_id, restore),
-        *_render_certificate(args.node_id, certificate_expiry),
+        *_render_certificate(args.node_id, "observability-sender", certificate_expiry),
+        *(
+            _render_certificate(args.node_id, "reality-self-steal", self_steal_expiry)
+            if args.reality_self_steal_certificate is not None
+            else []
+        ),
         "",
     ]
     try:

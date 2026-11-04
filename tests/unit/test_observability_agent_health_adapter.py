@@ -270,6 +270,41 @@ def test_certificate_parse_failure_is_explicit_and_redacted(tmp_path: Path) -> N
     assert "private-certificate-content" not in metrics + rerun.stderr
 
 
+@pytest.mark.parametrize("valid", [True, False])
+def test_self_steal_certificate_is_reported_under_its_own_role(
+    tmp_path: Path, valid: bool
+) -> None:
+    result, _metrics, paths = _run(tmp_path)
+    assert result.returncode == 0
+    chain = tmp_path / "credentials" / "reality-self-steal.crt"
+    chain.write_text(TEST_CERTIFICATE * 2 if valid else "not-a-certificate")
+    chain.chmod(0o440)
+
+    rerun = subprocess.run(
+        [*result.args[:-2], "--reality-self-steal-certificate", str(chain), *result.args[-2:]],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    metrics = paths[3].read_text()
+
+    assert rerun.returncode == (0 if valid else 2), rerun.stderr
+    assert (
+        'vpn_certificate_collection_success{node="edge-prod",role="observability-sender"} 1'
+        in metrics
+    )
+    assert (
+        'vpn_certificate_collection_success{node="edge-prod",role="reality-self-steal"} '
+        f"{int(valid)}" in metrics
+    )
+    # Fixture notAfter: 2036-09-02 00:26:54 UTC.
+    assert (
+        'vpn_certificate_not_after_timestamp_seconds{node="edge-prod",role="reality-self-steal"} 2103928014'
+        in metrics
+    ) is valid
+
+
 def test_watchdog_failure_restart_rate_limit_and_recovery_are_bounded(
     tmp_path: Path,
 ) -> None:

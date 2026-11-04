@@ -210,10 +210,13 @@ no on-disk queue during operation: it returns HTTP 429 while Prometheus is
 unavailable, and the sender's durable queue keeps the data. On graceful stop it
 can flush in-memory blocks to a 64 MiB queue at
 `/var/lib/observability-prometheus/relay-queue`, which the disk guard counts.
-It has MemoryMax 64 MiB and `-memory.allowedBytes` 32 MiB inside the collector
+It has MemoryMax 128 MiB and `-memory.allowedBytes` 32 MiB inside the collector
 slice. Prometheus rejections after relay acceptance (for example samples
 outside the retention window) are dropped at the relay and are not visible in
-sender discard counters.
+sender discard counters. The collector Prometheus scrapes only the relay's
+remote-write drop, error and retry counters from its loopback `/metrics`;
+`ObservabilityCollectorRelayDeliveryLoss` fires when relay drops increase. Loss
+from an abrupt relay stop leaves no counter.
 
 The local agent and heartbeat jobs share `observability-agent.slice`: 192 MiB
 and 10% of one CPU. The collector host therefore budgets 704 MiB and 30% in
@@ -231,6 +234,9 @@ timestamp. The queue has no age limit; this window is not a wall-clock durabilit
 guarantee. Samples rejected outside the window are HTTP delivery loss. Exact
 in-window history and measured late-history replay resource admission are
 required before rollout; small receiver tests do not prove seven-day capacity.
+Certificate expiry alerts cover the observability client certificate
+(`role="observability-sender"`) and, when self-steal is enabled, the REALITY
+self-steal leaf (`role="reality-self-steal"`), which has no automatic renewal.
 `ObservabilityAgentDeliveryLoss` reports queue/HTTP discards and native label-limit
 rejections after their counters reach the collector. It means incomplete telemetry,
 not a VPN failure; a disconnected collector cannot report the event immediately.

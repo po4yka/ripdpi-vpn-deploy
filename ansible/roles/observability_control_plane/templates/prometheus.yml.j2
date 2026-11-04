@@ -29,6 +29,19 @@ alerting:
 
 scrape_configs:
 {% if (observability_control_plane.alerting | default({'enabled': false}, true)).enabled | default(false) %}
+  - job_name: observability-relay
+    sample_limit: 50
+    label_limit: 16
+    label_name_length_limit: 64
+    label_value_length_limit: 128
+    static_configs:
+      - targets: ['{{ observability_control_plane.relay_listen }}']
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "^vmagent_remotewrite_(packets_dropped_total|samples_dropped_total|errors_total|retries_count_total)$"
+        action: keep
+      - regex: "^(__name__|job)$"
+        action: labelkeep
   - job_name: observability-alertmanager
     sample_limit: 500
     label_limit: 16

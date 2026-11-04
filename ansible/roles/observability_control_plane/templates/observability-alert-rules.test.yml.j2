@@ -190,5 +190,52 @@ tests:
       - eval_time: 4m
         alertname: ObservabilityCertificateCollectionFailed
         exp_alerts:
-          - exp_labels: {component: certificate, environment: staging, node: vpn-p0, severity: warning}
+          - exp_labels: {component: certificate, environment: staging, node: vpn-p0, role: observability-sender, severity: warning}
             exp_annotations: {incident_family: certificate-health, evidence_class: collection-failed, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Managed certificate expiry collection failed., runbook: docs/how-to/incident.md}
+  - interval: 1m
+    input_series:
+      - series: 'vpn_certificate_collection_success{environment="staging",node="vpn-p0",role="observability-sender"}'
+        values: '1x5'
+      - series: 'vpn_certificate_collection_success{environment="staging",node="vpn-p0",role="reality-self-steal"}'
+        values: '0x5'
+      - series: 'vpn_certificate_not_after_timestamp_seconds{environment="staging",node="vpn-p0",role="observability-sender"}'
+        values: '9000000000x5'
+      - series: 'vpn_certificate_not_after_timestamp_seconds{environment="staging",node="vpn-p0",role="reality-self-steal"}'
+        values: '86400x5'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: ObservabilityCertificateCollectionFailed
+        exp_alerts:
+          - exp_labels: {component: certificate, environment: staging, node: vpn-p0, role: reality-self-steal, severity: warning}
+            exp_annotations: {incident_family: certificate-health, evidence_class: collection-failed, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Managed certificate expiry collection failed., runbook: docs/how-to/incident.md}
+      - eval_time: 4m
+        alertname: ObservabilityCertificateExpiresSoon
+        exp_alerts:
+          - exp_labels: {component: certificate, environment: staging, node: vpn-p0, role: reality-self-steal, severity: warning}
+            exp_annotations: {incident_family: certificate-expiry, evidence_class: certificate-expiry-warning, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A managed certificate crossed the configured expiry warning threshold., runbook: docs/how-to/incident.md}
+      - eval_time: 4m
+        alertname: ObservabilityCertificateExpiresCritical
+        exp_alerts:
+          - exp_labels: {component: certificate, environment: staging, node: vpn-p0, role: reality-self-steal, severity: critical}
+            exp_annotations: {incident_family: certificate-expiry, evidence_class: certificate-expiry-critical, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A managed certificate crossed the configured expiry critical threshold., runbook: docs/how-to/incident.md}
+{% for metric in ['vmagent_remotewrite_packets_dropped_total', 'vmagent_remotewrite_samples_dropped_total'] %}
+  - interval: 1m
+    input_series:
+      - series: '{{ metric }}{job="observability-relay"}'
+        values: '0 1 1x10'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: ObservabilityCollectorRelayDeliveryLoss
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: ObservabilityAgentDeliveryLoss
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: ObservabilityCollectorRelayDeliveryLoss
+        exp_alerts:
+          - exp_labels: {component: observability-relay, environment: "{{ observability_control_plane.alerting.silence_gateway.environment }}", node: collector, severity: warning}
+            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: relay-accepted-samples-discarded, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: The collector relay discarded accepted telemetry; monitoring history is incomplete., runbook: docs/how-to/incident.md}
+      - eval_time: 10m
+        alertname: ObservabilityCollectorRelayDeliveryLoss
+        exp_alerts: []
+{% endfor -%}
