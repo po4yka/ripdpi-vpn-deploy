@@ -811,6 +811,12 @@ def test_release_emits_current_role_variables_for_every_component(authority, com
     elif component == 'vmagent':
         assert values['observability_agent']['version'] == '1.2.3'
         assert values['observability_agent']['release_urls']['arm64'] == 'https://example.com/arm64'
+        assert values['observability_control_plane']['relay'] == {
+            'version': '1.2.3',
+            'urls': {arch: f'https://example.com/{arch}' for arch in ('amd64', 'arm64')},
+            'sha256': {arch: config['artifacts'][arch]['sha256'] for arch in ('amd64', 'arm64')},
+            'archive_members': {'amd64': 'vmagent-prod', 'arm64': 'vmagent-prod'},
+        }
     else:
         assert values[component]['linux_amd64_sha256'] == config['artifacts']['amd64']['sha256']
         assert values['hysteria_release_urls' if component == 'hysteria' else 'xray_runtime_release_urls']['amd64'] == 'https://example.com/amd64'

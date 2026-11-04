@@ -123,7 +123,9 @@ def role_variables(component, release, binary_hashes, config):
         return {'observability_control_plane': {'alerting': {'alertmanager': release}}}
     hashes = {f'linux_{arch}_sha256': value for arch, value in release['sha256'].items()}
     if component == 'vmagent':
-        return {'observability_agent': {'version': release['version'], 'release_urls': release['urls'], **hashes}}
+        # The collector relay pins the same verified vmutils archives as the sender.
+        return {'observability_agent': {'version': release['version'], 'release_urls': release['urls'], **hashes},
+                'observability_control_plane': {'relay': release}}
     if component == 'rclone':
         return {'backup_rclone_version': release['version'], 'backup_rclone_binary_sha256': binary_hashes,
                 'backup_rclone_packages': {arch: {'url': release['urls'][arch], 'sha256': release['sha256'][arch]}
