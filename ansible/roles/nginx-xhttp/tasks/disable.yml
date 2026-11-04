@@ -49,4 +49,4 @@
     - _nginx_public_tls_timer.stat.exists | default(false)
 
 - name: Retire the refreshed model news page with the role
-  ansible.builtin.include_tasks: model-news-absent.yml
+  ansible.builtin.include_tasks: model-news-retire.yml

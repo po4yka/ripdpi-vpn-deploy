@@ -28,6 +28,11 @@
                 '/var/www/public-site/notes/reading-benchmark-results.html',
                 '/var/www/public-site/notes/latency-throughput-context.html',
                 '/var/www/public-site/notes/repeatable-model-comparisons.html',
+                '/var/www/public-site/notes/reading-an-open-weight-model-card.html',
+                '/var/www/public-site/notes/serving-mixture-of-experts-models.html',
+                '/var/www/public-site/notes/tokenizer-efficiency-for-chinese-text.html',
+                '/var/www/public-site/notes/index.html', '/var/www/public-site/models.html',
+                '/var/www/public-site/glossary.html',
                 '/var/www/public-site/feed.xml', '/var/www/public-site/robots.txt',
                 '/var/www/public-site/sitemap.xml', '/var/www/public-site/.well-known/security.txt']
                   if ((vpn.enable_nginx_xhttp | default(true) | bool)

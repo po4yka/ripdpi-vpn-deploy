@@ -16,9 +16,8 @@ import html
 import http.client
 import json
 import os
+import signal
 import sys
-import tempfile
-import time
 import unicodedata
 import urllib.parse
 import urllib.request
@@ -53,18 +52,23 @@ urllib.request.install_opener(urllib.request.build_opener(HttpsOnlyRedirects))
 def fetch(url: str) -> bytes:
     if urllib.parse.urlsplit(url).scheme != "https":
         raise ValueError("source must use https")
-    # The socket timeout bounds each read; the deadline bounds the whole body.
-    deadline = time.monotonic() + TIMEOUT
-    chunks, size = [], 0
-    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": USER_AGENT}), timeout=TIMEOUT) as response:
-        while chunk := response.read(64 * 1024):
-            size += len(chunk)
-            if size > MAX_BYTES:
-                raise ValueError("source response is too large")
-            if time.monotonic() > deadline:
-                raise TimeoutError("source response is too slow")
-            chunks.append(chunk)
-    return b"".join(chunks)
+    # A wall-clock alarm bounds name resolution, connection and a trickled body
+    # together; the socket timeout alone only bounds inactivity.
+    def expire(*_args):
+        raise TimeoutError("source response is too slow")
+
+    previous = signal.signal(signal.SIGALRM, expire)
+    signal.setitimer(signal.ITIMER_REAL, TIMEOUT)
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            body = response.read(MAX_BYTES + 1)
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+    if len(body) > MAX_BYTES:
+        raise ValueError("source response is too large")
+    return body
 
 
 def parse_date(value: str | None) -> datetime | None:
@@ -137,7 +141,10 @@ def acceptable(entry: dict) -> bool:
     title, link = entry["title"], entry["link"]
     if not isinstance(title, str) or not isinstance(link, str) or entry["date"] is None:
         return False
-    if urllib.parse.urlsplit(link).scheme != "https":
+    try:
+        if urllib.parse.urlsplit(link).scheme != "https":
+            return False
+    except ValueError:  # a malformed upstream link drops only its own entry
         return False
     text = unicodedata.normalize("NFKC", title + " " + link).casefold()
     return not any(term in text for term in FORBIDDEN)
@@ -203,15 +210,14 @@ def write_atomic(path: str, text: str) -> None:
     directory = os.path.dirname(path) or "."
     for leftover in glob.glob(os.path.join(directory, ".news-*")):
         os.unlink(leftover)  # left by a killed run; only this unit writes here
-    fd, temporary = tempfile.mkstemp(dir=directory, prefix=".news-")
+    temporary = os.path.join(directory, f".news-{os.getpid()}")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        # The unit's UMask=0027 gives 0640, and the setgid state directory gives
+        # nginx's group, so nginx reads the page without any world access.
+        with open(temporary, "x", encoding="utf-8") as handle:
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
-        # nginx reads the page through the state directory's group.
-        os.chown(temporary, -1, os.stat(directory).st_gid)
-        os.chmod(temporary, 0o640)
         os.replace(temporary, path)
     except BaseException:
         os.unlink(temporary)

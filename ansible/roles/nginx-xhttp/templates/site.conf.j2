@@ -88,7 +88,7 @@ server {
         default_type application/atom+xml;
         try_files $uri =404;
     }
-{% if (nginx_xhttp_model_news_enabled | default(true) | bool) and not (nginx_xhttp_public_site_dir | default('')) %}
+{% if nginx_xhttp_model_news_enabled | default(true) and not (nginx_xhttp_public_site_dir | default('')) %}
 
     # Refreshed by model-news.timer outside the published site tree; the page
     # uses the bundled identity, so an operator-owned site never serves it.
@@ -180,7 +180,7 @@ server {
         default_type application/atom+xml;
         try_files $uri =404;
     }
-{% if (nginx_xhttp_model_news_enabled | default(true) | bool) and not (nginx_xhttp_public_site_dir | default('')) %}
+{% if nginx_xhttp_model_news_enabled | default(true) and not (nginx_xhttp_public_site_dir | default('')) %}
 
     # Refreshed by model-news.timer outside the published site tree; the page
     # uses the bundled identity, so an operator-owned site never serves it.
