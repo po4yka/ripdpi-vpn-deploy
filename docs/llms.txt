@@ -40,6 +40,7 @@
 - [Runbook — disaster recovery / restore](/md/how-to/restore.md)
 - [Runbook — rollback](/md/how-to/rollback.md)
 - [Runbook — credential rotation](/md/how-to/rotate.md)
+- [Run repository security checks and host audits](/md/how-to/security-checks.md)
 - [Snell refinement evaluation](/md/how-to/snell-refinement.md)
 - [Runbook: stand up a split-hop pilot](/md/how-to/split-hop-pilot.md)
 - [Subscription delivery host separation](/md/how-to/subscription-host-separation.md)

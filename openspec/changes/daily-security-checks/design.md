@@ -8,7 +8,9 @@ See proposal.md for the scope and the notification channel selected by the owner
 
 - Goal: detect advisories each day and notify on changed results or scan failure.
 - Goal: add a read-only systemd isolation report to the explicit audit.
-- Non-goal: deploy, send a test issue, change credentials, Cloudflare or SSH.
+- Non-goal: automatic fleet deployment, test-issue drills, or changes to
+  credentials, Cloudflare or SSH. A separate authorized audit collects reports
+  without a transport deployment.
 
 ## Decisions
 
@@ -37,7 +39,8 @@ See proposal.md for the scope and the notification channel selected by the owner
 
 - Own .github/workflows/daily-security.yml, image-scan.yml,
   scripts/notify-security-scan.cjs, their tests, audit-role tasks and notes,
-  .github/SECURITY.md and docs/reference/testing.md.
+  .github/SECURITY.md, the security-checks guide, entry-point links, testing and
+  deployment reference, generated documentation index and verification record.
 - Terraform, vpnd, secrets, public listeners and deployment contracts are unchanged.
 - The implementation stays in its dedicated worktree; shared files have one writer.
 
@@ -57,5 +60,8 @@ dispatch. Existing image CI callers retain their current behavior. The new host
 report appears on the next explicitly authorized security audit. Reverting this
 source change removes both additions without changing host service configuration.
 Validate focused workflow/notification and Ansible tests, static workflow checks,
-the complete local `make check` gate and an independent source review. Record
-hosted execution and actual notification delivery as unverified, not as local proof.
+the complete local `make check` gate and an independent source review. Keep
+source checks, hosted execution, host reports and notification delivery separate.
+The later authorized three-node audit and its CLI correction are recorded in
+verification.md. Neither a successful source test nor a non-blocking playbook
+exit proves a completed assessment; verify the actual report.
