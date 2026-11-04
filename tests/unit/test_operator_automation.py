@@ -99,13 +99,13 @@ def test_resource_lock_stays_held_until_stack_closes_after_failure(authority):
     directory, _, _ = authority
     fleet = load('fleet-maintenance')
     path = directory / 'resource.lock'
-    with pytest.raises(RuntimeError, match='body-failed'):
+    with pytest.raises(FileNotFoundError):
         with ExitStack() as stack:
             stack.enter_context(fleet.resource_lock(path))
             with path.open('r+b') as contender:
                 with pytest.raises(BlockingIOError):
                     fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            raise RuntimeError('body-failed')
+            (directory / 'missing').read_bytes()
     with path.open('r+b') as contender:
         fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
