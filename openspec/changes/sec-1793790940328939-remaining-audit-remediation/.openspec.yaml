@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-11-04
+goal: SEC-1793790940328939 Remediate remaining audit and remediation findings
