@@ -13,7 +13,7 @@ secrets at rest. The Makefile is the operator interface; `vpnd` wraps it.
 ## Service at a glance
 
 The [verified deployment snapshot](docs/reference/deployment-status.md) records
-the four-host service accepted on **3 November 2026**. It is dated evidence,
+the four-host service checked on **4 November 2026 at 05:55 UTC**. It is dated evidence,
 not a live status page. New commits on `main` do not update running servers.
 
 ```mermaid
@@ -62,6 +62,12 @@ surface. [Client notes](docs/reference/client-notes.md) describe engine support;
 not every client implements every transport. A passing service check does not
 prove reachability from each user's network.
 
+The merged transport changes support bounded XHTTP pools, payload-based failover
+and TCP reserves. These options remain off in the recorded deployment. Activation
+needs the paired RIPDPI client and two owned HTTPS controls with verified bodies.
+See [XHTTP profiles](docs/reference/xhttp-delivery-profiles.md) and
+[the payload policy](docs/reference/ripdpi-bundle.md#ripdpipayload_failover).
+
 ## Deployment and recovery
 
 ```mermaid
@@ -92,6 +98,7 @@ credentials, source and state recovery outside Git tracking.
 | Understand what was deployed and what remains unverified | [Deployment snapshot](docs/reference/deployment-status.md) |
 | Set up the workstation and build the first node | [Contributor setup](CONTRIBUTING.md#first-time-setup), [quickstart](docs/tutorials/quickstart.md) |
 | Resume an interruption or check release and recovery inputs | [Operator maintenance](docs/how-to/operator-maintenance.md) |
+| Resume a reviewed node operation or back up the complete operator kit | [Fleet maintenance and recovery](docs/how-to/fleet-maintenance.md) |
 | Deploy a reviewed change to an existing node | [Deployment runbook](docs/how-to/deploy.md) |
 | Configure public HTTPS or inspect certificate renewal | [Certificates](docs/how-to/certificates.md) |
 | Operate the private collector and Kuma | [Observability operations](docs/reference/observability-operations.md) |
@@ -139,6 +146,8 @@ and one independent observer; no personal device hosts a service component.
   releases and review changes before deployment.
 - Source CI, running-service checks, authenticated client traffic and restored
   backups prove different things. Record their dates and limitations.
+- [Daily security scans](.github/SECURITY.md#daily-dependency-and-image-checks)
+  report dependency and image findings. They do not inspect live hosts.
 
 [CONTRIBUTING.md](CONTRIBUTING.md) covers development;
 [AGENTS.md](AGENTS.md) defines repository rules;

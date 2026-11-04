@@ -66,6 +66,16 @@ ASN lookup has a separate 10-second budget; `--asn AS<number>` avoids it.
 
 ## Results and limits
 
+For automatic selection, use the paired RIPDPI
+[payload-failover policy](../reference/ripdpi-bundle.md#ripdpipayload_failover).
+This standalone command does not install that policy or switch candidates.
+Before activation, verify both owned origins, install the paired client and
+deliver a fresh per-device bundle. Then test useful traffic, primary failure,
+TCP reserve selection and recovery through the intended client. Do not infer
+that result from server health or an APK build. The
+[deployment snapshot](../reference/deployment-status.md#transport-activation)
+records which parts have actual acceptance.
+
 The script emits exactly one JSON object with `verdict`, `rtt_ms`, `asn`,
 `threshold_bytes` and `sizes`. Each size observation includes `bytes`,
 `direction`, `completed`, `rtt_ms`, and a categorical `error_kind` on failure.

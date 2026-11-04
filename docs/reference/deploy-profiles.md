@@ -35,6 +35,24 @@ Every fleet profile inherits security-only unattended updates from `all.yml`.
 Automatic reboot remains disabled; use `make os-maintenance` for a serial full
 upgrade, conditional reboot, and both verification gates.
 
+## Recipient resilience options
+
+These settings do not add listeners to a family profile:
+
+- Optional `xray.xhttp_tuning` selects the
+  [bounded XHTTP pool](xhttp-delivery-profiles.md). It requires `stream-up` and
+  matching recipient support; omission retains the untuned profile.
+- `client_payload_failover` defaults to `null`. An explicit
+  [version 2 payload policy](ripdpi-bundle.md#ripdpipayload_failover) requires
+  the paired RIPDPI client and two independent owned HTTPS controls.
+- P0 REALITY and P1 XHTTP provide TCP candidates alongside Hysteria2. With the
+  explicit policy, the paired client checks TCP reserves first after active
+  Hysteria2 payload failure. AmneziaWG is outside this selector pool.
+
+Export and validate fresh per-device bundles after selecting these options.
+The shipped profiles do not activate them or provision control origins. See
+[the deployment snapshot](deployment-status.md) for observed activation status.
+
 ## Hardened production profile
 
 `vpn-prod-hardened.yml` intentionally keeps the same transport contract as

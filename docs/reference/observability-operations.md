@@ -28,7 +28,7 @@ Old task receipts and retained encrypted credentials do not accept this design.
 The source acceptance completed under `MON-1792080593038468` in October.
 It did not accept an external deployment. A later, separately authorized
 service rollout installed vmagent 1.155.0, the collector and the independent
-observer. Its final panel-only checks passed on 2026-11-03; see the
+observer. Refreshed panel-only and recovery checks passed on 2026-11-04; see the
 [deployment snapshot](deployment-status.md). Telegram delivery and human
 notification receipts were outside that selected mode. Do not reopen the
 cancelled historical acceptance task to operate this service.
@@ -385,6 +385,13 @@ loss remains a common-mode dependency. Authenticated external client-path
 quorum remains unchanged; missing witnesses remain unknown/stale.
 
 ## Backup, restore and upgrades
+
+Kuma data, VPN restic repositories and the operator kit have separate backup
+scopes. A successful observer recovery does not prove that node configuration,
+Terraform state or operator credentials can be recovered. Verify the
+[operator-kit offsite copy](../how-to/fleet-maintenance.md#seal-and-verify-the-operator-kit)
+separately. The [deployment snapshot](deployment-status.md) records the dated
+service-wide results; it does not replace fresh operational checks.
 
 Protect the live Kuma database as secret material; SOPS does not encrypt it.
 Daily quiesced backup captures the whole data directory including WAL state,

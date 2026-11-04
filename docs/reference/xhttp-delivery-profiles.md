@@ -87,8 +87,12 @@ successful alternate can establish P1 availability, while the primary variant
 remains failed; it never establishes primary health. No automatic fingerprint
 rotation or session interruption is introduced.
 
-Acceptance is local only: the existing evidence categories `staging` and `client`
-refer to the disconnected local runtime harness and pinned native fixture process.
-There is no external staging soak, physical/external client acceptance, production
-rollout, DNS/certificate issuance or credential mutation. Stable production pins,
-classical P0 and [PQE HOLD](../decisions/0006-pq-reality-adoption.md) remain unchanged.
+The feature's acceptance categories `staging` and `client` refer to the
+disconnected local runtime harness and pinned native fixture process. They do
+not prove an external staging soak or physical client acceptance. The producer
+code is now included in deployed core source; the
+[4 November deployment snapshot](deployment-status.md#transport-activation)
+records these options as disabled. A code deployment does not establish tuned
+recipient adoption or payload failover on a device. Activation still requires
+the paired client, owned controls and exact-path acceptance. Stable production
+pins, classical P0 and [PQE HOLD](../decisions/0006-pq-reality-adoption.md) remain unchanged.

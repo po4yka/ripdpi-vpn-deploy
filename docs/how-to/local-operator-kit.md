@@ -155,6 +155,10 @@ records the last completed service-wide check, not an automatic backup schedule.
 Use [operator maintenance](operator-maintenance.md#check-seal-and-verify-selected-recovery-material)
 for the supported selected-file check, seal and downloaded-backup verification
 commands. Their results state coverage; they do not discover every catalog field.
+Use [fleet maintenance](fleet-maintenance.md#seal-and-verify-the-operator-kit)
+for the complete-kit audit, encrypted archive and exact-object offsite readback.
+The scheduled Kuma backup covers the observer data only; it does not back up
+the operator kit or Terraform state.
 
 ## Agent procedure and completion
 

@@ -76,7 +76,7 @@ Facts, tables and contracts.
 | [AmneziaWG cohort obfuscation profiles](reference/awg-cohorts.md) | AmneziaWG obfuscation cohort profiles named by packet-shape signature, and how to add one | CORE |
 | [Client-side known issues and version pins](reference/client-notes.md) | Client-side known issues and version pins for AmneziaWG, sing-box and NaiveProxy | CORE |
 | [Deploy profiles](reference/deploy-profiles.md) | The group_vars profiles: family, device-full, lab, hardened production; decoy identity; when not to use one | — |
-| [Deployment status — last verified snapshot](reference/deployment-status.md) (Snapshot (2026-11-03)) | Sanitized last verified deployment snapshot, observed live gates and remaining verification boundaries | — |
+| [Deployment status — last verified snapshot](reference/deployment-status.md) (Snapshot (2026-11-04)) | Sanitized deployment, monitoring and recovery checks at 05:55 UTC, with remaining verification boundaries | — |
 | [Make targets](reference/make-targets.md) | Generated mirror of `make help`: every operator target with its one-line purpose | — |
 | [Reviewed network exposure policy](reference/network-exposure-gate.md) | The reviewed, default-off network exposure policy gate and its operator contract | — |
 | [Resource-bounded observability on existing hosts](reference/observability-operations.md) | Bounded co-hosted metrics, private Uptime Kuma, lifecycle verbs, encrypted backup and restore, current contract and task history | — |

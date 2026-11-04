@@ -48,6 +48,12 @@ host-key pins and private authority inputs.
 - A documentation-only change uses local documentation/contract checks and its
   selected hosted CI checks;
   it does not require deploying unchanged runtime merely to advance a source SHA.
+- Optional transport activation is separate from code deployment. Bounded XHTTP
+  pools require matching recipient support. Payload failover and TCP reserve
+  selection require the paired client, an explicit policy and two accepted
+  owned HTTPS controls. Record these as disabled or unverified until actual
+  client transfer and failure/recovery pass. Use
+  [the bundle contract](../reference/ripdpi-bundle.md#ripdpipayload_failover).
 - An authorized runtime rollout requires the affected local gates and live evidence
   at the changed layer. Report the tested source revision and deployable digest
   separately from reused runtime evidence; unchanged digest does not make an old receipt current.
