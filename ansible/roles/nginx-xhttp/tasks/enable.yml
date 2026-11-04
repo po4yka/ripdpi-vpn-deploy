@@ -314,17 +314,11 @@
   no_log: true
   diff: false
 
-# Outside a protected ingress transaction the page is seeded before the nginx
-# reload, so the new location never 404s.
 - name: Decide whether this host serves the refreshed model news page
   ansible.builtin.set_fact:
     _nginx_model_news_active: >-
       {{ (nginx_xhttp_model_news_enabled | bool)
          and (nginx_xhttp_public_site_dir | default('') | length == 0) }}
-
-- name: Converge the refreshed model news page
-  ansible.builtin.include_tasks: model-news-converge.yml
-  when: _nginx_model_news_active | bool
 
 - name: Validate publish and activate complete XHTTP authority
   ansible.builtin.include_role:
@@ -367,6 +361,12 @@
   when:
     - nginx_xhttp.acme is defined
     - _transport_ingress_request is not defined
+
+# The shell and its refreshes carry the hostname and port, and the nginx
+# transaction does not restore /etc/model-news, so they follow an accepted vhost.
+- name: Converge the refreshed model news page
+  ansible.builtin.include_tasks: model-news-converge.yml
+  when: _nginx_model_news_active | bool
 
 - name: Retire the refreshed model news page
   ansible.builtin.include_tasks: model-news-retire.yml

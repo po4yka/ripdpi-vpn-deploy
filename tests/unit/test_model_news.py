@@ -271,3 +271,12 @@ def test_model_news_changes_inside_a_protected_ingress_wait_for_the_commit(
     ]
     commit = names.index("Commit the ready protected ingress and egress composition")
     assert commit < names.index(post_commit_task) <= commit + 2
+
+
+def test_standalone_convergence_follows_the_accepted_nginx_transaction() -> None:
+    # /etc/model-news is outside the nginx transaction roots, so a rejected
+    # vhost must never leave a candidate shell for the next refresh.
+    enable = yaml.safe_load((SCRIPT.parents[2] / "tasks" / "enable.yml").read_text())
+    names = [task.get("name") for task in enable]
+    transaction = names.index("Validate publish and activate complete XHTTP authority")
+    assert names.index("Converge the refreshed model news page") > transaction
