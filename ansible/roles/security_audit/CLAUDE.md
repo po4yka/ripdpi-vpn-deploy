@@ -20,6 +20,7 @@
 
 ## Pitfalls
 
+- `systemd-analyze --no-legend` is limited to `plot`; it prevents `security` from collecting an assessment.
 - `ss -tulpn`, `nft list ruleset`, and `sshd -T` can expose local topology and process names; keep report permissions at `0640`.
 - Do not add decrypted SOPS content, client config files, private keys, subscription URLs, or token logs to report output.
 - Keep this role out of `site.yml`; mandatory security gates belong in `security-verify.yml`, not here.
