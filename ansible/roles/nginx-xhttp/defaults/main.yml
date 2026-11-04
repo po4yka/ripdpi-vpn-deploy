@@ -2,3 +2,21 @@
 
 # Direct calls enable the role; site dispatch supplies its exact predicate.
 nginx_xhttp_role_enabled: true
+
+# Node-local refresh of /news.html from the pinned public sources below.
+# false removes the timer, its state and the navigation link.
+nginx_xhttp_model_news_enabled: true
+# kind "hub" reads the newest Hugging Face repositories of org; kind "feed"
+# reads the RSS or Atom document at url.
+nginx_xhttp_model_news_sources:
+  - {name: DeepSeek, kind: hub, section: New open-weight repositories, org: deepseek-ai}
+  - {name: Qwen, kind: hub, section: New open-weight repositories, org: Qwen}
+  - {name: Moonshot AI, kind: hub, section: New open-weight repositories, org: moonshotai}
+  - {name: Z.ai, kind: hub, section: New open-weight repositories, org: zai-org}
+  - {name: MiniMax, kind: hub, section: New open-weight repositories, org: MiniMaxAI}
+  - {name: Tencent, kind: hub, section: New open-weight repositories, org: tencent}
+  - {name: Baidu, kind: hub, section: New open-weight repositories, org: baidu}
+  - {name: StepFun, kind: hub, section: New open-weight repositories, org: stepfun-ai}
+  - {name: ByteDance Seed, kind: hub, section: New open-weight repositories, org: ByteDance-Seed}
+  - {name: Xiaomi MiMo, kind: hub, section: New open-weight repositories, org: XiaomiMiMo}
+  - {name: AIGC News, kind: feed, section: Headlines, url: "https://aigc.news/feed.xml"}

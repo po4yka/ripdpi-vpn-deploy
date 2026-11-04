@@ -1,0 +1,73 @@
+{% import "_site.html.j2" as site with context %}
+<!doctype html>
+<html lang="en">
+{{ site.head("Serving mixture-of-experts models · LLM Model Notes", "Why mixture-of-experts memory follows total parameters while per-token compute follows active parameters, and how to plan and measure serving.", "/notes/serving-mixture-of-experts-models.html", "article", schema_type="Article", headline="Serving mixture-of-experts models", date_published="2026-11-04", date_modified="2026-11-04") }}
+<body>
+  {{ site.header("note") }}
+  <main id="main-content" tabindex="-1" class="article-shell">
+    <article class="note">
+      <p class="eyebrow">Inference</p>
+      <h1>Serving mixture-of-experts models</h1>
+      <p class="dek">A model with a small active size is cheap per token only after its full weights fit somewhere fast. Plan for both numbers.</p>
+      <p class="byline">By <a rel="author" href="/about.html">LLM Model Notes</a> · <time datetime="2026-11-04">4 November 2026</time> · 9 minute read</p>
+
+      <p>Many recent open-weight releases from Chinese labs are mixture-of-experts models with total sizes from a few hundred billion to more than two trillion parameters and active sizes from about ten to about one hundred billion. Those two numbers lead to very different hardware plans. This note explains which costs follow which number and how to measure the result instead of estimating it from a parameter count.</p>
+
+      <h2>How routing changes the cost model</h2>
+      <p>In a dense model every parameter takes part in every token. In a mixture-of-experts model, each layer holds many expert feed-forward blocks and a small router. For each token the router picks a few experts, and only those run. Attention layers and any shared experts still run for every token.</p>
+      <p>As a result, the arithmetic for one token is close to that of a dense model with the active parameter count. The weights that must be available, however, include every expert, because the next token can route anywhere. That is the central trade-off: compute per token follows the active size, while memory capacity follows the total size.</p>
+
+      <h2>Estimate weight memory from the total</h2>
+      <p>A first estimate of weight memory is the total parameter count multiplied by the bytes per parameter of the stored format. This ignores runtime overhead, activations, and the key-value cache, so it is a lower bound.</p>
+
+      <table>
+        <caption>Weight-only lower bound for a 1T-parameter model</caption>
+        <thead><tr><th>Storage format</th><th>Bytes per parameter</th><th>Weights</th></tr></thead>
+        <tbody>
+          <tr><td>16-bit</td><td>2</td><td>about 2 TB</td></tr>
+          <tr><td>8-bit</td><td>1</td><td>about 1 TB</td></tr>
+          <tr><td>4-bit</td><td>0.5</td><td>about 0.5 TB</td></tr>
+        </tbody>
+      </table>
+
+      <p>For a model such as <code>moonshotai/Kimi-K2.6</code>, which states one trillion total and 32 billion active parameters, even the 4-bit row exceeds the memory of a single accelerator. The deployment needs several accelerators, a multi-node setup, or offloading of experts to slower memory. Each choice changes latency in a different way, so record which one a benchmark used.</p>
+      <p>Smaller releases change the picture. <code>Qwen/Qwen3.6-35B-A3B</code> states 35 billion total and 3 billion active parameters. Its weights fit on one large accelerator in 8-bit form, and its per-token compute is close to that of a 3-billion-parameter dense model.</p>
+
+      <h2>Do not forget the key-value cache</h2>
+      <p>Each request keeps keys and values for every processed token in every attention layer. This cache grows with context length and with the number of concurrent requests. It does not shrink because the feed-forward part is sparse. With context windows of 256,000 tokens or more, the cache can need more memory than the weights at high concurrency.</p>
+      <p>Several recent cards describe attention variants that reduce this cost, such as linear or hybrid attention layers mixed with full attention. The effect depends on the exact layer mix and the runtime's support for it. Measure memory per request at the context lengths you need, as described in the <a href="/notes/latency-throughput-context.html">latency and context note</a>.</p>
+
+      <h2>Expert placement and parallelism</h2>
+      <p>When experts are spread across devices, each token's hidden state must travel to the devices that hold its selected experts and back. This all-to-all exchange adds latency that a dense model of the same active size does not have. Its cost depends on interconnect bandwidth, batch size, and how evenly the router spreads load.</p>
+      <ul>
+        <li><strong>Load balance:</strong> if many tokens pick the same experts, the devices that hold them become the bottleneck. Record per-expert load when the runtime exposes it.</li>
+        <li><strong>Batch size:</strong> small batches leave most experts idle, so throughput per device falls. Large batches improve utilization but increase queueing delay.</li>
+        <li><strong>Offloading:</strong> keeping rarely used experts in host memory saves accelerator memory but makes latency depend on routing, which can vary by language and task.</li>
+      </ul>
+
+      <h2>Measure, then compare</h2>
+      <p>Because these effects interact, a fair comparison between a mixture-of-experts model and a dense model uses the same workload, the same service objective, and the same hardware budget. Report the hardware and parallelism layout next to the numbers.</p>
+      <p>Quality also needs a check under the exact serving configuration. Quantizing a large model so that it fits can change its answers, and the change can differ between experts that see different kinds of input. Run the task-quality check from the <a href="/notes/repeatable-model-comparisons.html">comparison note</a> on the quantized build you will serve.</p>
+
+      <h2>A serving plan checklist</h2>
+      <ul class="checklist">
+        <li>Total and active parameters, and the storage format of the weights.</li>
+        <li>Weight memory lower bound and the layout that holds it.</li>
+        <li>Key-value cache memory per request at each target context length.</li>
+        <li>Expert placement, interconnect, and any offloading.</li>
+        <li>Throughput and latency at a declared service objective.</li>
+        <li>Task quality measured on the exact build and format you serve.</li>
+      </ul>
+
+      <h2>Primary references</h2>
+      <ul class="references">
+        <li><a href="https://arxiv.org/abs/2101.03961">Switch Transformers</a> — sparse expert routing and its training and serving trade-offs.</li>
+        <li><a href="https://arxiv.org/abs/2401.06066">DeepSeekMoE</a> — fine-grained and shared experts in a mixture-of-experts design.</li>
+        <li><a href="https://arxiv.org/abs/2309.06180">PagedAttention</a> — key-value cache memory management in serving.</li>
+      </ul>
+    </article>
+    {{ site.more_notes("/notes/serving-mixture-of-experts-models.html") }}
+  </main>
+  {{ site.footer() }}
+</body>
+</html>

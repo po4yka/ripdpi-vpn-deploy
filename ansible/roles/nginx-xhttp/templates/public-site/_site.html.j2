@@ -92,39 +92,67 @@
 </head>
 {%- endmacro -%}
 
+{% macro nav_link(href, label, key, current) -%}
+<a{% if current == key %} aria-current="page"{% elif current == "note" and key == "notes" %} aria-current="true"{% endif %} href="{{ href }}">{{ label }}</a>
+{%- endmacro -%}
+
 {% macro header(current="") -%}
 <a class="skip-link" href="#main-content">Skip to content</a>
 <header>
   <a class="brand" href="/"><img src="/favicon.svg" width="28" height="28" alt="">LLM Model Notes</a>
   <nav aria-label="Primary">
-    <a{% if current == "notes" %} aria-current="page"{% elif current == "note" %} aria-current="true"{% endif %} href="/#current-notes">Notes</a>
-    <a{% if current == "about" %} aria-current="page"{% endif %} href="/about.html">About</a>
-    <a{% if current == "methodology" %} aria-current="page"{% endif %} href="/methodology.html">Methodology</a>
-    <a{% if current == "updates" %} aria-current="page"{% endif %} href="/updates.html">Updates</a>
+    {{ nav_link("/notes/", "Notes", "notes", current) }}
+    {{ nav_link("/models.html", "Models", "models", current) }}
+{% if nginx_xhttp_model_news_enabled | default(true) | bool %}
+    {{ nav_link("/news.html", "News", "news", current) }}
+{% endif %}
+    {{ nav_link("/glossary.html", "Glossary", "glossary", current) }}
+    {{ nav_link("/about.html", "About", "about", current) }}
   </nav>
 </header>
 {%- endmacro -%}
 
-{% macro more_notes(path) -%}
+{#- One registry for every note: home grid, archive and "More notes" read it. -#}
 {%- set notes = [
-  {"href": "/notes/reading-benchmark-results.html", "topic": "Evaluation", "title": "Reading benchmark results carefully"},
-  {"href": "/notes/latency-throughput-context.html", "topic": "Inference", "title": "Latency, throughput, and context"},
-  {"href": "/notes/repeatable-model-comparisons.html", "topic": "Methods", "title": "Repeatable model comparisons"},
+  {"href": "/notes/reading-an-open-weight-model-card.html", "topic": "Open models", "minutes": 9, "date": "2026-11-04", "title": "Reading an open-weight model card", "summary": "Separate the artifact from the announcement: revision, total and active parameters, native context, and the license file itself."},
+  {"href": "/notes/serving-mixture-of-experts-models.html", "topic": "Inference", "minutes": 9, "date": "2026-11-04", "title": "Serving mixture-of-experts models", "summary": "Why memory follows total parameters while per-token compute follows active ones, and what that means for hardware plans."},
+  {"href": "/notes/tokenizer-efficiency-for-chinese-text.html", "topic": "Methods", "minutes": 8, "date": "2026-11-04", "title": "Measuring tokenizer efficiency for Chinese text", "summary": "A reproducible way to compare how many tokens a fixed Chinese corpus costs under different tokenizers."},
+  {"href": "/notes/reading-benchmark-results.html", "topic": "Evaluation", "minutes": 9, "date": "2026-07-16", "title": "Reading benchmark results carefully", "summary": "Define the evaluation contract, inspect uncertainty, and check prompt sensitivity before treating a score as evidence."},
+  {"href": "/notes/latency-throughput-context.html", "topic": "Inference", "minutes": 9, "date": "2026-07-16", "title": "Latency, throughput, and context", "summary": "Measure first-token delay, generation cadence, and capacity under a workload another person can reproduce."},
+  {"href": "/notes/repeatable-model-comparisons.html", "topic": "Methods", "minutes": 10, "date": "2026-07-16", "title": "Repeatable model comparisons", "summary": "Turn a product question into a pinned manifest, paired observations, and a compact result bundle."},
 ] -%}
+{%- set topics = ["Open models", "Evaluation", "Inference", "Methods"] -%}
+
+{% macro topic_anchor(topic) -%}
+/notes/#{{ topic | lower | replace(" ", "-") }}
+{%- endmacro -%}
+
+{% macro note_card(note, heading="h3") -%}
+<article class="note-card">
+  <p class="meta"><a href="{{ topic_anchor(note.topic) }}">{{ note.topic }}</a> · {{ note.minutes }} min</p>
+  <{{ heading }}><a href="{{ note.href }}">{{ note.title }}</a></{{ heading }}>
+  <p>{{ note.summary }}</p>
+</article>
+{%- endmacro -%}
+
+{% macro more_notes(path) -%}
+{%- set current = (notes | selectattr("href", "equalto", path) | first) -%}
+{%- set related = (notes | rejectattr("href", "equalto", path) | selectattr("topic", "equalto", current.topic) | list)
+    + (notes | rejectattr("href", "equalto", path) | rejectattr("topic", "equalto", current.topic) | list) -%}
 <nav class="more-notes" aria-labelledby="more-notes">
   <h2 id="more-notes">More notes</h2>
   <ul>
-{%- for note in notes if note.href != path %}
+{%- for note in related[:3] %}
     <li><span class="meta">{{ note.topic }}</span><a href="{{ note.href }}">{{ note.title }}</a></li>
 {%- endfor %}
   </ul>
-  <p><a href="/#current-notes">All notes</a> · <a href="/methodology.html">Methodology</a></p>
+  <p><a href="/notes/">All notes</a> · <a href="/methodology.html">Methodology</a></p>
 </nav>
 {%- endmacro -%}
 
 {% macro footer() -%}
 <footer>
   <div><strong>LLM Model Notes</strong><p>Independent notes on practical evaluation.</p></div>
-  <nav aria-label="Footer"><a href="/methodology.html">Our method</a><a href="/feed.xml">Atom feed</a></nav>
+  <nav aria-label="Footer"><a href="/methodology.html">Methodology</a><a href="/updates.html">Updates</a><a href="/feed.xml">Atom feed</a></nav>
 </footer>
 {%- endmacro -%}

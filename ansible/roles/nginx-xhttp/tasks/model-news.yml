@@ -1,0 +1,88 @@
+---
+# Node-local /news.html refresh. Its state lives outside /var/www/public-site,
+# so the timer never writes into the transaction-owned site tree.
+- name: Create the model news system group
+  ansible.builtin.group:
+    name: model-news
+    system: true
+
+- name: Create the model news system user
+  ansible.builtin.user:
+    name: model-news
+    group: model-news
+    system: true
+    shell: /usr/sbin/nologin
+    home: /nonexistent
+    create_home: false
+
+- name: Create model news configuration and state directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.owner }}"
+    mode: "0755"
+  loop:
+    - {path: /etc/model-news, owner: root}
+    - {path: /var/lib/model-news, owner: model-news}
+
+- name: Install the model news refresh script
+  ansible.builtin.copy:
+    src: model-news/refresh_model_news.py
+    dest: /usr/local/libexec/model-news-refresh
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the model news sources
+  ansible.builtin.template:
+    src: model-news-sources.json.j2
+    dest: /etc/model-news/sources.json
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the model news page shell
+  ansible.builtin.template:
+    src: public-site/news.html.j2
+    dest: /etc/model-news/news-shell.html
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Seed the model news page until the first refresh
+  ansible.builtin.copy:
+    content: >-
+      {{ lookup('ansible.builtin.template', 'public-site/news.html.j2')
+         | replace('<!-- model-news:updated -->', 'The first refresh runs within an hour of deployment.')
+         | replace('<!-- model-news:items -->', '<p>No entries yet.</p>') }}
+    dest: /var/lib/model-news/news.html
+    owner: model-news
+    group: model-news
+    mode: "0644"
+    force: false
+
+- name: Install the model news units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: /etc/systemd/system/{{ item }}
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - model-news.service
+    - model-news.timer
+  register: _model_news_units
+
+- name: Reload systemd after model news unit changes
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: _model_news_units.changed and not ansible_check_mode
+
+- name: Enable the model news timer
+  ansible.builtin.systemd_service:
+    name: model-news.timer
+    enabled: true
+    # A changed schedule only applies after the timer restarts.
+    state: "{{ 'restarted' if _model_news_units.changed else 'started' }}"
+  when: not ansible_check_mode or not _model_news_units.changed

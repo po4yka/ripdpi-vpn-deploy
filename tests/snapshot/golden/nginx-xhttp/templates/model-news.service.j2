@@ -1,0 +1,37 @@
+[Unit]
+Description=Render the public model news page from pinned sources
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=model-news
+Group=model-news
+UMask=0022
+StateDirectory=model-news
+StateDirectoryMode=0755
+ExecStart=/usr/bin/python3 /usr/local/libexec/model-news-refresh /etc/model-news/sources.json /etc/model-news/news-shell.html /var/lib/model-news/news.html
+TimeoutStartSec=600
+# Network reads only: no capabilities, read-only system, writes confined to
+# the state directory that nginx serves.
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/model-news
