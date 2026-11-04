@@ -49,6 +49,7 @@ STATUS_UNITS = {
     "control-plane": (
         "observability-ingress.service",
         "observability-prometheus.service",
+        "observability-prometheus-relay.service",
         "observability-alertmanager.service",
         "observability-telegram-relay.service",
         "observability-silence-gateway.service",
@@ -768,6 +769,7 @@ def _status_program(component: str) -> bytes:
         "agent": ("http://127.0.0.1:19090/ready",),
         "control-plane": (
             "http://127.0.0.1:9090/-/ready",
+            "http://127.0.0.1:19091/ready",
             "gateway",
         ),
         "kuma": ("http://127.0.0.1:13001/api/entry-page",),
@@ -798,7 +800,7 @@ if COMPONENT == "control-plane":
         pass
     if notification_mode == "panel-only":
         UNITS = {_status_units(component, 'panel-only')!r}
-        READINESS = ("http://127.0.0.1:9090/-/ready",)
+        READINESS = ("http://127.0.0.1:9090/-/ready", "http://127.0.0.1:19091/ready")
 states = {{}}
 for unit in UNITS:
     try:

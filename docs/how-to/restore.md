@@ -224,6 +224,8 @@ the canonical schedules during recovery. It is not a multi-file power-loss
 atomicity guarantee. Incomplete persistent recovery bundles also block a new
 configuration after reboot removes the runtime lock.
 
+The offsite credential must be append-only. Issue one Backblaze key per node, restricted to the private bucket and the prefix `<rclone_path without bucket>/<node hostname>/`, with exactly `listBuckets`, `listFiles`, `readFiles` and `writeFiles`, and keep `hard_delete = false` in its rclone section. Before it writes the rclone configuration, every deploy and this command run `scripts/backup-storage-grant.py` from the controller and stop on any other grant or when the one lifecycle rule covering that prefix keeps hidden versions for fewer than 30 days (`daysFromHidingToDeleting`, with no `daysFromUploadingToHiding`). A compromised node can then only hide objects, and hidden or superseded versions stay recoverable for that window.
+
 Prepare the approved `backup.remote` settings in the canonical encrypted SOPS
 document and materialize them with `make decrypt`. Keep the existing restic
 password: configuration compares it privately with `/etc/restic/password`, and

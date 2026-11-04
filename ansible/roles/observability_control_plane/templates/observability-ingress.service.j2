@@ -1,7 +1,8 @@
 [Unit]
 Description=Private mTLS observability ingestion (isolated nginx master)
-After=network-online.target observability-disk-guard.service observability-prometheus.service
+After=network-online.target observability-disk-guard.service observability-prometheus.service observability-prometheus-relay.service
 Wants=network-online.target
+Requires=observability-prometheus-relay.service
 BindsTo=observability-disk-guard.service
 ConditionPathExists=!/var/lib/observability-disk-guard/latched
 

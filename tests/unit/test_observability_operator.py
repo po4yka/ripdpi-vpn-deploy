@@ -137,7 +137,7 @@ if entry['program'] == 'ssh':
     elif '/api/v2/alerts' in payload:
         print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'receiver': 'telegram-primary', 'state': 'api-delivered'}}))
     else:
-        print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'state': 'healthy', 'notification_mode': 'telegram', 'units': {{'observability-ingress.service': 'active', 'observability-prometheus.service': 'active', 'observability-alertmanager.service': 'active', 'observability-telegram-relay.service': 'active', 'observability-silence-gateway.service': 'active', 'observability-control-plane-adapter.timer': 'active', 'observability-protocol-liveness-adapter.timer': 'active', 'observability-disk-guard.service': 'active', 'observability-push-pipeline.timer': 'active', 'observability-push-delivery.timer': 'active'}}}}))
+        print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'state': 'healthy', 'notification_mode': 'telegram', 'units': {{'observability-ingress.service': 'active', 'observability-prometheus.service': 'active', 'observability-prometheus-relay.service': 'active', 'observability-alertmanager.service': 'active', 'observability-telegram-relay.service': 'active', 'observability-silence-gateway.service': 'active', 'observability-control-plane-adapter.timer': 'active', 'observability-protocol-liveness-adapter.timer': 'active', 'observability-disk-guard.service': 'active', 'observability-push-pipeline.timer': 'active', 'observability-push-delivery.timer': 'active'}}}}))
 """
     for name in ("ansible-playbook", "ssh"):
         _write(binary / name, recorder, 0o700)
@@ -260,7 +260,7 @@ def test_control_plane_status_uses_installed_mode_without_notification_credentia
         credential_reads.append(args)
         raise FileNotFoundError('no notification credential')
     def readiness(url, **kwargs):
-        assert url == 'http://127.0.0.1:9090/-/ready'
+        assert url in {'http://127.0.0.1:9090/-/ready', 'http://127.0.0.1:19091/ready'}
         return _DrillResponse(ready_status, {})
     monkeypatch.setattr(subprocess, 'run', systemctl)
     monkeypatch.setattr(os, 'open', missing_credential)
@@ -272,6 +272,7 @@ def test_control_plane_status_uses_installed_mode_without_notification_credentia
     if mode == 'panel-only':
         assert not credential_reads
         assert set(report['units']) == {'observability-ingress.service', 'observability-prometheus.service',
+            'observability-prometheus-relay.service',
             'observability-control-plane-adapter.timer', 'observability-protocol-liveness-adapter.timer',
             'observability-disk-guard.service', 'observability-push-pipeline.timer'}
         assert not any('observability-push-delivery.timer' in call for call in inspected)
@@ -471,6 +472,7 @@ def test_status_is_secretless_read_only_and_redacted(
         "units": {
             "observability-ingress.service": "active",
             "observability-prometheus.service": "active",
+            "observability-prometheus-relay.service": "active",
             "observability-alertmanager.service": "active",
             "observability-telegram-relay.service": "active",
             "observability-silence-gateway.service": "active",
