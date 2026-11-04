@@ -8,7 +8,7 @@ AWG interface names come only from the nonempty canonical instance list; no
 legacy `awg0` fallback grants forwarding or backup authority.
 
 **restic + optional rclone remote** — restic encrypts the repository and
-rclone mirrors its opaque contents to the configured offsite backend. The
+rclone mirrors its opaque contents to the configured offsite backend. Each node key is append-only (no `deleteFiles`) and scoped to its own prefix, so sync deletions become recoverable B2 hides; the controller refuses any wider grant before delivery. The
 restic password remains separate from the SOPS/age recovery key.
 
 **Configuration is a separate intent** — `make backup-configure` selects one
