@@ -112,7 +112,8 @@
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          test "$(stat -c '%U %a' /var/lib/model-news/news.html)" = 'model-news 644'
+          test "$(stat -c '%U %G %a' /var/lib/model-news/news.html)" = 'model-news www-data 640'
+          test "$(stat -c '%U %G %a' /var/lib/model-news)" = 'model-news www-data 750'
           curl --silent --show-error --fail --insecure \
             --resolve vpn.example.test:8443:127.0.0.1 \
             https://vpn.example.test:8443/news.html | grep -q 'The first refresh runs within an hour'
