@@ -1,0 +1,51 @@
+{% import "_site.html.j2" as site with context %}
+{%- set releases = [
+  {"lab": "DeepSeek", "model": "DeepSeek-V4.1-Flash", "repo": "deepseek-ai/DeepSeek-V4.1-Flash", "month": "2026-09", "architecture": "Multimodal MoE, context up to 1M", "license": "MIT"},
+  {"lab": "DeepSeek", "model": "DeepSeek-V4-Pro", "repo": "deepseek-ai/DeepSeek-V4-Pro", "month": "2026-04", "architecture": "MoE, 1.6T total / 49B active", "license": "MIT"},
+  {"lab": "DeepSeek", "model": "DeepSeek-V4-Flash", "repo": "deepseek-ai/DeepSeek-V4-Flash", "month": "2026-04", "architecture": "MoE, 284B total / 13B active", "license": "MIT"},
+  {"lab": "Alibaba Qwen", "model": "Qwen3.8-2.4T-A95B", "repo": "Qwen/Qwen3.8-2.4T-A95B", "month": "2026-08", "architecture": "MoE, 2.4T total / 95B active, 262K native", "license": "Qwen3.8-Max License"},
+  {"lab": "Alibaba Qwen", "model": "Qwen3.8-27B", "repo": "Qwen/Qwen3.8-27B", "month": "2026-08", "architecture": "27B, 262K native", "license": "Apache-2.0"},
+  {"lab": "Alibaba Qwen", "model": "Qwen3.6-35B-A3B", "repo": "Qwen/Qwen3.6-35B-A3B", "month": "2026-04", "architecture": "MoE, 35B total / 3B active", "license": "Apache-2.0"},
+  {"lab": "Moonshot AI", "model": "Kimi K3", "repo": "moonshotai/Kimi-K3", "month": "2026-06", "architecture": "MoE, 2.8T total / 104B active, 1M context", "license": "Kimi K3 License"},
+  {"lab": "Moonshot AI", "model": "Kimi-K2.6", "repo": "moonshotai/Kimi-K2.6", "month": "2026-04", "architecture": "MoE, 1T total / 32B active", "license": "Modified MIT"},
+  {"lab": "Z.ai", "model": "GLM-5.3", "repo": "zai-org/GLM-5.3", "month": "2026-08", "architecture": "MoE, 1M context", "license": "GLM-5.3 License"},
+  {"lab": "Z.ai", "model": "GLM-5.2", "repo": "zai-org/GLM-5.2", "month": "2026-06", "architecture": "MoE, 1M context", "license": "MIT"},
+  {"lab": "MiniMax", "model": "MiniMax-M3.1-Flash", "repo": "MiniMaxAI/MiniMax-M3.1-Flash", "month": "2026-10", "architecture": "Multimodal MoE, about 428B total / 23B active", "license": "MiniMax Community License"},
+  {"lab": "MiniMax", "model": "MiniMax-M2", "repo": "MiniMaxAI/MiniMax-M2", "month": "2025-10", "architecture": "MoE, 230B total / 10B active", "license": "Modified MIT"},
+  {"lab": "Tencent", "model": "Hy3", "repo": "tencent/Hy3", "month": "2026-07", "architecture": "MoE, 295B total / 21B active", "license": "Apache-2.0"},
+  {"lab": "StepFun", "model": "Step 5 Preview", "repo": "stepfun-ai/Step-5-Preview", "month": "2026-09", "architecture": "Sparse MoE, 600B total / 27B active", "license": "StepFun Model License 1.0"},
+  {"lab": "Xiaomi MiMo", "model": "MiMo-V2.6-Pro-RL", "repo": "XiaomiMiMo/MiMo-V2.6-Pro-RL", "month": "2026-09", "architecture": "Sparse MoE, 1.02T total / 42B active", "license": "MIT"},
+  {"lab": "ByteDance Seed", "model": "Seed-OSS-36B-Instruct", "repo": "ByteDance-Seed/Seed-OSS-36B-Instruct", "month": "2025-08", "architecture": "36B, 512K context", "license": "Apache-2.0"},
+  {"lab": "Baidu", "model": "ERNIE-4.5-300B-A47B-PT", "repo": "baidu/ERNIE-4.5-300B-A47B-PT", "month": "2025-06", "architecture": "MoE, 300B total / 47B active", "license": "Apache-2.0"},
+] -%}
+<!doctype html>
+<html lang="en">
+{{ site.head("Model tracker · LLM Model Notes", "Recent open-weight language models from Chinese labs with architecture and license facts checked on each model repository.", "/models.html") }}
+<body>
+  {{ site.header("models") }}
+  <main id="main-content" tabindex="-1" class="prose wide">
+    <p class="eyebrow">Model tracker</p>
+    <h1>Open-weight models from Chinese labs</h1>
+    <p>Recent open-weight releases, newest repository first within each lab. Every value comes from the model's own repository: the model card, its configuration file, or its license file. A blank or general entry means the card does not state more.</p>
+    <p class="activity">Checked <time datetime="2026-11-04">4 November 2026</time>. Dates are the month the repository was created, which can differ from the announcement. Read <a href="/notes/reading-an-open-weight-model-card.html">how to read a model card</a> before comparing rows.</p>
+
+    <table>
+      <caption>Open-weight releases and their stated facts</caption>
+      <thead><tr><th>Lab</th><th>Model</th><th>Repository created</th><th>Architecture as stated</th><th>License</th></tr></thead>
+      <tbody>
+{%- for release in releases %}
+        <tr><td>{{ release.lab }}</td><td><a href="https://huggingface.co/{{ release.repo }}">{{ release.model }}</a></td><td><time datetime="{{ release.month }}">{{ release.month }}</time></td><td>{{ release.architecture }}</td><td>{{ release.license }}</td></tr>
+{%- endfor %}
+      </tbody>
+    </table>
+
+    <h2>How rows are chosen</h2>
+    <p>The tracker lists general-purpose language models with public weights. It leaves out hosted-only products, image and speech models, and quantized copies. A row is added only after its facts are read on the repository; announcements and third-party summaries are not used as sources.</p>
+    <p>Licenses differ inside one model family, so each row names the license of that repository. A custom license name means the terms are specific to the release and need to be read in full.</p>
+{% if nginx_xhttp_model_news_enabled | default(true) | bool %}
+    <p>For releases that are not yet checked here, see the automatically refreshed <a href="/news.html">news page</a>.</p>
+{% endif %}
+  </main>
+  {{ site.footer() }}
+</body>
+</html>

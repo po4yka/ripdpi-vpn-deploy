@@ -3,34 +3,23 @@
 <html lang="en">
 {{ site.head("LLM Model Notes", "Independent notes on practical language-model evaluation and inference behavior.", "/", schema_type="WebSite") }}
 <body>
-  {{ site.header("notes") }}
+  {{ site.header("home") }}
   <main id="main-content" tabindex="-1">
     <section class="hero">
       <p class="eyebrow">Independent reference</p>
       <h1>LLM Model Notes</h1>
-      <p>Clear, practical guides to evaluation design, inference constraints, and the trade-offs behind model comparisons.</p>
-      <div class="hero-actions"><a class="primary-link" href="#current-notes">Explore the notes <span aria-hidden="true">↓</span></a><a href="/methodology.html">Start with the methodology</a></div>
-      <p class="activity">Updated <time datetime="2026-07-16">16 July 2026</time> · <a href="/updates.html">See the project log</a></p>
+      <p>Clear, practical guides to open-weight models from Chinese labs, evaluation design, inference constraints, and the trade-offs behind model comparisons.</p>
+      <div class="hero-actions"><a class="primary-link" href="#current-notes">Explore the notes <span aria-hidden="true">↓</span></a><a href="/models.html">Browse the model tracker</a></div>
+      <p class="activity">Updated <time datetime="2026-11-04">4 November 2026</time> · <a href="/updates.html">See the project log</a></p>
     </section>
     <section aria-labelledby="current-notes">
       <h2 id="current-notes">Current notes</h2>
       <div class="grid">
-        <article class="note-card">
-          <p class="meta">Evaluation · 9 min</p>
-          <h3><a href="/notes/reading-benchmark-results.html">Reading benchmark results carefully</a></h3>
-          <p>Define the evaluation contract, inspect uncertainty, and check prompt sensitivity before treating a score as evidence.</p>
-        </article>
-        <article class="note-card">
-          <p class="meta">Inference · 9 min</p>
-          <h3><a href="/notes/latency-throughput-context.html">Latency, throughput, and context</a></h3>
-          <p>Measure first-token delay, generation cadence, and capacity under a workload another person can reproduce.</p>
-        </article>
-        <article class="note-card">
-          <p class="meta">Methods · 10 min</p>
-          <h3><a href="/notes/repeatable-model-comparisons.html">Repeatable model comparisons</a></h3>
-          <p>Turn a product question into a pinned manifest, paired observations, and a compact result bundle.</p>
-        </article>
+{%- for note in site.notes %}
+        {{ site.note_card(note) | indent(8) }}
+{%- endfor %}
       </div>
+      <p class="section-link"><a href="/notes/">All notes by topic</a>{% if nginx_xhttp_model_news_enabled | default(true) | bool %} · <a href="/news.html">Latest open-model news</a>{% endif %}</p>
     </section>
   </main>
   {{ site.footer() }}

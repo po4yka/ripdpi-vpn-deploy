@@ -78,6 +78,15 @@ server {
         try_files $uri =404;
     }
 
+
+    # Refreshed by model-news.timer outside the published site tree; the page
+    # uses the bundled identity, so an operator-owned site never serves it.
+    location = /news.html {
+        root /var/lib/model-news;
+        try_files $uri =404;
+    }
+
+
     # Public site for ordinary browser and scanner requests.
     location / {
         try_files $uri $uri/ =404;

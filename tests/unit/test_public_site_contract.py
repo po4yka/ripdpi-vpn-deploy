@@ -41,6 +41,16 @@ def _render(*, fallback: bool = False) -> str:
     return renderer.render_template(TEMPLATE, variables)
 
 
+ARTICLES = (
+    "reading-an-open-weight-model-card.html.j2",
+    "serving-mixture-of-experts-models.html.j2",
+    "tokenizer-efficiency-for-chinese-text.html.j2",
+    "reading-benchmark-results.html.j2",
+    "latency-throughput-context.html.j2",
+    "repeatable-model-comparisons.html.j2",
+)
+
+
 def _render_site_page(name: str) -> str:
     variables = renderer.merge_render_vars()
     variables["public_site_canonical_url"] = "https://notes.example.test"
@@ -209,13 +219,20 @@ def test_site_contains_normal_discovery_and_identity_files() -> None:
         "_site.html.j2",
         "about.html.j2",
         "feed.xml.j2",
+        "glossary.html.j2",
         "index.html.j2",
         "latency-throughput-context.html.j2",
         "methodology.html.j2",
+        "models.html.j2",
+        "news.html.j2",
+        "notes-index.html.j2",
+        "reading-an-open-weight-model-card.html.j2",
         "reading-benchmark-results.html.j2",
         "repeatable-model-comparisons.html.j2",
         "robots.txt.j2",
+        "serving-mixture-of-experts-models.html.j2",
         "sitemap.xml.j2",
+        "tokenizer-efficiency-for-chinese-text.html.j2",
         "updates.html.j2",
     }
 
@@ -345,9 +362,11 @@ def test_pages_advertise_updates_feed_and_homepage_shows_recent_activity() -> No
         "about.html.j2",
         "methodology.html.j2",
         "updates.html.j2",
-        "reading-benchmark-results.html.j2",
-        "latency-throughput-context.html.j2",
-        "repeatable-model-comparisons.html.j2",
+        "notes-index.html.j2",
+        "models.html.j2",
+        "glossary.html.j2",
+        "news.html.j2",
+        *ARTICLES,
     )
     feed_link = (
         '<link rel="alternate" type="application/atom+xml" '
@@ -359,7 +378,7 @@ def test_pages_advertise_updates_feed_and_homepage_shows_recent_activity() -> No
         assert feed_link in _render_site_page(template)
 
     homepage = _render_site_page("index.html.j2")
-    assert '<time datetime="2026-07-16">16 July 2026</time>' in homepage
+    assert '<time datetime="2026-11-04">4 November 2026</time>' in homepage
     assert '<a href="/updates.html">See the project log</a>' in homepage
 
 
@@ -373,7 +392,7 @@ def test_atom_feed_publishes_the_real_articles_under_the_canonical_identity() ->
     assert feed.tag == f"{atom}feed"
     assert feed.findtext(f"{atom}id") == "https://notes.example.test/"
     assert feed.findtext(f"{atom}title") == "LLM Model Notes updates"
-    assert feed.findtext(f"{atom}updated") == "2026-07-16T11:52:04Z"
+    assert feed.findtext(f"{atom}updated") == "2026-11-04T09:00:00Z"
     assert feed.findtext(f"{atom}author/{atom}name") == "LLM Model Notes"
 
     links = {link.attrib["rel"]: link.attrib for link in feed.findall(f"{atom}link")}
@@ -390,18 +409,37 @@ def test_atom_feed_publishes_the_real_articles_under_the_canonical_identity() ->
         },
     }
 
+    july, november = "2026-07-16T11:52:04Z", "2026-11-04T09:00:00Z"
     expected_articles = {
+        "Reading an open-weight model card": (
+            "/notes/reading-an-open-weight-model-card.html",
+            "Pin the repository revision, separate total and active parameters, read native context twice, and record the license file for each release.",
+            november,
+        ),
+        "Serving mixture-of-experts models": (
+            "/notes/serving-mixture-of-experts-models.html",
+            "Plan weight memory from total parameters, compute from active parameters, and measure key-value cache and expert placement directly.",
+            november,
+        ),
+        "Measuring tokenizer efficiency for Chinese text": (
+            "/notes/tokenizer-efficiency-for-chinese-text.html",
+            "Compare how many tokens a fixed, normalized Chinese corpus costs under each model's own tokenizer and chat template.",
+            november,
+        ),
         "Reading benchmark results carefully": (
             "/notes/reading-benchmark-results.html",
             "Review the evaluation contract, uncertainty, contamination, and prompt sensitivity before comparing a benchmark score.",
+            july,
         ),
         "Latency, throughput, and context": (
             "/notes/latency-throughput-context.html",
             "Measure first-token delay, generation cadence, and capacity inside a reproducible workload envelope.",
+            july,
         ),
         "Repeatable model comparisons": (
             "/notes/repeatable-model-comparisons.html",
             "Build a pinned comparison manifest, collect paired observations, and publish a compact result bundle.",
+            july,
         ),
     }
     entries = feed.findall(f"{atom}entry")
@@ -409,7 +447,7 @@ def test_atom_feed_publishes_the_real_articles_under_the_canonical_identity() ->
 
     for entry in entries:
         title = entry.findtext(f"{atom}title")
-        path, summary = expected_articles[title]
+        path, summary, stamp = expected_articles[title]
         canonical = f"https://notes.example.test{path}"
         assert entry.findtext(f"{atom}id") == canonical
         assert entry.find(f"{atom}link").attrib == {
@@ -417,8 +455,8 @@ def test_atom_feed_publishes_the_real_articles_under_the_canonical_identity() ->
             "type": "text/html",
             "href": canonical,
         }
-        assert entry.findtext(f"{atom}published") == "2026-07-16T11:52:04Z"
-        assert entry.findtext(f"{atom}updated") == "2026-07-16T11:52:04Z"
+        assert entry.findtext(f"{atom}published") == stamp
+        assert entry.findtext(f"{atom}updated") == stamp
         assert entry.findtext(f"{atom}summary") == summary
 
 
@@ -427,23 +465,71 @@ def test_updates_page_exposes_a_human_visible_feed_link() -> None:
     assert '<a href="/feed.xml">Follow updates via Atom</a>' in updates
 
 
-def test_articles_mark_the_notes_section_and_link_the_other_notes() -> None:
-    notes = {
-        "reading-benchmark-results.html.j2": "/notes/reading-benchmark-results.html",
-        "latency-throughput-context.html.j2": "/notes/latency-throughput-context.html",
-        "repeatable-model-comparisons.html.j2": "/notes/repeatable-model-comparisons.html",
+def test_articles_mark_the_notes_section_and_link_related_notes() -> None:
+    topics = {
+        "/notes/reading-an-open-weight-model-card.html": "Open models",
+        "/notes/serving-mixture-of-experts-models.html": "Inference",
+        "/notes/tokenizer-efficiency-for-chinese-text.html": "Methods",
+        "/notes/reading-benchmark-results.html": "Evaluation",
+        "/notes/latency-throughput-context.html": "Inference",
+        "/notes/repeatable-model-comparisons.html": "Methods",
     }
 
-    for template, path in notes.items():
+    for template in ARTICLES:
+        path = "/notes/" + template.removesuffix(".j2")
         page = _render_site_page(template)
-        assert '<a aria-current="true" href="/#current-notes">Notes</a>' in page
+        assert '<a aria-current="true" href="/notes/">Notes</a>' in page
         more = page.split('<nav class="more-notes"', 1)[1].split("</nav>", 1)[0]
         links = re.findall(r'href="([^"]+)"', more)
-        assert links == [
-            *(other for other in notes.values() if other != path),
-            "/#current-notes",
-            "/methodology.html",
-        ]
+        assert links[-2:] == ["/notes/", "/methodology.html"]
+        related = links[:-2]
+        assert len(related) == 3 and path not in related
+        assert len(set(related)) == 3 and set(related) <= set(topics)
+        same_topic = [other for other in topics if other != path and topics[other] == topics[path]]
+        assert related[: len(same_topic)] == same_topic
+
+
+def test_archive_groups_every_note_under_its_topic() -> None:
+    archive = _render_site_page("notes-index.html.j2")
+    sections = dict(re.findall(r'<h2 id="([a-z-]+)">[^<]+</h2>(.*?)</section>', archive, flags=re.DOTALL))
+    assert set(sections) == {"open-models", "evaluation", "inference", "methods"}
+    for template in ARTICLES:
+        path = "/notes/" + template.removesuffix(".j2")
+        assert sum(f'href="{path}"' in body for body in sections.values()) == 1
+
+
+def test_model_news_toggle_owns_link_location_and_sitemap_entry() -> None:
+    enabled = renderer.merge_render_vars()
+    disabled = {**enabled, "nginx_xhttp_model_news_enabled": False}
+    operator_tree = {**enabled, "nginx_xhttp_public_site_dir": "/srv/operator-site"}
+    for variables, present in ((enabled, True), (disabled, False), (operator_tree, None)):
+        variables["public_site_canonical_url"] = "https://notes.example.test"
+        header = renderer.render_template(SITE_TEMPLATES / "about.html.j2", variables)
+        sitemap = renderer.render_template(SITE_TEMPLATES / "sitemap.xml.j2", variables)
+        conf = renderer.render_template(TEMPLATE, {**variables, "nginx_xhttp": {**variables["nginx_xhttp"], "fallback_enabled": True}})
+        served = conf.count("location = /news.html {\n        root /var/lib/model-news;")
+        if present is None:
+            # An operator-owned tree replaces the bundled pages, so only nginx matters.
+            assert served == 0
+            continue
+        assert ('href="/news.html"' in header) is present
+        assert ("/news.html</loc>" in sitemap) is present
+        assert served == (2 if present else 0)
+
+
+def test_model_news_unit_runs_unprivileged_and_writes_only_its_state() -> None:
+    unit = renderer.render_template(TEMPLATE.parent / "model-news.service.j2", renderer.merge_render_vars())
+    for line in (
+        "User=model-news",
+        "CapabilityBoundingSet=",
+        "NoNewPrivileges=true",
+        "ProtectSystem=strict",
+        "ReadWritePaths=/var/lib/model-news",
+    ):
+        assert line in unit.splitlines()
+    assert [line for line in unit.splitlines() if line.startswith("ReadWritePaths=")] == [
+        "ReadWritePaths=/var/lib/model-news"
+    ]
 
 
 def test_homepage_links_to_substantive_benchmark_guide() -> None:
@@ -554,17 +640,30 @@ def test_discovery_files_publish_every_canonical_page_with_lastmod() -> None:
     variables["public_site_canonical_url"] = "https://notes.example.test"
     sitemap = renderer.render_template(SITE_TEMPLATES / "sitemap.xml.j2", variables)
 
-    for path in (
+    november = (
         "/",
+        "/updates.html",
+        "/notes/",
+        "/models.html",
+        "/glossary.html",
+        "/notes/reading-an-open-weight-model-card.html",
+        "/notes/serving-mixture-of-experts-models.html",
+        "/notes/tokenizer-efficiency-for-chinese-text.html",
+    )
+    july = (
         "/about.html",
         "/methodology.html",
-        "/updates.html",
         "/notes/reading-benchmark-results.html",
         "/notes/latency-throughput-context.html",
         "/notes/repeatable-model-comparisons.html",
-    ):
-        assert f"<loc>https://notes.example.test{path}</loc>" in sitemap
-    assert sitemap.count("<lastmod>2026-07-16</lastmod>") == 7
+    )
+    for path in november:
+        assert f"<loc>https://notes.example.test{path}</loc><lastmod>2026-11-04</lastmod>" in sitemap
+    for path in july:
+        assert f"<loc>https://notes.example.test{path}</loc><lastmod>2026-07-16</lastmod>" in sitemap
+    assert sitemap.count("<lastmod>") == len(november) + len(july)
+    # The refreshed page has no stable modification date to publish.
+    assert "<url><loc>https://notes.example.test/news.html</loc></url>" in sitemap
 
     robots = renderer.render_template(SITE_TEMPLATES / "robots.txt.j2", variables)
     assert "Sitemap: https://notes.example.test/sitemap.xml" in robots

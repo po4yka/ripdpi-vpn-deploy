@@ -1,0 +1,77 @@
+{% import "_site.html.j2" as site with context %}
+<!doctype html>
+<html lang="en">
+{{ site.head("Reading an open-weight model card · LLM Model Notes", "How to read an open-weight model card from a Chinese model lab: repository revision, total and active parameters, native context, preview builds, and the license file.", "/notes/reading-an-open-weight-model-card.html", "article", schema_type="Article", headline="Reading an open-weight model card", date_published="2026-11-04", date_modified="2026-11-04") }}
+<body>
+  {{ site.header("note") }}
+  <main id="main-content" tabindex="-1" class="article-shell">
+    <article class="note">
+      <p class="eyebrow">Open models</p>
+      <h1>Reading an open-weight model card</h1>
+      <p class="dek">A release announcement describes a product. A model repository describes an artifact. A comparison needs the artifact.</p>
+      <p class="byline">By <a rel="author" href="/about.html">LLM Model Notes</a> · <time datetime="2026-11-04">4 November 2026</time> · 9 minute read</p>
+
+      <p>Chinese model labs publish many of their large releases as open weights on Hugging Face. That makes the repository the most precise public record of what was released. It is also easy to read carelessly. The card, the configuration file, and the license file each answer a different question, and the answers do not always match the headline of the announcement.</p>
+
+      <h2>Pin the exact artifact</h2>
+      <p>Start with the repository identifier and the commit you downloaded. A repository name such as <code>DeepSeek-V4-Pro</code> is a moving label: the files under it can change after release. Record the commit hash with every measurement, the same way you would record a dataset revision.</p>
+      <p>Look for separate repositories that share a family name. DeepSeek created the <code>DeepSeek-V4-Pro</code> repository for a preview in April 2026 and a later build as <code>DeepSeek-V4-Pro-0813</code>. Results for one do not transfer to the other. A date suffix, a <code>-preview</code> tag, or a code-specific variant such as <code>Kimi-K2.7-Code</code> marks a different artifact, not a different label for the same one.</p>
+      <p>Repository dates also need care. The creation date that the hub shows is the upload date of the repository. It can be earlier than the public announcement, when a lab prepares the repository in advance, or later, when a lab first ships an API. When a date matters, cite the source you read it from.</p>
+
+      <h2>Separate total and active parameters</h2>
+      <p>Most large releases from these labs are mixture-of-experts models. A router sends each token to a small number of expert blocks, so only part of the network runs for any one token. Cards therefore state two numbers, and they answer different questions.</p>
+
+      <table>
+        <caption>Parameter counts as stated on the model cards</caption>
+        <thead><tr><th>Repository</th><th>Total</th><th>Active per token</th></tr></thead>
+        <tbody>
+          <tr><td><code>deepseek-ai/DeepSeek-V4-Flash</code></td><td>284B</td><td>13B</td></tr>
+          <tr><td><code>Qwen/Qwen3.6-35B-A3B</code></td><td>35B</td><td>3B</td></tr>
+          <tr><td><code>moonshotai/Kimi-K2.6</code></td><td>1T</td><td>32B</td></tr>
+          <tr><td><code>XiaomiMiMo/MiMo-V2.5-Pro</code></td><td>1.02T</td><td>42B</td></tr>
+        </tbody>
+      </table>
+
+      <p>The total count decides how much memory the weights need. The active count is closer to the compute cost of one token. Some names encode both: in the Qwen scheme, <code>35B-A3B</code> means 35 billion total and 3 billion active. Do not compare a mixture-of-experts model with a dense model by total size alone, and do not compare them by active size alone. The <a href="/notes/serving-mixture-of-experts-models.html">serving note</a> works through the consequences.</p>
+
+      <h2>Read the context length twice</h2>
+      <p>Cards often give a native context length and a longer extended length. For example, the <code>Qwen/Qwen3.8-27B</code> card states 262,144 tokens natively and extension to about one million. Extension usually depends on a position-scaling method that the serving runtime must enable, and quality at the extended length is a separate claim from support for it.</p>
+      <p>Check the configuration file as well. The <code>max_position_embeddings</code> field in <code>config.json</code> is what most runtimes read by default. When the card and the configuration disagree, the runtime will follow the configuration unless you override it, so record which value your test used.</p>
+      <p class="callout"><strong>Rule of thumb:</strong> treat any context figure as a compatibility limit. Measure retrieval or reasoning at the lengths you need before you rely on them.</p>
+
+      <h2>Open the license file</h2>
+      <p>The license tag at the top of a repository is a summary chosen by the uploader. The license file is the document that applies. Among recent releases the difference matters:</p>
+      <ul>
+        <li>Many repositories use a standard license such as MIT or Apache-2.0.</li>
+        <li>The Kimi-K2.5 and Kimi-K2.6 repositories use a license named "Modified MIT". Read the modification before you assume MIT terms.</li>
+        <li>Several flagship releases use a custom license with the model's name, for example the "Kimi K3 License", the "GLM-5.3 License", and the "Qwen3.8-Max License". A smaller model in the same family can still use Apache-2.0.</li>
+        <li>Tencent published the <code>Hy3</code> preview under the "Tencent Hy Community License Agreement", which excludes some territories, and the later <code>Hy3</code> release under Apache-2.0.</li>
+      </ul>
+      <p>The practical rule is to record the license per repository and per revision, not per model family.</p>
+
+      <h2>Check what the card does not say</h2>
+      <p>A card is written by the publisher. It usually reports benchmark scores under the publisher's own prompts and settings, which the <a href="/notes/reading-benchmark-results.html">benchmark note</a> explains how to review. It rarely states training data composition, contamination checks, or the chat template differences between builds. Missing information is not a negative result, but it should appear in the limitations of any comparison that depends on it.</p>
+      <p>Also check the files the card refers to. The tokenizer files and the chat template decide how your prompts become tokens. Two builds with the same weights and a changed template can behave differently on the same input.</p>
+
+      <h2>A card review checklist</h2>
+      <ul class="checklist">
+        <li>Repository identifier and commit hash recorded with every result.</li>
+        <li>Preview, dated, and task-specific builds treated as separate artifacts.</li>
+        <li>Total and active parameters both noted, with the architecture type.</li>
+        <li>Native context, extended context, and the configuration value recorded.</li>
+        <li>License file read and its exact name recorded for this revision.</li>
+        <li>Tokenizer and chat template revision captured with the prompts.</li>
+      </ul>
+
+      <h2>Primary references</h2>
+      <ul class="references">
+        <li><a href="https://huggingface.co/docs/hub/model-cards">Hugging Face model cards documentation</a> — what the card fields and metadata mean.</li>
+        <li><a href="https://arxiv.org/abs/1810.03993">Model Cards for Model Reporting</a> — the reporting practice that model cards come from.</li>
+        <li><a href="/models.html">Model tracker</a> — recent releases with the facts checked on each repository.</li>
+      </ul>
+    </article>
+    {{ site.more_notes("/notes/reading-an-open-weight-model-card.html") }}
+  </main>
+  {{ site.footer() }}
+</body>
+</html>

@@ -1,0 +1,38 @@
+{% import "_site.html.j2" as site with context %}
+{%- set terms = [
+  {"term": "Active parameters", "text": "The parameters that run for one token in a mixture-of-experts model: the shared layers plus the experts the router selects. Close to the per-token compute cost.", "see": "/notes/serving-mixture-of-experts-models.html"},
+  {"term": "Chat template", "text": "The rule that turns a list of messages into one token sequence, with role markers and special tokens. A changed template can change behavior on the same input.", "see": "/notes/reading-an-open-weight-model-card.html"},
+  {"term": "Contamination", "text": "Overlap between evaluation items and training data, including near copies and memorized solutions. It can raise a score without a matching gain in capability.", "see": "/notes/reading-benchmark-results.html"},
+  {"term": "Context length", "text": "The maximum number of tokens a model accepts in one request. Cards often give a native length and a longer extended length that needs runtime support.", "see": "/notes/reading-an-open-weight-model-card.html"},
+  {"term": "Dense model", "text": "A model in which every parameter takes part in every token. Its total and active parameter counts are the same.", "see": "/notes/serving-mixture-of-experts-models.html"},
+  {"term": "End-to-end latency", "text": "Time from sending a request until the complete response arrives. It depends strongly on output length.", "see": "/notes/latency-throughput-context.html"},
+  {"term": "Inter-token latency", "text": "Time between consecutive generated tokens after generation starts. Its inverse is the per-request generation rate.", "see": "/notes/latency-throughput-context.html"},
+  {"term": "Key-value cache", "text": "Stored attention keys and values for the tokens a request has processed. It grows with context length and concurrency and often limits capacity.", "see": "/notes/serving-mixture-of-experts-models.html"},
+  {"term": "Mixture of experts", "text": "An architecture with many expert blocks per layer and a router that selects a few of them for each token. Memory follows the total size; compute follows the active size.", "see": "/notes/serving-mixture-of-experts-models.html"},
+  {"term": "Model revision", "text": "The exact commit of a model repository. A repository name is a moving label; a revision identifies fixed files.", "see": "/notes/repeatable-model-comparisons.html"},
+  {"term": "Open weights", "text": "Model parameters published for download under a stated license. Open weights do not imply open training data or an open-source license.", "see": "/notes/reading-an-open-weight-model-card.html"},
+  {"term": "Paired comparison", "text": "Scoring every candidate on the same cases and analysing per-case differences instead of comparing two unrelated averages.", "see": "/notes/repeatable-model-comparisons.html"},
+  {"term": "Prefix caching", "text": "Reusing the processed state of a repeated prompt prefix across requests. It reduces prompt work and must be disclosed in a benchmark.", "see": "/notes/latency-throughput-context.html"},
+  {"term": "Quantization", "text": "Storing weights or activations with fewer bits per value to reduce memory and speed up serving. It can change output quality and needs its own check.", "see": "/notes/serving-mixture-of-experts-models.html"},
+  {"term": "Time to first token", "text": "Delay from sending a complete request until the first generated token arrives. It includes queueing and prompt processing.", "see": "/notes/latency-throughput-context.html"},
+  {"term": "Tokenizer", "text": "The component that splits text into the tokens a model reads. Prices, limits and speeds are stated in its units, which differ between models.", "see": "/notes/tokenizer-efficiency-for-chinese-text.html"},
+] -%}
+<!doctype html>
+<html lang="en">
+{{ site.head("Glossary · LLM Model Notes", "Short definitions of the evaluation, inference and open-model terms used across LLM Model Notes.", "/glossary.html") }}
+<body>
+  {{ site.header("glossary") }}
+  <main id="main-content" tabindex="-1" class="prose">
+    <p class="eyebrow">Glossary</p>
+    <h1>Terms used in the notes</h1>
+    <p>Short definitions with a link to the note that uses each term in context.</p>
+    <dl class="glossary">
+{%- for entry in terms %}
+      <dt id="{{ entry.term | lower | replace(' ', '-') }}">{{ entry.term }}</dt>
+      <dd>{{ entry.text }} <a href="{{ entry.see }}">Read more</a></dd>
+{%- endfor %}
+    </dl>
+  </main>
+  {{ site.footer() }}
+</body>
+</html>

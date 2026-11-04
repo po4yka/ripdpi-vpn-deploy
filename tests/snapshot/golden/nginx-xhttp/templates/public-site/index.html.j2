@@ -24,44 +24,63 @@
 <header>
   <a class="brand" href="/"><img src="/favicon.svg" width="28" height="28" alt="">LLM Model Notes</a>
   <nav aria-label="Primary">
-    <a aria-current="page" href="/#current-notes">Notes</a>
+    <a href="/notes/">Notes</a>
+    <a href="/models.html">Models</a>
+
+    <a href="/news.html">News</a>
+
+    <a href="/glossary.html">Glossary</a>
     <a href="/about.html">About</a>
-    <a href="/methodology.html">Methodology</a>
-    <a href="/updates.html">Updates</a>
   </nav>
 </header>
   <main id="main-content" tabindex="-1">
     <section class="hero">
       <p class="eyebrow">Independent reference</p>
       <h1>LLM Model Notes</h1>
-      <p>Clear, practical guides to evaluation design, inference constraints, and the trade-offs behind model comparisons.</p>
-      <div class="hero-actions"><a class="primary-link" href="#current-notes">Explore the notes <span aria-hidden="true">↓</span></a><a href="/methodology.html">Start with the methodology</a></div>
-      <p class="activity">Updated <time datetime="2026-07-16">16 July 2026</time> · <a href="/updates.html">See the project log</a></p>
+      <p>Clear, practical guides to open-weight models from Chinese labs, evaluation design, inference constraints, and the trade-offs behind model comparisons.</p>
+      <div class="hero-actions"><a class="primary-link" href="#current-notes">Explore the notes <span aria-hidden="true">↓</span></a><a href="/models.html">Browse the model tracker</a></div>
+      <p class="activity">Updated <time datetime="2026-11-04">4 November 2026</time> · <a href="/updates.html">See the project log</a></p>
     </section>
     <section aria-labelledby="current-notes">
       <h2 id="current-notes">Current notes</h2>
       <div class="grid">
         <article class="note-card">
-          <p class="meta">Evaluation · 9 min</p>
+          <p class="meta"><a href="/notes/#open-models">Open models</a> · 9 min</p>
+          <h3><a href="/notes/reading-an-open-weight-model-card.html">Reading an open-weight model card</a></h3>
+          <p>Separate the artifact from the announcement: revision, total and active parameters, native context, and the license file itself.</p>
+        </article>
+        <article class="note-card">
+          <p class="meta"><a href="/notes/#inference">Inference</a> · 9 min</p>
+          <h3><a href="/notes/serving-mixture-of-experts-models.html">Serving mixture-of-experts models</a></h3>
+          <p>Why memory follows total parameters while per-token compute follows active ones, and what that means for hardware plans.</p>
+        </article>
+        <article class="note-card">
+          <p class="meta"><a href="/notes/#methods">Methods</a> · 8 min</p>
+          <h3><a href="/notes/tokenizer-efficiency-for-chinese-text.html">Measuring tokenizer efficiency for Chinese text</a></h3>
+          <p>A reproducible way to compare how many tokens a fixed Chinese corpus costs under different tokenizers.</p>
+        </article>
+        <article class="note-card">
+          <p class="meta"><a href="/notes/#evaluation">Evaluation</a> · 9 min</p>
           <h3><a href="/notes/reading-benchmark-results.html">Reading benchmark results carefully</a></h3>
           <p>Define the evaluation contract, inspect uncertainty, and check prompt sensitivity before treating a score as evidence.</p>
         </article>
         <article class="note-card">
-          <p class="meta">Inference · 9 min</p>
+          <p class="meta"><a href="/notes/#inference">Inference</a> · 9 min</p>
           <h3><a href="/notes/latency-throughput-context.html">Latency, throughput, and context</a></h3>
           <p>Measure first-token delay, generation cadence, and capacity under a workload another person can reproduce.</p>
         </article>
         <article class="note-card">
-          <p class="meta">Methods · 10 min</p>
+          <p class="meta"><a href="/notes/#methods">Methods</a> · 10 min</p>
           <h3><a href="/notes/repeatable-model-comparisons.html">Repeatable model comparisons</a></h3>
           <p>Turn a product question into a pinned manifest, paired observations, and a compact result bundle.</p>
         </article>
       </div>
+      <p class="section-link"><a href="/notes/">All notes by topic</a> · <a href="/news.html">Latest open-model news</a></p>
     </section>
   </main>
   <footer>
   <div><strong>LLM Model Notes</strong><p>Independent notes on practical evaluation.</p></div>
-  <nav aria-label="Footer"><a href="/methodology.html">Our method</a><a href="/feed.xml">Atom feed</a></nav>
+  <nav aria-label="Footer"><a href="/methodology.html">Methodology</a><a href="/updates.html">Updates</a><a href="/feed.xml">Atom feed</a></nav>
 </footer>
 </body>
 </html>

@@ -1,0 +1,26 @@
+{% import "_site.html.j2" as site with context %}
+<!doctype html>
+<html lang="en">
+{{ site.head("All notes · LLM Model Notes", "Every note on LLM Model Notes, grouped by topic: open models, evaluation, inference, and methods.", "/notes/") }}
+<body>
+  {{ site.header("notes") }}
+  <main id="main-content" tabindex="-1">
+    <section class="hero">
+      <p class="eyebrow">Notes</p>
+      <h1>All notes</h1>
+      <p>Every guide on the site, grouped by the question it helps answer. Each note is dated and lists its primary references.</p>
+    </section>
+{%- for topic in site.topics %}
+    <section class="topic" aria-labelledby="{{ topic | lower | replace(' ', '-') }}">
+      <h2 id="{{ topic | lower | replace(' ', '-') }}">{{ topic }}</h2>
+      <div class="grid">
+{%- for note in site.notes | selectattr("topic", "equalto", topic) %}
+        {{ site.note_card(note) | indent(8) }}
+{%- endfor %}
+      </div>
+    </section>
+{%- endfor %}
+  </main>
+  {{ site.footer() }}
+</body>
+</html>

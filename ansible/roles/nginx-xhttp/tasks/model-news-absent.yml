@@ -1,0 +1,47 @@
+---
+- name: Inspect the model news timer before retirement
+  ansible.builtin.stat:
+    path: /etc/systemd/system/model-news.timer
+    follow: false
+  register: _model_news_timer
+
+- name: Stop and disable the model news timer
+  ansible.builtin.systemd_service:
+    name: model-news.timer
+    enabled: false
+    state: stopped
+  when: _model_news_timer.stat.exists
+
+# The service has no [Install] section, so it is only stopped, never disabled.
+- name: Stop the model news service
+  ansible.builtin.systemd_service:
+    name: model-news.service
+    state: stopped
+  when: _model_news_timer.stat.exists
+
+- name: Remove the model news units, script, configuration and state
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/model-news.timer
+    - /etc/systemd/system/model-news.service
+    - /usr/local/libexec/model-news-refresh
+    - /etc/model-news
+    - /var/lib/model-news
+  register: _model_news_removed
+
+- name: Reload systemd after model news unit removal
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: _model_news_removed.changed and not ansible_check_mode
+
+- name: Remove the model news system user
+  ansible.builtin.user:
+    name: model-news
+    state: absent
+
+- name: Remove the model news system group
+  ansible.builtin.group:
+    name: model-news
+    state: absent
