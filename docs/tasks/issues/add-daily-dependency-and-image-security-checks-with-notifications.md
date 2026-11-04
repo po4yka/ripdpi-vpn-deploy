@@ -2,7 +2,7 @@
 id: SEC-1793770690402026
 title: Add daily dependency and image security checks with notifications
 kind: feature
-status: doing
+status: review
 area: security
 priority: high
 risk: standard
@@ -14,6 +14,7 @@ openspec_change: daily-security-checks
 created: 2026-11-04
 updated: 2026-11-04
 related_tasks: []
+status_detail: Implementation and scoped checks complete; full macOS parity has baseline failures. Full Linux or hosted CI and real notification delivery remain unverified.
 ---
 
 ## Goal

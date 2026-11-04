@@ -15,7 +15,7 @@ Task, specification and generated-board changes are serialized through taskctl.
 
 ## Execution
 
-- [ ] SEC-1793771107840507 Implement daily scans, change notifications and private systemd security reports with regression coverage #feature !high @item:SEC-1793770690402026
+- [x] SEC-1793771107840507 Implement daily scans, change notifications and private systemd security reports with regression coverage #feature !high @item:SEC-1793770690402026
 
 ## Verification
 

@@ -1,7 +1,7 @@
 ---
 task_id: SEC-1793770690402026
 change: daily-security-checks
-commit_sha: null
+commit_sha: bc9bf0d0fc9bea2d5ff20aa37e6c1aaf284f7429
 local: blocked
 local_evidence: "Feature checks and Ubuntu native regressions pass; full macOS parity has confirmed baseline failures. See local results."
 remote_ci: not_applicable
