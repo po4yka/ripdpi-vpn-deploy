@@ -191,7 +191,26 @@ def test_slow_source_is_cut_off_by_the_wall_clock_limit(
     assert "lab/Model-New" in output.read_text()
 
 
-def test_retirement_inside_a_protected_ingress_waits_for_the_commit(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("tasks_file", "fact", "skipped_task", "post_commit_task"),
+    [
+        (
+            "model-news-retire.yml",
+            "_nginx_model_news_retire_after_commit",
+            "Stop and disable the model news timer",
+            "Retire the model news page after the protected commit",
+        ),
+        (
+            "model-news-converge.yml",
+            "_nginx_model_news_converge_after_commit",
+            "Install the model news page shell",
+            "Converge the model news page after the protected commit",
+        ),
+    ],
+)
+def test_model_news_changes_inside_a_protected_ingress_wait_for_the_commit(
+    tmp_path: Path, tasks_file: str, fact: str, skipped_task: str, post_commit_task: str
+) -> None:
     tasks = SCRIPT.parents[2] / "tasks"
     play = tmp_path / "play.yml"
     play.write_text(
@@ -203,8 +222,8 @@ def test_retirement_inside_a_protected_ingress_waits_for_the_commit(tmp_path: Pa
                     "gather_facts": False,
                     "vars": {"_transport_ingress_request": {"owners": []}},
                     "tasks": [
-                        {"ansible.builtin.include_tasks": str(tasks / "model-news-retire.yml")},
-                        {"ansible.builtin.assert": {"that": ["_nginx_model_news_retire_after_commit"]}},
+                        {"ansible.builtin.include_tasks": str(tasks / tasks_file)},
+                        {"ansible.builtin.assert": {"that": [fact]}},
                     ],
                 }
             ]
@@ -220,7 +239,7 @@ def test_retirement_inside_a_protected_ingress_waits_for_the_commit(tmp_path: Pa
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "Stop and disable the model news timer" not in result.stdout
+    assert skipped_task not in result.stdout
 
     site = yaml.safe_load((REPO_ROOT / "ansible" / "playbooks" / "site.yml").read_text())
     names = [
@@ -230,4 +249,4 @@ def test_retirement_inside_a_protected_ingress_waits_for_the_commit(tmp_path: Pa
         for task in block.get("block", [block])
     ]
     commit = names.index("Commit the ready protected ingress and egress composition")
-    assert names.index("Retire the model news page after the protected commit") == commit + 1
+    assert commit < names.index(post_commit_task) <= commit + 2
