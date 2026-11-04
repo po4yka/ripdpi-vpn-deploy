@@ -11,6 +11,8 @@ service-level commitment.
 - **Security problems** (active probing of a live node, a burned address, a
   leaked key): follow [the security policy](.github/SECURITY.md) and report
   privately. Never open a public issue for those.
+- **Automated dependency or image alerts:** use [security checks](docs/how-to/security-checks.md)
+  to inspect workflow reports, retries and the owner notification issue.
 - **Contributions:** see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Never put credentials, host addresses, hostnames, client identifiers,

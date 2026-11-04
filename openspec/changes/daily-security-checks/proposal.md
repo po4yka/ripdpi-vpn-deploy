@@ -14,7 +14,8 @@ runs. The host audit also lacks a systemd isolation assessment.
   failures change, and close the issue after a complete clean run.
 - Collect a private, non-blocking `systemd-analyze security` report during the
   existing explicit host audit.
-- No breaking changes. Cloudflare, SSH and live infrastructure are outside scope.
+- No breaking changes. Cloudflare, SSH configuration, credentials and transport
+  deployment are outside scope. A separate host audit needs owner authorization.
 
 ## Capabilities
 
@@ -29,5 +30,8 @@ runs. The host audit also lacks a systemd isolation assessment.
 ## Impact
 
 - GitHub Actions, the existing image scan workflow, and the Ansible audit role.
-- Reuse pinned tooling; add no production dependency or credential requirement.
-- Local source delivery only; no push, deployment or real notification drill.
+- Reuse pinned tooling and the audit role's existing Lynis dependency. Add no
+  new credential requirement.
+- The owner later authorized source publication and the report-only audit on
+  the three existing VPN nodes. See verification.md for the observed scope.
+  A real repository notification drill remains unverified.

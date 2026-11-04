@@ -7,6 +7,9 @@ It replaces the 3 November snapshot. It is not a live health report. Later
 source changes, deployments, provider changes and credential rotations need
 their own checks. Private endpoints, identifiers and secret values remain in
 the ignored operator kit. Read its current catalog before an operation.
+The later [security-report update](#security-reporting-update-2026-11-04) records
+the separate 09:00 UTC audit. It does not refresh the service-wide traffic,
+monitoring or recovery acceptance.
 
 ## Source and fleet
 
@@ -126,6 +129,46 @@ not claim to contain its own receipt. See
 [fleet maintenance](../how-to/fleet-maintenance.md#seal-and-verify-the-operator-kit)
 and [observer recovery](observability-operations.md#scheduled-download-and-sqlite-recovery)
 for the separate verification scopes.
+
+## Security reporting update (2026-11-04)
+
+[PR #486](https://github.com/po4yka/ripdpi-vpn-deploy/pull/486) added the daily
+repository checks and private systemd report. The workflow is active on the
+default branch. At this update, no scheduled or manual daily-security run had
+been observed. Hosted scan artifacts, issue updates and notification delivery
+remain unverified. These scans inspect repository inputs, not the live fleet.
+
+The owner separately approved the report-only audit on the three VPN nodes.
+The first run retained a CLI error and no assessed units because `security`
+rejects `--no-legend`. [PR #491](https://github.com/po4yka/ripdpi-vpn-deploy/pull/491)
+removed that flag. The corrected role was applied from
+`fdb0f760827a4adffa3032d1fe0da5d104b5acdc`; its role and playbook files match
+the merged source `4a980d5a883c9049d693df6caade98e920e4c7f6`.
+
+Preview and `make security-audit` passed on all three nodes. Direct readback at
+**2026-11-04 09:00 UTC** verified fresh `systemd-security.txt` reports:
+
+| Host | Analyzer result | Assessed service units | Failed units | Lynis warnings |
+|---|---|---|---|---|
+| node-a | rc=0 | 52 | 0 | 2 |
+| node-b | rc=0 | 55 | 0 | 2 |
+| node-c | rc=0 | 53 | 0 | 2 |
+
+Each systemd report was owned by `root:root` with mode 0640. Lynis collection
+succeeded; its warnings were not suppressed. The role installed its existing
+Lynis dependency and the `menu` package. This is collection acceptance, not a
+clean-security verdict. Isolation scores describe configuration, not a service
+vulnerability finding.
+
+SSH/nftables configuration hashes, core manifests and boot IDs matched the
+pre-audit state. No core deployment, credential change, Cloudflare change or
+new client-traffic acceptance was part of this run. The observer was outside
+this three-node audit. Failed-attempt and successful evidence are retained in
+an encrypted bundle; the operator catalog indexes the scoped receipt.
+
+Use [security checks](../how-to/security-checks.md) for the separate workflow
+and host-audit procedures. The audit role is not a `site.yml` deployment step
+and does not install a recurring host timer.
 
 ## Evidence and refresh boundary
 

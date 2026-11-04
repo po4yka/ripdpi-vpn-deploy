@@ -13,8 +13,9 @@ secrets at rest. The Makefile is the operator interface; `vpnd` wraps it.
 ## Service at a glance
 
 The [verified deployment snapshot](docs/reference/deployment-status.md) records
-the four-host service checked on **4 November 2026 at 05:55 UTC**. It is dated evidence,
-not a live status page. New commits on `main` do not update running servers.
+the four-host service checked on **4 November 2026 at 05:55 UTC**. It is dated
+evidence, not a live status page. It also records the separate security-report
+audit at **09:00 UTC**. New commits on `main` do not update running servers.
 
 ```mermaid
 flowchart TB
@@ -105,6 +106,7 @@ credentials, source and state recovery outside Git tracking.
 | Recover a host, the operator kit or encrypted state | [Restore](docs/how-to/restore.md), [local operator kit](docs/how-to/local-operator-kit.md) |
 | Recover from a failed change or lost access | [Rollback](docs/how-to/rollback.md), [incidents](docs/how-to/incident.md) |
 | Issue or revoke device access | [Device lifecycle](docs/how-to/device-lifecycle.md), [rotation](docs/how-to/rotate.md) |
+| Review daily security findings or collect private host reports | [Security checks](docs/how-to/security-checks.md) |
 | Check source and deployment evidence | [Testing](docs/reference/testing.md), [Make targets](docs/reference/make-targets.md) |
 
 For a new installation, start with the quickstart prerequisites. Its plan phase
@@ -147,7 +149,9 @@ and one independent observer; no personal device hosts a service component.
 - Source CI, running-service checks, authenticated client traffic and restored
   backups prove different things. Record their dates and limitations.
 - [Daily security scans](.github/SECURITY.md#daily-dependency-and-image-checks)
-  report dependency and image findings. They do not inspect live hosts.
+  report dependency and image findings without inspecting live hosts. The separate
+  [host audit](docs/how-to/security-checks.md#run-the-host-audit) collects private
+  server reports.
 
 [CONTRIBUTING.md](CONTRIBUTING.md) covers development;
 [AGENTS.md](AGENTS.md) defines repository rules;

@@ -60,6 +60,7 @@ Complete one task against real infrastructure. Every guide names its preconditio
 | [Runbook — disaster recovery / restore](how-to/restore.md) | Disaster recovery: full rebuild from git plus secrets, or restore from a restic snapshot; RTO and RPO | CORE |
 | [Runbook — rollback](how-to/rollback.md) | Three rollback levels: config rescue, binary rollback, blue-green replacement; what blocks rollback | CORE |
 | [Runbook — credential rotation](how-to/rotate.md) | Credential rotation for one client, the REALITY keypair, Hysteria and AmneziaWG server keys, restic, SSH | CORE |
+| [Repository security checks and host audits](how-to/security-checks.md) | Review daily scan notifications, retry complete scans and collect private host audit reports | — |
 | [Snell refinement evaluation](how-to/snell-refinement.md) | Staging-only Snell payload and refinement matrix; research tier, disabled in every shipped profile | — |
 | [Runbook: stand up a split-hop pilot](how-to/split-hop-pilot.md) | Stand up the two-VPS split-hop pilot: node keys, egress and ingress configuration, verification, tear-down | RESEARCH |
 | [Subscription delivery host separation](how-to/subscription-host-separation.md) | Run the subscription delivery role on a dedicated VPS with the subscription-only toggle | TACTICAL |
@@ -76,7 +77,7 @@ Facts, tables and contracts.
 | [AmneziaWG cohort obfuscation profiles](reference/awg-cohorts.md) | AmneziaWG obfuscation cohort profiles named by packet-shape signature, and how to add one | CORE |
 | [Client-side known issues and version pins](reference/client-notes.md) | Client-side known issues and version pins for AmneziaWG, sing-box and NaiveProxy | CORE |
 | [Deploy profiles](reference/deploy-profiles.md) | The group_vars profiles: family, device-full, lab, hardened production; decoy identity; when not to use one | — |
-| [Deployment status — last verified snapshot](reference/deployment-status.md) (Snapshot (2026-11-04)) | Sanitized deployment, monitoring and recovery checks at 05:55 UTC, with remaining verification boundaries | — |
+| [Deployment status — last verified snapshot](reference/deployment-status.md) (Snapshot (2026-11-04)) | Deployment, monitoring and recovery checks at 05:55 UTC, separate security-report acceptance at 09:00 UTC, and remaining verification boundaries | — |
 | [Make targets](reference/make-targets.md) | Generated mirror of `make help`: every operator target with its one-line purpose | — |
 | [Reviewed network exposure policy](reference/network-exposure-gate.md) | The reviewed, default-off network exposure policy gate and its operator contract | — |
 | [Resource-bounded observability on existing hosts](reference/observability-operations.md) | Bounded co-hosted metrics, private Uptime Kuma, lifecycle verbs, encrypted backup and restore, current contract and task history | — |

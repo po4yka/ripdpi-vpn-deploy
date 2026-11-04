@@ -43,7 +43,7 @@ Contributors can also submit a focused pull request for:
 
 ## Daily dependency and image checks
 
-`daily-security.yml` runs each day at 06:17 UTC and supports manual dispatch.
+`daily-security.yml` is scheduled each day at 06:17 UTC and supports manual dispatch.
 The vulnerability-only filesystem scan includes Python requirements, npm locks
 with development dependencies, and Go modules. It reports all severities,
 including unfixed dependency findings. The existing image inventory covers
@@ -63,6 +63,10 @@ Only runs of the current default-branch revision update the shared issue.
 Manual feature-branch and historical runs retain reports without changing it.
 Reports belong to one run attempt. To retry a complete scan, use **Re-run all
 jobs**; partial retries cannot use earlier clean reports to close the issue.
+
+For manual runs, retries, report interpretation and the separate host audit,
+follow [security checks](../docs/how-to/security-checks.md). Host audit output
+stays private; do not attach raw server reports to the public notification issue.
 
 ## Disclosure
 

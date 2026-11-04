@@ -14,6 +14,10 @@ Fresh or recreated nodes need provisioning and first enrollment before deploymen
 start with `../tutorials/quickstart.md` or the [disposable staging recipe](#staging-first).
 An already managed node uses the [ordinary re-deploy recipe](#ordinary-re-deploy-recipe).
 
+For report-only host audits, use [security checks](security-checks.md#run-the-host-audit).
+The `security_audit` role is separate from `site.yml`; ordinary deployment does
+not run it. Audit collection does not advance the VPN core manifest.
+
 Run commands from the repository root in the pinned Bash session from the
 [canonical workstation setup](../../CONTRIBUTING.md#first-time-setup).
 

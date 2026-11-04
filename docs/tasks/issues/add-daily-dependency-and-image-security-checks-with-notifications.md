@@ -34,4 +34,10 @@ private systemd isolation diagnostics.
   failures are non-blocking and check mode creates no collection evidence.
 - Behavior regressions, workflow checks, the local gate and independent review
   are recorded. Fixtures are not described as hosted delivery or live proof.
-- Cloudflare, SSH, fleet access, publishing and deployment remain outside scope.
+- Cloudflare, SSH configuration, credentials and transport deployment remain
+  outside scope. The owner later approved source publication and the separate
+  report-only audit on the three existing VPN nodes.
+
+The [verification record](../../../openspec/changes/daily-security-checks/verification.md)
+now includes the scoped live audit. Keep this task in review while hosted daily
+scan artifacts and actual GitHub notification delivery remain unverified.
