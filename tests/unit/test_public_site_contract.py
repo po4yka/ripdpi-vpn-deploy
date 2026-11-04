@@ -427,6 +427,25 @@ def test_updates_page_exposes_a_human_visible_feed_link() -> None:
     assert '<a href="/feed.xml">Follow updates via Atom</a>' in updates
 
 
+def test_articles_mark_the_notes_section_and_link_the_other_notes() -> None:
+    notes = {
+        "reading-benchmark-results.html.j2": "/notes/reading-benchmark-results.html",
+        "latency-throughput-context.html.j2": "/notes/latency-throughput-context.html",
+        "repeatable-model-comparisons.html.j2": "/notes/repeatable-model-comparisons.html",
+    }
+
+    for template, path in notes.items():
+        page = _render_site_page(template)
+        assert '<a aria-current="true" href="/#current-notes">Notes</a>' in page
+        more = page.split('<nav class="more-notes"', 1)[1].split("</nav>", 1)[0]
+        links = re.findall(r'href="([^"]+)"', more)
+        assert links == [
+            *(other for other in notes.values() if other != path),
+            "/#current-notes",
+            "/methodology.html",
+        ]
+
+
 def test_homepage_links_to_substantive_benchmark_guide() -> None:
     homepage = _render_site_page("index.html.j2")
     assert 'href="/notes/reading-benchmark-results.html"' in homepage

@@ -93,7 +93,7 @@ header a,
 }
 
 a:hover,
-a[aria-current="page"] {
+a[aria-current] {
   color: var(--accent);
 }
 
@@ -315,6 +315,41 @@ code {
   margin-top: 0.65rem;
 }
 
+.more-notes {
+  display: block;
+  margin-top: 4rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.more-notes h2 {
+  margin: 0 0 1rem;
+  font-size: 1.2rem;
+}
+
+.more-notes ul {
+  display: grid;
+  gap: 1rem;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.more-notes li {
+  display: flex;
+  flex-direction: column;
+}
+
+.more-notes a {
+  padding: 0;
+}
+
+.more-notes li a {
+  min-height: 0;
+  font-size: 1.15rem;
+  font-weight: 650;
+}
+
 .update-list article {
   padding: 1.5rem 0;
   border-top: 1px solid var(--line);
@@ -342,6 +377,13 @@ footer p {
 @media (max-width: 760px) {
   header {
     display: block;
+    padding: 12px 0 8px;
+  }
+
+  th,
+  td {
+    min-width: 0;
+    padding: 0.7rem;
   }
 
   nav {
