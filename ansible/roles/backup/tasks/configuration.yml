@@ -46,7 +46,7 @@
 - name: Require the append-only node grant before credential delivery
   ansible.builtin.assert:
     that: _backup_storage_grant.rc == 0
-    fail_msg: "{{ _backup_storage_grant.stderr_lines | default(['backup-storage-grant-refused: helper-failed']) | last }}"
+    fail_msg: "{{ (_backup_storage_grant.stderr_lines | default([]) or ['backup-storage-grant-refused: helper-failed']) | last }}"
     quiet: true
   when: backup.remote.enabled | default(false)
 
