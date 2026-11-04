@@ -8,7 +8,7 @@
 
 - name: Collect systemd service isolation assessment
   ansible.builtin.command:
-    argv: [systemd-analyze, security, --no-pager, --no-legend]
+    argv: [systemd-analyze, security, --no-pager]
   environment:
     SYSTEMD_COLORS: '0'
     LC_ALL: C
@@ -26,7 +26,7 @@
     group: root
     mode: "0640"
     content: |
-      command=systemd-analyze security --no-pager --no-legend
+      command=systemd-analyze security --no-pager
       rc={{ security_audit_systemd_security.rc | default('unavailable') }}
       assessment=unit isolation configuration, not a vulnerability verdict
 

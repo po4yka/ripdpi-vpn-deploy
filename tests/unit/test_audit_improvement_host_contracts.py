@@ -281,7 +281,7 @@ def test_actual_systemd_security_tasks_retain_private_diagnostics(tmp_path, outc
     binary = tmp_path / "bin"
     binary.mkdir()
     assert selected[0]["ansible.builtin.command"]["argv"] == [
-        "systemd-analyze", "security", "--no-pager", "--no-legend"
+        "systemd-analyze", "security", "--no-pager"
     ]
     selected[0]["ansible.builtin.command"]["argv"][0] = str(binary / "systemd-analyze")
     arguments = tmp_path / "analyzer-arguments.json"
@@ -330,7 +330,7 @@ def test_actual_systemd_security_tasks_retain_private_diagnostics(tmp_path, outc
             assert "rc=2\n" in content and "# module diagnostic\nError executing command." in content
             assert not arguments.exists()
         else:
-            assert json.loads(arguments.read_text()) == ["security", "--no-pager", "--no-legend"]
+            assert json.loads(arguments.read_text()) == ["security", "--no-pager"]
             assert f"rc={1 if outcome == 'nonzero' else 0}\n" in content
             assert "fixture unit isolation assessment" in content
             assert "fixture analyzer diagnostic" in content
