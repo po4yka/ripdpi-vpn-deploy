@@ -257,9 +257,7 @@
         argv: [df, -PB1, /var/lib/observability-prometheus]
       changed_when: false
 
-    - name: Exercise real cohosted receiver and monitoring-only failure boundaries
-      ansible.builtin.include_tasks: tasks/bounded-runtime.yml
-
+    # Runs before the failure-boundary tasks, which leave the collector stopped.
     - name: Assert the relay replaces a forged payload node label with the sender identity
       ansible.builtin.command:
         argv:
@@ -286,3 +284,6 @@
                 time.sleep(2)
             raise SystemExit('relay_node_label_probe_missing')
       changed_when: false
+
+    - name: Exercise real cohosted receiver and monitoring-only failure boundaries
+      ansible.builtin.include_tasks: tasks/bounded-runtime.yml
