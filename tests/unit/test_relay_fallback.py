@@ -23,6 +23,7 @@ import re as _re
 from pathlib import Path
 
 import yaml
+from ansible.plugins.filter.core import to_bool
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -97,6 +98,7 @@ def _render(template_path: Path, extra_vars: dict | None = None) -> str:
         _re.search(p, str(v)).group(0) if _re.search(p, str(v)) else ""
     )
     env.filters["extract"] = lambda key, container: container[key]
+    env.filters["bool"] = to_bool
     env.tests["match"] = lambda v, p: bool(_re.search(p, str(v)))
     env.tests["search"] = lambda v, p: bool(_re.search(p, str(v)))
     return env.get_template(template_path.name).render(**vars_)
