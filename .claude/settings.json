@@ -10,6 +10,7 @@
       "Read(.env)",
       "Read(.envrc)",
       "Read(./secrets/local/*/**)",
+      "Read(./secrets/local/.*)",
       "Read(./secrets/local/README.md)",
       "Read(**/*.tfstate)",
       "Read(**/*.tfstate.*)",
