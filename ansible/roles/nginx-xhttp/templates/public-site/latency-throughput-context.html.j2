@@ -3,7 +3,7 @@
 <html lang="en">
 {{ site.head("Latency, throughput, and context · LLM Model Notes", "A practical method for measuring language-model serving latency, generation throughput, capacity, and long-context behavior.", "/notes/latency-throughput-context.html", "article", schema_type="Article", headline="Latency, throughput, and context", date_published="2026-07-16", date_modified="2026-07-16") }}
 <body>
-  {{ site.header() }}
+  {{ site.header("note") }}
   <main id="main-content" tabindex="-1" class="article-shell">
     <article class="note">
       <p class="eyebrow">Inference</p>
@@ -67,6 +67,7 @@
         <li><a href="https://github.com/vllm-project/vllm">vLLM</a> — an open serving runtime whose versioned configuration can be captured with a benchmark.</li>
       </ul>
     </article>
+    {{ site.more_notes("/notes/latency-throughput-context.html") }}
   </main>
   {{ site.footer() }}
 </body>

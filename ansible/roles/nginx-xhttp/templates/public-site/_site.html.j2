@@ -97,12 +97,29 @@
 <header>
   <a class="brand" href="/"><img src="/favicon.svg" width="28" height="28" alt="">LLM Model Notes</a>
   <nav aria-label="Primary">
-    <a{% if current == "notes" %} aria-current="page"{% endif %} href="/#current-notes">Notes</a>
+    <a{% if current == "notes" %} aria-current="page"{% elif current == "note" %} aria-current="true"{% endif %} href="/#current-notes">Notes</a>
     <a{% if current == "about" %} aria-current="page"{% endif %} href="/about.html">About</a>
     <a{% if current == "methodology" %} aria-current="page"{% endif %} href="/methodology.html">Methodology</a>
     <a{% if current == "updates" %} aria-current="page"{% endif %} href="/updates.html">Updates</a>
   </nav>
 </header>
+{%- endmacro -%}
+
+{% macro more_notes(path) -%}
+{%- set notes = [
+  {"href": "/notes/reading-benchmark-results.html", "topic": "Evaluation", "title": "Reading benchmark results carefully"},
+  {"href": "/notes/latency-throughput-context.html", "topic": "Inference", "title": "Latency, throughput, and context"},
+  {"href": "/notes/repeatable-model-comparisons.html", "topic": "Methods", "title": "Repeatable model comparisons"},
+] -%}
+<nav class="more-notes" aria-labelledby="more-notes">
+  <h2 id="more-notes">More notes</h2>
+  <ul>
+{%- for note in notes if note.href != path %}
+    <li><span class="meta">{{ note.topic }}</span><a href="{{ note.href }}">{{ note.title }}</a></li>
+{%- endfor %}
+  </ul>
+  <p><a href="/#current-notes">All notes</a> · <a href="/methodology.html">Methodology</a></p>
+</nav>
 {%- endmacro -%}
 
 {% macro footer() -%}
