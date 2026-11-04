@@ -33,6 +33,7 @@ SCALAR_BASELINE = (
 
 UNITS = {
     "ansible/roles/hysteria/templates/hysteria-server.service.j2": "CAP_NET_BIND_SERVICE",
+    "ansible/roles/xray/templates/xray.service.j2": "CAP_NET_BIND_SERVICE",
     "ansible/roles/hysteria-realm/templates/hysteria-realm.service.j2": "CAP_NET_BIND_SERVICE",
     "ansible/roles/snell/templates/snell.service.j2": "CAP_NET_BIND_SERVICE",
     "ansible/roles/probe-matrix-target/templates/probe-matrix-xray.service.j2": "CAP_NET_BIND_SERVICE",

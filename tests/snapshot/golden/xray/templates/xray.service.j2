@@ -31,11 +31,16 @@ ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
 RestrictNamespaces=yes
+MemoryDenyWriteExecute=yes
 LockPersonality=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
 SystemCallArchitectures=native
-ReadWritePaths={{ xray_log_dir | default('/var/lib/vpn-xray-logs') }} /var/lib/xray /etc/xray
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+# Configuration is root-owned and read-only to the runtime user.
+ReadWritePaths={{ xray_log_dir | default('/var/lib/vpn-xray-logs') }} /var/lib/xray
 
 [Install]
 WantedBy=multi-user.target
