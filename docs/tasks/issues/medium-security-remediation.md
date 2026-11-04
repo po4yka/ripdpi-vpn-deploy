@@ -26,5 +26,5 @@ Deployed nodes cannot erase their offsite backups or forge telemetry for other n
 - The collector stores ingested series with `node` equal to the client certificate identity.
 - Provider roots reject `allowed_ssh_cidrs` broader than /24 or /48.
 - HTTP/80 on the public site returns no nginx version.
-- P0 TCP/443 without REALITY authentication presents the `edge.chinallmodel.com` certificate.
+- P0 TCP/443 without REALITY authentication presents the certificate for the owned self-steal name, which resolves only to the P0 address.
 - Node backups run on the append-only keys; the old keys are deleted.
