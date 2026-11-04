@@ -26,7 +26,7 @@ Before changing the sender runtime contract, inspect its [cross-role and operato
 
 **The adapter consumes schema-2 node manifests only** — it exports a bounded, redacted manifest summary to node_exporter's existing loopback textfile path. It does not run watchdog, backup, or protocol probes.
 
-**Producer health adaptation is a separate root oneshot** — root access is used only to read the watchdog and backup roles' fixed private state files. The adapter emits bounded one-hot state and timestamps into the protected textfile group; it never invokes or edits a producer.
+**Producer health adaptation is a separate root oneshot** — root access is used only to read the watchdog and backup roles' fixed private state files. The adapter emits bounded one-hot state and timestamps into the protected textfile group; it never invokes or edits a producer. With self-steal enabled, systemd also loads only the public self-steal `fullchain.pem` as a credential (never `privkey.pem`); its first certificate is reported with `role="reality-self-steal"` beside the sender client certificate.
 
 **Producer deadlines belong to central evaluation** — health adaptation publishes
 bounded producer timestamps and their configured maximum ages, including restore

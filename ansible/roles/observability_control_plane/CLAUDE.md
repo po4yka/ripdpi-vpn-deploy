@@ -97,8 +97,10 @@ An enabled collector requires primary alerting. Prometheus evaluates immutable v
 Alertmanager remains loopback-only and sends bounded authenticated webhooks to
 a separate loopback relay. Host and adapter metrics arrive only through the
 cohosted agent's metric/label allowlist; the collector never scrapes raw node
-exporter metrics a second time. Its sole local scrape retains only bounded
-Alertmanager notification counters and integration labels.
+exporter metrics a second time. Its local scrapes retain only bounded
+Alertmanager notification counters and integration labels, and the loopback
+relay's remote-write drop/error/retry counters with `job` only. Agent delivery
+rules exclude `job="observability-relay"` so relay drops alert separately.
 Confirmed sender discards trigger delivery-loss alerts; byte, block and row
 counters are compared to zero separately, never added as interchangeable units.
 Only that relay receives the primary Telegram token

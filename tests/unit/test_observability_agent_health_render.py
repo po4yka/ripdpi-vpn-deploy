@@ -141,3 +141,21 @@ def test_rendered_watchdog_input_follows_the_effective_profile(enabled: bool) ->
     assert "--backup-stage " in service
     assert "--restore-drill " in service
     assert "--certificate " in service
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_rendered_self_steal_certificate_follows_the_profile(enabled: bool) -> None:
+    values = merge_render_vars()
+    values["vpn"]["enable_reality_self_steal"] = enabled
+    service = render_template(
+        ROLE / "templates/observability-agent-health-adapter.service.j2", values
+    )
+    credential = (
+        "LoadCredential=reality-self-steal.crt:"
+        "/etc/nginx/reality-self-steal/current/fullchain.pem\n"
+    )
+    assert (credential in service) is enabled
+    assert (
+        "--reality-self-steal-certificate %d/reality-self-steal.crt \\\n" in service
+    ) is enabled
+    assert "privkey" not in service

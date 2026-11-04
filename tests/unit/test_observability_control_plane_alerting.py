@@ -102,6 +102,7 @@ def _contract(*, token: str = "123456789:fixture-token-value-not-real") -> dict:
         "service_user": "prometheus",
         "service_group": "prometheus",
         "config_root": "/etc/observability-control-plane",
+        "relay_listen": "127.0.0.1:19091",
         "prometheus": {
             "promtool_archive_members": {
                 "amd64": "prometheus-fixture/promtool",
@@ -502,6 +503,23 @@ def test_prometheus_loads_alert_rules_and_scrapes_only_loopback_alertmanager() -
             {"regex": "^(__name__|job|integration)$", "action": "labelkeep"},
         ],
     }
+    assert parsed["scrape_configs"][0] == {
+        "job_name": "observability-relay",
+        "sample_limit": 50,
+        "label_limit": 16,
+        "label_name_length_limit": 64,
+        "label_value_length_limit": 128,
+        "static_configs": [{"targets": ["127.0.0.1:19091"]}],
+        "metric_relabel_configs": [
+            {
+                "source_labels": ["__name__"],
+                "regex": "^vmagent_remotewrite_(packets_dropped_total|samples_dropped_total|errors_total|retries_count_total)$",
+                "action": "keep",
+            },
+            {"regex": "^(__name__|job)$", "action": "labelkeep"},
+        ],
+    }
+    assert len(parsed["scrape_configs"]) == 2
 
 
 def test_rules_have_fixed_severity_recovery_and_deadman_boundaries(

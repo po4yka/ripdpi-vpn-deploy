@@ -117,15 +117,27 @@ groups:
     rules:
       - alert: ObservabilityAgentDeliveryLoss
         expr: >-
-          (max by (environment, node) (increase(vmagent_remotewrite_packets_dropped_total[5m]) > bool 0) > 0)
-          or (max by (environment, node) (increase(vmagent_remotewrite_samples_dropped_total[5m]) > bool 0) > 0)
-          or (max by (environment, node) (increase(vm_persistentqueue_bytes_dropped_total[5m]) > bool 0) > 0)
-          or (max by (environment, node) (increase(vm_persistentqueue_blocks_dropped_total[5m]) > bool 0) > 0)
-          or (max by (environment, node) (increase(vm_rows_ignored_total[5m]) > bool 0) > 0)
+          (max by (environment, node) (increase(vmagent_remotewrite_packets_dropped_total{job!="observability-relay"}[5m]) > bool 0) > 0)
+          or (max by (environment, node) (increase(vmagent_remotewrite_samples_dropped_total{job!="observability-relay"}[5m]) > bool 0) > 0)
+          or (max by (environment, node) (increase(vm_persistentqueue_bytes_dropped_total{job!="observability-relay"}[5m]) > bool 0) > 0)
+          or (max by (environment, node) (increase(vm_persistentqueue_blocks_dropped_total{job!="observability-relay"}[5m]) > bool 0) > 0)
+          or (max by (environment, node) (increase(vm_rows_ignored_total{job!="observability-relay"}[5m]) > bool 0) > 0)
         for: 0s
         keep_firing_for: 3m
         labels: {severity: "warning", component: observability-agent}
         annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/incident.md}
+      - alert: ObservabilityCollectorRelayDeliveryLoss
+        expr: >-
+          (max(increase(vmagent_remotewrite_packets_dropped_total{job="observability-relay"}[5m]) > bool 0) > 0)
+          or (max(increase(vmagent_remotewrite_samples_dropped_total{job="observability-relay"}[5m]) > bool 0) > 0)
+        for: 0s
+        keep_firing_for: 3m
+        labels:
+          severity: "warning"
+          component: observability-relay
+          environment: "staging"
+          node: collector
+        annotations: {incident_family: observability-delivery-loss, evidence_class: relay-accepted-samples-discarded, source_generation: "", summary: The collector relay discarded accepted telemetry; monitoring history is incomplete., runbook: docs/how-to/incident.md}
   - name: observability_node_resource_service
     rules:
       - alert: ObservabilityNodeCpuPressure
@@ -211,19 +223,19 @@ groups:
         labels: {severity: "warning", component: node-clock}
         annotations: {incident_family: node-clock, evidence_class: wall-clock-skew, source_generation: "", summary: Node wall clock differs from control-plane evaluation time., runbook: docs/how-to/incident.md}
       - alert: ObservabilityCertificateExpiresSoon
-        expr: min by (environment, node) (vpn_certificate_not_after_timestamp_seconds - time()) < 1209600
+        expr: min by (environment, node, role) (vpn_certificate_not_after_timestamp_seconds - time()) < 1209600
         for: 3m
         keep_firing_for: 3m
         labels: {severity: "warning", component: certificate}
         annotations: {incident_family: certificate-expiry, evidence_class: certificate-expiry-warning, source_generation: "", summary: A managed certificate crossed the configured expiry warning threshold., runbook: docs/how-to/incident.md}
       - alert: ObservabilityCertificateCollectionFailed
-        expr: max by (environment, node) (vpn_certificate_collection_success) == 0
+        expr: min by (environment, node, role) (vpn_certificate_collection_success) == 0
         for: 3m
         keep_firing_for: 3m
         labels: {severity: "warning", component: certificate}
         annotations: {incident_family: certificate-health, evidence_class: collection-failed, source_generation: "", summary: Managed certificate expiry collection failed., runbook: docs/how-to/incident.md}
       - alert: ObservabilityCertificateExpiresCritical
-        expr: min by (environment, node) (vpn_certificate_not_after_timestamp_seconds - time()) < 259200
+        expr: min by (environment, node, role) (vpn_certificate_not_after_timestamp_seconds - time()) < 259200
         for: 3m
         keep_firing_for: 3m
         labels: {severity: "critical", component: certificate}
