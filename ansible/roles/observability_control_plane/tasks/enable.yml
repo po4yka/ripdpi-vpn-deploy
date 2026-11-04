@@ -556,6 +556,15 @@
         group: "{{ observability_control_plane.service_group }}"
         mode: '0700'
 
+    - name: Install node-label relay relabel rules
+      ansible.builtin.template:
+        src: observability-prometheus-relay-relabel.yml.j2
+        dest: "{{ observability_control_plane.config_root }}/relay-relabel.yml"
+        owner: root
+        group: "{{ observability_control_plane.service_group }}"
+        mode: '0640'
+      register: _observability_relay_relabel
+
     - name: Inspect previous node-label relay unit
       ansible.builtin.stat:
         path: /etc/systemd/system/observability-prometheus-relay.service
@@ -585,7 +594,7 @@
             daemon_reload: "{{ _observability_relay_unit.changed }}"
             enabled: true
             state: >-
-              {{ 'restarted' if (_observability_relay_unit.changed or
+              {{ 'restarted' if (_observability_relay_unit.changed or _observability_relay_relabel.changed or
               _observability_relay_runtime_changed) else 'started' }}
 
         - name: Require loopback-only node-label relay readiness

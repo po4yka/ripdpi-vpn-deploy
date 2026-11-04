@@ -1,0 +1,10 @@
+# vmagent appends extra_label after the payload labels instead of replacing a
+# label of the same name, so a payload node label would reach Prometheus twice.
+# Drop it, then take node from the ingress identity, which ingress appends last.
+- action: labeldrop
+  regex: node
+- action: labelmap
+  regex: ingress_node
+  replacement: node
+- action: labeldrop
+  regex: ingress_node

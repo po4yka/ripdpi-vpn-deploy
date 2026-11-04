@@ -140,8 +140,8 @@ def test_ingress_is_only_the_bounded_authenticated_write_path() -> None:
         "if ($request_method != POST) { return 405; }",
         'if ($args != "") { return 400; }',
         "if ($observability_remote_write_node != $1) { return 403; }",
-        # The relay overrides any payload node label with the certificate-bound id.
-        "rewrite ^ /api/v1/write?extra_label=node=$observability_remote_write_node break;",
+        # The relay maps the certificate-bound id from ingress_node to node.
+        "rewrite ^ /api/v1/write?extra_label=ingress_node=$observability_remote_write_node break;",
         "proxy_pass http://127.0.0.1:19091;",
         'proxy_set_header Host "127.0.0.1:19091";',
         "X-Prometheus-Remote-Write-Version $http_x_prometheus_remote_write_version;",
@@ -155,7 +155,9 @@ def test_ingress_is_only_the_bounded_authenticated_write_path() -> None:
         "proxy_set_header Authorization",
         "127.0.0.1:9090",
         # A rewrite regex resets location captures, so $1 would be empty here.
-        "extra_label=node=$1",
+        "extra_label=ingress_node=$1",
+        # vmagent appends extra labels, so a direct node label would be duplicated.
+        "extra_label=node=",
     ):
         assert forbidden not in rendered
 
@@ -187,7 +189,15 @@ def test_ingress_requires_relay_and_relay_writes_only_to_loopback_prometheus() -
         "-remoteWrite.maxBlockSize": "8388608",
         "-remoteWrite.flushInterval": "1s",
         "-memory.allowedBytes": "33554432",
+        "-remoteWrite.relabelConfig": "/etc/observability-control-plane/relay-relabel.yml",
     }
+    rules = yaml.safe_load(render_template(ROLE / "templates/observability-prometheus-relay-relabel.yml.j2", _values()))
+    # Payload node goes first, then the ingress identity becomes node and its carrier label goes.
+    assert rules == [
+        {"action": "labeldrop", "regex": "node"},
+        {"action": "labelmap", "regex": "ingress_node", "replacement": "node"},
+        {"action": "labeldrop", "regex": "ingress_node"},
+    ]
     for required in (
         "Slice=observability-collector.slice",
         "BindsTo=observability-disk-guard.service",
