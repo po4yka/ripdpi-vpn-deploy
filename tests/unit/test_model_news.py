@@ -97,7 +97,8 @@ def test_page_lists_escaped_deduplicated_newest_first_entries(
     assert "Last refreshed <time datetime=" in page
     for dropped in ("Fast-Proxy-Tool", "ＶＰＮ", "Plain link item", "news.example/d"):
         assert dropped not in page
-    assert oct(output.stat().st_mode & 0o777) == "0o644"
+    assert oct(output.stat().st_mode & 0o777) == "0o640"
+    assert output.stat().st_gid == tmp_path.stat().st_gid
 
 
 def test_total_failure_keeps_the_previous_page_and_reports_it(

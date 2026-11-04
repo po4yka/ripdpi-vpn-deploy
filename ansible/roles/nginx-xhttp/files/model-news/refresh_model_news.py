@@ -209,7 +209,9 @@ def write_atomic(path: str, text: str) -> None:
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
-        os.chmod(temporary, 0o644)
+        # nginx reads the page through the state directory's group.
+        os.chown(temporary, -1, os.stat(directory).st_gid)
+        os.chmod(temporary, 0o640)
         os.replace(temporary, path)
     except BaseException:
         os.unlink(temporary)
