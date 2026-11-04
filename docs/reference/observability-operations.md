@@ -201,9 +201,10 @@ installed nginx binary in that slice. Its config, PID, credentials and private
 
 Ingress does not proxy to Prometheus directly. It forwards the authenticated
 write to a loopback vmagent relay on `127.0.0.1:19091` as
-`/api/v1/write?extra_label=node=<id>`, where `<id>` is the certificate-bound
-path identity. The relay replaces any `node` label in the payload with that
-value, so one sender cannot write series for another node. It then writes to
+`/api/v1/write?extra_label=ingress_node=<id>`, where `<id>` is the certificate-bound
+path identity. vmagent appends extra labels rather than replacing them, so the
+relay's relabel rules drop any payload `node` label and map `ingress_node` to
+`node`, so one sender cannot write series for another node. It then writes to
 Prometheus on `127.0.0.1:9090` with the Prometheus wire protocol. The relay has
 no on-disk queue during operation: it returns HTTP 429 while Prometheus is
 unavailable, and the sender's durable queue keeps the data. On graceful stop it

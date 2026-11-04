@@ -136,6 +136,7 @@
     - /etc/systemd/system/observability-ingress.service
     - /etc/systemd/system/observability-prometheus-relay.service
     - "{{ observability_control_plane.relay_binary_link }}"
+    - "{{ observability_control_plane.config_root }}/relay-relabel.yml"
     - /etc/systemd/system/observability-disk-guard.service
     - /etc/systemd/system/observability-collector.slice
     - /usr/local/libexec/observability-disk-guard.py
