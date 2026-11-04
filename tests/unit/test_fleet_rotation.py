@@ -428,8 +428,10 @@ def test_cli_positive_execution_preserves_child_prompts_and_journal(plan, livene
 def test_cli_signal_retains_inflight_and_reaps_child(plan, liveness, tmp_path):
     child, program, environment = cli_fixture(tmp_path, plan, liveness)
     child_pid = tmp_path / "child-pid"
+    # Publish the pid with a rename: the test signals once the file exists, and an empty file is a race.
     child.write_text(f"#!{sys.executable}\nimport os,time\n"
-                     f"open({str(child_pid)!r},'w').write(str(os.getpid()))\ntime.sleep(60)\n")
+                     f"open({str(child_pid)!r}+'.tmp','w').write(str(os.getpid()))\n"
+                     f"os.replace({str(child_pid)!r}+'.tmp',{str(child_pid)!r})\ntime.sleep(60)\n")
     child.chmod(0o700)
     process = subprocess.Popen([sys.executable, "-c", program], stdin=subprocess.PIPE,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=environment)
