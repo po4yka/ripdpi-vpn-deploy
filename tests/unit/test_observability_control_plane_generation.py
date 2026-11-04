@@ -193,7 +193,7 @@ def test_enabled_molecule_declares_receiver_and_rollback_acceptance_boundaries()
         "authenticated GET refusal",
         "CN path mismatch",
         "oversized request",
-        "invalid protobuf reaches real Prometheus and is rejected",
+        "invalid protobuf reaches the node-label relay and is rejected",
         "published generation remains content-addressed",
         "TSDB free-space preflight remains enforced",
     ):

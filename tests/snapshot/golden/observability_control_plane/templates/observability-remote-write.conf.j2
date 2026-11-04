@@ -1,4 +1,5 @@
 # Write-only ingestion. Prometheus, status and administrative APIs stay loopback-only.
+# The loopback relay replaces any payload node label with the certificate-bound path id.
 limit_req_zone $ssl_client_s_dn zone=observability_remote_write_rate:10m rate=20r/s;
 limit_conn_zone $ssl_client_s_dn zone=observability_remote_write_conn:10m;
 limit_conn_zone $server_addr zone=observability_remote_write_total:1m;
@@ -31,15 +32,16 @@ server {
         limit_conn observability_remote_write_conn 4;
         limit_conn observability_remote_write_total 4;
         limit_req zone=observability_remote_write_rate burst=40 nodelay;
-        rewrite ^ /api/v1/write break;
-        proxy_pass http://127.0.0.1:9090;
+        # The rewrite regex resets $1; use the certificate map value already equal to it.
+        rewrite ^ /api/v1/write?extra_label=node=$observability_remote_write_node break;
+        proxy_pass http://127.0.0.1:19091;
         proxy_request_buffering off;
         proxy_buffering off;
         proxy_connect_timeout 5s;
         proxy_read_timeout 15s;
         proxy_send_timeout 15s;
         proxy_http_version 1.1;
-        proxy_set_header Host "127.0.0.1:9090";
+        proxy_set_header Host "127.0.0.1:19091";
         proxy_set_header X-Forwarded-For "";
         proxy_set_header X-Real-IP "";
         proxy_pass_request_headers off;

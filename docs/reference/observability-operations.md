@@ -108,7 +108,10 @@ files below owner-controlled non-symlink paths. The vars file contains the
 complete selected role mapping with `enabled: true`, plus its producer
 configuration. Defaults describe the current contract; they are deliberately
 inert, not a ready deployment. Pin the real vmagent, Prometheus and Alertmanager
-archives and digests independently. Use distinct sender certificates and one
+archives and digests independently. The collector relay has its own
+`observability_control_plane.relay` pin (`version`, `urls`, `sha256`,
+`archive_members` with `vmagent-prod`) and install root
+`/opt/observability-collector-vmagent`; it does not share the sender's pin. Use distinct sender certificates and one
 Kuma token per monitor.
 For each architecture, keep the selected version, URL, checksum,
 `archive_members` and `promtool_archive_members` on the same release. A copied
@@ -195,6 +198,21 @@ of one CPU, low IO weight. Ingress uses an isolated master of the already
 installed nginx binary in that slice. Its config, PID, credentials and private
 9443 listener are separate from the public VPN nginx; unrelated sites and
 80/443 listeners are not edited.
+
+Ingress does not proxy to Prometheus directly. It forwards the authenticated
+write to a loopback vmagent relay on `127.0.0.1:19091` as
+`/api/v1/write?extra_label=node=<id>`, where `<id>` is the certificate-bound
+path identity. The relay replaces any `node` label in the payload with that
+value, so one sender cannot write series for another node. It then writes to
+Prometheus on `127.0.0.1:9090` with the Prometheus wire protocol. The relay has
+no on-disk queue during operation: it returns HTTP 429 while Prometheus is
+unavailable, and the sender's durable queue keeps the data. On graceful stop it
+can flush in-memory blocks to a 64 MiB queue at
+`/var/lib/observability-prometheus/relay-queue`, which the disk guard counts.
+It has MemoryMax 64 MiB and `-memory.allowedBytes` 32 MiB inside the collector
+slice. Prometheus rejections after relay acceptance (for example samples
+outside the retention window) are dropped at the relay and are not visible in
+sender discard counters.
 
 The local agent and heartbeat jobs share `observability-agent.slice`: 192 MiB
 and 10% of one CPU. The collector host therefore budgets 704 MiB and 30% in
