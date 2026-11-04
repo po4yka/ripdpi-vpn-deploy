@@ -64,6 +64,26 @@ run "reject_ipv6_host_bits_world" {
   expect_failures = [var.allowed_ssh_cidrs]
 }
 
+run "reject_broad_ipv4_prefix" {
+  command = plan
+
+  variables {
+    allowed_ssh_cidrs = ["203.0.112.0/23"]
+  }
+
+  expect_failures = [var.allowed_ssh_cidrs]
+}
+
+run "reject_broad_ipv6_prefix" {
+  command = plan
+
+  variables {
+    allowed_ssh_cidrs = ["2001:db8::/47"]
+  }
+
+  expect_failures = [var.allowed_ssh_cidrs]
+}
+
 run "reject_fractional_ssh_port" {
   command = plan
 
