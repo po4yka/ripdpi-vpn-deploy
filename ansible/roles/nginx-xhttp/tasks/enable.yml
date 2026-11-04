@@ -314,7 +314,8 @@
   no_log: true
   diff: false
 
-# Seeded before the transaction reloads nginx, so the new location never 404s.
+# Outside a protected ingress transaction the page is seeded before the nginx
+# reload, so the new location never 404s.
 - name: Decide whether this host serves the refreshed model news page
   ansible.builtin.set_fact:
     _nginx_model_news_active: >-
@@ -322,7 +323,7 @@
          and (nginx_xhttp_public_site_dir | default('') | length == 0) }}
 
 - name: Converge the refreshed model news page
-  ansible.builtin.include_tasks: model-news.yml
+  ansible.builtin.include_tasks: model-news-converge.yml
   when: _nginx_model_news_active | bool
 
 - name: Validate publish and activate complete XHTTP authority
