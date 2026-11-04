@@ -1,185 +1,88 @@
 # Runbook — add a fallback VPS
 
-> **Status:** Current · **Type:** how-to · **Tier:** TACTICAL · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** TACTICAL · **Reviewed:** 2026-11-04
 
 ## Purpose and scope
 
-Add a second VPS as a hot spare, a different-provider fallback or a
-split-role host, and understand what multi-VPS operation changes.
-
-v1 ships single-VPS. For a multi-VPS / multi-ASN posture, here's how to
-extend.
+Add an explicitly approved hot spare or another transport failure domain.
+The service already supports a split fleet: P0 REALITY, P1 XHTTP and P2 UDP
+can run on separate hosts. See the dated
+[deployment snapshot](../reference/deployment-status.md) for the accepted fleet.
+An additional host is not required to use the existing TCP reserves.
 
 ## Preconditions
 
-- A working primary node and a reviewed reason for the second one (burn risk, ASN diversity, role separation).
-- A provider account and Terraform root for the fallback; ASN tiers in [the provider notes](../reference/provider-notes.md).
-- A decision on the credential scope before provisioning. Only a node with its own secrets file (`VPN_SECRETS_FILE`, as Pattern 3 shows) isolates server-wide material and device credentials. Patterns 1 and 2 as written deploy the primary's secrets file to the fallback, so the fallback carries the same authority and its exposure is the primary's exposure.
+- A working primary path and a measured reason for another endpoint.
+- An exact provider/environment, resource plan, cost limit and cleanup plan.
+- Separate scoped secrets for the new host and separate device credentials.
+  A different address does not isolate credentials copied from the primary.
+- The selected [deployment profile](../reference/deploy-profiles.md), explicit
+  public listener contract and matching Terraform inputs.
+- A compatible client and a plan to deliver its new per-device profile.
 
 ## Authorization
 
-Every target below that uses cloud credentials, inventory, SSH or decrypted secrets needs the operator's authorization for this environment, target and plan before it runs ([decision boundaries](../../AGENTS.md#decision-boundaries)). A reviewable plan or dry-run precedes every mutation. Provisioning the fallback is a new resource with its own cost bound; authorize it explicitly.
+Every target that uses cloud credentials, inventory, SSH or decrypted secrets
+needs authorization for the selected environment and exact target. Review the
+plan before mutation. A new resource needs an explicit cost bound; existing-node
+deployment approval does not authorize it. Follow the
+[decision boundaries](../../AGENTS.md#decision-boundaries).
 
-## Two patterns
+## Steps
 
-| Pattern | When | Effort |
-|---|---|---|
-| Same provider, same role | Need a hot spare for blue-green | Low |
-| Different provider / ASN, same role | Want orthogonal failure domain | Medium |
-| Different role (one P0, one P1+P2) | Want clean role separation | Medium |
+1. Select the required failure domain and role. A same-provider spare supports
+   replacement. Another provider can reduce a shared provider failure. A TCP
+   endpoint can cover UDP-path failure; another port on the same address does
+   not cover address-wide blocking.
+2. Prepare the separate provider environment and scoped SOPS authority through
+   the [quickstart](../tutorials/quickstart.md). Review its Terraform plan before
+   apply. Preserve active environment state and encrypted recovery copies.
+3. Complete [fresh-node recovery and enrollment](tailnet-management.md) before
+   ordinary runtime deployment. Verify the exact SSH identity and host pins.
+4. Select explicit cohorts in the private fleet configuration, then render
+   inventory through the [profile guide](../reference/deploy-profiles.md#how-to-use).
+   The reusable split profiles are `vpn-p0-minimal`, `vpn-p1-web` and
+   `vpn-p2-udp`. Do not edit the shared playbook or run a bare Ansible command
+   to bypass the canonical controller.
+5. Run the reviewed [deployment transaction](deploy.md#ordinary-re-deploy-recipe)
+   for the new exact alias. Review the dry-run before deploy. Stop on failed
+   verification; retain the accepted primary configuration.
+6. Use the [device lifecycle](device-lifecycle.md) to prepare and deliver a fresh
+   per-device artifact across the selected hosts. Review the candidate set
+   before publishing it. Keep unique device authority and the recovery path.
+7. Choose the client selection contract. Ordinary sing-box `urltest` uses
+   HEAD/latency; it does not verify useful payload bytes. For the paired RIPDPI
+   selector, explicitly configure the
+   [payload policy](../reference/ripdpi-bundle.md#ripdpipayload_failover), accept
+   its two owned HTTPS controls and install the compatible client first.
 
-## Pattern 1 — hot spare on UpCloud
-
-Use a separate `ENV` value to keep two parallel root states without
-fighting Terraform's `prevent_destroy`. The helper script
-`scripts/new-cohort.sh` does the tfvars boilerplate:
-
-```bash
-# Generate a second tfvars in a different zone
-PROVIDER=upcloud SOURCE_ENV=prod \
-  ./scripts/new-cohort.sh spare de-fra1
-$EDITOR terraform/providers/upcloud/environments/spare.tfvars   # review
-
-# Provision and deploy the spare: each review point is its own make call,
-# because make runs the goals of one invocation back to back
-ENV=spare make init
-ENV=spare make plan              # READ THE PLAN; stop on any destroy or replace
-ENV=spare make apply             # only after the plan review
-ENV=spare make inventory wait
-ENV=spare make dry-run           # review the change set
-ENV=spare make deploy verify     # only after the dry-run review
-```
-
-Both VPSes now share the same secrets and same Ansible roles. They have
-different IPs, different REALITY private keys (REALITY private key is in
-secrets — to truly differ you need a second secrets file or a per-host
-override). For a hot spare in the same provider, sharing REALITY material
-is acceptable for a short period.
-
-To switch traffic: change DNS / subscription URLs to point at the spare, and decommission the original (`make ENV=prod destroy` after removing `prevent_destroy`).
-
-## Pattern 2 — different provider / ASN
-
-Create a provider-specific environment file, then provision the spare under a
-different `PROVIDER`:
-
-```bash
-cp terraform/providers/hetzner/environments/prod.tfvars.example \
-   terraform/providers/hetzner/environments/prod.tfvars
-$EDITOR terraform/providers/hetzner/environments/prod.tfvars
-
-export PROVIDER=hetzner HCLOUD_TOKEN=...   # provider credentials stay in env vars
-make init
-make plan              # READ THE PLAN; stop on any destroy or replace
-make apply             # only after the plan review
-make inventory wait
-make dry-run           # review the change set
-make deploy verify     # only after the dry-run review
-```
-
-Now you have two VPSes in different ASNs. To make them serve different
-client cohorts:
-
-- Use a per-cohort subscription URL on `subscription-host`.
-- Send cohort A's traffic to the UpCloud VPS, cohort B's to the Hetzner
-  one. If cohort A's path degrades, the operator switches that cohort's
-  subscription URL to a different VPS.
-
-This is the minimum useful cohort split. A full fleet model would also
-introduce blast-radius caps (per-cohort credential isolation, no shared
-SNI target), automated migration playbooks, and ASN burn detection —
-all out of scope for v1.
-
-## Pattern 3 — separate roles per VPS
-
-Best for production. One VPS hosts only P0 (REALITY direct), another
-hosts P1+P2 (XHTTP + Hysteria + AWG). They have no shared protocol
-material; a compromise of one doesn't leak the other.
-
-```bash
-# VPS 1 — only REALITY
-$EDITOR terraform/providers/upcloud/environments/p0.tfvars   # enable_hysteria=false
-$EDITOR ~/.config/vpn-provision/p0.secrets.sops.yaml         # only xray.* fields
-
-# Override role toggles per environment by editing playbooks/site.yml
-# OR keep one site.yml and use:
-ANSIBLE_TAGS="xray" ENV=p0 make decrypt deploy
-```
-
-For a separate-role split, use the cohort group_vars shipped with the
-repo and the multi-host mode of `render-inventory.sh`:
-
-```bash
-# Provision both nodes (different ENVs or PROVIDERs); review each plan before its apply
-ENV=p0    make init plan        # READ THE PLAN
-ENV=p0    make apply
-ENV=p1p2  make init plan        # READ THE PLAN
-ENV=p1p2  make apply
-
-# Render a multi-host inventory with cohort groups
-HOSTS="upcloud:p0,upcloud:p1p2" \
-COHORTS="p0,p1p2" \
-ANSIBLE_SSH_PRIVATE_KEY_FILE=~/.ssh/vpn_deploy \
-  ./scripts/render-inventory.sh
-
-# Single deploy across both — each host gets the right toggles from
-# group_vars/vpn-p0.yml or group_vars/vpn-p1p2.yml
-ansible-playbook ansible/playbooks/site.yml
-```
-
-The pre-shipped cohort files are:
-
-- `ansible/group_vars/vpn-p0-minimal.yml`      — REALITY only
-- `ansible/group_vars/vpn-family-standard.yml` — REALITY + XHTTP + Hysteria, no AWG
-- `ansible/group_vars/vpn-device-full.yml`     — family-standard + AWG
-- `ansible/group_vars/vpn-lab.yml`             — lab/pilot surface; research roles still require `allow_research_roles`
-
-Legacy aliases stay supported for existing inventories:
-
-- `ansible/group_vars/vpn-p0.yml`        — alias for `vpn-p0-minimal`
-- `ansible/group_vars/vpn-p1p2.yml`      — older XHTTP + Hysteria + AWG split host with REALITY disabled
-- `ansible/group_vars/vpn-fullstack.yml` — alias for `vpn-device-full`
-
-## Operational consequences of multi-VPS
-
-- **Secrets get bigger**: separate REALITY keypairs per VPS, separate
-  Hysteria server certs, separate AWG server keys. Decide whether you
-  want one secrets file with all VPSes or one per VPS.
-- **Restic gets bigger**: per-VPS local repos, or one remote bucket with
-  per-VPS prefixes.
-- **Subscription delivery starts mattering**: when there's one VPS, you
-  hand-edit URIs. When there are two+, you need a real subscription
-  endpoint that can hand each device the right cohort.
-- **Health checks and failover** become explicit: clients need
-  selector/urltest logic in RIPDPI or a current sing-box client to actually use the
-  fallback VPS without a manual switch. `make emit-singbox CLIENT=<name>`
-  produces a JSON with a selector + urltest group covering every
-  configured host.
-
-## What this repo intentionally does NOT automate
-
-- Multi-VPS coordination (no shared state plane).
-- Cohort assignment / per-device subscription rendering with revocation.
-- Burned-ASN detection.
-
-For v1 the answer is: pick a pattern above, run it twice, and treat the
-second run as deliberate operator action.
+The paired client checks TCP reserves first after active Hysteria2 payload
+failure under that policy. Recovery requires verified bytes, thresholds and
+cooldown. All-candidate failure retains the last encrypted selection. AmneziaWG
+is outside this selector pool. A merged feature or reachable alternate alone
+does not prove automatic failover on a recipient device.
 
 ## Verification
 
-`make verify` against the new alias, `make burn-check` from outside, and a
-client failing over to the fallback profile while the primary is paused.
+Require exact-source verification, security/smoke results and authenticated
+traffic plus tunnel DNS through the new endpoint. Test primary failure and
+recovery on the intended client under a separately approved fault scope.
+Record candidate choice, payload proof and recovery timing. A successful
+alternate does not establish that the primary recovered. Do not interrupt the
+primary merely to complete this documentation procedure.
 
 ## Rollback
 
-Destroy the fallback with the safe `make destroy` flow for its provider and
-environment. A fallback that had its own secrets file takes nothing with it;
-clients keep working on the primary. A fallback that shared the primary's
-secrets file (Patterns 1 and 2 as written) still held the primary's authority:
-if it was exposed, destroying it retires nothing, so rotate the server-wide
-material on the primary and re-issue the affected devices ([rotate](rotate.md)).
+Restore the previous accepted recipient profile through the canonical device
+workflow. Retain the new host and encrypted recovery material until the rollback
+passes. Resource destruction is a separate approved delete-only plan; follow
+[the rollback runbook](rollback.md). If the fallback was exposed and
+held copied primary authority, destroying it does not revoke that authority.
+Rotate the affected credentials using [rotation](rotate.md).
 
 ## Evidence to record
 
-The pattern chosen, the provider and ASN tier of the fallback, the verify and
-burn-check results and the client failover observation.
+Record the approved target and cost scope, role and failure domain, exact source,
+reviewed plan, host admission, deployment receipts, device delivery and observed
+failover/recovery. Keep endpoints, device identifiers and raw diagnostics in the
+private kit. Keep server reachability and device acceptance separate.

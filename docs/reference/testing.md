@@ -157,6 +157,24 @@ backup Molecule scenario is required to prove systemd/package behavior on Linux.
 
 ## CI dependency selection
 
+`engine-interop.yml` tests the fixed client and Xray revisions in
+`tools/engine-interop.json`. It runs real TCP, Vision, XUDP and rejection cases,
+and verifies the actual Prometheus archives for both architectures through the
+release-input consumer. The CI selector adds it for its affected consumers; it
+also runs weekly on Monday at 06:23 UTC and supports manual dispatch. This
+proves the selected engine pair and archive mapping, not installed-device or
+live-fleet acceptance.
+
+`daily-security.yml` runs at 06:17 UTC each day and supports manual dispatch.
+It scans locked dependencies and the complete image inventory. Results and
+scan failures update an owner-assigned issue only when the result changes;
+complete clean results close it. The current default-branch revision controls
+that issue. See [security scan operations](../../.github/SECURITY.md#daily-dependency-and-image-checks)
+for report retention, retry and notification rules. These jobs use no fleet
+credentials and do not replace `make security-audit` on an authorized host.
+That host audit records `systemd-analyze security` output, command status and
+diagnostics privately. The isolation score is not a vulnerability verdict.
+
 `ci.yml` always starts for PRs. `scripts/select-ci-checks.py` compares the PR base
 with the checked-out merge commit and follows downstream consumer groups:
 

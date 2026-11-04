@@ -45,6 +45,12 @@ age restore credential only for the approved restore window, remove the
 credential afterwards, and confirm no restore unit remains active. See
 [observer backup and restore](../reference/observability-operations.md#backup-restore-and-upgrades).
 
+The [scheduled Kuma recovery check](../reference/observability-operations.md#scheduled-download-and-sqlite-recovery)
+downloads, decrypts and checks the full backup manifest and SQLite database.
+It does not start the restored application or activate restored data. Keep that
+result separate from the isolated application test and from the
+[complete operator-kit readback](fleet-maintenance.md#seal-and-verify-the-operator-kit).
+
 ## Fresh-node prerequisites
 
 Both paths require the current [deployment prerequisites](deploy.md#ordinary-re-deploy-recipe).

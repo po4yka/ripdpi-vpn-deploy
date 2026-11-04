@@ -7,6 +7,12 @@ private diagnostics and recovery material. The Make targets below read one
 explicit private JSON plan. They do not load `.fleet.mk`, inventory or secrets
 implicitly. They do not replace the canonical deployment transaction.
 
+For a resumable existing-node transaction, use
+[fleet maintenance](fleet-maintenance.md#prepare-an-existing-node-operation).
+For a complete-kit backup, use its
+[operator-kit commands](fleet-maintenance.md#seal-and-verify-the-operator-kit).
+The selected-file commands below retain their narrower coverage.
+
 ## Continue after an interruption
 
 1. Run workspace discovery. Find the checkout that owns the selected Terraform
