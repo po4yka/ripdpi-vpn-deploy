@@ -10,6 +10,8 @@
 
 **Heavy scanners stay off** — AIDE, rkhunter, and ClamAV are documented as deferred controls. Do not install or enable them without a separate reviewed implementation.
 
+**Isolation scores are diagnostic** — `systemd-analyze security` reports unit configuration, not service vulnerabilities. Retain nonzero and unavailable results privately; check mode produces no collected isolation report.
+
 ## What's done well
 
 - Lynis is the only package installed by default, and only for this explicit audit playbook.
@@ -18,6 +20,7 @@
 
 ## Pitfalls
 
+- `systemd-analyze --no-legend` is limited to `plot`; it prevents `security` from collecting an assessment.
 - `ss -tulpn`, `nft list ruleset`, and `sshd -T` can expose local topology and process names; keep report permissions at `0640`.
 - Do not add decrypted SOPS content, client config files, private keys, subscription URLs, or token logs to report output.
 - Keep this role out of `site.yml`; mandatory security gates belong in `security-verify.yml`, not here.

@@ -141,6 +141,14 @@ publishing version 2. The paired `contract/ripdpi-bundle.payload-failover.json`
 fixture contains synthetic emitted input for parser agreement, not live
 acceptance evidence. No policy or control endpoint is deployed by this change.
 
+The [deployment snapshot](deployment-status.md#transport-activation) records
+the current dated activation result. Merging the producer and consumer, building
+an APK or deploying server code does not enable this optional policy. Install
+the paired client, accept both owned origins, export a fresh per-device bundle
+and verify useful traffic plus failure/recovery on that client before claiming
+live payload failover. The [probe runbook](../how-to/payload-throttle.md) defines
+the control body and path checks.
+
 ## `ripdpi.amneziawg`
 
 Array of AWG device-VPN entries.  Empty array (`[]`) when AmneziaWG is not

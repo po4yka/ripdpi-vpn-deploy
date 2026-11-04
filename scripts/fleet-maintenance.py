@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from datetime import datetime, timedelta, timezone
 import fcntl
 import hashlib
@@ -166,15 +166,10 @@ def recheck(plan):
             raise MaintenanceError('frozen-site-tree-changed')
 
 
-def locks(plan, stack):
-    common = require_success(['git', 'rev-parse', '--git-common-dir']).decode().strip()
-    parent = (ROOT / common).resolve() / 'maintenance-locks'
-    parent.mkdir(mode=0o700, exist_ok=True)
-    private_directory(parent)
-    for name in plan['resources']:
-        path = parent / (hashlib.sha256(name.encode()).hexdigest() + '.lock')
-        stream = stack.enter_context(open(path, 'r+b', opener=lambda name, flags:
-            os.open(name, flags | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)))
+@contextmanager
+def resource_lock(path):
+    with open(path, 'r+b', opener=lambda name, flags:
+              os.open(name, flags | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)) as stream:
         fd = stream.fileno()
         info = os.fstat(fd)
         if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
@@ -184,6 +179,17 @@ def locks(plan, stack):
         named = path.lstat()
         if (info.st_dev, info.st_ino) != (named.st_dev, named.st_ino):
             raise MaintenanceError('resource-lock-changed')
+        yield
+
+
+def locks(plan, stack):
+    common = require_success(['git', 'rev-parse', '--git-common-dir']).decode().strip()
+    parent = (ROOT / common).resolve() / 'maintenance-locks'
+    parent.mkdir(mode=0o700, exist_ok=True)
+    private_directory(parent)
+    for name in plan['resources']:
+        path = parent / (hashlib.sha256(name.encode()).hexdigest() + '.lock')
+        stack.enter_context(resource_lock(path))
 
 
 def node_environment(plan, node, secret):

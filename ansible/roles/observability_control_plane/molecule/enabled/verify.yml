@@ -8,6 +8,22 @@
         argv: [systemctl, is-active, --quiet, observability-ingress]
       changed_when: false
 
+    - name: Assert the node-label relay listens only on loopback
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import socket
+            socket.create_connection(('127.0.0.1', 19091), timeout=5).close()
+            try:
+                socket.create_connection(('10.23.0.2', 19091), timeout=5).close()
+            except ConnectionRefusedError:
+                pass
+            else:
+                raise SystemExit('relay reachable on the private ingress address')
+      changed_when: false
+
     - name: Wait for the receiver and assert the authenticated GET refusal
       ansible.builtin.command:
         argv:
@@ -196,7 +212,7 @@
       delay: 1
       until: oversized_request.stdout == '413' and oversized_request.rc == 0
 
-    - name: Assert invalid protobuf reaches real Prometheus and is rejected
+    - name: Assert invalid protobuf reaches the node-label relay and is rejected
       ansible.builtin.command:
         argv:
           - /var/tmp/observability-control-plane-fixture/mtls-client.py
@@ -239,6 +255,34 @@
     - name: Assert TSDB free-space preflight remains enforced
       ansible.builtin.command:
         argv: [df, -PB1, /var/lib/observability-prometheus]
+      changed_when: false
+
+    # Runs before the failure-boundary tasks, which leave the collector stopped.
+    - name: Assert the relay replaces a forged payload node label with the sender identity
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, time, urllib.parse, urllib.request
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            nonce = str(time.time_ns())
+            body = ('relay_node_label_probe{node="forged-node",nonce="%s"} 1\n' % nonce).encode()
+            request = urllib.request.Request('http://127.0.0.1:19090/api/v1/import/prometheus', data=body, method='POST')
+            with opener.open(request, timeout=10) as response:
+                assert response.status == 204
+            query = 'http://127.0.0.1:9090/api/v1/query?' + urllib.parse.urlencode(
+                {'query': 'relay_node_label_probe{nonce="%s"}' % nonce})
+            deadline = time.monotonic() + 120
+            while time.monotonic() < deadline:
+                with opener.open(query, timeout=5) as response:
+                    result = json.load(response)['data']['result']
+                if result:
+                    nodes = sorted(row['metric'].get('node') for row in result)
+                    assert nodes == ['vpn-p0'], nodes
+                    raise SystemExit(0)
+                time.sleep(2)
+            raise SystemExit('relay_node_label_probe_missing')
       changed_when: false
 
     - name: Exercise real cohosted receiver and monitoring-only failure boundaries

@@ -28,7 +28,7 @@
             assert prop(unit, 'MemorySwapMax') == '0'
             assert prop(unit, 'CPUQuotaPerSecUSec') == cpu
             assert prop(unit, 'IOWeight') == '10'
-        for unit in ['observability-prometheus', 'observability-ingress', 'observability-disk-guard',
+        for unit in ['observability-prometheus', 'observability-prometheus-relay', 'observability-ingress', 'observability-disk-guard',
                      'observability-alertmanager', 'observability-silence-gateway', 'observability-telegram-relay']:
             assert prop(unit, 'Slice') == 'observability-collector.slice', unit
             assert prop(unit, 'ActiveState') == 'active', unit

@@ -38,6 +38,9 @@ def _values() -> dict:
             "ingress_port": 9443,
             "ingress_address": "10.23.0.2",
             "prometheus_listen": "127.0.0.1:9090",
+            "relay_listen": "127.0.0.1:19091",
+            "relay_binary_link": "/usr/local/libexec/observability-collector-vmagent",
+            "relay_queue_dir": "/var/lib/observability-prometheus/relay-queue",
             "remote_write_path_prefix": "/remote-write/v1/nodes",
             "request_body_limit": "8m",
             "request_concurrency": 4,
@@ -137,16 +140,75 @@ def test_ingress_is_only_the_bounded_authenticated_write_path() -> None:
         "if ($request_method != POST) { return 405; }",
         'if ($args != "") { return 400; }',
         "if ($observability_remote_write_node != $1) { return 403; }",
-        "rewrite ^ /api/v1/write break;",
-        "proxy_pass http://127.0.0.1:9090;",
-        'proxy_set_header Host "127.0.0.1:9090";',
+        # The relay maps the certificate-bound id from ingress_node to node.
+        "rewrite ^ /api/v1/write?extra_label=ingress_node=$observability_remote_write_node break;",
+        "proxy_pass http://127.0.0.1:19091;",
+        'proxy_set_header Host "127.0.0.1:19091";',
         "X-Prometheus-Remote-Write-Version $http_x_prometheus_remote_write_version;",
         "location / { return 404; }",
     ):
         assert required in rendered
 
-    for forbidden in ("/api/v1/query", "/-/reload", "proxy_set_header Authorization"):
+    for forbidden in (
+        "/api/v1/query",
+        "/-/reload",
+        "proxy_set_header Authorization",
+        "127.0.0.1:9090",
+        # A rewrite regex resets location captures, so $1 would be empty here.
+        "extra_label=ingress_node=$1",
+        # vmagent appends extra labels, so a direct node label would be duplicated.
+        "extra_label=node=",
+    ):
         assert forbidden not in rendered
+
+
+def test_ingress_requires_relay_and_relay_writes_only_to_loopback_prometheus() -> None:
+    ingress = render_template(
+        ROLE / "templates/observability-ingress.service.j2", _values()
+    )
+    relay = render_template(
+        ROLE / "templates/observability-prometheus-relay.service.j2", _values()
+    )
+
+    assert "Requires=observability-prometheus-relay.service" in ingress
+    assert "observability-prometheus-relay.service" in next(
+        line for line in ingress.splitlines() if line.startswith("After=")
+    )
+    exec_start = next(line for line in relay.splitlines() if line.startswith("ExecStart="))
+    argv = shlex.split(exec_start.removeprefix("ExecStart="))
+    assert argv[0] == "/usr/local/libexec/observability-collector-vmagent"
+    flags = dict(arg.split("=", 1) for arg in argv[1:])
+    assert flags == {
+        "-httpListenAddr": "127.0.0.1:19091",
+        "-remoteWrite.url": "http://127.0.0.1:9090/api/v1/write",
+        "-remoteWrite.forcePromProto": "true",
+        "-remoteWrite.disableOnDiskQueue": "true",
+        "-remoteWrite.queues": "1",
+        "-remoteWrite.tmpDataPath": "/var/lib/observability-prometheus/relay-queue",
+        "-remoteWrite.maxDiskUsagePerURL": "67108864",
+        "-remoteWrite.maxBlockSize": "8388608",
+        "-remoteWrite.flushInterval": "1s",
+        "-memory.allowedBytes": "33554432",
+        "-remoteWrite.relabelConfig": "/etc/observability-control-plane/relay-relabel.yml",
+    }
+    rules = yaml.safe_load(render_template(ROLE / "templates/observability-prometheus-relay-relabel.yml.j2", _values()))
+    # Payload node goes first, then the ingress identity becomes node and its carrier label goes.
+    assert rules == [
+        {"action": "labeldrop", "regex": "node"},
+        {"action": "labelmap", "regex": "ingress_node", "replacement": "node"},
+        {"action": "labeldrop", "regex": "ingress_node"},
+    ]
+    for required in (
+        "Slice=observability-collector.slice",
+        "BindsTo=observability-disk-guard.service",
+        "ConditionPathExists=!/var/lib/observability-disk-guard/latched",
+        "User=prometheus",
+        "MemoryMax=128M",
+        "ReadWritePaths=/var/lib/observability-prometheus/relay-queue",
+        "ProtectSystem=strict",
+        "NoNewPrivileges=true",
+    ):
+        assert required in relay.splitlines()
 
 
 def test_ingress_binds_each_certificate_subject_to_exact_node_path() -> None:
@@ -216,6 +278,9 @@ def test_role_defaults_and_tasks_fail_closed_before_host_writes() -> None:
 
     assert defaults["enabled"] is False
     assert defaults["prometheus"]["version"] == ""
+    assert defaults["relay"]["version"] == ""
+    assert defaults["relay"]["sha256"] == {"amd64": "", "arm64": ""}
+    assert defaults["relay_install_root"] != defaults["install_root"]
     assert defaults["tls"]["server_key_pem"] == ""
     assert "requires exact bounded receiver settings" in enabled
     helper = (ROLE / "files/observability-tls-preflight.py").read_text()
@@ -256,6 +321,50 @@ def test_enabled_role_refuses_missing_pins_and_mtls_before_mutation(
     # The failed assert is intentionally no_log because it checks credential
     # material; its recap proves the refusal happened before any host mutation.
     assert "changed=0" in result.stdout
+
+
+@pytest.mark.parametrize("relay_pinned", [True, False], ids=["relay-pinned", "relay-unpinned"])
+def test_enabled_role_requires_relay_pins_in_the_receiver_contract(
+    tmp_path: Path, relay_pinned: bool
+) -> None:
+    role = yaml.safe_load((ROLE / "defaults/main.yml").read_text())["observability_control_plane"]
+    archive = {"amd64": "https://example.invalid/a.tar.gz", "arm64": "https://example.invalid/b.tar.gz"}
+    digest = {"amd64": "a" * 64, "arm64": "b" * 64}
+    role.update(
+        enabled=True,
+        ingress_address="10.23.0.2",
+        tls={key: "fixture" for key in role["tls"]},
+        ingest_identities=[{"node_id": "vpn-p0", "client_cert_pem": "fixture"}],
+    )
+    role["prometheus"].update(
+        version="3.15.1", urls=archive, sha256=digest,
+        archive_members={"amd64": "prometheus", "arm64": "prometheus"},
+    )
+    if relay_pinned:
+        role["relay"] = {
+            "version": "v1.155.0", "urls": archive, "sha256": digest,
+            "archive_members": {"amd64": "vmagent-prod", "arm64": "vmagent-prod"},
+        }
+    playbook = tmp_path / "relay-contract.yml"
+    playbook.write_text(yaml.safe_dump([{
+        "hosts": "localhost", "connection": "local", "gather_facts": False, "become": False,
+        "vars": {"observability_control_plane": role},
+        "roles": ["observability_control_plane"],
+    }]))
+
+    result = subprocess.run(
+        ["ansible-playbook", "-i", "localhost,", str(playbook)],
+        cwd=ROOT,
+        env={**os.environ, "ANSIBLE_ROLES_PATH": str(ROOT / "ansible/roles")},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "changed=0" in result.stdout
+    # A pinned relay passes the receiver contract and stops at the next producer-scope check.
+    assert ("Enabled collector requires mode-matched alerting" in result.stdout) is relay_pinned
 
 
 def test_enabled_molecule_archive_matches_runtime_release_strip_contract() -> None:
@@ -473,7 +582,7 @@ def test_enabled_receiver_waits_for_the_exact_get_refusal_before_red_path_checks
         "Assert remote-write receiver rejects a missing or wrong SNI",
         "Assert remote-write receiver rejects a CN path mismatch",
         "Submit an oversized request and require exact server-side 413",
-        "Assert invalid protobuf reaches real Prometheus and is rejected",
+        "Assert invalid protobuf reaches the node-label relay and is rejected",
     ):
         assert names.index(readiness["name"]) < names.index(red_path)
 

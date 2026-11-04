@@ -1,0 +1,45 @@
+[Unit]
+Description=Loopback remote-write relay that binds the node label to the ingress identity
+After=network-online.target observability-disk-guard.service observability-prometheus.service
+Wants=network-online.target
+BindsTo=observability-disk-guard.service
+ConditionPathExists=!/var/lib/observability-disk-guard/latched
+
+[Service]
+Slice=observability-collector.slice
+Type=simple
+User=observability-prometheus
+Group=observability-prometheus
+# The relabel file replaces any payload node label with the ingress identity. Without an on-disk queue the relay
+# returns 429 once its bounded memory buffer fills, so the sender queue keeps the rest;
+# samples already acknowledged in that buffer are lost if the relay stops abruptly.
+ExecStart=/usr/local/libexec/observability-collector-vmagent -httpListenAddr=127.0.0.1:19091 -remoteWrite.url=http://127.0.0.1:9090/api/v1/write -remoteWrite.forcePromProto=true -remoteWrite.disableOnDiskQueue=true -remoteWrite.queues=1 -remoteWrite.tmpDataPath=/var/lib/observability-prometheus/relay-queue -remoteWrite.maxDiskUsagePerURL=67108864 -remoteWrite.maxBlockSize=8388608 -remoteWrite.flushInterval=1s -memory.allowedBytes=33554432 -remoteWrite.relabelConfig=/etc/observability-control-plane/relay-relabel.yml
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=15s
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateDevices=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectClock=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+MemoryMax=128M
+TasksMax=64
+ReadWritePaths=/var/lib/observability-prometheus/relay-queue
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

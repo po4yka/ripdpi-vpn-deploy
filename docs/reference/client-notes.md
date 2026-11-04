@@ -311,3 +311,14 @@ owner's local completion scope. Official sing-box output remains free of
 unsupported XHTTP fields. A working alternate preserves connectivity, while a
 failed or indeterminate primary keeps the aggregate liveness decision degraded;
 it does not by itself request node rotation.
+
+The paired client changes are merged in
+[RIPDPI #709](https://github.com/po4yka/RIPDPI/pull/709). The prepared debug APK
+is a build artifact; it does not prove device installation, bundle import or
+automatic failover. The [deployment snapshot](deployment-status.md#transport-activation)
+records the optional pool and payload policy as disabled. Before activation,
+accept two owned HTTPS control origins, install the compatible client, export a
+fresh per-device bundle and test transfer plus failure/recovery on that device.
+Under the explicit policy, active Hysteria2 payload failure gives TCP reserves
+priority. AmneziaWG is not a selector candidate, and total candidate failure
+must not fall back to direct traffic.

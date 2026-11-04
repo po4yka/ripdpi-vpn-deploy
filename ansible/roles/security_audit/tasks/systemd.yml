@@ -6,6 +6,40 @@
   changed_when: false
   failed_when: false
 
+- name: Collect systemd service isolation assessment
+  ansible.builtin.command:
+    argv: [systemd-analyze, security, --no-pager]
+  environment:
+    SYSTEMD_COLORS: '0'
+    LC_ALL: C
+  register: security_audit_systemd_security
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Write systemd service isolation report
+  ansible.builtin.copy:
+    dest: >-
+      {{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit')
+      }}/{{ security_audit_run_id }}/systemd-security.txt
+    owner: root
+    group: root
+    mode: "0640"
+    content: |
+      command=systemd-analyze security --no-pager
+      rc={{ security_audit_systemd_security.rc | default('unavailable') }}
+      assessment=unit isolation configuration, not a vulnerability verdict
+
+      # stdout
+      {{ security_audit_systemd_security.stdout | default('') }}
+
+      # stderr
+      {{ security_audit_systemd_security.stderr | default('') }}
+
+      # module diagnostic
+      {{ security_audit_systemd_security.msg | default('') }}
+  when: not ansible_check_mode
+
 - name: Collect nftables ruleset
   ansible.builtin.command:
     cmd: nft list ruleset

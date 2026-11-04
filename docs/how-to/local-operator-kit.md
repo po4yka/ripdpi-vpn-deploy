@@ -99,6 +99,10 @@ logging separately uses `AGE_KEY` and `AUDIT_LOG_FILE`. State backup uses
 `BACKUP_DEST` and `AGE_RECIPIENT` or `AGE_RECIPIENT_FILE`; see
 [secrets operations](../reference/secrets.md) and `scripts/backup-tf-state.sh`.
 
+Resolve each tool's working SSH identity from the active inventory or private SSH
+configuration, and compare its public fingerprint with the catalog. An encrypted
+authority document is recovery material, not an SSH `IdentityFile`.
+
 Make overrides do not configure every caller. Direct scripts can use their own
 defaults, and `vpnd` resolves a separate platform configuration directory.
 Record and verify each caller's supported inputs before changing its paths.
@@ -155,6 +159,10 @@ records the last completed service-wide check, not an automatic backup schedule.
 Use [operator maintenance](operator-maintenance.md#check-seal-and-verify-selected-recovery-material)
 for the supported selected-file check, seal and downloaded-backup verification
 commands. Their results state coverage; they do not discover every catalog field.
+Use [fleet maintenance](fleet-maintenance.md#seal-and-verify-the-operator-kit)
+for the complete-kit audit, encrypted archive and exact-object offsite readback.
+The scheduled Kuma backup covers the observer data only; it does not back up
+the operator kit or Terraform state.
 
 ## Agent procedure and completion
 

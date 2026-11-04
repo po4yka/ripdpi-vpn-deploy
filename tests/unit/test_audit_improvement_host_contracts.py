@@ -256,3 +256,81 @@ def test_supported_lynis_repeat_non_acceptance_fields_preserves_strict_receipt()
         audit.validate_report(
             report + "report_datetime_end=2026-10-10 00:00:02\n", START, START + 3
         )
+
+
+@pytest.mark.parametrize("outcome", ["success", "nonzero", "unavailable", "check"])
+def test_actual_systemd_security_tasks_retain_private_diagnostics(tmp_path, outcome):
+    import getpass
+    import json
+    import os
+    import shutil
+    import stat
+    import subprocess
+
+    import yaml
+
+    tasks = yaml.safe_load(
+        (ROOT / "ansible/roles/security_audit/tasks/systemd.yml").read_text()
+    )
+    selected = [task for task in tasks if "service isolation" in task["name"]]
+    assert len(selected) == 2
+    assert selected[1]["ansible.builtin.copy"]["mode"] == "0640"
+    # The test replaces only host ownership and the external analyzer process.
+    selected[1]["ansible.builtin.copy"]["owner"] = getpass.getuser()
+    selected[1]["ansible.builtin.copy"].pop("group")
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    assert selected[0]["ansible.builtin.command"]["argv"] == [
+        "systemd-analyze", "security", "--no-pager"
+    ]
+    selected[0]["ansible.builtin.command"]["argv"][0] = str(binary / "systemd-analyze")
+    arguments = tmp_path / "analyzer-arguments.json"
+    if outcome != "unavailable":
+        analyzer = binary / "systemd-analyze"
+        analyzer.write_text(
+            f"#!{sys.executable}\n"
+            "import json, os, sys\n"
+            "from pathlib import Path\n"
+            "Path(os.environ['ANALYZER_ARGUMENTS']).write_text(json.dumps(sys.argv[1:]))\n"
+            "print('fixture unit isolation assessment')\n"
+            "print('fixture analyzer diagnostic', file=sys.stderr)\n"
+            f"sys.exit({1 if outcome == 'nonzero' else 0})\n"
+        )
+        analyzer.chmod(0o755)
+    report_root = tmp_path / "reports"
+    (report_root / "run").mkdir(parents=True)
+    play = tmp_path / "systemd-audit.yml"
+    play.write_text(yaml.safe_dump([{
+        "hosts": "localhost", "connection": "local", "gather_facts": False, "become": False,
+        "vars": {
+            "ansible_python_interpreter": sys.executable,
+            "security_audit": {"report_root": str(report_root)},
+            "security_audit_run_id": "run",
+        },
+        "tasks": selected,
+    }]))
+    result = subprocess.run(
+        [shutil.which("ansible-playbook"), "-i", "localhost,", str(play)]
+        + (["--check"] if outcome == "check" else []),
+        cwd=ROOT,
+        env={
+            **os.environ,
+            "ANALYZER_ARGUMENTS": str(arguments),
+        },
+        capture_output=True, text=True, timeout=40, check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    report = report_root / "run/systemd-security.txt"
+    if outcome == "check":
+        assert not arguments.exists() and not report.exists()
+    else:
+        content = report.read_text()
+        assert stat.S_IMODE(report.stat().st_mode) == 0o640
+        if outcome == "unavailable":
+            assert "rc=2\n" in content and "# module diagnostic\nError executing command." in content
+            assert not arguments.exists()
+        else:
+            assert json.loads(arguments.read_text()) == ["security", "--no-pager"]
+            assert f"rc={1 if outcome == 'nonzero' else 0}\n" in content
+            assert "fixture unit isolation assessment" in content
+            assert "fixture analyzer diagnostic" in content

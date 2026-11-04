@@ -988,3 +988,17 @@ def test_public_access_logs_retain_no_client_address_or_user_agent(fallback: boo
     assert "$status" in log_format
     enabled = [line.split() for line in rendered.splitlines() if line.strip().startswith("access_log") and "off;" not in line]
     assert enabled and all(line[-1] == "vpn_public;" for line in enabled)
+
+
+def test_every_public_nginx_server_block_hides_the_version() -> None:
+    variables = renderer.merge_render_vars()
+    rendered = _render(fallback=True)
+    variables["nginx_xhttp"] = {
+        **variables["nginx_xhttp"],
+        "acme": {"domains": [variables["nginx_xhttp"]["server_name"]]},
+    }
+    variables.setdefault("public_site_canonical_url", "https://example.test")
+    rendered += renderer.render_template(TEMPLATE.parent / "public-acme.conf.j2", variables)
+    blocks = rendered.split("server {")[1:]
+    assert any("listen 80;" in block for block in blocks)
+    assert all("server_tokens off;" in block for block in blocks)
