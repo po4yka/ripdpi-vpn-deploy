@@ -3,6 +3,11 @@
   hosts: all
   become: true
   tasks:
+    - name: Verify the baseline unused kernel module policy
+      ansible.builtin.import_role:
+        name: baseline
+        tasks_from: module-verify.yml
+
     - name: Collect service facts
       ansible.builtin.service_facts:
 
