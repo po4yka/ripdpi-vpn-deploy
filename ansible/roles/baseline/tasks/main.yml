@@ -14,6 +14,10 @@
     fail_msg: UDP socket ceilings must be integers between 1 MiB and 64 MiB.
   tags: [always]
 
+- name: Admit the unused kernel module policy before host changes
+  ansible.builtin.import_tasks: module-admission.yml
+  tags: [always]
+
 - name: Install baseline packages
   ansible.builtin.apt:
     name:
@@ -22,6 +26,7 @@
       - jq
       - unzip
       - nftables
+      - kmod
       - logrotate
       - systemd-timesyncd
       - rsync
@@ -34,6 +39,9 @@
     update_cache: true
     cache_valid_time: 3600
   register: baseline_packages
+
+- name: Reconcile persistent unused kernel module denial
+  ansible.builtin.import_tasks: module-policy.yml
 
 - name: Remove unsupported VPS hardware management packages
   ansible.builtin.apt:

@@ -20,6 +20,11 @@
       tags: [always]
 
   tasks:
+    - name: Verify the baseline unused kernel module policy
+      ansible.builtin.import_role:
+        name: baseline
+        tasks_from: module-verify.yml
+
     - name: Ensure VPN_SECRETS_FILE was provided
       ansible.builtin.assert:
         that:
