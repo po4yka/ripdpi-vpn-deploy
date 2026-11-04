@@ -1,0 +1,15 @@
+---
+- name: Verify native module denial and persistent boot policy
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - -I
+      - -B
+      - -S
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path ~ '/files/module-policy-check.py') }}"
+      - verify
+    stdin: "{{ lookup('ansible.builtin.file', role_path ~ '/files/unused-kernel-modules.conf', rstrip=false) }}"
+    stdin_add_newline: false
+  changed_when: false
+  check_mode: false

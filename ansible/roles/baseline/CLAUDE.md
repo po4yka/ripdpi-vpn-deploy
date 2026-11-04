@@ -2,6 +2,15 @@
 
 ## Design decisions
 
+Unused SMB/NFS server, TIPC, software RDMA, Ceph, NVMe target and GUE modules
+have fixed blacklist and install-denial rules. Admission refuses loaded or
+built-in modules before mutation; it never unloads them. A policy digest is
+acknowledged only after all existing initramfs images contain the exact policy
+bytes. Native extraction uses a private guest directory and removes its data.
+Interrupted updates retry even when the policy file is unchanged. Native
+modprobe verification, not file presence, proves effective denial. Containers
+without kernel metadata verify policy only; they do not prove host admission.
+
 The observer dashboard intent uses the existing recoverable SSH baseline, with
 canonical algorithms, no agent or remote forwarding, and one local destination
 at 127.0.0.1:13001. It does not run VPN baseline roles on the observer. Unknown

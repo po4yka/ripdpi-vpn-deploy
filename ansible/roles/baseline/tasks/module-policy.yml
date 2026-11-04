@@ -1,0 +1,90 @@
+---
+- name: Ensure the module policy directory exists
+  ansible.builtin.file:
+    path: /etc/modprobe.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deny unused kernel network and storage modules
+  ansible.builtin.copy:
+    src: unused-kernel-modules.conf
+    dest: /etc/modprobe.d/90-vpn-unused-modules.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Verify effective module denial before updating boot images
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - -I
+      - -B
+      - -S
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path ~ '/files/module-policy-check.py') }}"
+      - effective
+    stdin: "{{ lookup('ansible.builtin.file', role_path ~ '/files/unused-kernel-modules.conf', rstrip=false) }}"
+    stdin_add_newline: false
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Reconcile persistent module policy after successful publication
+  when: not ansible_check_mode
+  block:
+    - name: Read module policy acknowledgement and boot image state
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -I
+          - -B
+          - -S
+          - -c
+          - "{{ lookup('ansible.builtin.file', role_path ~ '/files/module-policy-check.py') }}"
+          - status
+        stdin: "{{ lookup('ansible.builtin.file', role_path ~ '/files/unused-kernel-modules.conf', rstrip=false) }}"
+        stdin_add_newline: false
+      register: _baseline_module_status
+      changed_when: false
+
+    - name: Ensure private baseline state directory exists
+      ansible.builtin.file:
+        path: /var/lib/vpn-baseline
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Refresh all existing initramfs images for unacknowledged module policy
+      ansible.builtin.command:
+        argv: [update-initramfs, -u, -k, all]
+      changed_when: true
+      when:
+        - (_baseline_module_status.stdout | from_json).refresh_required
+        - (_baseline_module_status.stdout | from_json).images | int > 0
+
+    - name: Verify module policy is present in every existing initramfs image
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -I
+          - -B
+          - -S
+          - -c
+          - "{{ lookup('ansible.builtin.file', role_path ~ '/files/module-policy-check.py') }}"
+          - images
+        stdin: "{{ lookup('ansible.builtin.file', role_path ~ '/files/unused-kernel-modules.conf', rstrip=false) }}"
+        stdin_add_newline: false
+      changed_when: false
+
+    - name: Acknowledge module policy only after successful boot image verification
+      ansible.builtin.copy:
+        dest: /var/lib/vpn-baseline/unused-modules.sha256
+        content: "{{ (_baseline_module_status.stdout | from_json).digest }}\n"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Verify the complete persistent module policy
+      ansible.builtin.import_tasks: module-verify.yml
