@@ -63,8 +63,8 @@ variable "allowed_ssh_cidrs" {
   }
 
   validation {
-    condition     = alltrue([for cidr in var.allowed_ssh_cidrs : try(tonumber(split("/", cidr)[1]) != 0, true)])
-    error_message = "allowed_ssh_cidrs must not contain a zero-prefix network, including noncanonical IPv4 or IPv6 world networks."
+    condition     = alltrue([for cidr in var.allowed_ssh_cidrs : try(tonumber(split("/", cidr)[1]) >= (strcontains(cidr, ":") ? 48 : 24), true)])
+    error_message = "allowed_ssh_cidrs entries must be no broader than /24 (IPv4) or /48 (IPv6); this also rejects world networks with host bits."
   }
 }
 
