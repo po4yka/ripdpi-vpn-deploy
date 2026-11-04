@@ -65,6 +65,8 @@ The staged selection includes its previous-runtime link when supplied by runtime
 
 ## Pitfalls
 
+- **Re-run the agent lifecycle after toggling self-steal** — the health adapter unit loads the self-steal `fullchain.pem` only when the toggle was on at render time. A site deploy that disables self-steal removes that file, so the adapter fails, and its health evidence goes stale, until the agent lifecycle renders the unit again.
+
 - Pinned atomic queue writes can leave `metainfo.json.tmp.<uint64>` (at most 16 KiB) or an empty `0000000000000000.tmp.<uint64>` initial chunk. Preserve these exact private native forms through compensation under the existing count/copy budget. Readiness retries only a live inode-change race within its deadline; quiescent snapshots and foreign-authority refusals remain strict.
 
 - Install adapter executables and queue their timer restart notifications only after durable sender acceptance. Ansible flushes notifications from rescued role attempts; a rejected first cutover must not restart adapters whose units have not been installed.

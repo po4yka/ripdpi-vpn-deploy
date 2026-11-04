@@ -199,7 +199,7 @@ variable "managed_dns_records" {
         || (record.type == "AAAA" && strcontains(record.data, ":") && can(cidrhost("${record.data}/128", 0)))
         || (record.type == "CNAME" && record.name != "" && length(record.data) <= 254 && can(regex("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+\\.?$", record.data)))
         || (record.type == "TXT" && can(regex("^\"[ !#-~]{1,253}\"$", record.data)))
-        || (record.type == "CAA" && can(regex("^(0|128) (issue|issuewild|iodef) \"[!#-~]{1,253}\"$", record.data)))
+        || (record.type == "CAA" && can(regex("^(0|128) (issue|issuewild|iodef) \"[ !#-~]{1,253}\"$", record.data)))
       )
     ])
     error_message = "Records require valid relative names, A/AAAA addresses, a non-apex CNAME target, a quoted printable TXT value or a CAA flag, tag and quoted value, and an integer TTL from 60 to 86400."
