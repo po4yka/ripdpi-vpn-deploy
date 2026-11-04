@@ -1,0 +1,11 @@
+---
+# Retirement deletes state a protected ingress rollback could still need, so
+# inside that transaction it waits for site.yml to run it after the commit.
+- name: Retire the model news page now outside a protected ingress transaction
+  ansible.builtin.include_tasks: model-news-absent.yml
+  when: _transport_ingress_request is not defined
+
+- name: Defer model news retirement until the protected ingress commit
+  ansible.builtin.set_fact:
+    _nginx_model_news_retire_after_commit: true
+  when: _transport_ingress_request is defined

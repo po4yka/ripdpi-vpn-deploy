@@ -1,10 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>{{ public_site_canonical_url }}/</loc><lastmod>2026-07-16</lastmod></url>
+  <url><loc>{{ public_site_canonical_url }}/</loc><lastmod>2026-11-04</lastmod></url>
   <url><loc>{{ public_site_canonical_url }}/about.html</loc><lastmod>2026-07-16</lastmod></url>
   <url><loc>{{ public_site_canonical_url }}/methodology.html</loc><lastmod>2026-07-16</lastmod></url>
-  <url><loc>{{ public_site_canonical_url }}/updates.html</loc><lastmod>2026-07-16</lastmod></url>
+  <url><loc>{{ public_site_canonical_url }}/updates.html</loc><lastmod>2026-11-04</lastmod></url>
   <url><loc>{{ public_site_canonical_url }}/notes/reading-benchmark-results.html</loc><lastmod>2026-07-16</lastmod></url>
   <url><loc>{{ public_site_canonical_url }}/notes/latency-throughput-context.html</loc><lastmod>2026-07-16</lastmod></url>
   <url><loc>{{ public_site_canonical_url }}/notes/repeatable-model-comparisons.html</loc><lastmod>2026-07-16</lastmod></url>
+  <url><loc>{{ public_site_canonical_url }}/notes/</loc><lastmod>2026-11-04</lastmod></url>
+  <url><loc>{{ public_site_canonical_url }}/models.html</loc><lastmod>2026-11-04</lastmod></url>
+  <url><loc>{{ public_site_canonical_url }}/glossary.html</loc><lastmod>2026-11-04</lastmod></url>
+  <url><loc>{{ public_site_canonical_url }}/notes/reading-an-open-weight-model-card.html</loc><lastmod>2026-11-04</lastmod></url>
+  <url><loc>{{ public_site_canonical_url }}/notes/serving-mixture-of-experts-models.html</loc><lastmod>2026-11-04</lastmod></url>
+  <url><loc>{{ public_site_canonical_url }}/notes/tokenizer-efficiency-for-chinese-text.html</loc><lastmod>2026-11-04</lastmod></url>
+{% if nginx_xhttp_model_news_enabled | default(true) | bool %}
+  <url><loc>{{ public_site_canonical_url }}/news.html</loc></url>
+{% endif %}
 </urlset>

@@ -1,0 +1,12 @@
+---
+# The page shell and every refresh carry the candidate hostname and port, and a
+# protected ingress rollback does not restore them, so inside that transaction
+# convergence waits for site.yml to run it after the commit.
+- name: Converge the model news page now outside a protected ingress transaction
+  ansible.builtin.include_tasks: model-news.yml
+  when: _transport_ingress_request is not defined
+
+- name: Defer model news convergence until the protected ingress commit
+  ansible.builtin.set_fact:
+    _nginx_model_news_converge_after_commit: true
+  when: _transport_ingress_request is defined

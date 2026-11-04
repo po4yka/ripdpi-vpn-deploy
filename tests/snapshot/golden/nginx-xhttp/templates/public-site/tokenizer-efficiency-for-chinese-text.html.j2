@@ -1,0 +1,121 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A reproducible method for comparing how many tokens a fixed Chinese corpus costs under different language-model tokenizers.">
+  <meta name="color-scheme" content="light dark">
+  <title>Measuring tokenizer efficiency for Chinese text · LLM Model Notes</title>
+  <link rel="canonical" href="https://vpn.example.com:8443/notes/tokenizer-efficiency-for-chinese-text.html">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="alternate" type="application/atom+xml" title="LLM Model Notes updates" href="https://vpn.example.com:8443/feed.xml">
+
+  <link rel="author" href="/about.html">
+  <meta name="author" content="LLM Model Notes">
+  <meta property="article:published_time" content="2026-11-04">
+  <meta property="article:modified_time" content="2026-11-04">
+
+  <link rel="stylesheet" href="/assets/site.css">
+  <meta property="og:site_name" content="LLM Model Notes">
+  <meta property="og:title" content="Measuring tokenizer efficiency for Chinese text · LLM Model Notes">
+  <meta property="og:description" content="A reproducible method for comparing how many tokens a fixed Chinese corpus costs under different language-model tokenizers.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://vpn.example.com:8443/notes/tokenizer-efficiency-for-chinese-text.html">
+  <script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Organization", "@id": "https://vpn.example.com:8443/#organization", "name": "LLM Model Notes", "alternateName": ["vpn.example.com"], "url": "https://vpn.example.com:8443/", "description": "Independent notes on practical language-model evaluation and inference behavior.", "logo": {"@type": "ImageObject", "url": "https://vpn.example.com:8443/logo.svg", "width": 512, "height": 512}}, {"@type": "Article", "@id": "https://vpn.example.com:8443/notes/tokenizer-efficiency-for-chinese-text.html#article", "url": "https://vpn.example.com:8443/notes/tokenizer-efficiency-for-chinese-text.html", "mainEntityOfPage": {"@type": "WebPage", "@id": "https://vpn.example.com:8443/notes/tokenizer-efficiency-for-chinese-text.html"}, "headline": "Measuring tokenizer efficiency for Chinese text", "description": "A reproducible method for comparing how many tokens a fixed Chinese corpus costs under different language-model tokenizers.", "datePublished": "2026-11-04", "dateModified": "2026-11-04", "inLanguage": "en", "author": {"@id": "https://vpn.example.com:8443/#organization"}, "publisher": {"@id": "https://vpn.example.com:8443/#organization"}, "isPartOf": {"@id": "https://vpn.example.com:8443/#website"}}]}</script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+<header>
+  <a class="brand" href="/"><img src="/favicon.svg" width="28" height="28" alt="">LLM Model Notes</a>
+  <nav aria-label="Primary">
+    <a aria-current="true" href="/notes/">Notes</a>
+    <a href="/models.html">Models</a>
+
+    <a href="/news.html">News</a>
+
+    <a href="/glossary.html">Glossary</a>
+    <a href="/about.html">About</a>
+  </nav>
+</header>
+  <main id="main-content" tabindex="-1" class="article-shell">
+    <article class="note">
+      <p class="eyebrow">Methods</p>
+      <h1>Measuring tokenizer efficiency for Chinese text</h1>
+      <p class="dek">The same Chinese paragraph can cost very different numbers of tokens. That changes price, context budget, and latency, so measure it directly.</p>
+      <p class="byline">By <a rel="author" href="/about.html">LLM Model Notes</a> · <time datetime="2026-11-04">4 November 2026</time> · 8 minute read</p>
+
+      <p>Prices, context limits, and generation speeds are all stated in tokens. A token is whatever the model's tokenizer produces, and tokenizers differ in how they split Chinese text. A vocabulary built mostly from English text may split a common Chinese word into several byte-level pieces, while a vocabulary built with more Chinese data may keep it as one token. Comparing two models on cost or context without measuring this difference compares two different units.</p>
+
+      <h2>Choose the unit you report</h2>
+      <p>Report efficiency against something that does not depend on the tokenizer. Three units are common:</p>
+      <ul>
+        <li><strong>Characters per token.</strong> Easy to read for Chinese, where one character is a natural unit. Count Unicode code points after normalization, not bytes.</li>
+        <li><strong>UTF-8 bytes per token.</strong> Works for any script and for mixed text, but a Chinese character takes three bytes, so the numbers are not comparable with English figures.</li>
+        <li><strong>Tokens per reference document.</strong> The most direct for budgeting: how many tokens a fixed set of real documents costs.</li>
+      </ul>
+      <p>Pick one as the headline and keep the others in the result bundle. State which one each table uses.</p>
+
+      <h2>Build a fixed corpus</h2>
+      <p>The result depends heavily on the text. Formal news prose, chat messages, classical quotations, source code with Chinese comments, and tables of numbers all tokenize differently. Build a corpus that resembles the intended workload and split it into labelled slices:</p>
+      <ul>
+        <li>Simplified and Traditional characters, kept separate.</li>
+        <li>Pure Chinese prose and mixed Chinese and English text.</li>
+        <li>Text with numbers, dates, and units.</li>
+        <li>Source code or structured data with Chinese strings.</li>
+      </ul>
+      <p>Give each document a stable identifier and record the corpus revision, as the <a href="/notes/repeatable-model-comparisons.html">comparison note</a> recommends for evaluation cases. If the text cannot be published, publish the slice definitions and a small sample with permission.</p>
+
+      <h2>Normalize before counting</h2>
+      <p>Unicode offers several ways to write what looks like the same text. Full-width and half-width forms of Latin letters and digits, different punctuation marks, and compatibility characters all change the token count. Decide on one normalization, such as NFKC or none, apply it to the corpus once, and record it. Do not let each tokenizer apply its own normalization silently, or the comparison will measure the normalizers rather than the vocabularies.</p>
+      <p>Whitespace also matters. Chinese text has no spaces between words, but mixed text and code do. Keep the original whitespace and count it as part of the input.</p>
+
+      <h2>Run every tokenizer from its own repository</h2>
+      <p>Load each tokenizer from the exact model repository and commit you plan to serve. Tokenizers change between releases even inside one model family, and a chat template adds its own tokens around every message. Measure two numbers per document:</p>
+      <ul>
+        <li>Raw tokens for the text alone, without special tokens.</li>
+        <li>Tokens for the text wrapped as one user message in the model's chat template.</li>
+      </ul>
+      <p>The first compares vocabularies. The second is what a request actually costs. For short chat messages, the template overhead can be a large share of the total.</p>
+
+      <table>
+        <caption>A result table with one row per tokenizer and slice</caption>
+        <thead><tr><th>Field</th><th>Example value to record</th></tr></thead>
+        <tbody>
+          <tr><td>Tokenizer source</td><td>Repository identifier and commit hash</td></tr>
+          <tr><td>Slice</td><td>Simplified prose, mixed text, code</td></tr>
+          <tr><td>Characters per token</td><td>Mean and spread across documents</td></tr>
+          <tr><td>Template overhead</td><td>Tokens added per message</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Turn counts into decisions</h2>
+      <p>Token counts become useful when you convert them into the units of a decision. Multiply tokens per reference document by the price per token to compare real cost. Divide a context limit by tokens per document to see how many documents fit. Combine output tokens per answer with the measured generation rate from the <a href="/notes/latency-throughput-context.html">latency note</a> to estimate response time in seconds rather than in tokens.</p>
+      <p>Keep the per-document numbers, not only the averages. A tokenizer that is efficient on prose can be inefficient on code or numbers, and the average hides that if one slice dominates the corpus.</p>
+
+      <h2>Limits of the method</h2>
+      <p>Fewer tokens is not the same as better quality. A larger vocabulary can make each token rarer in training data, and a model can perform well despite a less efficient tokenizer. Treat efficiency as a cost and capacity measurement and evaluate quality separately on the same text.</p>
+
+      <h2>Primary references</h2>
+      <ul class="references">
+        <li><a href="https://arxiv.org/abs/1508.07909">Neural Machine Translation of Rare Words with Subword Units</a> — byte-pair encoding for subword vocabularies.</li>
+        <li><a href="https://arxiv.org/abs/1808.06226">SentencePiece</a> — language-independent subword tokenization without pre-segmentation.</li>
+        <li><a href="https://unicode.org/reports/tr15/">Unicode Normalization Forms</a> — the NFC and NFKC definitions used before counting.</li>
+      </ul>
+    </article>
+    <nav class="more-notes" aria-labelledby="more-notes">
+  <h2 id="more-notes">More notes</h2>
+  <ul>
+    <li><span class="meta">Methods</span><a href="/notes/repeatable-model-comparisons.html">Repeatable model comparisons</a></li>
+    <li><span class="meta">Open models</span><a href="/notes/reading-an-open-weight-model-card.html">Reading an open-weight model card</a></li>
+    <li><span class="meta">Inference</span><a href="/notes/serving-mixture-of-experts-models.html">Serving mixture-of-experts models</a></li>
+  </ul>
+  <p><a href="/notes/">All notes</a> · <a href="/methodology.html">Methodology</a></p>
+</nav>
+  </main>
+  <footer>
+  <div><strong>LLM Model Notes</strong><p>Independent notes on practical evaluation.</p></div>
+  <nav aria-label="Footer"><a href="/methodology.html">Methodology</a><a href="/updates.html">Updates</a><a href="/feed.xml">Atom feed</a></nav>
+</footer>
+</body>
+</html>

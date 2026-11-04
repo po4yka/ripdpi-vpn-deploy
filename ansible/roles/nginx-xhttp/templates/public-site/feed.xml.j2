@@ -2,14 +2,38 @@
 <feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en">
   <id>{{ public_site_canonical_url }}/</id>
   <title>LLM Model Notes updates</title>
-  <subtitle>New practical notes on language-model evaluation and inference behavior.</subtitle>
-  <updated>2026-07-16T11:52:04Z</updated>
+  <subtitle>New practical notes on open-weight models, language-model evaluation and inference behavior.</subtitle>
+  <updated>2026-11-04T09:00:00Z</updated>
   <link rel="alternate" type="text/html" href="{{ public_site_canonical_url }}/"/>
   <link rel="self" type="application/atom+xml" href="{{ public_site_canonical_url }}/feed.xml"/>
   <author>
     <name>LLM Model Notes</name>
     <uri>{{ public_site_canonical_url }}/about.html</uri>
   </author>
+  <entry>
+    <id>{{ public_site_canonical_url }}/notes/reading-an-open-weight-model-card.html</id>
+    <title>Reading an open-weight model card</title>
+    <link rel="alternate" type="text/html" href="{{ public_site_canonical_url }}/notes/reading-an-open-weight-model-card.html"/>
+    <published>2026-11-04T09:00:00Z</published>
+    <updated>2026-11-04T09:00:00Z</updated>
+    <summary>Pin the repository revision, separate total and active parameters, read native context twice, and record the license file for each release.</summary>
+  </entry>
+  <entry>
+    <id>{{ public_site_canonical_url }}/notes/serving-mixture-of-experts-models.html</id>
+    <title>Serving mixture-of-experts models</title>
+    <link rel="alternate" type="text/html" href="{{ public_site_canonical_url }}/notes/serving-mixture-of-experts-models.html"/>
+    <published>2026-11-04T09:00:00Z</published>
+    <updated>2026-11-04T09:00:00Z</updated>
+    <summary>Plan weight memory from total parameters, compute from active parameters, and measure key-value cache and expert placement directly.</summary>
+  </entry>
+  <entry>
+    <id>{{ public_site_canonical_url }}/notes/tokenizer-efficiency-for-chinese-text.html</id>
+    <title>Measuring tokenizer efficiency for Chinese text</title>
+    <link rel="alternate" type="text/html" href="{{ public_site_canonical_url }}/notes/tokenizer-efficiency-for-chinese-text.html"/>
+    <published>2026-11-04T09:00:00Z</published>
+    <updated>2026-11-04T09:00:00Z</updated>
+    <summary>Compare how many tokens a fixed, normalized Chinese corpus costs under each model's own tokenizer and chat template.</summary>
+  </entry>
   <entry>
     <id>{{ public_site_canonical_url }}/notes/reading-benchmark-results.html</id>
     <title>Reading benchmark results carefully</title>

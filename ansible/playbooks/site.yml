@@ -373,6 +373,20 @@
         - name: Commit the ready protected ingress and egress composition
           ansible.builtin.import_tasks: tasks/transport-ingress-commit.yml
           tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
+        - name: Retire the model news page after the protected commit
+          ansible.builtin.import_role:
+            name: nginx-xhttp
+            tasks_from: model-news-absent
+            public: true
+          when: _nginx_model_news_retire_after_commit | default(false) | bool
+          tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
+        - name: Converge the model news page after the protected commit
+          ansible.builtin.import_role:
+            name: nginx-xhttp
+            tasks_from: model-news
+            public: true
+          when: _nginx_model_news_converge_after_commit | default(false) | bool
+          tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
         - name: Enable autonomous public TLS renewal after the protected commit
           ansible.builtin.import_role:
             name: nginx-xhttp

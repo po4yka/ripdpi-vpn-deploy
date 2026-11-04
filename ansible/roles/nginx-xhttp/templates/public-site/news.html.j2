@@ -1,0 +1,16 @@
+{% import "_site.html.j2" as site with context %}
+<!doctype html>
+<html lang="en">
+{{ site.head("News · LLM Model Notes", "Recent open-weight model repositories and headlines about Chinese language models, refreshed from public sources.", "/news.html") }}
+<body>
+  {{ site.header("news") }}
+  <main id="main-content" tabindex="-1" class="prose">
+    <p class="eyebrow">News</p>
+    <h1>Open-model news</h1>
+    <p>New public model repositories from Chinese model labs and recent headlines, refreshed several times a day. Each entry links to its source; titles appear as the source wrote them and are not checked by this site.</p>
+    <p class="activity"><!-- model-news:updated --> Read the <a href="/models.html">model tracker</a> for releases checked against primary sources.</p>
+    <!-- model-news:items -->
+  </main>
+  {{ site.footer() }}
+</body>
+</html>
