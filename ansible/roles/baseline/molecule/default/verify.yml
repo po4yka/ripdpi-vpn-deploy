@@ -3,6 +3,27 @@
   hosts: all
   become: true
   tasks:
+    - name: Deny ksmbd with nonempty soft dependencies through native kmod
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            from pathlib import Path
+            import subprocess
+            import tempfile
+            policy = Path('/etc/modprobe.d/90-vpn-unused-modules.conf').read_text()
+            with tempfile.TemporaryDirectory(prefix='vpn-ksmbd-denial-') as directory:
+                config = Path(directory) / 'policy.conf'
+                config.write_text(policy + '\nsoftdep ksmbd pre: vpn_test_dependency\n'
+                                  'install vpn_test_dependency /bin/false\n')
+                result = subprocess.run(['modprobe', '-C', str(config), '--dry-run',
+                                         '--verbose', '--', 'ksmbd'],
+                                        check=True, capture_output=True, text=True)
+                lines = [' '.join(line.split()) for line in result.stdout.splitlines()]
+                assert lines == ['install /bin/false'], result.stdout
+      changed_when: false
+
     - name: Verify the baseline unused kernel module policy
       ansible.builtin.import_role:
         name: baseline

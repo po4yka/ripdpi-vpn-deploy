@@ -42,6 +42,8 @@ def test_exact_unused_subsystems_and_direct_load_denial(checker):
     assert checker.modules(POLICY) == expected
     for name in expected:
         assert f'install {name} /bin/false\n'.encode() in POLICY
+    assert b'alias ksmbd vpn_denied_ksmbd\n' in POLICY
+    assert b'install vpn_denied_ksmbd /bin/false\n' in POLICY
 
 
 @pytest.mark.parametrize('present', ['loaded', 'built-in', 'metadata-missing'])
