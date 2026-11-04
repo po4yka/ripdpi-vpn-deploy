@@ -3,6 +3,11 @@ name: image-scan
 
 on:
   workflow_call:
+    inputs:
+      retain-reports:
+        description: Retain the inventory and SARIF reports for daily notifications
+        type: boolean
+        default: false
   workflow_dispatch:
 
 permissions:
@@ -25,7 +30,18 @@ jobs:
       - uses: ./.github/actions/setup-ci-python
       - name: Collect test and production images
         id: images
-        run: echo "matrix=$(python3 scripts/list-container-images.py)" >> "$GITHUB_OUTPUT"
+        run: |
+          python3 scripts/list-container-images.py > image-matrix.json
+          echo "matrix=$(cat image-matrix.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Retain the expected image inventory
+        if: inputs.retain-reports
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
+        with:
+          name: daily-security-${{ github.run_attempt }}-inventory
+          path: image-matrix.json
+          if-no-files-found: error
+          retention-days: 14
 
   scan:
     timeout-minutes: 15
@@ -60,6 +76,15 @@ jobs:
           # fires on MEDIUM/LOW findings too — defeating the HIGH,CRITICAL gate.
           # Keep the SARIF (and the exit-code) limited to the severities above.
           limit-severities-for-sarif: true
+
+      - name: Retain the image scan report
+        if: always() && inputs.retain-reports
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
+        with:
+          name: daily-security-${{ github.run_attempt }}-image-${{ strategy.job-index }}
+          path: trivy-results.sarif
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload Trivy SARIF results
         if: always()
