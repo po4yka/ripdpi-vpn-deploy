@@ -59,7 +59,9 @@ def config(port=12080, backend_port=12090):
 @pytest.mark.parametrize("address", ["0.0.0.0", "0.4.3.2", "10.1.2.3", "100.64.1.2", "127.8.9.10",
                                      "169.254.169.254", "172.31.4.5", "192.168.1.1", "224.2.3.4",
                                      "240.1.2.3", "255.255.255.255", "::", "::1", "fc00::2",
-                                     "fe80::4", "ff01::2", "::ffff:127.0.0.1", "::ffff:10.1.2.3"])
+                                     "fe80::4", "ff01::2", "::ffff:127.0.0.1", "::ffff:10.1.2.3",
+                                     "198.18.0.1", "198.19.255.254", "64:ff9b::a01:203",
+                                     "2002:a01:203::1"])
 def test_forbidden_representations_share_policy(address):
     assert not DestinationPolicy().allows(address, 443, "tcp")
     assert not DestinationPolicy().allows(address, 53, "udp")
