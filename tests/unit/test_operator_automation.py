@@ -1,5 +1,7 @@
 """Real local maintenance lifecycle, encrypted diagnostics and recovery archives."""
+from contextlib import ExitStack
 from datetime import datetime, timedelta, timezone
+import fcntl
 import hashlib
 import importlib.util
 import io
@@ -71,6 +73,63 @@ def test_timeout_reclaims_child_and_keeps_authenticated_diagnostics(authority):
                                   destination, recipient, environment=private.command_environment(),
                                   cwd=directory, timeout=0.2)
     assert b'before-timeout' in decrypt(identity, destination)
+
+
+@pytest.mark.parametrize('failure', [RuntimeError, KeyboardInterrupt, SystemExit])
+def test_encrypted_command_publishes_diagnostics_before_reraising(authority, monkeypatch, failure):
+    directory, identity, recipient = authority
+    destination = directory / 'interrupted.age'
+    error = failure('command-interrupted')
+
+    def interrupted_command(*args, output_fd, **kwargs):
+        os.write(output_fd, b'partial-private-diagnostic')
+        raise error
+
+    monkeypatch.setattr(private, 'run_command', interrupted_command)
+    with pytest.raises(failure) as caught:
+        private.encrypted_command(['unused-command'], destination, recipient,
+                                  environment=private.command_environment(), cwd=directory)
+    assert caught.value is error
+    assert decrypt(identity, destination) == b'partial-private-diagnostic'
+    assert b'partial-private-diagnostic' not in destination.read_bytes()
+    assert destination.stat().st_mode & 0o777 == 0o600
+
+
+def test_resource_lock_stays_held_until_stack_closes_after_failure(authority):
+    directory, _, _ = authority
+    fleet = load('fleet-maintenance')
+    path = directory / 'resource.lock'
+    with pytest.raises(RuntimeError, match='body-failed'):
+        with ExitStack() as stack:
+            stack.enter_context(fleet.resource_lock(path))
+            with path.open('r+b') as contender:
+                with pytest.raises(BlockingIOError):
+                    fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            raise RuntimeError('body-failed')
+    with path.open('r+b') as contender:
+        fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+@pytest.mark.parametrize('fault', ['unsafe-file', 'contended-lock'])
+def test_resource_lock_closes_stream_when_entry_fails(authority, monkeypatch, fault):
+    directory, _, _ = authority
+    fleet = load('fleet-maintenance')
+    path = write(directory / 'resource.lock', b'', 0o644 if fault == 'unsafe-file' else 0o600)
+    streams = []
+
+    def tracked_open(*args, **kwargs):
+        stream = open(*args, **kwargs)
+        streams.append(stream)
+        return stream
+
+    monkeypatch.setattr(fleet, 'open', tracked_open, raising=False)
+    with path.open('r+b') as contender:
+        fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        expected = private.MaintenanceError if fault == 'unsafe-file' else BlockingIOError
+        with pytest.raises(expected):
+            with fleet.resource_lock(path):
+                pytest.fail('invalid lock was admitted')
+    assert len(streams) == 1 and streams[0].closed
 
 
 @pytest.mark.parametrize('extra', [False, True])
