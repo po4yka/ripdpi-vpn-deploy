@@ -10,10 +10,10 @@ Slice=observability-collector.slice
 Type=simple
 User=observability-prometheus
 Group=observability-prometheus
-# extra_label from ingress overrides payload labels. Without an on-disk queue the relay
+# The relabel file replaces any payload node label with the ingress identity. Without an on-disk queue the relay
 # returns 429 once its bounded memory buffer fills, so the sender queue keeps the rest;
 # samples already acknowledged in that buffer are lost if the relay stops abruptly.
-ExecStart=/usr/local/libexec/observability-collector-vmagent -httpListenAddr=127.0.0.1:19091 -remoteWrite.url=http://127.0.0.1:9090/api/v1/write -remoteWrite.forcePromProto=true -remoteWrite.disableOnDiskQueue=true -remoteWrite.queues=1 -remoteWrite.tmpDataPath=/var/lib/observability-prometheus/relay-queue -remoteWrite.maxDiskUsagePerURL=67108864 -remoteWrite.maxBlockSize=8388608 -remoteWrite.flushInterval=1s -memory.allowedBytes=33554432
+ExecStart=/usr/local/libexec/observability-collector-vmagent -httpListenAddr=127.0.0.1:19091 -remoteWrite.url=http://127.0.0.1:9090/api/v1/write -remoteWrite.forcePromProto=true -remoteWrite.disableOnDiskQueue=true -remoteWrite.queues=1 -remoteWrite.tmpDataPath=/var/lib/observability-prometheus/relay-queue -remoteWrite.maxDiskUsagePerURL=67108864 -remoteWrite.maxBlockSize=8388608 -remoteWrite.flushInterval=1s -memory.allowedBytes=33554432 -remoteWrite.relabelConfig=/etc/observability-control-plane/relay-relabel.yml
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=15s

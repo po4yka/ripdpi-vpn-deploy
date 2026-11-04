@@ -49,7 +49,8 @@ server {
         limit_conn observability_remote_write_total 4;
         limit_req zone=observability_remote_write_rate burst=40 nodelay;
         # The rewrite regex resets $1; use the certificate map value already equal to it.
-        rewrite ^ /api/v1/write?extra_label=node=$observability_remote_write_node break;
+        # The relay relabels ingress_node to node and drops any payload node label.
+        rewrite ^ /api/v1/write?extra_label=ingress_node=$observability_remote_write_node break;
         proxy_pass http://127.0.0.1:19091;
         proxy_request_buffering off;
         proxy_buffering off;
