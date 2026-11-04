@@ -7,8 +7,10 @@ import json
 from itertools import zip_longest
 
 IPV4_DENY = ("0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8",
-             "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/4", "240.0.0.0/4")
-IPV6_DENY = ("::/128", "::1/128", "fc00::/7", "fe80::/10", "ff00::/8")
+             "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16", "198.18.0.0/15", "224.0.0.0/4",
+             "240.0.0.0/4")
+# NAT64 and 6to4 embed an IPv4 address, so they can reach the private IPv4 ranges.
+IPV6_DENY = ("::/128", "::1/128", "64:ff9b::/96", "2002::/16", "fc00::/7", "fe80::/10", "ff00::/8")
 # The direct gateway answers normalizer lookups here over DNS-over-HTTPS; it is
 # the one loopback resolver the denied 127.0.0.0/8 prefix admits.
 LOCAL_DNS_FORWARDER = "127.0.0.2"
