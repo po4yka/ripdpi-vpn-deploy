@@ -50,8 +50,9 @@ Its IP SAN is verified without DNS or SNI. Ingress forwards only to a loopback
 vmagent relay (`127.0.0.1:19091`, own pin and `/opt/observability-collector-vmagent`
 root) with `extra_label=node=<cert-bound id>`; vmagent overrides any payload
 `node` label. Do not use `$1` after the `rewrite ^` regex, which resets captures.
-The relay disables its on-disk queue so a Prometheus outage returns 429 to the
-sender's durable queue; Prometheus rejections after relay acceptance are lost.
+The relay disables its on-disk queue: once its bounded memory buffer fills, a
+Prometheus outage returns 429 to the sender's durable queue. Samples already
+acknowledged in that buffer, and Prometheus rejections after acceptance, are lost.
 Prometheus generations are content-addressed and
 immutable; rollback repoints `current.yml` directly at the prior generation.
 The exact certificate subject maps to one technical node id. TLS validation

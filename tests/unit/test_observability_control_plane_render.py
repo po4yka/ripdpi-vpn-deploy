@@ -193,7 +193,7 @@ def test_ingress_requires_relay_and_relay_writes_only_to_loopback_prometheus() -
         "BindsTo=observability-disk-guard.service",
         "ConditionPathExists=!/var/lib/observability-disk-guard/latched",
         "User=prometheus",
-        "MemoryMax=64M",
+        "MemoryMax=128M",
         "ReadWritePaths=/var/lib/observability-prometheus/relay-queue",
         "ProtectSystem=strict",
         "NoNewPrivileges=true",
