@@ -10,6 +10,8 @@ bytes. Native extraction uses a private guest directory and removes its data.
 Interrupted updates retry even when the policy file is unchanged. Native
 modprobe verification, not file presence, proves effective denial. Containers
 without kernel metadata verify policy only; they do not prove host admission.
+The ksmbd denial alias takes precedence over its nonempty soft dependencies,
+which bypass an install-only denial in the Ubuntu kmod 31 baseline.
 
 The observer dashboard intent uses the existing recoverable SSH baseline, with
 canonical algorithms, no agent or remote forwarding, and one local destination
