@@ -10,10 +10,10 @@ Slice=observability-collector.slice
 Type=simple
 User={{ observability_control_plane.service_user }}
 Group={{ observability_control_plane.service_group }}
-# extra_label from ingress overrides payload labels. Without an on-disk queue the relay
+# The relabel file replaces any payload node label with the ingress identity. Without an on-disk queue the relay
 # returns 429 once its bounded memory buffer fills, so the sender queue keeps the rest;
 # samples already acknowledged in that buffer are lost if the relay stops abruptly.
-ExecStart={{ observability_control_plane.relay_binary_link }} -httpListenAddr={{ observability_control_plane.relay_listen }} -remoteWrite.url=http://{{ observability_control_plane.prometheus_listen }}/api/v1/write -remoteWrite.forcePromProto=true -remoteWrite.disableOnDiskQueue=true -remoteWrite.queues=1 -remoteWrite.tmpDataPath={{ observability_control_plane.relay_queue_dir }} -remoteWrite.maxDiskUsagePerURL=67108864 -remoteWrite.maxBlockSize=8388608 -remoteWrite.flushInterval=1s -memory.allowedBytes=33554432
+ExecStart={{ observability_control_plane.relay_binary_link }} -httpListenAddr={{ observability_control_plane.relay_listen }} -remoteWrite.url=http://{{ observability_control_plane.prometheus_listen }}/api/v1/write -remoteWrite.forcePromProto=true -remoteWrite.disableOnDiskQueue=true -remoteWrite.queues=1 -remoteWrite.tmpDataPath={{ observability_control_plane.relay_queue_dir }} -remoteWrite.maxDiskUsagePerURL=67108864 -remoteWrite.maxBlockSize=8388608 -remoteWrite.flushInterval=1s -memory.allowedBytes=33554432 -remoteWrite.relabelConfig={{ observability_control_plane.config_root }}/relay-relabel.yml
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=15s
