@@ -7,9 +7,8 @@ After=network-online.target
 Type=oneshot
 User=model-news
 Group=model-news
-# Membership only lets the script hand the page to nginx's group; the
-# state directory is model-news:www-data 0750 and owned by Ansible.
-SupplementaryGroups=www-data
+# The state directory is model-news:www-data 2750 and owned by Ansible: new
+# files inherit nginx's group, and this umask makes them 0640.
 UMask=0027
 ExecStart=/usr/bin/python3 /usr/local/libexec/model-news-refresh /etc/model-news/sources.json /etc/model-news/news-shell.html /var/lib/model-news/news.html
 TimeoutStartSec=600

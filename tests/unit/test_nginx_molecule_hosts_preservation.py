@@ -17,7 +17,7 @@ def test_scenario_retains_all_real_https_verification_and_prepare_phase():
     assert settings['scenario']['test_sequence'] == ['dependency', 'syntax', 'create', 'prepare', 'converge', 'idempotence', 'verify', 'destroy']
     source = (SCENARIO / 'verify.yml').read_text()
     assert 'getent' not in source and 'managed hosts entry' not in source
-    assert source.count('--resolve vpn.example.test:8443:127.0.0.1') == 12
+    assert source.count('--resolve vpn.example.test:8443:127.0.0.1') == 14
     assert 'Public responses carry the hardened header set' in source
     assert 'Missing and forbidden paths return the normal site 404' in source
     assert 'Atom feed carries the declared media type and publication identity' in source

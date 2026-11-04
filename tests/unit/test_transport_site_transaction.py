@@ -93,12 +93,15 @@ def test_site_closes_complete_protected_block_before_unrelated_roles():
     block = protected()
     names = [value.get('ansible.builtin.import_role', {}).get('name') for value in block['block']]
     assert [name for name in names if name] == ['firewall', 'intrusion_prevention', 'nginx-xhttp', 'geodata', 'tailnet-management',
-                                             'transport-egress', 'xray', 'reality-self-steal', 'nginx-xhttp', 'hysteria', 'nginx-xhttp']
+                                             'transport-egress', 'xray', 'reality-self-steal', 'nginx-xhttp', 'hysteria', 'nginx-xhttp',
+                                             'nginx-xhttp']
     assert block['block'][0]['ansible.builtin.import_tasks'] == 'tasks/transport-ingress-begin.yml'
     assert block['block'][1]['vars']['firewall_site_transaction'] is True
     assert 'always' in block['block'][1]['tags']
-    assert block['block'][-4]['ansible.builtin.import_tasks'] == 'tasks/transport-egress-activate.yml'
-    assert block['block'][-3]['ansible.builtin.import_tasks'] == 'tasks/transport-ingress-commit.yml'
+    assert block['block'][-5]['ansible.builtin.import_tasks'] == 'tasks/transport-egress-activate.yml'
+    assert block['block'][-4]['ansible.builtin.import_tasks'] == 'tasks/transport-ingress-commit.yml'
+    # Deferred news retirement runs only once the protected commit has succeeded.
+    assert block['block'][-3]['ansible.builtin.import_role']['tasks_from'] == 'model-news-absent'
     finish = block['block'][-1]
     assert finish['ansible.builtin.command']['argv'] == [
         'python3', '-Es', '/usr/local/libexec/ripdpi-consumer/firewall_consumer.py', 'finish', '--owner', 'site']
@@ -248,6 +251,7 @@ if action!='recover-commit':
         _write(roles / role / 'tasks/main.yml', [])
     _write(roles / 'nginx-xhttp/tasks/tls-bootstrap.yml', [])
     _write(roles / 'nginx-xhttp/tasks/tls-finish.yml', [])
+    _write(roles / 'nginx-xhttp/tasks/model-news-absent.yml', [])
     (root / 'firewall-policy').write_bytes(b'accepted firewall')
     _write(roles / 'firewall/tasks/main.yml', [
         {'ansible.builtin.set_fact': {'_firewall_site_transaction_active': True}},
@@ -804,7 +808,9 @@ def test_actual_ingress_declaration_has_exact_candidate_paths_and_optional_secre
             'favicon.svg', 'logo.svg', '404.html', 'assets/site.css', 'index.html', 'about.html',
             'methodology.html', 'updates.html', 'notes/reading-benchmark-results.html',
             'notes/latency-throughput-context.html', 'notes/repeatable-model-comparisons.html',
-            'feed.xml', 'robots.txt', 'sitemap.xml', '.well-known/security.txt']]
+            'notes/reading-an-open-weight-model-card.html', 'notes/serving-mixture-of-experts-models.html',
+            'notes/tokenizer-efficiency-for-chinese-text.html', 'notes/index.html', 'models.html',
+            'glossary.html', 'feed.xml', 'robots.txt', 'sitemap.xml', '.well-known/security.txt']]
     if enabled:
         expected_xhttp += ['/etc/nginx/tls/' + name + suffix for name in ['primary.example.invalid', 'alternate.example.invalid'] for suffix in ['.fullchain.pem', '.key']]
         authority = variables['reality_self_steal']
@@ -846,7 +852,7 @@ def test_public_pages_and_assets_are_staged_by_actual_ansible_without_direct_pub
     result = _run(root)
     assert result.returncode == 0, result.stdout + result.stderr
     rows = json.loads(destination.read_text())
-    assert len(rows) == 15 and len({row['path'] for row in rows}) == 15
+    assert len(rows) == 21 and len({row['path'] for row in rows}) == 21
     assert rows[-1] == {'path': '/var/www/public-site/.well-known/security.txt', 'kind': 'absent'}
     for row in rows:
         assert row['path'].startswith('/var/www/public-site/')

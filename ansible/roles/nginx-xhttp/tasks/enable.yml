@@ -368,5 +368,5 @@
     - _transport_ingress_request is not defined
 
 - name: Retire the refreshed model news page
-  ansible.builtin.include_tasks: model-news-absent.yml
+  ansible.builtin.include_tasks: model-news-retire.yml
   when: not (_nginx_model_news_active | bool)

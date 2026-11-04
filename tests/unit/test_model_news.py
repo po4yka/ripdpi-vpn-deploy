@@ -5,9 +5,12 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = (
@@ -84,7 +87,11 @@ def test_page_lists_escaped_deduplicated_newest_first_entries(
         monkeypatch,
         {HUB_URL: HUB, "https://news.example/feed": RSS, "https://bad.example/feed": DTD},
     )
-    status, output = _run(tmp_path, SOURCES)
+    previous_umask = news.os.umask(0o027)  # the unit's UMask
+    try:
+        status, output = _run(tmp_path, SOURCES)
+    finally:
+        news.os.umask(previous_umask)
     page = output.read_text()
 
     assert status == 0
@@ -150,3 +157,77 @@ def test_redirect_away_from_https_is_refused() -> None:
     with pytest.raises(ValueError, match="leaves https"):
         handler.redirect_request(request, None, 302, "Found", {}, "http://news.example/feed")
     assert handler.redirect_request(request, None, 302, "Found", {}, "https://mirror.example/feed")
+
+
+def test_malformed_entry_link_drops_only_that_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    feed = RSS.replace(b"https://news.example/a", b"https://[")
+    _serve(monkeypatch, {HUB_URL: HUB, "https://news.example/feed": feed})
+    status, output = _run(tmp_path, SOURCES[:2])
+    page = output.read_text()
+
+    assert status == 0
+    assert "lab/Model-New" in page
+    assert "alert(1)" not in page
+
+
+def test_slow_source_is_cut_off_by_the_wall_clock_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Trickle(io.BytesIO):
+        def read(self, size=-1):
+            while True:  # never finishes; only the wall-clock alarm stops it
+                news.signal.pause()
+
+    def urlopen(request, timeout):
+        return Trickle() if request.full_url == "https://news.example/feed" else io.BytesIO(HUB)
+
+    monkeypatch.setattr(news.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(news, "TIMEOUT", 0.2)
+    status, output = _run(tmp_path, SOURCES[:2])
+
+    assert status == 0
+    assert "lab/Model-New" in output.read_text()
+
+
+def test_retirement_inside_a_protected_ingress_waits_for_the_commit(tmp_path: Path) -> None:
+    tasks = SCRIPT.parents[2] / "tasks"
+    play = tmp_path / "play.yml"
+    play.write_text(
+        json.dumps(
+            [
+                {
+                    "hosts": "localhost",
+                    "connection": "local",
+                    "gather_facts": False,
+                    "vars": {"_transport_ingress_request": {"owners": []}},
+                    "tasks": [
+                        {"ansible.builtin.include_tasks": str(tasks / "model-news-retire.yml")},
+                        {"ansible.builtin.assert": {"that": ["_nginx_model_news_retire_after_commit"]}},
+                    ],
+                }
+            ]
+        )
+    )
+    result = subprocess.run(
+        ["ansible-playbook", "-i", "localhost,", str(play)],
+        capture_output=True,
+        text=True,
+        timeout=90,
+        check=False,
+        env={**os.environ, "ANSIBLE_NOCOLOR": "1"},
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Stop and disable the model news timer" not in result.stdout
+
+    site = yaml.safe_load((REPO_ROOT / "ansible" / "playbooks" / "site.yml").read_text())
+    names = [
+        task.get("name")
+        for play_ in site
+        for block in play_.get("tasks", []) + play_.get("post_tasks", [])
+        for task in block.get("block", [block])
+    ]
+    commit = names.index("Commit the ready protected ingress and egress composition")
+    assert names.index("Retire the model news page after the protected commit") == commit + 1

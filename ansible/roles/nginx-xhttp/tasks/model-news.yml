@@ -15,7 +15,7 @@
     home: /nonexistent
     create_home: false
 
-- name: Create model news configuration and state directories
+- name: Create model news script, configuration and state directories
   ansible.builtin.file:
     path: "{{ item.path }}"
     state: directory
@@ -23,9 +23,12 @@
     group: "{{ item.group }}"
     mode: "{{ item.mode }}"
   loop:
+    # A fresh host may lack libexec before the transaction would create it.
+    - {path: /usr/local/libexec, owner: root, group: root, mode: "0755"}
     # Only nginx's group reads the state; the page is public but not world-readable on disk.
     - {path: /etc/model-news, owner: root, group: root, mode: "0755"}
-    - {path: /var/lib/model-news, owner: model-news, group: www-data, mode: "0750"}
+    # Setgid, so files the service writes inherit nginx's group.
+    - {path: /var/lib/model-news, owner: model-news, group: www-data, mode: "2750"}
 
 - name: Install the model news refresh script
   ansible.builtin.copy:
