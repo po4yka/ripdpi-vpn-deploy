@@ -23,8 +23,9 @@ to AMS / FRA / LHR for low-latency filtered paths.
 is empty by default. Move an existing `public_ipv6_endpoint[0]` state binding
 to its selected map key before planning; do not import a duplicate binding.
 Follow the DNS state migration in `docs/reference/provider-notes.md`.
-Import other retained A, AAAA and CNAME records from `dns_zone`
-before applying; retain provider priority metadata too, including its `-1`
+Import other retained A, AAAA, CNAME, TXT and CAA records from `dns_zone`
+before applying. Prefer explicit names to a wildcard CNAME: the wildcard also
+answers `_acme-challenge` and `_dmarc` lookups. Retain provider priority metadata too, including its `-1`
 no-priority value. Do not recreate the existing zone. Cross-root addresses remain
 private operator inputs, so record ownership does not couple server lifecycles.
 

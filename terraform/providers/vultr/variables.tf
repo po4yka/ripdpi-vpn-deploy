@@ -187,27 +187,29 @@ variable "managed_dns_records" {
     priority = optional(number)
   }))
   default     = {}
-  description = "A, AAAA and CNAME records in dns_zone, keyed by stable operator IDs. Import existing records before applying."
+  description = "A, AAAA, CNAME, TXT and CAA records in dns_zone, keyed by stable operator IDs. Import existing records before applying."
 
   validation {
     condition = alltrue([for record in values(var.managed_dns_records) :
-      (record.name == "" || record.name == "*" || (length(record.name) <= 253 && can(regex("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$", record.name))))
+      (record.name == "" || record.name == "*" || (length(record.name) <= 253 && can(regex("^_?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\._?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$", record.name))))
       && (record.priority == null ? true : record.priority == floor(record.priority) && record.priority >= -1 && record.priority <= 65535)
       && record.ttl == floor(record.ttl) && record.ttl >= 60 && record.ttl <= 86400
       && (
         (record.type == "A" && can(cidrnetmask("${record.data}/32")))
         || (record.type == "AAAA" && strcontains(record.data, ":") && can(cidrhost("${record.data}/128", 0)))
         || (record.type == "CNAME" && record.name != "" && length(record.data) <= 254 && can(regex("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+\\.?$", record.data)))
+        || (record.type == "TXT" && can(regex("^\"[ !#-~]{1,253}\"$", record.data)))
+        || (record.type == "CAA" && can(regex("^(0|128) (issue|issuewild|iodef) \"[!#-~]{1,253}\"$", record.data)))
       )
     ])
-    error_message = "Records require valid relative names, A/AAAA addresses or a non-apex CNAME target, and an integer TTL from 60 to 86400."
+    error_message = "Records require valid relative names, A/AAAA addresses, a non-apex CNAME target, a quoted printable TXT value or a CAA flag, tag and quoted value, and an integer TTL from 60 to 86400."
   }
 
   validation {
-    condition = length(distinct([for record in values(var.managed_dns_records) : "${record.name}:${record.type}"])) == length(var.managed_dns_records) && alltrue([
+    condition = length(distinct([for record in values(var.managed_dns_records) : contains(["TXT", "CAA"], record.type) ? "${record.name}:${record.type}:${record.data}" : "${record.name}:${record.type}"])) == length(var.managed_dns_records) && alltrue([
       for record in values(var.managed_dns_records) : record.type != "CNAME" || length([for other in values(var.managed_dns_records) : other if other.name == record.name]) == 1
     ])
-    error_message = "Managed record names and types must be unique, and CNAME names cannot have another managed record."
+    error_message = "Managed A, AAAA and CNAME names and types must be unique, TXT and CAA records must not repeat, and CNAME names cannot have another managed record."
   }
 }
 
