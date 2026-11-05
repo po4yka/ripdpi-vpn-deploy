@@ -8,8 +8,11 @@ Credentials come from `HCLOUD_TOKEN`; do not place provider tokens in tfvars. Th
 - `server_ipv6`
 - `honeypot_ipv4`
 - `admin_user`
+- `ssh_port`
 - `server_hostname`
 - `zone`
+- `public_listeners`
+- `nat_source_port_range` (empty unless UpCloud stateless filtering needs source-port remapping)
 
 Example:
 

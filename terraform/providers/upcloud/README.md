@@ -8,8 +8,11 @@ Credentials come from the ambient `UPCLOUD_TOKEN` or one complete `UPCLOUD_USERN
 - `server_ipv6`
 - `honeypot_ipv4`
 - `admin_user`
+- `ssh_port`
 - `server_hostname`
 - `zone`
+- `public_listeners`
+- `nat_source_port_range` (empty unless UpCloud stateless filtering needs source-port remapping)
 
 
 Small Starter plans use their exact bundled Standard disk size (10, 20 or 30 GB). The root selects the Standard tier explicitly, so the provider cannot add a MaxIOPS surcharge. A management-only observer sets `node_purpose = "observer"`, `public_listeners = []`, `use_legacy_public_listeners = false` and `enable_hysteria = false`; it is not a VPN fleet node.
