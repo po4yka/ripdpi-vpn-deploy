@@ -1,10 +1,22 @@
 # Runbook — disaster recovery / restore
 
-> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-11-03
+> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-11-05
 
 ## Purpose and scope
 
 Recover a working node after host loss, either by rebuilding from git plus the encrypted secrets (the designed path) or by restoring the restic snapshot. Recovery time includes access admission, certificate issuance, client handover and authenticated acceptance; no fixed duration is guaranteed. The [verified snapshot](../reference/deployment-status.md#configuration-and-recovery) separates server restore checks from operator-kit and Kuma recovery.
+
+Choose the page for the loss you have:
+
+```mermaid
+flowchart LR
+    L{What is lost?} -->|age private key| K[age-recovery.md: rebuild the key from Shamir shares]
+    K -->|too few shares| I[incident.md: Lost age key, full credential rotation]
+    L -->|one UpCloud node, publisher survives| E[executable-recovery.md]
+    L -->|node, other scope| A[Path A: rebuild from git and secrets]
+    L -->|node, configs needed verbatim from a snapshot| B[Path B: restic snapshot, then Path A convergence]
+    L -->|operator kit or Kuma observer| O[Operator-kit and observer recovery]
+```
 
 ## Preconditions
 

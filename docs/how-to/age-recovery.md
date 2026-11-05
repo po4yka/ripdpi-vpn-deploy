@@ -1,8 +1,8 @@
 # age key recovery — Shamir split
 
-> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-11-05
 
-The single point of failure in the SOPS+age model is the operator's age private key. Lose it → see `incident.md § Lost age key` — the only recovery is full credential rotation.
+The single point of failure in the SOPS+age model is the operator's age private key. Lose it → see [Lost age key](incident.md#lost-age-key) — the only recovery is full credential rotation.
 
 For team or solo-with-redundancy setups, split the age private key into k-of-n Shamir shares so any **k** shares can reconstruct it, but fewer than k cannot.
 
@@ -18,7 +18,7 @@ For team or solo-with-redundancy setups, split the age private key into k-of-n S
   - macOS: `brew install ssss`
   - Debian/Ubuntu: `apt install ssss`
 
-The `ssss` tool is purpose-built; it splits a secret string of up to 128 characters into n shares with threshold t.
+The `ssss` tool is purpose-built; it splits a secret string of up to 128 characters into n shares with threshold t. `scripts/age-recovery-split.sh` requires `2 <= t <= n` and `n <= 9`. It reads the key from `~/.config/vpn-provision/age.key`; set `AGE_KEY` to use another path.
 
 ## Initial split
 
@@ -44,16 +44,16 @@ Distribute one share per storage location. Never put two shares in the same loca
 ## Test recovery before you need it
 
 ```bash
-# Pretend you've lost the original. Pick any 2 shares and reconstruct.
-./scripts/age-recovery-combine.sh 2 > /tmp/recovered-age.key
-chmod 0600 /tmp/recovered-age.key
+# Pretend you've lost the original. The script asks for any 2 shares on stdin. The temporary directory is private (mode 0700).
+tmp=$(umask 077 && mktemp -d)
+./scripts/age-recovery-combine.sh 2 > "$tmp/recovered-age.key"
 
 # Verify it decrypts the SOPS file
-SOPS_AGE_KEY_FILE=/tmp/recovered-age.key sops --decrypt \
+SOPS_AGE_KEY_FILE="$tmp/recovered-age.key" sops --decrypt \
   ~/.config/vpn-provision/prod.secrets.sops.yaml > /dev/null && echo OK
 
 # Wipe the temp copy
-shred -u /tmp/recovered-age.key
+shred -u "$tmp/recovered-age.key" && rmdir "$tmp"
 ```
 
 If `OK` did not print, the shares are bad — re-split before relying on this.
