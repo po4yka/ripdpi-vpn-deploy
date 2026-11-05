@@ -97,6 +97,7 @@ Decisions are immutable once accepted. Change course with a new numbered record 
 ## Writing
 
 - English technical text follows ASD-STE100 Simplified Technical English: short sentences, one instruction per sentence, active voice, approved verbs, no synonyms for the same thing.
+- Write each paragraph as one logical line. Do not add hard line breaks inside a paragraph.
 - Lead with the action or the fact. Put the reason after it.
 - Commands go in fenced blocks with the shell named. Output that the reader must compare goes in a fenced block too.
 - Link to the canonical page instead of restating it. Each fact has one home; `AGENTS.md` lists the source of truth for contracts.
