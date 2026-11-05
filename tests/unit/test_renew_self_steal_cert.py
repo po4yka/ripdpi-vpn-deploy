@@ -17,15 +17,7 @@ NAME = "edge.example.test"
 FAKE_SOPS = r'''#!/usr/bin/env python3
 import json, sys
 args = sys.argv[1:]
-if args[:2] == ["--decrypt", "--extract"]:
-    path, doc = args[2], json.load(open(args[3]))
-    try:
-        for key in path.strip("[]").split("]["):
-            doc = doc[json.loads(key)]
-    except KeyError:
-        sys.exit(1)
-    sys.stdout.write(doc)
-elif args[:2] == ["set", "--value-stdin"]:
+if args[:2] == ["set", "--value-stdin"]:
     target, path = args[2], args[3]
     doc = json.load(open(target)); node = doc
     keys = [json.loads(k) for k in path.strip("[]").split("][")]
@@ -67,21 +59,26 @@ def kit(tmp_path: Path):
     bin_dir = tmp_path / "bin"; bin_dir.mkdir()
     for name, body in (("sops", FAKE_SOPS), ("lego", FAKE_LEGO)):
         (bin_dir / name).write_text(body.replace("/usr/bin/env python3", sys.executable)); (bin_dir / name).chmod(0o755)
-    dns = tmp_path / "vultr.json"; dns.write_text(json.dumps({"api_key": "dns-token"}))
     kit_dir = tmp_path / "kit"; kit_dir.mkdir()
     source = kit_dir / "p0-runtime.sops.json"
 
-    def setup(current_days: int, issued_name: str = NAME, lego_version: str = "5.6.0", nginx_name: str | None = None):
+    def setup(current_days: int, issued_name: str = NAME, lego_version: str = "5.6.0", nginx_name: str | None = None,
+              **overrides):
         if not (tmp_path / "current").exists():
             cert, key = _pair(tmp_path / "current", NAME, current_days)
             doc = {"reality_self_steal": {"server_name": NAME, "cert_pem": cert, "key_pem": key}}
             if nginx_name:
                 doc["nginx_xhttp"] = {"server_name": nginx_name}
             source.write_text(json.dumps(doc))
+            # The canonical `make decrypt` output the script reads instead of decrypting.
+            (tmp_path / "decrypted.secrets.yaml").write_text(json.dumps(doc))
             _pair(tmp_path / "issued", issued_name, 90)
         env = dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ["PATH"], FAKE_LEGO_VERSION=lego_version,
-                   FAKE_ISSUED=str(tmp_path / "issued"), FAKE_LEGO_CALLED=str(tmp_path / "lego-called"))
-        result = subprocess.run([sys.executable, str(SCRIPT), "--sops-file", str(source), "--dns-sops-file", str(dns),
+                   FAKE_ISSUED=str(tmp_path / "issued"), FAKE_LEGO_CALLED=str(tmp_path / "lego-called"),
+                   VPN_SECRETS_FILE=str(tmp_path / "decrypted.secrets.yaml"), VULTR_API_KEY="dns-token")
+        env.update(overrides)
+        env = {k: v for k, v in env.items() if v is not None}
+        result = subprocess.run([sys.executable, str(SCRIPT), "--sops-file", str(source),
                                  "--lego-path", str(tmp_path / "lego")], env=env, capture_output=True, text=True)
         renewed = sorted(kit_dir.glob("p0-runtime-self-steal-renewed-*.sops.json"))
         return result, source, renewed
@@ -128,6 +125,18 @@ def test_wrong_pair_unpinned_client_or_shared_name_is_refused(kit, issued_name, 
     assert renewed == [] and not list((tmp / "lego").rglob("*.key"))
 
 
+@pytest.mark.parametrize("missing,category", [
+    ("VPN_SECRETS_FILE", "decrypted-secrets-required"),
+    ("VULTR_API_KEY", "dns-credential-required"),
+])
+def test_renewal_refuses_without_the_secrets_gate_or_dns_credential(kit, missing, category) -> None:
+    setup, tmp = kit
+    result, _, renewed = setup(current_days=10, **{missing: None})
+    assert result.returncode == 1
+    assert result.stderr.strip() == "self-steal-renewal-refused: " + category
+    assert renewed == [] and not (tmp / "lego-called").exists()
+
+
 def _cron(tmp_path: Path, **extra: str) -> subprocess.CompletedProcess:
     env = dict(os.environ, HOME=str(tmp_path), PROVIDER="upcloud", ENV="prod", **extra)
     return subprocess.run(["bash", str(INSTALLER), "--dry-run"], cwd=SCRIPT.parents[1], env=env,
@@ -141,13 +150,26 @@ def test_cron_runs_renewal_daily_only_with_both_documents(tmp_path: Path) -> Non
 
     p0, dns = tmp_path / "p0 runtime.sops.yaml", tmp_path / "vultr.sops.json"
     p0.write_text("{}"); dns.write_text("{}")
-    enabled = _cron(tmp_path, SELF_STEAL_SOPS_FILE=str(p0), SELF_STEAL_DNS_SOPS_FILE=str(dns))
+    enabled = _cron(tmp_path, SELF_STEAL_SOPS_FILE=str(p0), SELF_STEAL_DNS_ENV_FILE=str(dns))
     assert enabled.returncode == 0, enabled.stderr
     [line] = [l for l in enabled.stdout.splitlines() if "renew-self-steal-cert" in l]
     assert line.startswith("27 4 * * *")
-    assert "SELF_STEAL_SOPS_FILE=" + str(p0).replace(" ", "\\ ") in line
+    assert " sops exec-env " in line and str(dns) in line and "VULTR_API_KEY" not in line
 
-    missing = _cron(tmp_path, SELF_STEAL_SOPS_FILE=str(p0), SELF_STEAL_DNS_SOPS_FILE=str(tmp_path / "missing.json"))
+    missing = _cron(tmp_path, SELF_STEAL_SOPS_FILE=str(p0), SELF_STEAL_DNS_ENV_FILE=str(tmp_path / "missing.json"))
     assert missing.returncode != 0 and "must both name existing files" in missing.stderr
-    relative = _cron(tmp_path, SELF_STEAL_SOPS_FILE=os.path.relpath(p0, SCRIPT.parents[1]), SELF_STEAL_DNS_SOPS_FILE=str(dns))
+    relative = _cron(tmp_path, SELF_STEAL_SOPS_FILE=os.path.relpath(p0, SCRIPT.parents[1]), SELF_STEAL_DNS_ENV_FILE=str(dns))
     assert relative.returncode != 0
+
+
+def test_pending_renewal_belongs_only_to_its_own_source(tmp_path: Path) -> None:
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("renew_self_steal_cert", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    first, second = tmp_path / "p0.first.sops.yaml", tmp_path / "p0.second.sops.yaml"
+    renewed = tmp_path / "p0-self-steal-renewed-20261105.first.sops.yaml"
+    for path in (first, second, renewed):
+        path.write_text("{}")
+    assert module.renewed_documents(first) == [renewed]
+    assert module.renewed_documents(second) == []

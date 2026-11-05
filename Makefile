@@ -1719,13 +1719,17 @@ smoke-test: require-inventory
 validate-target:
 	SOPS_FILE=$(SOPS_FILE) ENV=$(ENV) ./scripts/validate-reality-target.sh
 
-# Off-node DNS-01 reissue of the self-steal pair; deployment of the new
-# document stays a reviewed dry-run and deploy.
+# Off-node DNS-01 reissue of the self-steal pair. Values come through the
+# canonical decrypt/clean gate; VULTR_API_KEY must come from an approved
+# loader such as `sops exec-env`. Deploying the new document stays reviewed.
 SELF_STEAL_RENEWAL_DIR ?= $(HOME)/.local/state/vpn-deploy/self-steal-renewal
+renew-self-steal-cert: SECRETS_FILE = $(RUNTIME_DIR)/vpn-self-steal-renewal.secrets.yaml
 renew-self-steal-cert:
-	@test -n "$(SELF_STEAL_SOPS_FILE)" -a -n "$(SELF_STEAL_DNS_SOPS_FILE)" || { echo "usage: make renew-self-steal-cert SELF_STEAL_SOPS_FILE=<P0 SOPS> SELF_STEAL_DNS_SOPS_FILE=<Vultr API SOPS>"; exit 1; }
-	python3 ./scripts/renew-self-steal-cert.py --sops-file "$(SELF_STEAL_SOPS_FILE)" \
-	  --dns-sops-file "$(SELF_STEAL_DNS_SOPS_FILE)" --lego-path "$(SELF_STEAL_RENEWAL_DIR)/lego"
+	@test -n "$(SELF_STEAL_SOPS_FILE)" || { echo "usage: VULTR_API_KEY from an approved loader; make renew-self-steal-cert SELF_STEAL_SOPS_FILE=<P0 SOPS>"; exit 1; }
+	@set -eu; trap '$(MAKE) --no-print-directory clean SECRETS_FILE="$(SECRETS_FILE)" >/dev/null' EXIT; \
+	  $(MAKE) --no-print-directory decrypt SOPS_FILE="$(SELF_STEAL_SOPS_FILE)" SECRETS_FILE="$(SECRETS_FILE)" >/dev/null; \
+	  VPN_SECRETS_FILE="$(SECRETS_FILE)" python3 ./scripts/renew-self-steal-cert.py \
+	    --sops-file "$(SELF_STEAL_SOPS_FILE)" --lego-path "$(SELF_STEAL_RENEWAL_DIR)/lego"
 
 monitor-reality-target:
 	@test -n "$(VANTAGE)" || { echo "usage: make monitor-reality-target VANTAGE=<technical-filtered-label> [ACCEPT_BASELINE=1]"; exit 1; }
