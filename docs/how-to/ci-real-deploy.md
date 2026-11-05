@@ -1,6 +1,6 @@
 # Disposable real-VPS CI deployment
 
-> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-11-05
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-21
 
 `real-vps-deploy` provisions one fresh UpCloud node per selected distribution, executes the canonical recovery, Tailnet bootstrap, SSH ownership and deployment controllers, verifies real protocol promotion, and destroys its owned resources. `transport-reachability-matrix` runs the same lifecycle on a separate fresh node for each selected profile. Both call `ci-disposable-deploy.yml`; its job uses the protected `ci-real-deploy` environment with a required reviewer.
 
