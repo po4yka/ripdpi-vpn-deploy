@@ -1,6 +1,6 @@
 # Real-VPS AWG/NAT evidence sentinel
 
-> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-11-05
 
 The recurring lane uses three persistent independent execution boundaries: an owner-controlled TCP and UDP echo host, a VPS with a dedicated `awg-evidence0` interface, and an off-fleet Linux sentinel on the external consumer uplink. It validates direct controls, initial AWG traffic, service restart, peer reload, rejection of the old key, recovery with the new key, interface counters, and the named NAT counter.
 

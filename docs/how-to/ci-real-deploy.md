@@ -1,6 +1,6 @@
 # Disposable real-VPS CI deployment
 
-> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-11-05
 
 `real-vps-deploy` provisions one fresh UpCloud node per selected distribution, executes the canonical recovery, Tailnet bootstrap, SSH ownership and deployment controllers, verifies real protocol promotion, and destroys its owned resources. `transport-reachability-matrix` runs the same lifecycle on a separate fresh node for each selected profile. Both call `ci-disposable-deploy.yml`; its job uses the protected `ci-real-deploy` environment with a required reviewer.
 
@@ -13,7 +13,7 @@ The default deployment profile is `p0p1p2` (REALITY, direct XHTTP and Hysteria2)
 - Real-VPS deployment also runs weekly. Missing configuration fails before provisioning; a selected profile never becomes a successful skipped job.
 - Debian 13 is mandatory. Repository variable `CI_REAL_DEPLOY_UBUNTU24=true` adds a separate Ubuntu 24.04 deployment. Every selected template is required.
 
-`make check-ci-deploy-gate` verifies the hosted environment still has a required reviewer. No helper changes environment protections or Tailnet ACLs. Profile jobs are serialized within the matrix; runs targeting the same profile/distribution share a concurrency group. A workflow can run for up to 120 minutes because it executes two destructive recovery exercises before the positive deployment.
+`make check-ci-deploy-gate` verifies the hosted environment still has a required reviewer. No helper changes environment protections or Tailnet ACLs. Profile jobs are serialized within the matrix (`max-parallel: 1`). Runs for the same distribution and profile share the concurrency group `disposable-<distro>-<profile>` and queue without cancelling each other. A workflow can run for up to 120 minutes because it executes two destructive recovery exercises before the positive deployment.
 
 ## Protected environment configuration
 
@@ -51,6 +51,23 @@ P4 requires `research.dns_morph_bridge` with a real HTTPS `binary_url` and its r
 The old template, SSH-key and age-key workflow secrets are no longer consumed. Each job generates its own admin SSH key, age key and per-device transport credentials. It encrypts the CI secrets for canonical sentinel onboarding and adds only that run's generated TLS certificate to the disposable runner's trust store. TLS verification remains enabled for XHTTP and Hysteria clients.
 
 ## Authenticated first contact and deployment
+
+```mermaid
+sequenceDiagram
+    participant R as Approver
+    participant J as ci-disposable-deploy job
+    participant U as UpCloud
+    participant G as Guest node
+    R->>J: Approve ci-real-deploy environment
+    J->>J: Check secrets and CI_DEPLOY_CONFIG
+    J->>U: Provision server and seed disk (Terraform)
+    U-->>G: Start guest with pinned SSH host key
+    J->>G: Recovery exercises, Tailnet enrollment, SSH ownership
+    J->>G: Check mode, deploy, verify, smoke
+    J->>U: Exact-state cleanup of server, root and seed disks
+    J-->>R: Categorical result and encrypted failure archive
+```
+
 
 1. Generate a unique SSH host key and private ext4 seed image. The pinned provider imports that image over authenticated HTTPS into encrypted storage and attaches it before guest startup. Terraform records only the local path, image digest and public identity metadata; no private key or signed upload URL is supplied through Terraform variables or cloud-init.
 2. Cloud-init mounts the exact seed read-only, checks the host-key digest and installs the key before completing SSH bootstrap. The controller trusts that generated key before the first public SSH session. Provider console trust-on-first-use is not involved.
