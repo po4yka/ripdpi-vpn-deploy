@@ -1,8 +1,18 @@
 # Device migration during server replacement
 
-> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-10-22
+> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-11-05
 
 `make device-migration` prepares device credentials on a separate replacement, updates every discovered active subscription URL and resumes interrupted publication. It keeps the source credentials and requires evidence from each device before `ready` permits retirement. It does not destroy a server, move DNS or automatically contact clients.
+
+```mermaid
+flowchart LR
+    plan -->|reviewed digest| prepare
+    prepare -->|converge target| publish
+    publish -->|device receipt or attest| ready
+    ready -->|separate operation| retire[drain and retire source]
+    prepare -.-> rollback
+    publish -.-> rollback
+```
 
 ## Supported inputs
 
