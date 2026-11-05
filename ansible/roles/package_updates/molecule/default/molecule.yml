@@ -10,7 +10,7 @@ driver:
 
 platforms:
   - name: vpn-package-updates-debian13
-    image: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-debian13@sha256:cc316a12f7673b5606decb1154e4437ecf25f842c281cf9474889fb7539525fc
+    image: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-debian13@sha256:7e6751a46ab5027958ebaafe698bc62042200c07ee6e662b390f141a4bfa8410
     pre_build_image: true
     privileged: true
     command: /lib/systemd/systemd
