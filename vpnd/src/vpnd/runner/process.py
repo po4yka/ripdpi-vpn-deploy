@@ -127,10 +127,10 @@ class Cmd:
                 stderr=subprocess.PIPE if capture and detailed else None,
                 process_group=0 if owned else None,
             )
-        reaped = False
+        reaped = False  # pragma: no mutate (only truthiness is read, so None equals False)
         stdout = bytearray()
         stderr = bytearray()
-        termination_sent = False
+        termination_sent = False  # pragma: no mutate (only truthiness is read, so None equals False)
 
         def terminate():
             nonlocal termination_sent
@@ -142,16 +142,16 @@ class Cmd:
             with selectors.DefaultSelector() as selector:
                 for stream, buffer in ((child.stdout, stdout), (child.stderr, stderr)):
                     if stream is not None:
-                        os.set_blocking(stream.fileno(), False)
+                        os.set_blocking(stream.fileno(), False)  # pragma: no mutate (reads follow select readiness, so blocking mode is unobservable)
                         selector.register(stream, selectors.EVENT_READ, buffer)
                 while selector.get_map():
                     if stopped.is_set():
                         break
                     for key, _ in selector.select(timeout=0.05):
                         try:
-                            chunk = os.read(key.fd, 65536)
+                            chunk = os.read(key.fd, 65536)  # pragma: no mutate (chunk size only splits reads; the buffer is the same)
                         except BlockingIOError:
-                            continue
+                            continue  # pragma: no mutate (select readiness makes this unreachable; break and continue converge)
                         if chunk:
                             key.data.extend(chunk)
                         else:
@@ -248,7 +248,7 @@ class Cmd:
             # and restores one LF per line, including an unterminated tail.
             if not value:
                 return ""
-            chunks = value.decode("utf-8").split("\n")
+            chunks = value.decode("utf-8").split("\n")  # pragma: no mutate (UTF-8 and utf-8 name the same codec)
             terminated = chunks[-1] == ""
             if terminated:
                 chunks.pop()
@@ -265,10 +265,10 @@ class Cmd:
         return Output(rc, lines(stdout), lines(stderr))
 
     async def run(self, explain=False):
-        return (await self._execute(explain, False, False)).rc
+        return (await self._execute(explain, False, False)).rc  # pragma: no mutate (None and False are both falsy for capture and detailed)
 
     async def capture(self, explain=False):
-        return await self._execute(explain, True, False)
+        return await self._execute(explain, True, False)  # pragma: no mutate (None and False are both falsy for detailed)
 
     async def capture_detailed(self, explain=False):
         return await self._execute(explain, True, True)

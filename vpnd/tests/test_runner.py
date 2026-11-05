@@ -3,10 +3,13 @@ from dataclasses import replace
 import asyncio
 import os
 import json
+import signal
+import threading
+import time
 import traceback
 import pytest
 from vpnd.config import Context
-from vpnd.runner import Cmd, CapturePolicy
+from vpnd.runner import Cmd, CapturePolicy, Output
 from vpnd.runner import make, ansible, terraform, sops
 
 
@@ -786,3 +789,109 @@ def test_secrets_file_path_allows_ordinary_letters_but_not_shell_metacharacters(
     for c in "$`\"';|&<>()\\#":
         with pytest.raises(ValueError):
             make.validate_kv("SECRETS_FILE", f"/run/a{c}b.yaml")
+
+
+def sh(script, **env):
+    cmd = Cmd.new("sh").args(["-c", script])
+    for key, value in env.items():
+        cmd.env(key, value)
+    return cmd
+
+
+def test_new_cmd_defaults_to_no_description_and_foreground():
+    cmd = Cmd.new("echo")
+    assert cmd.description is None and cmd.policy == CapturePolicy.FOREGROUND
+
+
+@pytest.mark.parametrize("method,expected", [("run", 0), ("capture", Output(0, "", "")), ("capture_detailed", Output(0, "", ""))])
+def test_explain_mode_returns_empty_success_without_spawning(tmp_path, method, expected):
+    marker = tmp_path / "ran"
+    assert asyncio.run(getattr(sh(f"touch {marker}"), method)(explain=True)) == expected
+    assert not marker.exists()
+
+
+def test_print_explain_writes_redacted_description_then_command(capsys):
+    cmd = Cmd.new("tool").arg("--file=/s/secret.yaml").describe("tool on /s/secret.yaml").sensitive("/s/secret.yaml")
+    cmd.print_explain()
+    assert capsys.readouterr().err == (
+        "→ tool on <redacted: secrets file path>\n  $ tool '--file=<redacted: secrets file path>'\n"
+    )
+    Cmd.new("tool").arg("a b").print_explain()
+    assert capsys.readouterr().err == "  $ tool 'a b'\n"
+
+
+def test_redacted_replaces_secret_with_exact_marker():
+    assert Cmd.new("t").sensitive("/s/x").redacted("a /s/x b") == "a <redacted: secrets file path> b"
+
+
+def test_run_passes_child_stdout_through_instead_of_capturing(capfd):
+    assert asyncio.run(sh("echo visible-out").run()) == 0
+    assert "visible-out" in capfd.readouterr().out
+
+
+def test_capture_without_detail_leaves_child_stderr_inherited(capfd):
+    out = asyncio.run(sh("echo to-err >&2; echo to-out").capture())
+    assert out == Output(0, "to-out\n", "")
+    assert "to-err" in capfd.readouterr().err
+
+
+def test_capture_detailed_returns_both_streams():
+    out = asyncio.run(sh("echo to-err >&2; echo to-out; exit 3").capture_detailed())
+    assert out == Output(3, "to-out\n", "to-err\n")
+
+
+def test_signalled_child_reports_rc_minus_one():
+    assert asyncio.run(sh("kill -KILL $$").capture_detailed()).rc == -1
+
+
+def test_capture_runs_on_a_dedicated_named_thread(tmp_path):
+    go = tmp_path / "go"
+
+    async def scenario():
+        task = asyncio.ensure_future(sh(f"while [ ! -e {go} ]; do sleep 0.02; done").capture())
+        deadline = time.monotonic() + 10
+        while "vpnd-capture" not in [t.name for t in threading.enumerate()]:
+            assert time.monotonic() < deadline
+            await asyncio.sleep(0.01)
+        go.touch()
+        return await task
+
+    assert asyncio.run(scenario()).rc == 0
+
+
+async def _cancel_latency(cmd, started):
+    task = asyncio.ensure_future(cmd)
+    deadline = time.monotonic() + 10
+    while not started.exists():
+        assert time.monotonic() < deadline
+        await asyncio.sleep(0.01)
+    begin = time.monotonic()
+    task.cancel()
+    await asyncio.wait({task})
+    assert task.cancelled()
+    return time.monotonic() - begin
+
+
+# The poll interval is 50 ms; a 1 s interval would delay cancellation by about 1 s.
+@pytest.mark.parametrize("method", ["run", "capture"])
+def test_cancelling_a_silent_child_returns_promptly(tmp_path, method):
+    started = tmp_path / "started"
+    cmd = sh(f"touch {started}; exec sleep 30")
+    assert asyncio.run(_cancel_latency(getattr(cmd, method)(), started)) < 0.6
+
+
+def test_cancelling_after_output_closed_still_returns_promptly(tmp_path):
+    started = tmp_path / "started"
+    cmd = sh(f"touch {started}; exec 1>&- 2>&-; exec sleep 30")
+    assert asyncio.run(_cancel_latency(cmd.capture_detailed(), started)) < 0.6
+
+
+def test_owned_group_capture_leaves_detached_survivors_after_normal_exit(tmp_path):
+    cmd = sh("sleep 30 >/dev/null 2>&1 & echo $!").capture_policy(CapturePolicy.OWNED_PROCESS_GROUP)
+    out = asyncio.run(cmd.capture())
+    pid = int(out.stdout)
+    try:
+        os.kill(pid, 0)
+    finally:
+        os.kill(pid, signal.SIGKILL)
+    assert out.rc == 0
