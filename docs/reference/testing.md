@@ -1,6 +1,6 @@
 # Testing — what's covered and what isn't
 
-> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-03
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-05
 
 The repo's defense-in-depth philosophy applies to its own correctness: every config, role, and script is checked at multiple layers before it can hit a real VPS. This doc enumerates each layer and where coverage gaps exist (with explicit reasons).
 
@@ -344,7 +344,7 @@ Generated `terraform/providers/<name>/README.md` files are committed; the `terra
   + bash-syntax cover the artifact shape; the build runs only on the target VPS during deploy.
 - **Cloudflare WARP registration.** Requires a registerable WARP endpoint not available in CI containers. Structure validation only via molecule syntax-only scenario.
 - **RealiTLScanner full-scan integration.** Binary required at runtime; coupling CI to upstream build would introduce flakiness. Shellcheck covers the wrapper script shape.
-- **`scripts/restore.sh` real mode.** The `--dry-run` mode is covered by `tests/unit/test_restore_dryrun.py`. The live restore path (decrypts SOPS secrets, re-provisions real infrastructure) is only safe to exercise against a throwaway VPS; a maintainer TODO covers adding it to the `ci-real-deploy` label workflow.
+- **`scripts/restore.sh` real mode.** The `--dry-run` mode is covered by `tests/bats/restore_dryrun.bats`. The live restore path (decrypts SOPS secrets, re-provisions real infrastructure) is only safe to exercise against a throwaway VPS; a maintainer TODO covers adding it to the `ci-real-deploy` label workflow.
 - **End-to-end traffic against geographic locations** (filtered network, EU, US). Would require live infrastructure with the right BGP. This is what `make burn-check` (operator-side cron) covers post-deploy — including the external UDP/443 edge-reachability probe (see "External reachability" above).
 - **Long-running stability** (memory leaks, descriptor exhaustion). Out of scope for unit-level testing; the watchdog role catches it post-deploy.
 - **Active-probing simulation** against the deployed REALITY listener. The validator covers the static OPSEC properties; behavior under real probing is observable only against live infrastructure. Note: the `policy-ratelimit` daemon does **not** detect external REALITY probes by design — `xtls/reality`'s `func Server` proxies failed-auth probes to the camouflage `Dest` ("steal-oneself") and surfaces only a returned `fmt.Errorf` logged at `[Info]` to error.log (suppressed at `loglevel: "warning"`), never to the access.log the daemon tails. The daemon rate-limits policy-violating egress (blackholed + VLESS-rejected traffic) instead; `tests/unit/test_policy_ratelimit.py` asserts both the enforceable bans and the prober-invisibility. The role README carries the full ADR (path (b): no nginx-stream front). See `ansible/roles/policy-ratelimit/README.md`.
