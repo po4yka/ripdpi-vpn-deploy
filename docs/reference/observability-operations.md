@@ -1,6 +1,6 @@
 # Resource-bounded observability on existing hosts
 
-> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-03
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-05
 
 The active topology is schema 2: one to ten VPN nodes, exactly one also with `collector` capability, and a typed `uptime-kuma` observer on an independent existing host. The observer is outside the VPN fleet inventory. Its server and backup volume are separately owned by Terraform. Component lifecycle commands do not create servers, volumes, paid monitoring accounts, DNS or public monitoring listeners.
 
@@ -27,6 +27,26 @@ When an older monitoring task or archived proposal leads here, use the [resource
 | [MON-1792080593038468 — isolated source acceptance](../tasks/issues/isolated-resource-bounded-monitoring.md) | Source successor: private collector, bounded sender and independent observer capability. | Exact-source gates and real isolated runtime acceptance passed; future host admission, VPN non-regression and human receipt remain outside this task. |
 
 Source/CI success and an archived task are not deployment or human receipt proof. Apply the [migration and acceptance](#migration-and-acceptance) gates to the replacement topology; preserve the historical records as historical evidence.
+
+## Data paths
+
+The diagram shows the three monitoring paths. It agrees with the service diagram in the [README](../../README.md). All paths stay inside the Tailnet.
+
+```mermaid
+flowchart LR
+    Node["VPN node agent<br/>vmagent sender"]
+    Ingress["Collector ingress<br/>nginx, TCP/9443"]
+    Relay["vmagent relay<br/>127.0.0.1:19091"]
+    Prom[("Prometheus<br/>127.0.0.1:9090")]
+    Kuma["Independent observer<br/>Uptime Kuma, TCP/9444"]
+    Node -->|"remote write, client certificate"| Ingress
+    Ingress -->|"write with ingress_node label"| Relay
+    Relay -->|"remote write"| Prom
+    Node -->|"heartbeat push every 60 s"| Kuma
+    Prom -->|"pipeline push from the collector"| Kuma
+```
+
+The collector never sends a heartbeat for another node. Each node pushes its own heartbeat directly to the observer.
 
 ## Inputs and exact-host authority
 
