@@ -11,6 +11,7 @@ Choose the page for the loss you have:
 ```mermaid
 flowchart LR
     L{What is lost?} -->|age private key| K[age-recovery.md: rebuild the key from Shamir shares]
+    L -->|age key, other recipient or YubiKey identity| Y[incident.md: Lost age key, use the other identity]
     K -->|too few shares| I[incident.md: Lost age key, full credential rotation]
     L -->|one UpCloud node, publisher survives| E[executable-recovery.md]
     L -->|node, other scope| A[Path A: rebuild from git and secrets]

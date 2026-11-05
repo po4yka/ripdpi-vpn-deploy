@@ -114,12 +114,14 @@ Use this only after the recovery/bootstrap/ownership prerequisites above are sat
 flowchart LR
   A["Preflight block: decrypt, validate, dry-run"] -->|"changes as expected"| B["Review every changed line"]
   A -->|"unexpected changes"| X["Stop and investigate"]
-  A -->|"interrupted-* refusal"| R["Recovery deploy block"]
-  B --> C["Deploy block: deploy, verify, source-drift"]
+  A -->|"interrupted-* refusal"| G{"Recovery<br/>preconditions met?"}
+  G -->|"yes"| R["Recovery deploy block"]
+  G -->|"no"| O["Escalate to the owner"]
   R --> A
-  C -->|"pass"| D["make clean runs on exit"]
-  C -->|"verify fails"| E["Rollback guide, level 1 to 3"]
-  E --> A
+  B --> C["Deploy block: deploy, verify, source-drift"]
+  C -->|"pass"| D["Done"]
+  C -->|"deploy or verify fails"| E["Rollback guide"]
+  A & C -.->|"every exit"| K["make clean"]
 ```
 
 > [!WARNING]
