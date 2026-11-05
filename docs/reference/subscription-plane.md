@@ -1,6 +1,6 @@
 # Subscription plane — gap matrix
 
-> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-05
 
 Source: repository-local subscription requirements.
 
@@ -24,7 +24,7 @@ Key principle: a subscription URL is a **bearer secret** (RFC 6750), so it must 
 
 ## Gap matrix
 
-Bootstrap grants use `b1_<issued-epoch>_<random>` with an intrinsic bounded lifetime; old bootstrap URLs require reissuance. Ordinary `/sub/` URLs keep their existing contract. A persistent five-minute maintenance timer rotates the private read audit and compacts consumed markers only after durably advancing a monotonic retirement fence. Restoring old mirror payloads, increasing the lifetime, or moving the clock backward cannot revive a grant retired by that fence. Admission refuses at the marker capacity instead of deleting fresh replay proof. The compaction cutoff uses the absolute supported 30-day lifetime, independent of current policy and individual short-lived expirations. Mixed-lifetime unexpired proof and earlier valid grants remain intact. Invalid, unknown and already consumed bearer requests do not scan the history.
+Bootstrap grants use `b1_<10-digit-issued-epoch>_<43-character-random>` with an intrinsic bounded lifetime (default maximum 604800 seconds, `bootstrap_max_lifetime_seconds`); old bootstrap URLs require reissuance. Ordinary `/sub/` URLs keep their existing contract. A persistent maintenance timer (`OnCalendar=*:0/5`, every five minutes) rotates the private read audit and compacts consumed markers only after durably advancing a monotonic retirement fence. Restoring old mirror payloads, increasing the lifetime, or moving the clock backward cannot revive a grant retired by that fence. Admission refuses at the marker capacity instead of deleting fresh replay proof. The compaction cutoff uses the absolute supported 30-day lifetime, independent of current policy and individual short-lived expirations. Mixed-lifetime unexpired proof and earlier valid grants remain intact. Invalid, unknown and already consumed bearer requests do not scan the history.
 
 Fence and lock initialization is limited to a genuinely fresh payload root and absent runtime. Missing authority on a retained tree refuses convergence. Legacy trees and lost authority require separately reviewed retirement/recreation and bootstrap reissuance; deployment must preserve ordinary subscription data. Empty legacy markers are retained conservatively, rather than assigned invented epochs. Defaults and supported bounds are documented in `docs/reference/secrets.md` and the role.
 
@@ -34,7 +34,7 @@ Fence and lock initialization is limited to a genuinely fresh payload root and a
 | Token stored as hash, not plaintext | required | disk paths use `<route>/<sha256(token)>`; plaintext token never touches the server filesystem | ✓ shipped |
 | One-time bootstrap URL | required | `/bootstrap/<token>` via vpn-bootstrap service | ✓ shipped |
 | Scoped payload (per-device profile only) | required | per-device with shared server params | ✓ partial |
-| HTTPS endpoint with no access log of paths | required | `access_log off` on `/sub/` and `/bootstrap/` | ✓ shipped |
+| HTTPS endpoint with no access log of paths | required | nginx logs only URI-free categories (`status`, `upstream_status`, `limit`) to `vpn-sub.categorical.log`; `error_log` goes to `/dev/null` | ✓ shipped |
 | Revocation list | implemented in v1.2 | `subscription.revoked_tokens` | ✓ shipped |
 | Rate-limit | implemented in v1.2 | `subscription.rate_limit` + burst | ✓ shipped |
 | Token expiry per device | required | Atomic `<sha256>.document` for new `/sub/` delivery; legacy payload/`.meta` remains readable. vpn-bootstrap returns 410 at expiry for both routes. | ✓ shipped |
