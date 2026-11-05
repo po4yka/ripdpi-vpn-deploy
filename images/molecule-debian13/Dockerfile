@@ -1,6 +1,6 @@
 # The source image is immutable. Security upgrades are applied during each
 # owned-image refresh; the resulting GHCR digest is the only image Molecule uses.
-FROM geerlingguy/docker-debian13-ansible@sha256:cddf7cf7310a35fd4833b4fb278704a3d1216a2a92f8d869909cf935bcfe87cb
+FROM geerlingguy/docker-debian13-ansible@sha256:3331d8a03388f2fc6f49bee503cc3fc8d5ad6a48caf859324d958cc5b677b359
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get -y dist-upgrade \
