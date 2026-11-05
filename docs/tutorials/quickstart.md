@@ -1,6 +1,6 @@
 # Quickstart — provision and deploy the first VPN node
 
-> **Status:** Current · **Type:** tutorial · **Tier:** CORE · **Reviewed:** 2026-11-03
+> **Status:** Current · **Type:** tutorial · **Tier:** CORE · **Reviewed:** 2026-11-05
 
 This walks through deploying the full P0+P1+P2 stack to a single UpCloud VPS. All commands run from your operator workstation; you should never SSH the target VPS by hand for routine setup. This tutorial is a single-node learning path, not the four-host service layout in the [deployment snapshot](../reference/deployment-status.md). Console admission, MFA, issuance and acceptance can take longer than the deployment commands.
 
@@ -8,7 +8,7 @@ This walks through deploying the full P0+P1+P2 stack to a single UpCloud VPS. Al
 
 Complete the canonical [first-time workstation setup](../../CONTRIBUTING.md#first-time-setup) before following this deployment guide. It installs the exact pins from `mise.toml`, the hash-pinned Python toolchain, task tools and local hooks, then checks operator prerequisites. Run the Make commands below in the pinned Bash session activated by that setup. In a new shell, restore its explicit tool selection first; a bare `mise exec --` can select different global tool versions.
 
-Deployment additionally needs a domain you control with DNS for nginx-XHTTP and Hysteria TLS, and a public certificate for it (not bundled). The UpCloud CLI `upctl` is optional. Provider credentials and deployment material are configured in the following steps; they are not needed for the credential-free local checks described in the setup guide.
+The commands below also use `age`, `sops`, `xray`, `ssh-keygen` and `shred`; `mise.toml` does not pin them, so install them as the setup guide describes. `shred` is part of GNU coreutils and macOS does not ship it. Deployment additionally needs a domain you control with DNS for nginx-XHTTP and Hysteria TLS, and a public certificate for it (not bundled). The UpCloud CLI `upctl` is optional. Provider credentials and deployment material are configured in the following steps; they are not needed for the credential-free local checks described in the setup guide.
 
 ## 1. Provider credentials
 
@@ -26,7 +26,7 @@ Load these variables from the approved encrypted operator authority for the sele
 ```bash
 mkdir -p ~/.config/vpn-provision
 
-# 2a. age keypair (one-time)
+# 2a. age keypair (one-time). Losing this key loses every secret: see the warning below.
 age-keygen -o ~/.config/vpn-provision/age.key
 RECIPIENT=$(grep '^# public key:' ~/.config/vpn-provision/age.key | awk '{print $4}')
 echo "age recipient: $RECIPIENT"
@@ -40,6 +40,9 @@ xray x25519  # Use the reviewed, checksum-verified pinned binary in a private te
 ```
 
 Record the REALITY private key for the secrets file (next step) and the public key for client URIs.
+
+> [!WARNING]
+> The age private key is the only way to decrypt `prod.secrets.sops.yaml`. If you lose it, the only recovery is full credential rotation. Back it up now, and split it into Shamir shares as in [step 10](#10-optional--split-the-age-key-for-k-of-n-recovery) and [age key recovery](../how-to/age-recovery.md).
 
 ## 3. Fill out the Terraform vars
 
