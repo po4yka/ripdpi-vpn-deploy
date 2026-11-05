@@ -44,9 +44,9 @@ Distribute one share per storage location. Never put two shares in the same loca
 ## Test recovery before you need it
 
 ```bash
-# Pretend you've lost the original. The script asks for any 2 shares on stdin. The temporary directory is private (mode 0700).
+# Pretend you've lost the original. The script asks for any 2 shares on stdin. The directory is mode 0700 and the key file mode 0600.
 tmp=$(umask 077 && mktemp -d)
-./scripts/age-recovery-combine.sh 2 > "$tmp/recovered-age.key"
+(umask 077; ./scripts/age-recovery-combine.sh 2 > "$tmp/recovered-age.key")
 
 # Verify it decrypts the SOPS file
 SOPS_AGE_KEY_FILE="$tmp/recovered-age.key" sops --decrypt \

@@ -53,7 +53,7 @@ Properties:
 
 * `xray.cohorts` is optional. When empty / missing, the role renders a single VLESS+REALITY inbound on `xray_port` with `vpn.xray_flow_mode`, identical to single-cohort behaviour (no diff in the generated config.json).
 * The `clients` list under each cohort is **names** that reference the global `xray.clients` array. UUIDs and shortIds stay in one place.
-* `flow_mode` is `vision` or `mux`. It must name a shape in `p0_reality_shapes` (`ansible/group_vars/all.yml`); the role refuses an unknown shape. `flow_mode` and `finalmask` per cohort override the profile defaults (`vpn.xray_flow_mode`, `p0_reality_flow_mode`).
+* `flow_mode` is `vision` or `mux`. It must name a shape in `p0_reality_shapes` (`ansible/group_vars/all.yml`); the role refuses an unknown shape. `flow_mode` per cohort overrides the profile default (`vpn.xray_flow_mode`, then `p0_reality_flow_mode`). The `finalmask` default comes from the selected shape (`p0_reality_shapes.<shape>.finalmask`).
 * All cohorts share `xray.target`, `xray.server_names`, and `xray.reality_private_key` — one REALITY identity, multiple ports.
 * The dedicated probe client must be listed in every cohort, so the on-node authenticated probe covers every REALITY listener. Its name is `watchdog.reality_probe_client` (default `watchdog`). The watchdog role fails the deployment when a cohort does not list it (`ansible/roles/watchdog/tasks/enable.yml`).
 

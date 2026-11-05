@@ -13,7 +13,7 @@ The default deployment profile is `p0p1p2` (REALITY, direct XHTTP and Hysteria2)
 - Real-VPS deployment also runs weekly. Missing configuration fails before provisioning; a selected profile never becomes a successful skipped job.
 - Debian 13 is mandatory. Repository variable `CI_REAL_DEPLOY_UBUNTU24=true` adds a separate Ubuntu 24.04 deployment. Every selected template is required.
 
-`make check-ci-deploy-gate` verifies the hosted environment still has a required reviewer. No helper changes environment protections or Tailnet ACLs. Profile jobs are serialized within the matrix (`max-parallel: 1`). Runs for the same distribution and profile share the concurrency group `disposable-<distro>-<profile>` and queue without cancelling each other. A workflow can run for up to 120 minutes because it executes two destructive recovery exercises before the positive deployment.
+`make check-ci-deploy-gate` verifies the hosted environment still has a required reviewer. No helper changes environment protections or Tailnet ACLs. The transport reachability matrix runs its profile jobs one at a time (`max-parallel: 1` in `.github/workflows/transport-reachability-matrix.yml`). Runs for the same distribution and profile share the concurrency group `disposable-<distro>-<profile>` and queue without cancelling each other. A workflow can run for up to 120 minutes because it executes two destructive recovery exercises before the positive deployment.
 
 ## Protected environment configuration
 
@@ -67,7 +67,6 @@ sequenceDiagram
     J->>U: Exact-state cleanup of server, root and seed disks
     J-->>R: Categorical result and encrypted failure archive
 ```
-
 
 1. Generate a unique SSH host key and private ext4 seed image. The pinned provider imports that image over authenticated HTTPS into encrypted storage and attaches it before guest startup. Terraform records only the local path, image digest and public identity metadata; no private key or signed upload URL is supplied through Terraform variables or cloud-init.
 2. Cloud-init mounts the exact seed read-only, checks the host-key digest and installs the key before completing SSH bootstrap. The controller trusts that generated key before the first public SSH session. Provider console trust-on-first-use is not involved.
