@@ -1,17 +1,27 @@
 # Runbook: stand up a split-hop pilot
 
-> **Status:** Current · **Type:** how-to · **Tier:** RESEARCH · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** RESEARCH · **Reviewed:** 2026-11-05
 
 ## Purpose and scope
 
 Stand up the two-node split-hop research topology from [decision 0003](../decisions/0003-split-hop-relay-topology.md) to prove the ingress and egress separation, not to migrate family production traffic.
 
-Operator procedure for the two-node research topology in `docs/decisions/0003-split-hop-relay-topology.md`. Both halves are Ansible-managed. The current ingress role policy-routes only dedicated probe-matrix runtime users, so this runbook proves the research topology, not a family production migration.
+Both halves are Ansible-managed. The current ingress role policy-routes only dedicated probe-matrix runtime users, so this runbook proves the research topology, not a family production migration.
+
+```mermaid
+flowchart LR
+  P["probe-matrix runtime users (Node A)"] -->|"fwmark 1, routing table 200"| A["Node A: ingress, shop0 10.200.0.1/30"]
+  B["Node B: egress, shop0 10.200.0.2/32"] -->|"WireGuard handshake, initiator with keepalive"| A
+  A -->|"marked traffic through the tunnel"| B
+  B -->|"NAT to the public internet"| T["target"]
+```
+
+Node B starts the tunnel. Node A only answers, so it has no `Endpoint` and no keepalive for the peer.
 
 ## Preconditions
 
 - Two disposable VPS environments provisioned through any supported Terraform roots, with separate provider state and SOPS scopes.
-- Node A's typed `public_listeners` contract admits the configured `split_hop_ingress.listen_port` over UDP.
+- Node A's typed `public_listeners` contract admits `split_hop_ingress_listen_port` (default 51821) over UDP.
 - SOPS + age and the operator SSH identity are configured as in `docs/reference/secrets.md`.
 - WireGuard tools are available only for local key generation; Ansible installs them on both nodes.
 

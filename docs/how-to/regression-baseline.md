@@ -1,6 +1,6 @@
 # Deploy-side regression baseline
 
-> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-11-05
 
 `scripts/run-rkn-block-checker.sh` runs the upstream [`rkn-block-checker`](https://pypi.org/project/rkn-block-checker/) Python tool against the canonical URL set (`scripts/rkn-block-checker-url-set.yaml`) and diffs the per-layer verdicts against the previous run for the same exit IP. Use it to measure whether a server-side change shifted the four-layer verdict in the intended direction.
 
@@ -83,7 +83,7 @@ The set drifts as the filtering pipeline changes. Review quarterly and rotate en
 
 ## Interpreting the diff
 
-The wrapper compares against `~/.local/state/vpn-deploy/rkn-baseline/ <exit-ip>/latest.json`. Verdict tuples are compared per-URL; a shift is any non-empty difference between the two `{dns, tcp, tls, http}` quads.
+The wrapper compares against `~/.local/state/vpn-deploy/rkn-baseline/<exit-ip>/latest.json`. Verdict tuples are compared per-URL; a shift is any non-empty difference between the two `{dns, tcp, tls, http}` quads.
 
 Common patterns:
 

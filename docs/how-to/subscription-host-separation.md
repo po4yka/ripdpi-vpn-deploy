@@ -1,15 +1,15 @@
 # Subscription delivery host separation
 
-> **Status:** Current · **Type:** how-to · **Tier:** TACTICAL · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** TACTICAL · **Reviewed:** 2026-11-05
 
-The `subscription-host` role can run on the same VPS as the transport (xray / hysteria / amneziawg) — that's the v1 default. For tighter operator separation, run subscription on a dedicated VPS with no transport surface at all. Closes the ../reference/subscription-plane.md gap "Delivery host separate from VPN node".
+The `subscription-host` role can run on the same VPS as the transport (xray / hysteria / amneziawg) — that's the v1 default. For tighter operator separation, run subscription on a dedicated VPS with no transport surface at all. Closes the [subscription plane](../reference/subscription-plane.md) gap "Delivery host separate from VPN node".
 
 ## What gets separated
 
 The dedicated host runs **only**:
 
   * `baseline`
-  * `firewall` (port 8444 for /sub/ + bootstrap)
+  * `firewall` (`subscription_port`, default 8444, for /sub/ + bootstrap)
   * `subscription-host`
   * `monitoring` / `watchdog` / `backup` if you want them
 
@@ -21,7 +21,7 @@ It does NOT run:
 
 The transport VPS keeps every transport role, drops `subscription-host` (or keeps it disabled).
 
-## How site.yml decides
+## How the site playbook decides
 
 A new inventory variable `vpn_subscription_only` gates every transport-class role. Set it on the subscription host's group / vars in the inventory:
 
@@ -38,10 +38,10 @@ vpn-sub-01 ansible_host=…    # subscription VPS
 vpn_subscription_only=true
 ```
 
-`site.yml` reads `vpn_subscription_only` on each host and:
+`ansible/playbooks/site.yml` reads `vpn_subscription_only` on each host and:
 
   * skips every transport role for hosts where it's true
-  * runs the subscription-host role unconditionally when it's true (regardless of `vpn.enable_subscription_host`)
+  * runs the subscription-host role unconditionally when it's true (its `subscription_host_role_enabled` is true when either `vpn.enable_subscription_host` or `vpn_subscription_only` is true)
 
 The transport host plays exactly as it did before — no behaviour change unless you explicitly set the var.
 
@@ -49,7 +49,7 @@ The transport host plays exactly as it did before — no behaviour change unless
 
 1. Provision two VPSes in separate Terraform roots or as two `upcloud_server` blocks in the same root (different `hostname`).
 2. Tag them in the inventory as above.
-3. Use the multi-operator SOPS split from `docs/how-to/multi-operator.md` so the subscription operator only decrypts `subscription.secrets. sops.yaml`. The transport operator sees only `prod.secrets.sops.yaml`.
+3. Use the multi-operator SOPS split from `docs/how-to/multi-operator.md` so the subscription operator only decrypts `subscription.secrets.sops.yaml`. The transport operator sees only `prod.secrets.sops.yaml`.
 4. Run `make deploy` against both — Ansible reads each host's `VPN_SECRETS_FILE` from its inventory variable and applies the right role subset.
 5. Operators on `vpn-sub-01` can `make issue-bootstrap` without ever touching the REALITY private key.
 
@@ -57,12 +57,12 @@ The transport host plays exactly as it did before — no behaviour change unless
 
 The subscription host needs to fetch per-device payloads that the transport host generates. Options:
 
-  * Build the payload on the operator workstation (existing `emit-singbox.sh`) and scp to the subscription host via `issue-bootstrap.sh`. This is the v1 default and stays the simplest path.
+  * Build the payload on the operator workstation (existing `scripts/emit-singbox.sh`) and scp to the subscription host via `scripts/issue-bootstrap.sh`. This is the v1 default and stays the simplest path.
   * For continuous-issuance scenarios, the subscription host can PULL the hashed-on-disk payload tree (`{{ subscription.subscription_dir }}`, default `/var/lib/vpn-subscription`, holding atomic `sub/<hash>.document` files and legacy `sub/` or `bootstrap/` payload/`.meta` pairs) from a build worker on a timer. This is the **continuous payload mirror** — opt-in via `subscription.mirror.enabled` (default `false`). A systemd oneshot (`vpn-sub-mirror.service`, `User=vpn-bootstrap`) driven by `vpn-sub-mirror.timer` (`OnUnitActiveSec={{ subscription.mirror.interval }}`, default `5min`) runs the pull and re-asserts the role's perm model (dir `0700` / file `0600`, owned `vpn-bootstrap:vpn-bootstrap`) so the loopback Python service can read what landed.
 
     Two backends, selected by `subscription.mirror.backend`:
 
-      * `rsync` (default): `rsync -az --delete` over ssh from `subscription.mirror.source` using a pull key (`subscription.mirror.ssh_key`, rendered to `ssh_key_path`).
+      * `rsync` (default): `rsync -az --delete` over ssh from `subscription.mirror.source` using a pull key (`subscription.mirror.ssh_key`, rendered to `ssh_key_path`, default `/etc/vpn-subscription/mirror_ssh_key`).
       * `restic`: `restic restore latest` from `subscription.mirror.restic_repo` (subtree `restic_snapshot_path`), password from `subscription.mirror.restic_password`.
 
     The mirror is an **outbound pull only** — it opens no new public surface and preserves the host's loopback-only serving posture. The pull runs exclusively inside the timer-driven unit, so it stays idempotent across Ansible converges (config files only). Mind the bandwidth + freshness trade-off: a shorter `interval` keeps the host fresher at the cost of repeated transfers.
