@@ -1,6 +1,6 @@
 # Repository rules and merge policy
 
-> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-31
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-11-05
 
 The source of truth is [repository-policy.json](../../.github/repository-policy.json). The [configuration command](../../scripts/configure-repository.py), exposed through Make, replaces the classic branch-protection workflow. Do not recreate a classic rule: GitHub enforces it alongside rulesets and it can block the intended CI bypass.
 
@@ -9,7 +9,7 @@ The source of truth is [repository-policy.json](../../.github/repository-policy.
 | Ruleset | Target | Requirements | Bypass |
 |---|---|---|---|
 | `main-integrity` | `main` | PR, rebase only, linear history, resolved conversations, no force push or deletion | None |
-| `main-ci` | `main` | Three required contexts and an up-to-date branch | Repository owner, PR only |
+| `main-ci` | `main` | Four required contexts and an up-to-date branch | Repository owner, PR only |
 | `release-tags` | `vpnd-v*` tags | No updates or deletion | None |
 
 The owner can explicitly bypass pending or failed CI from a PR. This exception does not bypass integrity rules or permit direct pushes. Other users have no CI bypass. Required approvals remain zero for this single-maintainer repository. Code Owner approval and approval of the last push remain disabled. If another maintainer joins, update the review policy before relying on independent review.

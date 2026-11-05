@@ -1,6 +1,6 @@
 # Restricted Tailnet management
 
-> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-11-03
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-11-05
 
 This opt-in role adds a second path to the existing OpenSSH listener. It does not enable Tailscale SSH, replace host keys, change the SSH port, take over DNS or routes, advertise routes or an exit node, or manage the Tailnet ACL policy. Public emergency SSH remains a separate required path.
 
@@ -47,6 +47,9 @@ Create an operator-owned mode-`0600` JSON config in a private directory. Its exa
 | `policy_approval` | JSON `null` for the canonical/empty layout; otherwise the reviewed legacy plan approval object below |
 | `output` | New absolute handoff path under an operator-owned mode-`0700` directory |
 
+> [!WARNING]
+> `make bootstrap-tailnet` uses live SSH and a live enrollment key and changes the guest firewall. Run it only with authorization for the exact node and inside the approved exclusive window.
+
 Unknown fields, ambiguous nodes, unsafe files and missing pins refuse before remote writes. Do not invent a management address or reuse a stale cleanup manifest. Create a short-lived one-node enrollment key separately; do not put it in Git, SOPS, inventory, a Make argument or shell history:
 
 ```bash
@@ -74,6 +77,9 @@ A persistent worker rolls back an expired unconfirmed transaction. At boot, the 
 Both workers share the same private lock and durable rollback decision. Interrupted restoration is replayable; confirmation refuses once rollback begins. Corrupt or foreign state remains for diagnosis. Pinned inert packages may remain after rollback, but the access-changing runtime policy is restored.
 
 ### Disposable staging recovery exercises
+
+> [!WARNING]
+> Both recovery verbs use live SSH, a one-use enrollment key and a real reboot or `SIGKILL` of a worker. They accept only disposable `ci-staging-*` nodes. Never aim them at production.
 
 Do not approximate controller loss by interrupting `make bootstrap-tailnet`: its normal cancellation path requests an explicit rollback. After the cleanup manifest and SSH recovery foundation exist, exercise the two autonomous paths through their fixed staging-only verbs when recovery behavior is being tested. These are optional fault-injection exercises for ordinary protocol acceptance; bootstrap does not require their evidence. Each selected exercise consumes a different one-use enrollment key and runs before positive bootstrap:
 

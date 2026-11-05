@@ -1,6 +1,6 @@
 # Run repository security checks and host audits
 
-> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-11-04
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-11-05
 
 ## Purpose and scope
 
