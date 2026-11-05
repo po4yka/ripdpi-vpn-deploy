@@ -62,7 +62,7 @@ The SOPS secrets file is unrecoverable.
 If you encrypted to multiple recipients (recommended for teams), use the other operator's age key. `sops` tries each recipient until one succeeds.
 
 > [!WARNING]
-> Without another recipient key, the lost key means a complete credential leak. Rotate everything.
+> Without another recipient key, Shamir shares or a YubiKey-backed identity, treat the loss as a complete credential leak and rotate everything.
 
 If you didn't, treat this as a **complete credential leak**:
 
