@@ -4,27 +4,13 @@
 
 ## Purpose and scope
 
-Measure whether a filtering pipeline applies a per-flow idle rule to bare
-HTTPS endpoints, from a stable filtered vantage against a server you
-operate, with both sides logging at sub-second precision.
+Measure whether a filtering pipeline applies a per-flow idle rule to bare HTTPS endpoints, from a stable filtered vantage against a server you operate, with both sides logging at sub-second precision.
 
-Operator-side procedure for measuring whether a filtering pipeline
-applies a per-flow idle-LRU rule to bare-HTTPS endpoints: first
-access after a long idle stalls for ~1 minute, subsequent accesses
-inside a short window are immediate, the block re-applies after the
-next idle gap.
+Operator-side procedure for measuring whether a filtering pipeline applies a per-flow idle-LRU rule to bare-HTTPS endpoints: first access after a long idle stalls for ~1 minute, subsequent accesses inside a short window are immediate, the block re-applies after the next idle gap.
 
-The source observation came from a single forum reporter with one
-endpoint. This spike measures the pattern from a stable filtered-
-residential vantage against a controlled server we operate, with
-both sides logging at sub-second precision so the cold-probe wait
-window can be cross-referenced against server-side SYNs from
-non-client source IPs (the active-probe hypothesis).
+The source observation came from a single forum reporter with one endpoint. This spike measures the pattern from a stable filtered- residential vantage against a controlled server we operate, with both sides logging at sub-second precision so the cold-probe wait window can be cross-referenced against server-side SYNs from non-client source IPs (the active-probe hypothesis).
 
-This spike does **not** produce a confirmed mechanism on its own.
-The deliverable is a reproducible measurement and a structured
-report that names which of the three working hypotheses the data
-supports.
+This spike does **not** produce a confirmed mechanism on its own. The deliverable is a reproducible measurement and a structured report that names which of the three working hypotheses the data supports.
 
 ## Preconditions
 
@@ -44,17 +30,10 @@ Every target below that uses cloud credentials, inventory, SSH or decrypted secr
 
 ## Pre-requisites
 
-- A foreign VPS reachable on a public IP (any provider; not the same
-  IP that fronts production transports — a clean endpoint with no
-  other listeners avoids cross-talk in the SYN log).
-- TLS material for an SNI of the operator's choice. The source
-  observation used a third-party SNI; this spike works with any SNI
-  the operator can present a valid cert for. The cert does not need
-  to be public-CA — the driver passes `-verify_quiet`.
-- A workstation on the filtered-residential vantage with `openssl`,
-  `jq`, and `python3` installed.
-- Patience: the default schedule runs through 5 m, 30 m, 60 m, 4 h,
-  24 h idle gaps — total wall time ~30 h.
+- A foreign VPS reachable on a public IP (any provider; not the same IP that fronts production transports — a clean endpoint with no other listeners avoids cross-talk in the SYN log).
+- TLS material for an SNI of the operator's choice. The source observation used a third-party SNI; this spike works with any SNI the operator can present a valid cert for. The cert does not need to be public-CA — the driver passes `-verify_quiet`.
+- A workstation on the filtered-residential vantage with `openssl`, `jq`, and `python3` installed.
+- Patience: the default schedule runs through 5 m, 30 m, 60 m, 4 h, 24 h idle gaps — total wall time ~30 h.
 
 ## Step 1 — stand the server
 
@@ -100,10 +79,7 @@ sudo netfilter-persistent save
 # correlation tool reads /var/log/syslog by default).
 ```
 
-Note: the `ssl_session_cache off` + `ssl_session_tickets off` lines
-are load-bearing — TLS session resumption would short-circuit the
-ClientHello latency on followup probes and erase the very signal we
-are trying to measure.
+Note: the `ssl_session_cache off` + `ssl_session_tickets off` lines are load-bearing — TLS session resumption would short-circuit the ClientHello latency on followup probes and erase the very signal we are trying to measure.
 
 ## Step 2 — run the driver from the filtered-residential vantage
 
@@ -117,14 +93,9 @@ scripts/idle-cycle-measure.sh \
   --output ~/idle-cycle-$(date -u +%Y%m%dT%H%M%SZ).json
 ```
 
-The script rejects vantage labels that smuggle in carrier / ISP /
-operator identifiers (per the hard rules in root AGENTS.md). Use
-"residential-vantage-A", "datacenter-vantage-B" or similar technical-
-signature labels.
+The script rejects vantage labels that smuggle in carrier / ISP / operator identifiers (per the hard rules in root AGENTS.md). Use "residential-vantage-A", "datacenter-vantage-B" or similar technical- signature labels.
 
-Progress prints to stderr; the final per-cycle summary prints to
-stdout. The full result lands at the `--output` path as a single
-JSON object.
+Progress prints to stderr; the final per-cycle summary prints to stdout. The full result lands at the `--output` path as a single JSON object.
 
 ## Step 3 — collect the server-side logs
 
@@ -137,8 +108,7 @@ sudo journalctl --since "$START_TS" --until "$END_TS" --no-pager > /tmp/idle-cyc
 sudo cp /var/log/nginx/idle-cycle-tls.log /tmp/idle-cycle-tls.log
 ```
 
-Scp the two log files back to the operator workstation alongside the
-JSON output from Step 2.
+Scp the two log files back to the operator workstation alongside the JSON output from Step 2.
 
 ## Step 4 — correlate
 
@@ -151,32 +121,18 @@ scripts/idle-cycle-server-correlate.py \
   > ~/idle-cycle-<timestamp>.correlated.json
 ```
 
-The output JSON carries a `per_probe` array with one entry per probe
-(cold + followups), each carrying:
+The output JSON carries a `per_probe` array with one entry per probe (cold + followups), each carrying:
 
-- `client_syn_count` — SYNs the server observed from the client IP
-  inside the probe envelope. Repeated SYNs from the client inside a
-  cold probe support the `nat-conntrack` hypothesis (retransmit
-  pattern).
-- `other_source_syn_count` and `other_source_syn_sample` — SYNs
-  inside the probe envelope from any non-client IP. A non-zero count
-  on a cold probe is the direct measurement of an upstream active
-  probe; that supports the `probe-and-cache` hypothesis.
+- `client_syn_count` — SYNs the server observed from the client IP inside the probe envelope. Repeated SYNs from the client inside a cold probe support the `nat-conntrack` hypothesis (retransmit pattern).
+- `other_source_syn_count` and `other_source_syn_sample` — SYNs inside the probe envelope from any non-client IP. A non-zero count on a cold probe is the direct measurement of an upstream active probe; that supports the `probe-and-cache` hypothesis.
 
 ## Step 5 — interpret + publish
 
-Read the correlated JSON against the hypothesis table at the top of
-this doc. Map the data to one of the three tags (or "inconclusive"
-if the pattern does not reproduce).
+Read the correlated JSON against the hypothesis table at the top of this doc. Map the data to one of the three tags (or "inconclusive" if the pattern does not reproduce).
 
-Publish the writeup at
-`docs/measurements/access-attempt-unblock-<YYYY-MM-DD>.md` using the
-template at `docs/measurements/access-attempt-unblock-TEMPLATE.md`.
+Publish the writeup at `docs/measurements/access-attempt-unblock-<YYYY-MM-DD>.md` using the template at `docs/measurements/access-attempt-unblock-TEMPLATE.md`.
 
-Per the repo hard rules, do not name the operator, carrier, or
-geography in the writeup; describe the vantage by technical signature
-("filtered residential vantage with TLS-cap policing"; not
-"residential connection in city X on carrier Y").
+Per the repo hard rules, do not name the operator, carrier, or geography in the writeup; describe the vantage by technical signature ("filtered residential vantage with TLS-cap policing"; not "residential connection in city X on carrier Y").
 
 ## Tear-down
 
@@ -190,32 +146,22 @@ sudo systemctl reload nginx
 sudo rm -f /var/log/nginx/idle-cycle-tls.log
 ```
 
-If the VPS was provisioned for this spike only, `make destroy`
-through the appropriate Terraform root retires it cleanly.
+If the VPS was provisioned for this spike only, `make destroy` through the appropriate Terraform root retires it cleanly.
 
 ## Cross-spike notes
 
-The driver's `--schedule` parser accepts the same `NN{s,m,h,d}`
-grammar as `vpnd probe-matrix`, so an operator can copy a probe-
-matrix schedule into this driver and back without translation.
+The driver's `--schedule` parser accepts the same `NN{s,m,h,d}` grammar as `vpnd probe-matrix`, so an operator can copy a probe- matrix schedule into this driver and back without translation.
 
-This spike does not overlap with `docs/how-to/regression-baseline.md`. The
-regression baseline measures four-layer verdicts against many URLs
-at one moment; this spike measures one URL's first-access latency
-across many idle gaps. Different signals; different reports.
+This spike does not overlap with `docs/how-to/regression-baseline.md`. The regression baseline measures four-layer verdicts against many URLs at one moment; this spike measures one URL's first-access latency across many idle gaps. Different signals; different reports.
 
 ## Verification
 
-[Step 4](#step-4--correlate) correlates the client and server logs;
-[Step 5](#step-5--interpret--publish) states which hypothesis the data
-supports and with what confidence.
+[Step 4](#step-4--correlate) correlates the client and server logs; [Step 5](#step-5--interpret--publish) states which hypothesis the data supports and with what confidence.
 
 ## Rollback
 
-[Tear-down](#tear-down) destroys the measurement server. No production node
-is changed by this procedure.
+[Tear-down](#tear-down) destroys the measurement server. No production node is changed by this procedure.
 
 ## Evidence to record
 
-The dated report from the template in `docs/measurements/`, the hypothesis
-verdict and the vantage class used (technical description only).
+The dated report from the template in `docs/measurements/`, the hypothesis verdict and the vantage class used (technical description only).

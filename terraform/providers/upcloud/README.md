@@ -1,12 +1,8 @@
 # UpCloud provider
 
-Terraform root for a single UpCloud VPS running the provider-neutral
-Ansible stack.
+Terraform root for a single UpCloud VPS running the provider-neutral Ansible stack.
 
-Credentials come from the ambient `UPCLOUD_TOKEN` or one complete
-`UPCLOUD_USERNAME`/`UPCLOUD_PASSWORD` pair; never place credentials in tfvars.
-Use a narrowly scoped token for operator staging. The root exports the same
-inventory-facing outputs as `providers/hetzner/` and `providers/vultr/`:
+Credentials come from the ambient `UPCLOUD_TOKEN` or one complete `UPCLOUD_USERNAME`/`UPCLOUD_PASSWORD` pair; never place credentials in tfvars. Use a narrowly scoped token for operator staging. The root exports the same inventory-facing outputs as `providers/hetzner/` and `providers/vultr/`:
 
 - `server_ipv4`
 - `server_ipv6`
@@ -31,26 +27,9 @@ See `terraform/providers/upcloud/CLAUDE.md` for design decisions and pitfalls.
 
 ## Stateless provider-firewall promotion
 
-The UpCloud Public & Utility firewall does not track connections. A fresh node
-therefore uses `enable_provider_firewall = false` while Terraform still manages
-the complete future ruleset. After cloud-init and Ansible have installed the
-guest stateful firewall, verify strict SSH, DNS, outbound TCP/UDP and the public
-listeners, then set `enable_provider_firewall = true`. The promotion plan must
-be an in-place update of the same server; any replacement is a stop condition.
+The UpCloud Public & Utility firewall does not track connections. A fresh node therefore uses `enable_provider_firewall = false` while Terraform still manages the complete future ruleset. After cloud-init and Ansible have installed the guest stateful firewall, verify strict SSH, DNS, outbound TCP/UDP and the public listeners, then set `enable_provider_firewall = true`. The promotion plan must be an in-place update of the same server; any replacement is a stop condition.
 
-Return packets are accepted only into
-`provider_return_ephemeral_ports` (default `32768..60999`) for TCP and UDP over
-both address families, plus exact DHCP client ports. The provider range is not
-a stateful allowlist. The `nat_source_port_range` output passes the enabled
-range through generated inventory. AWG and split-hop egress translate forwarded
-TCP/UDP source ports into it; retain this inventory authority when deploying
-those roles. Existing inventories must be regenerated after provider promotion.
-The applied output is required even when it is empty. For an older state,
-refresh outputs through the reviewed Terraform workflow before inventory
-regeneration. Changing tfvars alone does not change the applied NAT authority.
-Guest nftables remains the enforcement layer for
-unsolicited packets. Outbound provider traffic is explicitly accepted; guest
-nftables continues to own egress policy.
+Return packets are accepted only into `provider_return_ephemeral_ports` (default `32768..60999`) for TCP and UDP over both address families, plus exact DHCP client ports. The provider range is not a stateful allowlist. The `nat_source_port_range` output passes the enabled range through generated inventory. AWG and split-hop egress translate forwarded TCP/UDP source ports into it; retain this inventory authority when deploying those roles. Existing inventories must be regenerated after provider promotion. The applied output is required even when it is empty. For an older state, refresh outputs through the reviewed Terraform workflow before inventory regeneration. Changing tfvars alone does not change the applied NAT authority. Guest nftables remains the enforcement layer for unsolicited packets. Outbound provider traffic is explicitly accepted; guest nftables continues to own egress policy.
 
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
@@ -117,6 +96,4 @@ No modules.
 | <a name="output_zone"></a> [zone](#output\_zone) | Provider-specific zone/region/location identifier. |
 <!-- END_TF_DOCS -->
 
-An observer sets `node_purpose = "observer"` and `observer_backup_size_gb = 10`.
-This adds one encrypted Archive volume for separate backup filesystem admission.
-VPN nodes keep `observer_backup_size_gb = 0`.
+An observer sets `node_purpose = "observer"` and `observer_backup_size_gb = 10`. This adds one encrypted Archive volume for separate backup filesystem admission. VPN nodes keep `observer_backup_size_gb = 0`.

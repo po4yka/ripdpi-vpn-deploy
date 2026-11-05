@@ -2,18 +2,9 @@
 
 > **Status:** Snapshot (2026-07-26) · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-10-21
 
-Status: audit completed 2026-06-11; current dispositions reviewed 2026-07-26
-Method: multi-agent audit, one analyst per control plus an independent adversarial verifier per verdict. Upstream behaviour (Xray-core, sing-box, restic, rclone, openssl, check-host.net, node_exporter) verified against source/docs, not assumed.
+Status: audit completed 2026-06-11; current dispositions reviewed 2026-07-26 Method: multi-agent audit, one analyst per control plus an independent adversarial verifier per verdict. Upstream behaviour (Xray-core, sing-box, restic, rclone, openssl, check-host.net, node_exporter) verified against source/docs, not assumed.
 
-> Historical audit snapshot. The verdicts below describe the 2026-06-11 code,
-> not the current implementation. As of 2026-07-26, policy-ratelimit is
-> explicitly scoped away from REALITY probe defence; authenticated protocol
-> liveness is a separate sentinel contract; kill-switch route/direct and
-> address-family leaks are tested; the monitoring textfile collector is wired;
-> backup has recency checks and an isolated restore drill; certificate
-> matching compares DER public keys; and `burn-check.sh` replaces stale
-> reachability metrics with explicit error gauges on every exit. Preserve the
-> original findings below as the rationale for those controls.
+> Historical audit snapshot. The verdicts below describe the 2026-06-11 code, not the current implementation. As of 2026-07-26, policy-ratelimit is explicitly scoped away from REALITY probe defence; authenticated protocol liveness is a separate sentinel contract; kill-switch route/direct and address-family leaks are tested; the monitoring textfile collector is wired; backup has recency checks and an isolated restore drill; certificate matching compares DER public keys; and `burn-check.sh` replaces stale reachability metrics with explicit error gauges on every exit. Preserve the original findings below as the rationale for those controls.
 
 ## Failure class
 
@@ -38,9 +29,7 @@ Seven controls, eight findings (watchdog splits into two). All `BROKEN`. No `VER
 
 ## Current disposition
 
-`BROKEN` elsewhere in this document is the audit-date verdict. This table is
-the maintained current layer; code tests establish repository contracts, not
-live production effectiveness.
+`BROKEN` elsewhere in this document is the audit-date verdict. This table is the maintained current layer; code tests establish repository contracts, not live production effectiveness.
 
 | # | Control | Current status | Repository evidence |
 |---|---|---|---|
@@ -82,9 +71,7 @@ live production effectiveness.
 
 ## 2 & 3. `watchdog` — process-liveness masquerading as transport-liveness, plus the same dead grep
 
-**Current status: both findings RESOLVED.** Node-local authenticated checks and
-client-path rotation authority are separate; the classifier uses real policy
-rejection signals rather than claiming external probe visibility.
+**Current status: both findings RESOLVED.** Node-local authenticated checks and client-path rotation authority are separate; the classifier uses real policy rejection signals rather than claiming external probe visibility.
 
 **Finding 2 — transport-liveness. Contract.** The probes (`systemctl is-active xray`, `ss -lnt | grep :PORT`, `xray run -test -config`, `</dev/tcp/127.0.0.1/PORT`) are assumed to prove the public REALITY transport works. The role `CLAUDE.md` claims "probes hit the public surface, not internals" — false.
 
@@ -123,8 +110,7 @@ The verifier's rebuttals (LAN exemption by design; Android-only; possibly-IPv4-o
 
 ## 5. `honeypot` — listens, counts, and notifies no one
 
-**Current status: PARTIAL.** Textfile collection and writer access are repaired;
-threshold paging and alert routing remain an explicit operator-owned boundary.
+**Current status: PARTIAL.** Textfile collection and writer access are repaired; threshold paging and alert routing remain an explicit operator-owned boundary.
 
 **Contract.** Four stacked contracts must all hold for a probe spike to reach a human: (1) node_exporter scrapes `/var/lib/node_exporter/textfile`; (2) a Prometheus server + alert rule fires on `vpn_honeypot_*`; (3) `probing-summary-remote.py` notifies on a threshold; (4) the operator cron produces an active alert, not a passive log line.
 
@@ -185,13 +171,7 @@ Works for RSA, P-256/P-384, and X25519. Update the line-97 comment.
 
 ## 8. `burn-check.sh` — early `exit 2` freezes the metrics at the last healthy state
 
-**Current status: RESOLVED.** Every exit path now atomically refreshes the
-textfile. `vpn_burn_api_error` reports check-host API failures,
-`vpn_burn_run_error` reports a run that ended before classification, and
-per-node/summary reachability series are omitted when no valid result exists.
-Regression tests cover an API failure, a healthy result, and a completed
-reachability failure so a burned-path verdict is not mislabeled as a probe
-execution error.
+**Current status: RESOLVED.** Every exit path now atomically refreshes the textfile. `vpn_burn_api_error` reports check-host API failures, `vpn_burn_run_error` reports a run that ended before classification, and per-node/summary reachability series are omitted when no valid result exists. Regression tests cover an API failure, a healthy result, and a completed reachability failure so a burned-path verdict is not mislabeled as a probe execution error.
 
 **Contract.** On `exit 2` (check-host.net rejects the request / returns no `request_id`), the script terminates at line 43 — **before** the Prometheus textfile write block at line 74. Effectiveness depends on a downstream staleness alert on `vpn_burn_last_run_unixtime` to notice the freeze.
 

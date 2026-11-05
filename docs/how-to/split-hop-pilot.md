@@ -4,25 +4,16 @@
 
 ## Purpose and scope
 
-Stand up the two-node split-hop research topology from
-[decision 0003](../decisions/0003-split-hop-relay-topology.md) to prove the
-ingress and egress separation, not to migrate family production traffic.
+Stand up the two-node split-hop research topology from [decision 0003](../decisions/0003-split-hop-relay-topology.md) to prove the ingress and egress separation, not to migrate family production traffic.
 
-Operator procedure for the two-node research topology in
-`docs/decisions/0003-split-hop-relay-topology.md`. Both halves are Ansible-managed. The current
-ingress role policy-routes only dedicated probe-matrix runtime users, so this
-runbook proves the research topology, not a family production migration.
+Operator procedure for the two-node research topology in `docs/decisions/0003-split-hop-relay-topology.md`. Both halves are Ansible-managed. The current ingress role policy-routes only dedicated probe-matrix runtime users, so this runbook proves the research topology, not a family production migration.
 
 ## Preconditions
 
-- Two disposable VPS environments provisioned through any supported Terraform
-  roots, with separate provider state and SOPS scopes.
-- Node A's typed `public_listeners` contract admits the configured
-  `split_hop_ingress.listen_port` over UDP.
-- SOPS + age and the operator SSH identity are configured as in
-  `docs/reference/secrets.md`.
-- WireGuard tools are available only for local key generation; Ansible installs
-  them on both nodes.
+- Two disposable VPS environments provisioned through any supported Terraform roots, with separate provider state and SOPS scopes.
+- Node A's typed `public_listeners` contract admits the configured `split_hop_ingress.listen_port` over UDP.
+- SOPS + age and the operator SSH identity are configured as in `docs/reference/secrets.md`.
+- WireGuard tools are available only for local key generation; Ansible installs them on both nodes.
 
 ## Authorization
 
@@ -41,8 +32,7 @@ wg genkey | tee node-b.key | wg pubkey > node-b.pub
 wg genpsk > shared.psk
 ```
 
-Never share a private key between nodes. Load the values into the encrypted
-SOPS file for each node:
+Never share a private key between nodes. Load the values into the encrypted SOPS file for each node:
 
 ```yaml
 # Node A only
@@ -92,8 +82,7 @@ PROVIDER=<provider-b> ENV=<env-b> make dry-run
 PROVIDER=<provider-b> ENV=<env-b> make deploy
 ```
 
-Node B must have no client-facing transport listener. Its `shop0` peer has
-Node A as `Endpoint` and `PersistentKeepalive`, which makes B the initiator.
+Node B must have no client-facing transport listener. Its `shop0` peer has Node A as `Endpoint` and `PersistentKeepalive`, which makes B the initiator.
 
 ## 3. Configure Node A (ingress)
 
@@ -107,23 +96,18 @@ vpn:
   enable_probe_matrix_target: true
 ```
 
-If an existing owned probe target is used instead, omit
-`probe-matrix-target` from both the allowlist and toggles. Then deploy:
+If an existing owned probe target is used instead, omit `probe-matrix-target` from both the allowlist and toggles. Then deploy:
 
 ```bash
 PROVIDER=<provider-a> ENV=<env-a> make dry-run
 PROVIDER=<provider-a> ENV=<env-a> make deploy
 ```
 
-Node A's peer deliberately has no `Endpoint` and no keepalive. The role owns
-`/etc/wireguard/shop0.conf`, routing table 200, the fwmark rule, and nftables
-table `inet split_hop_ingress`; hand edits will be overwritten.
+Node A's peer deliberately has no `Endpoint` and no keepalive. The role owns `/etc/wireguard/shop0.conf`, routing table 200, the fwmark rule, and nftables table `inet split_hop_ingress`; hand edits will be overwritten.
 
 ## 4. Verify the topology
 
-On Node B, `wg show shop0` must report a recent handshake, increasing RX/TX,
-and persistent keepalive. On Node A, the same command must show the learned B
-endpoint without a configured keepalive.
+On Node B, `wg show shop0` must report a recent handshake, increasing RX/TX, and persistent keepalive. On Node A, the same command must show the learned B endpoint without a configured keepalive.
 
 On Node A, verify the managed policy:
 
@@ -133,54 +117,34 @@ ip rule show
 ip route show table 200
 ```
 
-The nftables rule must mark only new original-direction sockets owned by the
-dedicated probe runtime UIDs. Do not broaden it to all Xray, nginx, or Hysteria
-traffic as part of this pilot.
+The nftables rule must mark only new original-direction sockets owned by the dedicated probe runtime UIDs. Do not broaden it to all Xray, nginx, or Hysteria traffic as part of this pilot.
 
-Generate permission-checked target profiles and run the authenticated matrix
-as described in `docs/how-to/probe-matrix.md`. A public-IP lookup alone is not
-sufficient evidence: preserve the redacted matrix verdict, handshake age,
-per-node flow classification, and direct-control result.
+Generate permission-checked target profiles and run the authenticated matrix as described in `docs/how-to/probe-matrix.md`. A public-IP lookup alone is not sufficient evidence: preserve the redacted matrix verdict, handshake age, per-node flow classification, and direct-control result.
 
 ## 5. Observation and acceptance
 
-Collect 24–72 hours of flow data from an independent observation point. The
-pilot passes only when:
+Collect 24–72 hours of flow data from an independent observation point. The pilot passes only when:
 
 1. B remains the WireGuard initiator throughout the window.
 2. Authenticated split-hop cells pass while the direct control is healthy.
 3. The per-node dual-role score stays below the selected research threshold.
 4. Added latency and loss remain within the pilot's stated budget.
-5. Removing B produces an explicit red result; local listener health is not
-   misreported as end-to-end success.
+5. Removing B produces an explicit red result; local listener health is not misreported as end-to-end success.
 
-Store only redacted evidence. Do not commit endpoints, provider account data,
-keys, client identifiers, raw flow logs, or labels tied to a carrier,
-operator, or geography.
+Store only redacted evidence. Do not commit endpoints, provider account data, keys, client identifiers, raw flow logs, or labels tied to a carrier, operator, or geography.
 
 ## Tear-down
 
-Set both enable toggles false in their respective host variables and remove the
-exact allowlist entries. The current roles are skipped when disabled and do not
-remove already-created files or services, so a toggle-only redeploy is not a
-complete cleanup. End the pilot by destroying its disposable provider
-environments; do not repurpose those nodes or invent broad firewall cleanup
-commands in this runbook.
+Set both enable toggles false in their respective host variables and remove the exact allowlist entries. The current roles are skipped when disabled and do not remove already-created files or services, so a toggle-only redeploy is not a complete cleanup. End the pilot by destroying its disposable provider environments; do not repurpose those nodes or invent broad firewall cleanup commands in this runbook.
 
 ## Verification
 
-[Verify the topology](#4-verify-the-topology) and
-[observation and acceptance](#5-observation-and-acceptance) define the
-evidence; a passing pilot proves the research topology only.
+[Verify the topology](#4-verify-the-topology) and [observation and acceptance](#5-observation-and-acceptance) define the evidence; a passing pilot proves the research topology only.
 
 ## Rollback
 
-[Tear-down](#tear-down) removes both nodes and their policy routing. The
-family profiles are untouched by the pilot, so there is nothing to roll back
-on production hosts.
+[Tear-down](#tear-down) removes both nodes and their policy routing. The family profiles are untouched by the pilot, so there is nothing to roll back on production hosts.
 
 ## Evidence to record
 
-The two node identities (aliases only), the probe-matrix observations, the
-acceptance verdict and the tear-down confirmation, attached to the research
-task.
+The two node identities (aliases only), the probe-matrix observations, the acceptance verdict and the tear-down confirmation, attached to the research task.

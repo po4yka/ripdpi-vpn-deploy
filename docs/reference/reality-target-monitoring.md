@@ -48,20 +48,9 @@ Acknowledgement is refused while target-path health is not `ok`. If the target r
 
 ## Bounded identity and client validation
 
-`validate-target` emits a redacted JSON observation. `SERVER_NAMES` accepts commas
-and whitespace; ASCII DNS names are lowercased, one terminal root dot is removed,
-and duplicates retain first occurrence. Empty comma components, malformed labels,
-more than 16 names, and more than 16 resolved addresses refuse before probing the
-pair set. Every configured name is used as the actual TLS SNI and HTTP identity;
-TLS trust, SAN hostname verification, TLS 1.3 and H2 ALPN must pass. Wildcards cover
-one label only; the certificate Common Name cannot substitute for SAN.
+`validate-target` emits a redacted JSON observation. `SERVER_NAMES` accepts commas and whitespace; ASCII DNS names are lowercased, one terminal root dot is removed, and duplicates retain first occurrence. Empty comma components, malformed labels, more than 16 names, and more than 16 resolved addresses refuse before probing the pair set. Every configured name is used as the actual TLS SNI and HTTP identity; TLS trust, SAN hostname verification, TLS 1.3 and H2 ALPN must pass. Wildcards cover one label only; the certificate Common Name cannot substitute for SAN.
 
-`PROBE_TIMEOUT` defaults to 12 seconds and `VALIDATION_TIMEOUT` to 120 seconds
-(maximum 600 each). One monotonic aggregate deadline covers the entire address/name
-set, including DNS and metadata. Owned subprocess sessions are reclaimed after
-success, failure, cancellation and timeout. The monitor includes secret acquisition
-and alert delivery within its run deadline. A partial or timed-out observation
-cannot establish a healthy baseline. Metadata failure remains indeterminate.
+`PROBE_TIMEOUT` defaults to 12 seconds and `VALIDATION_TIMEOUT` to 120 seconds (maximum 600 each). One monotonic aggregate deadline covers the entire address/name set, including DNS and metadata. Owned subprocess sessions are reclaimed after success, failure, cancellation and timeout. The monitor includes secret acquisition and alert delivery within its run deadline. A partial or timed-out observation cannot establish a healthy baseline. Metadata failure remains indeterminate.
 
 For owned self-steal, set these environment variables for either caller:
 
@@ -71,41 +60,15 @@ export PUBLIC_ENDPOINT=service.example:443
 export OWNED_SNI=owned.example
 ```
 
-The approved public service endpoint is supplied explicitly; `xray.target` remains
-node-local plumbing. The normalized configured name list must contain exactly the
-owned SNI. A remote probe refuses any loopback or unspecified resolved address.
-Borrowed targets use the default `TARGET_MODE=borrowed`. Neither mode selects a
-replacement, publishes credentials, changes certificates, or invokes deployment.
+The approved public service endpoint is supplied explicitly; `xray.target` remains node-local plumbing. The normalized configured name list must contain exactly the owned SNI. A remote probe refuses any loopback or unspecified resolved address. Borrowed targets use the default `TARGET_MODE=borrowed`. Neither mode selects a replacement, publishes credentials, changes certificates, or invokes deployment.
 
-Ordinary curl reports HTTP/TLS hygiene. To request a separate browser-shaped
-ClientHello observation, provide `REALITY_CLIENT_DIR` containing the upstream
-curl-impersonate **0.6.1** `curl-impersonate-chrome` binary and `curl_chrome116`
-profile. Exact supported artifact hashes are embedded in the validator; unknown
-or changed bytes refuse. No runtime acquisition occurs. The engine must complete
-an actual HTTPS exchange to every admitted address/name pair. This is the named
-Chrome116 profile, not a claim about current Chrome versions. The client check
-has its own pass/fail/unavailable field; it cannot turn HTTP hygiene into browser
-compatibility. `REALITY_CA_FILE` optionally supplies an explicit trust bundle.
+Ordinary curl reports HTTP/TLS hygiene. To request a separate browser-shaped ClientHello observation, provide `REALITY_CLIENT_DIR` containing the upstream curl-impersonate **0.6.1** `curl-impersonate-chrome` binary and `curl_chrome116` profile. Exact supported artifact hashes are embedded in the validator; unknown or changed bytes refuse. No runtime acquisition occurs. The engine must complete an actual HTTPS exchange to every admitted address/name pair. This is the named Chrome116 profile, not a claim about current Chrome versions. The client check has its own pass/fail/unavailable field; it cannot turn HTTP hygiene into browser compatibility. `REALITY_CA_FILE` optionally supplies an explicit trust bundle.
 
-`make test-reality-target-validation` runs all portable and native cases without
-skips. The native lane requires `REALITY_TEST_CLIENT_DIR` and an isolated service
-network with `REALITY_TEST_BIND=0.0.0.0` and `REALITY_TEST_PUBLIC_IP` identifying that
-fixture's ingress. These are fixture controls, not production acceptance.
+`make test-reality-target-validation` runs all portable and native cases without skips. The native lane requires `REALITY_TEST_CLIENT_DIR` and an isolated service network with `REALITY_TEST_BIND=0.0.0.0` and `REALITY_TEST_PUBLIC_IP` identifying that fixture's ingress. These are fixture controls, not production acceptance.
 
-Promotion still requires separately authorized target ownership, a supported real
-recipient handshake, approved filtered-vantage evidence and authenticated rollback
-to the accepted target. Local hygiene, this named client profile and an asserted
-vantage label do not establish those facts. Runtime pins and PQE HOLD are unchanged.
+Promotion still requires separately authorized target ownership, a supported real recipient handshake, approved filtered-vantage evidence and authenticated rollback to the accepted target. Local hygiene, this named client profile and an asserted vantage label do not establish those facts. Runtime pins and PQE HOLD are unchanged.
 
 
-The monitor fingerprint now binds validation mode and the explicit service
-endpoint. This changes its state key: the first healthy observation after this
-upgrade establishes a fresh local metadata baseline. Accepted target and
-certificate authority are unchanged.
+The monitor fingerprint now binds validation mode and the explicit service endpoint. This changes its state key: the first healthy observation after this upgrade establishes a fresh local metadata baseline. Accepted target and certificate authority are unchanged.
 
-The monitor has an outer owned process session (default 120 seconds;
-`REALITY_MONITOR_BUDGET` accepts 1–120). Its parent owns the temporary directory,
-including secret staging, and reclaims children after timeout or cancellation.
-An exhausted run replaces only `last_report`, retaining accepted baselines and
-alert budgets. Invalid explicit validator inputs refuse before private defaults
-are loaded.
+The monitor has an outer owned process session (default 120 seconds; `REALITY_MONITOR_BUDGET` accepts 1–120). Its parent owns the temporary directory, including secret staging, and reclaims children after timeout or cancellation. An exhausted run replaces only `last_report`, retaining accepted baselines and alert budgets. Invalid explicit validator inputs refuse before private defaults are loaded.

@@ -1,7 +1,6 @@
 # terraform/policy — Conftest / OPA policies
 
-Cross-provider policy layer above the per-provider `terraform test` suite.
-Every provider plan must satisfy all rules before merge.
+Cross-provider policy layer above the per-provider `terraform test` suite. Every provider plan must satisfy all rules before merge.
 
 ## Policies
 
@@ -35,13 +34,7 @@ make tf-test                          # native mock_provider tests, all four roo
 make PROVIDER=<p> ENV=<e> tf-conftest # plan the environment and evaluate these policies
 ```
 
-`tf-conftest` plans through `scripts/terraform-env.sh` (requires the
-environment tfvars and provider credentials) and runs conftest with
-`--all-namespaces` against the rendered plan JSON.
-The shared `scripts/check-tf-plan.sh <plan.json>` gate requires a nonempty
-evaluation of every policy family. It rejects malformed reports as well as
-policy violations. Management-port checks include containing port intervals
-and provider defaults for unrestricted source addresses.
+`tf-conftest` plans through `scripts/terraform-env.sh` (requires the environment tfvars and provider credentials) and runs conftest with `--all-namespaces` against the rendered plan JSON. The shared `scripts/check-tf-plan.sh <plan.json>` gate requires a nonempty evaluation of every policy family. It rejects malformed reports as well as policy violations. Management-port checks include containing port intervals and provider defaults for unrestricted source addresses.
 
 ## Validation
 

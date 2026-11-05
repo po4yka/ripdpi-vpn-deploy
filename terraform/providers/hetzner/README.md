@@ -1,10 +1,8 @@
 # Hetzner provider
 
-Terraform root for a single Hetzner Cloud VPS running the provider-neutral
-Ansible stack.
+Terraform root for a single Hetzner Cloud VPS running the provider-neutral Ansible stack.
 
-Credentials come from `HCLOUD_TOKEN`; do not place provider tokens in tfvars.
-The root exports the same inventory-facing outputs as `providers/upcloud/`:
+Credentials come from `HCLOUD_TOKEN`; do not place provider tokens in tfvars. The root exports the same inventory-facing outputs as `providers/upcloud/`:
 
 - `server_ipv4`
 - `server_ipv6`

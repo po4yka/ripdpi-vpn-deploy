@@ -2,62 +2,21 @@
 
 > **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-03
 
-The active topology is schema 2: one to ten VPN nodes, exactly one also with
-`collector` capability, and a typed `uptime-kuma` observer on an independent
-existing host. The observer is outside the VPN fleet inventory. Its server
-and backup volume
-are separately owned by Terraform. Component lifecycle commands do not create
-servers, volumes, paid monitoring accounts, DNS or public monitoring listeners.
+The active topology is schema 2: one to ten VPN nodes, exactly one also with `collector` capability, and a typed `uptime-kuma` observer on an independent existing host. The observer is outside the VPN fleet inventory. Its server and backup volume are separately owned by Terraform. Component lifecycle commands do not create servers, volumes, paid monitoring accounts, DNS or public monitoring listeners.
 
-The tracked `observability_contract.enabled_environments` admits `staging` and
-the approved rebuild workspaces `p0-upcloud`, `p1-scaleway`, `p2-vultr` and
-`observer-upcloud`. Other environments, including the generic `prod` name, stay
-disabled. Inventory derives scope from `HOSTS` and rejects mixed enabled/disabled
-environments before provider access. Strict secret checks require explicit
-`--environment` values. The operator keeps each exact workspace name and checks
-its inventory and topology binding; notification drills remain staging-only.
-Retire installed components before removing their workspace from this allowlist.
+The tracked `observability_contract.enabled_environments` admits `staging` and the approved rebuild workspaces `p0-upcloud`, `p1-scaleway`, `p2-vultr` and `observer-upcloud`. Other environments, including the generic `prod` name, stay disabled. Inventory derives scope from `HOSTS` and rejects mixed enabled/disabled environments before provider access. Strict secret checks require explicit `--environment` values. The operator keeps each exact workspace name and checks its inventory and topology binding; notification drills remain staging-only. Retire installed components before removing their workspace from this allowlist.
 
-This runbook does not authorize host access, deployment, new credentials,
-service interruptions or cutover. Preserve any working old alarm route until
-the replacement has positive acceptance. The old dedicated topology and
-`OBSERVABILITY_HOST_CLASSES` / `OBSERVABILITY_SENTINELS_JSON` are rejected.
-The `deadman` operator component and dedicated host bootstrap are retired.
-Old task receipts and retained encrypted credentials do not accept this design.
+This runbook does not authorize host access, deployment, new credentials, service interruptions or cutover. Preserve any working old alarm route until the replacement has positive acceptance. The old dedicated topology and `OBSERVABILITY_HOST_CLASSES` / `OBSERVABILITY_SENTINELS_JSON` are rejected. The `deadman` operator component and dedicated host bootstrap are retired. Old task receipts and retained encrypted credentials do not accept this design.
 
-The source acceptance completed under `MON-1792080593038468` in October.
-It did not accept an external deployment. A later, separately authorized
-service rollout installed vmagent 1.155.0, the collector and the independent
-observer. Refreshed panel-only and recovery checks passed on 2026-11-04; see the
-[deployment snapshot](deployment-status.md). Telegram delivery and human
-notification receipts were outside that selected mode. Do not reopen the
-cancelled historical acceptance task to operate this service.
+The source acceptance completed under `MON-1792080593038468` in October. It did not accept an external deployment. A later, separately authorized service rollout installed vmagent 1.155.0, the collector and the independent observer. Refreshed panel-only and recovery checks passed on 2026-11-04; see the [deployment snapshot](deployment-status.md). Telegram delivery and human notification receipts were outside that selected mode. Do not reopen the cancelled historical acceptance task to operate this service.
 
-The previous Prometheus Agent 3.14.0 failed to deliver unsent pre-restart
-samples in an outage drill. The accepted sender is vmagent 1.155.0 with a
-byte-bounded persistent queue. Retained files and replay logs alone do not
-prove delivery. Future sender changes still require historical sample checks
-after clean and abrupt restarts and the selected resource and live gates.
+The previous Prometheus Agent 3.14.0 failed to deliver unsent pre-restart samples in an outage drill. The accepted sender is vmagent 1.155.0 with a byte-bounded persistent queue. Retained files and replay logs alone do not prove delivery. Future sender changes still require historical sample checks after clean and abrupt restarts and the selected resource and live gates.
 
 ## Current contract and task history
 
-The approved fresh-service rebuild is tracked by
-[OPS-1792927264049641](../tasks/issues/rebuild-cloud-vpn-service-with-automatic-https-renewal.md).
-Its panel-only mode uses N node monitors plus one pipeline monitor, without
-Telegram credentials, delivery producers or notification-receipt claims.
-Transition to this mode retires the exact delivery units and alerting credentials;
-co-hosted node heartbeats and collector data remain. Host provisioning and paid
-storage belong to the separate approved Terraform/bootstrap plan. This does not
-remove the environment, resource, runtime or live acceptance gates below.
+The approved fresh-service rebuild is tracked by [OPS-1792927264049641](../tasks/issues/rebuild-cloud-vpn-service-with-automatic-https-renewal.md). Its panel-only mode uses N node monitors plus one pipeline monitor, without Telegram credentials, delivery producers or notification-receipt claims. Transition to this mode retires the exact delivery units and alerting credentials; co-hosted node heartbeats and collector data remain. Host provisioning and paid storage belong to the separate approved Terraform/bootstrap plan. This does not remove the environment, resource, runtime or live acceptance gates below.
 
-When an older monitoring task or archived proposal leads here, use the
-[resource-bounded requirements](../../openspec/changes/archive/2026-10-16-mon-1792080593038468-isolated-resource-bounded-monitoring/specs/operations/resource-bounded-observability/spec.md)
-and [design](../../openspec/changes/archive/2026-10-16-mon-1792080593038468-isolated-resource-bounded-monitoring/design.md) in
-the accepted source change for the replacement contract. The machine-readable topology is
-[schema 2](../../contract/observability-topology.schema.json); the tracked environment
-allowlist is in [all.yml](../../ansible/group_vars/all.yml). This runbook describes
-the current operator workflow. Archived specifications describe their source
-revision and do not override these inputs.
+When an older monitoring task or archived proposal leads here, use the [resource-bounded requirements](../../openspec/changes/archive/2026-10-16-mon-1792080593038468-isolated-resource-bounded-monitoring/specs/operations/resource-bounded-observability/spec.md) and [design](../../openspec/changes/archive/2026-10-16-mon-1792080593038468-isolated-resource-bounded-monitoring/design.md) in the accepted source change for the replacement contract. The machine-readable topology is [schema 2](../../contract/observability-topology.schema.json); the tracked environment allowlist is in [all.yml](../../ansible/group_vars/all.yml). This runbook describes the current operator workflow. Archived specifications describe their source revision and do not override these inputs.
 
 | Task | Relationship to the current contract | Evidence and next step |
 |---|---|---|
@@ -67,14 +26,11 @@ revision and do not override these inputs.
 | [MON-1790835036464962 — original external acceptance](../tasks/issues/resource-bounded-observability.md) | External completion scope cancelled by the owner on 2026-10-15. | Historical local observations do not accept live deployment or human delivery. |
 | [MON-1792080593038468 — isolated source acceptance](../tasks/issues/isolated-resource-bounded-monitoring.md) | Source successor: private collector, bounded sender and independent observer capability. | Exact-source gates and real isolated runtime acceptance passed; future host admission, VPN non-regression and human receipt remain outside this task. |
 
-Source/CI success and an archived task are not deployment or human receipt
-proof. Apply the [migration and acceptance](#migration-and-acceptance) gates to
-the replacement topology; preserve the historical records as historical evidence.
+Source/CI success and an archived task are not deployment or human receipt proof. Apply the [migration and acceptance](#migration-and-acceptance) gates to the replacement topology; preserve the historical records as historical evidence.
 
 ## Inputs and exact-host authority
 
-For an authorized fleet inventory refresh supply one capability and failure
-domain per existing node, plus the independent observer's technical identity:
+For an authorized fleet inventory refresh supply one capability and failure domain per existing node, plus the independent observer's technical identity:
 
 ```sh
 export OBSERVABILITY_CAPABILITIES="vpn+collector,vpn,vpn"
@@ -83,13 +39,7 @@ export OBSERVABILITY_OBSERVER_ALIAS="observer-a"
 export OBSERVABILITY_OBSERVER_DOMAIN="observer-a"
 ```
 
-Every fleet host remains in `vpn`; the collector additionally has membership
-in `vpn-observability-control`, without redefining its SSH identity. The
-observer uses a separately maintained exact-host inventory section
-`[observability-kuma]`, `observability_observer_kind=uptime-kuma`, an explicit
-environment, and the same topology binding. Do not import VPN baseline or
-firewall roles onto the observer. Observer alias and failure domain must not
-equal any fleet identity; actual host/network independence still needs admission.
+Every fleet host remains in `vpn`; the collector additionally has membership in `vpn-observability-control`, without redefining its SSH identity. The observer uses a separately maintained exact-host inventory section `[observability-kuma]`, `observability_observer_kind=uptime-kuma`, an explicit environment, and the same topology binding. Do not import VPN baseline or firewall roles onto the observer. Observer alias and failure domain must not equal any fleet identity; actual host/network independence still needs admission.
 
 Select `agent`, `control-plane`, or `kuma`:
 
@@ -103,45 +53,17 @@ export OBSERVABILITY_SECRETS_FILE="/owner/private/path/runtime.secrets.yml"
 export OBSERVABILITY_VARS="/owner/private/path/component-vars.yml"
 ```
 
-Private vars and materialized SOPS inputs must be same-owner, mode-0600 regular
-files below owner-controlled non-symlink paths. The vars file contains the
-complete selected role mapping with `enabled: true`, plus its producer
-configuration. Defaults describe the current contract; they are deliberately
-inert, not a ready deployment. Pin the real vmagent, Prometheus and Alertmanager
-archives and digests independently. The collector relay has its own
-`observability_control_plane.relay` pin (`version`, `urls`, `sha256`,
-`archive_members` with `vmagent-prod`) and install root
-`/opt/observability-collector-vmagent`; it does not share the sender's pin. Use distinct sender certificates and one
-Kuma token per monitor.
-For each architecture, keep the selected version, URL, checksum,
-`archive_members` and `promtool_archive_members` on the same release. A copied
-member path from an older release can fail extraction even when the new
-archive checksum is correct. Review all these fields before rotation.
+Private vars and materialized SOPS inputs must be same-owner, mode-0600 regular files below owner-controlled non-symlink paths. The vars file contains the complete selected role mapping with `enabled: true`, plus its producer configuration. Defaults describe the current contract; they are deliberately inert, not a ready deployment. Pin the real vmagent, Prometheus and Alertmanager archives and digests independently. The collector relay has its own `observability_control_plane.relay` pin (`version`, `urls`, `sha256`, `archive_members` with `vmagent-prod`) and install root `/opt/observability-collector-vmagent`; it does not share the sender's pin. Use distinct sender certificates and one Kuma token per monitor. For each architecture, keep the selected version, URL, checksum, `archive_members` and `promtool_archive_members` on the same release. A copied member path from an older release can fail extraction even when the new archive checksum is correct. Review all these fields before rotation.
 
-Set `observability_kuma_secrets.notification_mode` explicitly. `panel-only`
-uses N node monitor bindings plus one pipeline binding and the existing backup
-recipient. It has no delivery monitor or Telegram credential. The optional
-`telegram` mode uses N+2 bindings and a distinct secondary Telegram credential.
-The collector alerting selection and push producer kinds must agree with this
-mode; missing credentials do not select panel-only mode implicitly.
+Set `observability_kuma_secrets.notification_mode` explicitly. `panel-only` uses N node monitor bindings plus one pipeline binding and the existing backup recipient. It has no delivery monitor or Telegram credential. The optional `telegram` mode uses N+2 bindings and a distinct secondary Telegram credential. The collector alerting selection and push producer kinds must agree with this mode; missing credentials do not select panel-only mode implicitly.
 
-Before collector installation, converge `firewall_tailnet_collector_ingress`
-through the ordinary full-site dry-run and deployment. Its private override
-contains `address` (the observed collector Tailnet IPv4) and `sources` (one to
-ten unique exact Tailnet IPv4 senders). The rule admits only TCP/9443 on
-`tailscale0`; SSH and public TCP port ownership conflicts refuse before mutation.
-Component lifecycle commands do not change the canonical guest firewall.
+Before collector installation, converge `firewall_tailnet_collector_ingress` through the ordinary full-site dry-run and deployment. Its private override contains `address` (the observed collector Tailnet IPv4) and `sources` (one to ten unique exact Tailnet IPv4 senders). The rule admits only TCP/9443 on `tailscale0`; SSH and public TCP port ownership conflicts refuse before mutation. Component lifecycle commands do not change the canonical guest firewall.
 
-The controller binds capabilities, provider/environment and source revision to
-the canonical topology. It isolates one literal host and disables ambient
-Ansible discovery, SSH configuration/proxies/multiplexing, debug and diff.
-It never runs `site.yml` or prints secret values or rendered secret content.
+The controller binds capabilities, provider/environment and source revision to the canonical topology. It isolates one literal host and disables ambient Ansible discovery, SSH configuration/proxies/multiplexing, debug and diff. It never runs `site.yml` or prints secret values or rendered secret content.
 
 ## Command effects
 
-Full VPN deployment preserves independently managed monitoring components.
-Use the exact-host component commands below to install, rotate or remove an
-agent. Do not pass role mappings through ordinary deployment overrides.
+Full VPN deployment preserves independently managed monitoring components. Use the exact-host component commands below to install, rotate or remove an agent. Do not pass role mappings through ordinary deployment overrides.
 
 | Command | Effect and authority |
 |---|---|
@@ -157,23 +79,13 @@ agent. Do not pass role mappings through ordinary deployment overrides.
 | `make observability-silence-create` / `delete` | Finite scoped suppression through the authenticated gateway. |
 | `make observability-pki-prepare` | Explicit local generation of new private IP-SAN PKI, encrypted to the approved age recipient. No host or notification access. |
 
-Collector status reports include `notification_mode` from the installed Prometheus
-unit. Panel-only status checks collection and pipeline units without notification
-credentials. A missing or invalid installed mode reports `unknown` and `degraded`;
-it never infers a healthy panel-only mode from a missing credential.
+Collector status reports include `notification_mode` from the installed Prometheus unit. Panel-only status checks collection and pipeline units without notification credentials. A missing or invalid installed mode reports `unknown` and `degraded`; it never infers a healthy panel-only mode from a missing credential.
 
-The CLI check verb additionally requires `--confirm-host-access`; Make supplies
-it only for the explicitly selected check target. Other lifecycle confirmations
-remain mandatory.
+The CLI check verb additionally requires `--confirm-host-access`; Make supplies it only for the explicitly selected check target. Other lifecycle confirmations remain mandatory.
 
 ## Private PKI preparation
 
-Create a private JSON configuration with exactly `schema_version: 1`,
-`collector_address`, `observer_address`, `node_ids` and `recipient`.
-Addresses must be distinct literal RFC1918/CGNAT IPv4 addresses, node IDs
-must be the exact one-to-ten topology identities, and the recipient must be
-the approved existing age public recipient. Configuration and output parent
-must be private; output must not exist.
+Create a private JSON configuration with exactly `schema_version: 1`, `collector_address`, `observer_address`, `node_ids` and `recipient`. Addresses must be distinct literal RFC1918/CGNAT IPv4 addresses, node IDs must be the exact one-to-ten topology identities, and the recipient must be the approved existing age public recipient. Configuration and output parent must be private; output must not exist.
 
 ```sh
 make observability-pki-prepare \
@@ -181,124 +93,29 @@ make observability-pki-prepare \
   OBSERVABILITY_PKI_OUTPUT="/owner/private/path/pki.sops.yaml"
 ```
 
-The encrypted bundle separates `runtime` fields from `authorities`. Merge
-only runtime fields into the existing SOPS document; it is a PKI fragment,
-not complete runtime credentials. Keep authority keys and CA database state
-encrypted on the controller, never deploy them. The collector certificate
-uses the collector IP SAN, Kuma uses its own IP SAN and separate CA, and each
-node receives a distinct clientAuth identity. Certificates expire within
-90 days; plan an approved rotation before expiry. Verify new certificates and
-the updated CRL before activation; never disable verification or reuse keys.
+The encrypted bundle separates `runtime` fields from `authorities`. Merge only runtime fields into the existing SOPS document; it is a PKI fragment, not complete runtime credentials. Keep authority keys and CA database state encrypted on the controller, never deploy them. The collector certificate uses the collector IP SAN, Kuma uses its own IP SAN and separate CA, and each node receives a distinct clientAuth identity. Certificates expire within 90 days; plan an approved rotation before expiry. Verify new certificates and the updated CRL before activation; never disable verification or reuse keys.
 
 ## Admission and resource boundaries
 
-The collector's Prometheus, Alertmanager, relay, adapters, gateway and private
-ingress share `observability-collector.slice`: MemoryMax 512 MiB, CPUQuota 20%
-of one CPU, low IO weight. Ingress uses an isolated master of the already
-installed nginx binary in that slice. Its config, PID, credentials and private
-9443 listener are separate from the public VPN nginx; unrelated sites and
-80/443 listeners are not edited.
+The collector's Prometheus, Alertmanager, relay, adapters, gateway and private ingress share `observability-collector.slice`: MemoryMax 512 MiB, CPUQuota 20% of one CPU, low IO weight. Ingress uses an isolated master of the already installed nginx binary in that slice. Its config, PID, credentials and private 9443 listener are separate from the public VPN nginx; unrelated sites and 80/443 listeners are not edited.
 
-Ingress does not proxy to Prometheus directly. It forwards the authenticated
-write to a loopback vmagent relay on `127.0.0.1:19091` as
-`/api/v1/write?extra_label=ingress_node=<id>`, where `<id>` is the certificate-bound
-path identity. vmagent appends extra labels rather than replacing them, so the
-relay's relabel rules drop any payload `node` label and map `ingress_node` to
-`node`, so one sender cannot write series for another node. It then writes to
-Prometheus on `127.0.0.1:9090` with the Prometheus wire protocol. The relay has
-no on-disk queue during operation: it returns HTTP 429 while Prometheus is
-unavailable, and the sender's durable queue keeps the data. On graceful stop it
-can flush in-memory blocks to a 64 MiB queue at
-`/var/lib/observability-prometheus/relay-queue`, which the disk guard counts.
-It has MemoryMax 128 MiB and `-memory.allowedBytes` 32 MiB inside the collector
-slice. Prometheus rejections after relay acceptance (for example samples
-outside the retention window) are dropped at the relay and are not visible in
-sender discard counters. The collector Prometheus scrapes only the relay's
-remote-write drop, error and retry counters from its loopback `/metrics`;
-`ObservabilityCollectorRelayDeliveryLoss` fires when relay drops increase. Loss
-from an abrupt relay stop leaves no counter.
+Ingress does not proxy to Prometheus directly. It forwards the authenticated write to a loopback vmagent relay on `127.0.0.1:19091` as `/api/v1/write?extra_label=ingress_node=<id>`, where `<id>` is the certificate-bound path identity. vmagent appends extra labels rather than replacing them, so the relay's relabel rules drop any payload `node` label and map `ingress_node` to `node`, so one sender cannot write series for another node. It then writes to Prometheus on `127.0.0.1:9090` with the Prometheus wire protocol. The relay has no on-disk queue during operation: it returns HTTP 429 while Prometheus is unavailable, and the sender's durable queue keeps the data. On graceful stop it can flush in-memory blocks to a 64 MiB queue at `/var/lib/observability-prometheus/relay-queue`, which the disk guard counts. It has MemoryMax 128 MiB and `-memory.allowedBytes` 32 MiB inside the collector slice. Prometheus rejections after relay acceptance (for example samples outside the retention window) are dropped at the relay and are not visible in sender discard counters. The collector Prometheus scrapes only the relay's remote-write drop, error and retry counters from its loopback `/metrics`; `ObservabilityCollectorRelayDeliveryLoss` fires when relay drops increase. Loss from an abrupt relay stop leaves no counter.
 
-The local agent and heartbeat jobs share `observability-agent.slice`: 192 MiB
-and 10% of one CPU. The collector host therefore budgets 704 MiB and 30% in
-total. Agents use 60-second scrapes, at most 2,000 samples across local jobs,
-one vmagent remote-write worker and no fresh-data bypass workers. The persistent
-queue setting is 512 MiB; the pinned upstream minimum rounds it to 512 MiB plus
-128 bytes. This limits pending data by size, not age or total allocated blocks.
-Admission reserves 2 GiB for segment overhead plus the filesystem reserve.
-Queue saturation discards oldest unsent blocks and must be reported as delivery
-loss. VPN units stay outside both slices.
-One sender worker does not guarantee replay order: an interrupted worker batch
-can return behind newer queued blocks. The collector accepts reordered samples
-within its configured seven-day window relative to the global TSDB maximum
-timestamp. The queue has no age limit; this window is not a wall-clock durability
-guarantee. Samples rejected outside the window are HTTP delivery loss. Exact
-in-window history and measured late-history replay resource admission are
-required before rollout; small receiver tests do not prove seven-day capacity.
-Certificate expiry alerts cover the observability client certificate
-(`role="observability-sender"`) and, when self-steal is enabled, the REALITY
-self-steal leaf (`role="reality-self-steal"`), which has no automatic renewal.
-`ObservabilityAgentDeliveryLoss` reports queue/HTTP discards and native label-limit
-rejections after their counters reach the collector. It means incomplete telemetry,
-not a VPN failure; a disconnected collector cannot report the event immediately.
+The local agent and heartbeat jobs share `observability-agent.slice`: 192 MiB and 10% of one CPU. The collector host therefore budgets 704 MiB and 30% in total. Agents use 60-second scrapes, at most 2,000 samples across local jobs, one vmagent remote-write worker and no fresh-data bypass workers. The persistent queue setting is 512 MiB; the pinned upstream minimum rounds it to 512 MiB plus 128 bytes. This limits pending data by size, not age or total allocated blocks. Admission reserves 2 GiB for segment overhead plus the filesystem reserve. Queue saturation discards oldest unsent blocks and must be reported as delivery loss. VPN units stay outside both slices. One sender worker does not guarantee replay order: an interrupted worker batch can return behind newer queued blocks. The collector accepts reordered samples within its configured seven-day window relative to the global TSDB maximum timestamp. The queue has no age limit; this window is not a wall-clock durability guarantee. Samples rejected outside the window are HTTP delivery loss. Exact in-window history and measured late-history replay resource admission are required before rollout; small receiver tests do not prove seven-day capacity. Certificate expiry alerts cover the observability client certificate (`role="observability-sender"`) and, when self-steal is enabled, the REALITY self-steal leaf (`role="reality-self-steal"`), which has no automatic renewal. `ObservabilityAgentDeliveryLoss` reports queue/HTTP discards and native label-limit rejections after their counters reach the collector. It means incomplete telemetry, not a VPN failure; a disconnected collector cannot report the event immediately.
 
-Candidate activation gracefully stops the old sender and retains a root-private
-copy of its complete native queue under the same publisher lock as binary,
-credential and primary-unit publication. Rejected or interrupted candidates
-restore queue bytes and read bookkeeping in place before the previous sender
-starts. The copy remains until the accepted receipt is durable; partial cleanup
-is recovered on the next convergence. Unfinished publication blocks unattended
-start without a live publisher. Working queue and retained copy each fit 1 GiB
-within the existing 2 GiB admission and filesystem reserve; unknown native
-layout, foreign ownership, nested mounts or insufficient capacity refuse before
-publication. This profile is bound to vmagent v1.155.0 and its single-worker,
-zero-memory-queue settings. Source/native acceptance requires actual delivery
-of the exact historical nonce after a rejected activation; source checks do not
-establish live fleet or host power-loss acceptance.
+Candidate activation gracefully stops the old sender and retains a root-private copy of its complete native queue under the same publisher lock as binary, credential and primary-unit publication. Rejected or interrupted candidates restore queue bytes and read bookkeeping in place before the previous sender starts. The copy remains until the accepted receipt is durable; partial cleanup is recovered on the next convergence. Unfinished publication blocks unattended start without a live publisher. Working queue and retained copy each fit 1 GiB within the existing 2 GiB admission and filesystem reserve; unknown native layout, foreign ownership, nested mounts or insufficient capacity refuse before publication. This profile is bound to vmagent v1.155.0 and its single-worker, zero-memory-queue settings. Source/native acceptance requires actual delivery of the exact historical nonce after a rejected activation; source checks do not establish live fleet or host power-loss acceptance.
 
-The queue is bound to its single receiver before activation. A changed receiver
-or populated unbound queue refuses before mutation; do not delete it or the
-retired Prometheus WAL automatically. Retained WAL is not replayable by vmagent.
-Resolve a receiver migration with explicit offline data-handling authority.
-vmagent uses `/opt/observability-vmagent`; the retired Prometheus release root
-is retained separately so its public binary link remains usable for rollback.
-Status uses vmagent's loopback `/ready`; readiness is not backlog delivery.
-Activation and recovery additionally require the managed process to own the
-loopback listener, with unchanged process identity before and after HTTP
-readiness. A successful response from another process cannot accept a cutover.
+The queue is bound to its single receiver before activation. A changed receiver or populated unbound queue refuses before mutation; do not delete it or the retired Prometheus WAL automatically. Retained WAL is not replayable by vmagent. Resolve a receiver migration with explicit offline data-handling authority. vmagent uses `/opt/observability-vmagent`; the retired Prometheus release root is retained separately so its public binary link remains usable for rollback. Status uses vmagent's loopback `/ready`; readiness is not backlog delivery. Activation and recovery additionally require the managed process to own the loopback listener, with unchanged process identity before and after HTTP readiness. A successful response from another process cannot accept a cutover.
 
-Before mutation require the configured private address locally, at least
-1 GiB MemAvailable, and free filesystem space for 2 GiB monitoring data plus
-max(5 GiB, 20% filesystem size) reserve and measured burst/stop headroom.
-Blocks retain at most seven days/1 GiB; this is not a total filesystem quota.
-The total data high-water mark is 2 GiB. The five-second reserve guard latches
-receiver/ingress off on pressure; its watchdog also bounds a hung guard.
-Headroom must exceed twice measured peak write rate times the watchdog plus
-measured shutdown bound. On a shared filesystem, admission counts both the
-collector's 2 GiB and the sender's 2 GiB allowances; the reserve guard also
-protects the sender's remaining allowance. A synthetic value is not a measured
-admission result.
-After pressure, inspect the filesystem and perform explicit recovery; restarting
-a receiver must not bypass the latch.
+Before mutation require the configured private address locally, at least 1 GiB MemAvailable, and free filesystem space for 2 GiB monitoring data plus max(5 GiB, 20% filesystem size) reserve and measured burst/stop headroom. Blocks retain at most seven days/1 GiB; this is not a total filesystem quota. The total data high-water mark is 2 GiB. The five-second reserve guard latches receiver/ingress off on pressure; its watchdog also bounds a hung guard. Headroom must exceed twice measured peak write rate times the watchdog plus measured shutdown bound. On a shared filesystem, admission counts both the collector's 2 GiB and the sender's 2 GiB allowances; the reserve guard also protects the sender's remaining allowance. A synthetic value is not a measured admission result. After pressure, inspect the filesystem and perform explicit recovery; restarting a receiver must not bypass the latch.
 
-Admit Kuma only on the approved independent host with existing Docker, nginx,
-age, private connectivity and separate backup storage. It needs 768 MiB
-MemAvailable, 3 GiB data allowance plus the same host reserve. Its pinned
-rootless container is capped at 512 MiB and 0.25 CPU; no Docker socket,
-privileged mode, public port or new runtime installation is allowed.
+Admit Kuma only on the approved independent host with existing Docker, nginx, age, private connectivity and separate backup storage. It needs 768 MiB MemAvailable, 3 GiB data allowance plus the same host reserve. Its pinned rootless container is capped at 512 MiB and 0.25 CPU; no Docker socket, privileged mode, public port or new runtime installation is allowed.
 
-Failed resource or load tests stop deployment. Do not automatically increase
-limits, resize hosts, install missing infrastructure, or purchase capacity.
+Failed resource or load tests stop deployment. Do not automatically increase limits, resize hosts, install missing infrastructure, or purchase capacity.
 
 ## Metric and alert contracts
 
-The authoritative family allowlist is
-`contract/observability-metric-manifest.example.json`; the expected-node/profile
-set is `contract/observability-expected-inventory.example.json`. Treat those as
-versioned contracts, not examples to extend ad hoc on a host. A new family,
-label, state, or cardinality bound requires a reviewed source change and its
-schema/redaction tests. Never forward journals, request destinations, peer
-addresses, SNI values, client identity, user traffic, or credential-derived
-values as metrics or annotations.
+The authoritative family allowlist is `contract/observability-metric-manifest.example.json`; the expected-node/profile set is `contract/observability-expected-inventory.example.json`. Treat those as versioned contracts, not examples to extend ad hoc on a host. A new family, label, state, or cardinality bound requires a reviewed source change and its schema/redaction tests. Never forward journals, request destinations, peer addresses, SNI values, client identity, user traffic, or credential-derived values as metrics or annotations.
 
 | Contract group | Owned evidence | Truth boundary |
 |---|---|---|
@@ -308,156 +125,49 @@ values as metrics or annotations.
 | `vpn_observability_expected_target` | reviewed expected inventory | desired coverage, independent of currently arriving series |
 | `vpn_observability_evidence_state` | freshness/source/pipeline and canonical liveness adaptation | one-hot bounded state; stale, missing and unknown never become healthy |
 
-The checked alert catalog is rendered from
-`observability-alert-rules.yml.j2` and
-`observability-expected-target-rules.yml.j2`. It covers watchdog evidence and
-unresolved recovery, backup freshness/stage failure/restore readiness, the
-synthetic pipeline watchdog, required-family or expected-target absence,
-target staleness, source identity mismatch, and control-plane resource/pipeline
-health. Generated required-family alert names bind the exact expected target,
-role and family. A missing series stays an absence incident; it is not a
-resolved notification. `ObservabilityBackupStageFailed` alone inhibits its
-derivative stale-evidence alert for the same node and component.
+The checked alert catalog is rendered from `observability-alert-rules.yml.j2` and `observability-expected-target-rules.yml.j2`. It covers watchdog evidence and unresolved recovery, backup freshness/stage failure/restore readiness, the synthetic pipeline watchdog, required-family or expected-target absence, target staleness, source identity mismatch, and control-plane resource/pipeline health. Generated required-family alert names bind the exact expected target, role and family. A missing series stays an absence incident; it is not a resolved notification. `ObservabilityBackupStageFailed` alone inhibits its derivative stale-evidence alert for the same node and component.
 
-Before deployment, validate the manifest, expected inventory, rendered rules
-and templates together. A Prometheus query result proves central evaluation;
-it does not prove a sender captured current input or that Telegram delivered a
-message.
+Before deployment, validate the manifest, expected inventory, rendered rules and templates together. A Prometheus query result proves central evaluation; it does not prove a sender captured current input or that Telegram delivered a message.
 
-Producer timestamps and bounded validity deadlines determine evidence freshness;
-a new exporter scrape cannot renew a frozen textfile. Adapter completion has
-its own freshness boundary. Missing or future timing evidence remains unavailable.
-Expected-target presence follows its reviewed required families, and required
-service expectations follow the enabled node profile. An absent required unit
-is missing evidence, separately from an observed inactive or failed service.
+Producer timestamps and bounded validity deadlines determine evidence freshness; a new exporter scrape cannot renew a frozen textfile. Adapter completion has its own freshness boundary. Missing or future timing evidence remains unavailable. Expected-target presence follows its reviewed required families, and required service expectations follow the enabled node profile. An absent required unit is missing evidence, separately from an observed inactive or failed service.
 
 ## Independent Kuma monitoring and Telegram evidence
 
-Kuma 2.5.9 is pinned to scanned architecture-specific child manifests in role
-defaults. The build source is `images/observability-kuma`; the publisher records
-the separate provenance index. Production and test images share the scan gate,
-with distinct stable categories for the observer architectures. The private
-panel image omits unused notification tooling. Restore admits the exact current
-image and the explicitly retained previous image for that architecture.
-Its UI is host-loopback only on port 13001, reached through an already approved
-authenticated operator path. The private HTTPS 9444 vhost permits exact enrolled
-source addresses and GET push paths only: no UI, setup, websocket administration,
-metrics, status pages or query parameters. TLS verifies the private IP SAN.
-Token-bearing access/error/application logging is disabled.
+Kuma 2.5.9 is pinned to scanned architecture-specific child manifests in role defaults. The build source is `images/observability-kuma`; the publisher records the separate provenance index. Production and test images share the scan gate, with distinct stable categories for the observer architectures. The private panel image omits unused notification tooling. Restore admits the exact current image and the explicitly retained previous image for that architecture. Its UI is host-loopback only on port 13001, reached through an already approved authenticated operator path. The private HTTPS 9444 vhost permits exact enrolled source addresses and GET push paths only: no UI, setup, websocket administration, metrics, status pages or query parameters. TLS verifies the private IP SAN. Token-bearing access/error/application logging is disabled.
 
-Use upstream authenticated UI setup and monitor configuration; do not edit
-SQLite or add an unapproved provisioning client. Create N node monitors and
-one pipeline monitor in panel-only mode: four for the accepted three-node
-fleet. Only Telegram mode adds one delivery monitor, for N+2 monitors total
-(twelve maximum).
-Set distinct cryptographically random 20–128-character URL-safe tokens using
-the authenticated monitor editor; do not keep a shorter autogenerated default.
-Save tokens under their exact `node_id`/`kind` SOPS bindings.
-Only in Telegram mode, configure native Telegram with a separate secondary
-bot, not the primary token. Missing authority to issue that token blocks that
-mode. It does not add a bot requirement to panel-only operation.
+Use upstream authenticated UI setup and monitor configuration; do not edit SQLite or add an unapproved provisioning client. Create N node monitors and one pipeline monitor in panel-only mode: four for the accepted three-node fleet. Only Telegram mode adds one delivery monitor, for N+2 monitors total (twelve maximum). Set distinct cryptographically random 20–128-character URL-safe tokens using the authenticated monitor editor; do not keep a shorter autogenerated default. Save tokens under their exact `node_id`/`kind` SOPS bindings. Only in Telegram mode, configure native Telegram with a separate secondary bot, not the primary token. Missing authority to issue that token blocks that mode. It does not add a bot requirement to panel-only operation.
 
-Node/pipeline producers run every 60 seconds. Configure their Kuma interval
-and retry interval to 120 seconds, retries zero; observe the <=180-second down
-bound at different scheduler phases. Delivery runs every five minutes; configure
-540-second interval/retry interval, retries zero, and observe <=600 seconds.
-Disable upside-down/maintenance for acceptance. Repeat notifications use failed
-check counts (three), not seconds, and require observed pinned-runtime evidence.
-Never-started monitors are part of acceptance.
+Node/pipeline producers run every 60 seconds. Configure their Kuma interval and retry interval to 120 seconds, retries zero; observe the <=180-second down bound at different scheduler phases. Delivery runs every five minutes; configure 540-second interval/retry interval, retries zero, and observe <=600 seconds. Disable upside-down/maintenance for acceptance. Repeat notifications use failed check counts (three), not seconds, and require observed pinned-runtime evidence. Never-started monitors are part of acceptance.
 
-A node checks its own declared local services and sends directly to Kuma.
-The collector never synthesizes another node's heartbeat. Panel-only pipeline
-success requires fresh expected node scrapes and successful
-recent rule evaluation. Telegram mode additionally requires Alertmanager
-visibility and a newly consumed synthetic rule-to-relay receipt.
-Only Telegram-mode delivery success requires a real relay edit with advancing
-sequence and a real
-send receipt younger than 26 hours; a new silent send occurs daily. An edit is
-not proof of the send path. A send-only failure can take 26 hours plus the
-delivery detection window to appear. API acceptance is not human receipt.
+A node checks its own declared local services and sends directly to Kuma. The collector never synthesizes another node's heartbeat. Panel-only pipeline success requires fresh expected node scrapes and successful recent rule evaluation. Telegram mode additionally requires Alertmanager visibility and a newly consumed synthetic rule-to-relay receipt. Only Telegram-mode delivery success requires a real relay edit with advancing sequence and a real send receipt younger than 26 hours; a new silent send occurs daily. An edit is not proof of the send path. A send-only failure can take 26 hours plus the delivery detection window to appear. API acceptance is not human receipt.
 
-Push requests load tokens through systemd credentials, verify TLS, use bounded
-timeouts, disable redirects/proxies and require exactly the expected JSON
-acknowledgement. Stale receipts, missing targets and failed local checks withhold
-success. Token possession can forge freshness; private ingress and rotation
-reduce but do not eliminate that risk.
+Push requests load tokens through systemd credentials, verify TLS, use bounded timeouts, disable redirects/proxies and require exactly the expected JSON acknowledgement. Stale receipts, missing targets and failed local checks withhold success. Token possession can forge freshness; private ingress and rotation reduce but do not eliminate that risk.
 
-In Telegram mode, the surviving primary route reports observer/push failure
-as external coverage
-unavailable, not confirmed VPN failure. Healthy process status is not proof of
-working alert evaluation or Telegram delivery. Both routes share Telegram; both
-observer and collector loss cannot guarantee notification. Shared private-network
-loss remains a common-mode dependency. Authenticated external client-path
-quorum remains unchanged; missing witnesses remain unknown/stale.
+In Telegram mode, the surviving primary route reports observer/push failure as external coverage unavailable, not confirmed VPN failure. Healthy process status is not proof of working alert evaluation or Telegram delivery. Both routes share Telegram; both observer and collector loss cannot guarantee notification. Shared private-network loss remains a common-mode dependency. Authenticated external client-path quorum remains unchanged; missing witnesses remain unknown/stale.
 
 ## Backup, restore and upgrades
 
-Kuma data, VPN restic repositories and the operator kit have separate backup
-scopes. A successful observer recovery does not prove that node configuration,
-Terraform state or operator credentials can be recovered. Verify the
-[operator-kit offsite copy](../how-to/fleet-maintenance.md#seal-and-verify-the-operator-kit)
-separately. The [deployment snapshot](deployment-status.md) records the dated
-service-wide results; it does not replace fresh operational checks.
+Kuma data, VPN restic repositories and the operator kit have separate backup scopes. A successful observer recovery does not prove that node configuration, Terraform state or operator credentials can be recovered. Verify the [operator-kit offsite copy](../how-to/fleet-maintenance.md#seal-and-verify-the-operator-kit) separately. The [deployment snapshot](deployment-status.md) records the dated service-wide results; it does not replace fresh operational checks.
 
-Protect the live Kuma database as secret material; SOPS does not encrypt it.
-Daily quiesced backup captures the whole data directory including WAL state,
-encrypts directly with age to separate existing owner-controlled storage and
-records the matching image digest and ciphertext checksum. Preserve the
-previous database and image before upgrades. Container rollback alone cannot
-roll back a database migration.
+Protect the live Kuma database as secret material; SOPS does not encrypt it. Daily quiesced backup captures the whole data directory including WAL state, encrypts directly with age to separate existing owner-controlled storage and records the matching image digest and ciphertext checksum. Preserve the previous database and image before upgrades. Container rollback alone cannot roll back a database migration.
 
-Backup records private restart intent before quiescing an active observer.
-Graceful cleanup and the locked systemd post-stop recovery restore that prior
-state after interruption; failed recovery retains intent for inspection.
-Disable and rotation stop the backup timer and wait for backup recovery before
-their final observer action. A previously inactive observer stays inactive.
+Backup records private restart intent before quiescing an active observer. Graceful cleanup and the locked systemd post-stop recovery restore that prior state after interruption; failed recovery retains intent for inspection. Disable and rotation stop the backup timer and wait for backup recovery before their final observer action. A previously inactive observer stays inactive.
 
-The restore helper requires an explicitly provisioned systemd age-identity
-credential and a selected backup ID. This is an on-demand operator credential,
-not a persistent identity on the observer. Provision it for the authorized
-restore window, remove it afterwards and verify that no restore instance is
-active. The idle template can retain its credential reference while the private
-identity file remains absent. It restores into a new private directory,
-rejects traversal/links/special files, and verifies an isolated instance with no
-network or published ports. Thus notifications cannot leave the restored
-instance. Retain both datasets; do not run original and restored monitors with
-outbound access simultaneously. Activate restored data only after exact-host
-and credential approval.
+The restore helper requires an explicitly provisioned systemd age-identity credential and a selected backup ID. This is an on-demand operator credential, not a persistent identity on the observer. Provision it for the authorized restore window, remove it afterwards and verify that no restore instance is active. The idle template can retain its credential reference while the private identity file remains absent. It restores into a new private directory, rejects traversal/links/special files, and verifies an isolated instance with no network or published ports. Thus notifications cannot leave the restored instance. Retain both datasets; do not run original and restored monitors with outbound access simultaneously. Activate restored data only after exact-host and credential approval.
 
 ### Scheduled download and SQLite recovery
 
-Opt in with `observability_kuma_recovery.enabled` and explicit private bucket,
-reader addresses, operator public recipients and maximum backup age. Supply a
-separate Kuma-only age identity and a native storage key restricted to `kuma/`
-with exactly `listBuckets`, `readBucketEncryption`, `readFiles` and `writeFiles`.
-The controller verifies the identity and actual provider grant before it sends
-credentials to the observer. The observer never receives the operator-kit key.
+Opt in with `observability_kuma_recovery.enabled` and explicit private bucket, reader addresses, operator public recipients and maximum backup age. Supply a separate Kuma-only age identity and a native storage key restricted to `kuma/` with exactly `listBuckets`, `readBucketEncryption`, `readFiles` and `writeFiles`. The controller verifies the identity and actual provider grant before it sends credentials to the observer. The observer never receives the operator-kit key.
 
-The daily recovery job uploads the latest completed encrypted backup, downloads
-its exact object ID, verifies private access, authenticates decryption and
-compares the full restored manifest. It checks SQLite integrity and the required
-application tables with WAL included. It uses only an isolated owned directory;
-it does not start a second application or change the live data. The separate
-on-demand restore above remains the application startup test.
+The daily recovery job uploads the latest completed encrypted backup, downloads its exact object ID, verifies private access, authenticates decryption and compares the full restored manifest. It checks SQLite integrity and the required application tables with WAL included. It uses only an isolated owned directory; it does not start a second application or change the live data. The separate on-demand restore above remains the application startup test.
 
-Create a fresh backup after changing its recipient. Scheduled recovery rejects
-old-recipient, stale or incomplete backup metadata. Keep the old local recovery
-identity for historical backups. Success is published only after temporary data
-is removed. Failed service exit also runs cleanup. Disable quiesces the job and
-removes only its admitted credentials and units; it retains encrypted backups.
+Create a fresh backup after changing its recipient. Scheduled recovery rejects old-recipient, stale or incomplete backup metadata. Keep the old local recovery identity for historical backups. Success is published only after temporary data is removed. Failed service exit also runs cleanup. Disable quiesces the job and removes only its admitted credentials and units; it retains encrypted backups.
 
-Set `observability_push.require_observer_recovery` on the collector pipeline.
-Only explicit exact Tailnet readers can fetch `/internal/recovery` on the private
-observer endpoint. A failed check or backup/verification older than 26 hours
-prevents a success heartbeat. An unchanged healthy result sends no extra notice.
+Set `observability_push.require_observer_recovery` on the collector pipeline. Only explicit exact Tailnet readers can fetch `/internal/recovery` on the private observer endpoint. A failed check or backup/verification older than 26 hours prevents a success heartbeat. An unchanged healthy result sends no extra notice.
 
 ## Finite maintenance silences
 
-Alerting requires `observability_control_plane.alerting.silence_gateway.enabled`
-and dedicated gateway authorities in `observability_secrets.silence_gateway`.
-Bind the existing private role-vars mapping to the SOPS fields instead of
-copying credential values. For example, the `alerting.silence_gateway` value in
-the complete control-plane vars document can be:
+Alerting requires `observability_control_plane.alerting.silence_gateway.enabled` and dedicated gateway authorities in `observability_secrets.silence_gateway`. Bind the existing private role-vars mapping to the SOPS fields instead of copying credential values. For example, the `alerting.silence_gateway` value in the complete control-plane vars document can be:
 
 ```yaml
 silence_gateway: >-
@@ -466,25 +176,11 @@ silence_gateway: >-
       'environment': 'staging', 'max_ttl_seconds': 14400}) }}
 ```
 
-The role uses a fixed private configuration root and loopback-only gateway;
-Alertmanager's underlying API requires a separate client certificate held only
-by the gateway. Sender credentials cannot create or delete silences. A named
-operator may delete only silences it created. The default maximum TTL is four
-hours, bounded by the configured policy.
+The role uses a fixed private configuration root and loopback-only gateway; Alertmanager's underlying API requires a separate client certificate held only by the gateway. Sender credentials cannot create or delete silences. A named operator may delete only silences it created. The default maximum TTL is four hours, bounded by the configured policy.
 
-Create a mode-0600 JSON request in an owner-controlled directory. Its exact
-fields are `schema_version: 1`, a technical-slug `reason`, UTC `starts_at` and
-`ends_at`, and `matchers`. Matchers require the configured `environment` and
-at least one exact `node` or `policy`; optional allowed stable labels further
-narrow the scope. Do not use `node_id`, regex matchers, an owner field, tokens,
-free-text diagnostics or an indefinite end time in this file.
+Create a mode-0600 JSON request in an owner-controlled directory. Its exact fields are `schema_version: 1`, a technical-slug `reason`, UTC `starts_at` and `ends_at`, and `matchers`. Matchers require the configured `environment` and at least one exact `node` or `policy`; optional allowed stable labels further narrow the scope. Do not use `node_id`, regex matchers, an owner field, tokens, free-text diagnostics or an indefinite end time in this file.
 
-Expected-target alerts use this same environment. A maintenance silence can
-therefore match missing-family, stale-evidence and source-identity alerts for
-its exact node. On a Telegram flood response, the relay reads JSON
-`parameters.retry_after`. It retries within the current webhook only for a
-wait of at most five seconds; a longer wait returns delivery failure and leaves
-the next attempt to Alertmanager.
+Expected-target alerts use this same environment. A maintenance silence can therefore match missing-family, stale-evidence and source-identity alerts for its exact node. On a Telegram flood response, the relay reads JSON `parameters.retry_after`. It retries within the current webhook only for a wait of at most five seconds; a longer wait returns delivery failure and leaves the next attempt to Alertmanager.
 
 ```sh
 export OBSERVABILITY_SILENCE_OWNER="operator"
@@ -496,77 +192,31 @@ export OBSERVABILITY_SILENCE_ID="<returned-uuid>"
 make observability-silence-delete
 ```
 
-These explicit mutation commands use the already-selected exact inventory
-host and environment. They do not deploy, alter metrics, reset incident times,
-or claim recovery. Alertmanager expires a silence at its finite end even if
-the gateway is temporarily down. The private bounded audit retains categorical
-creation, expiry and deletion records without bearer tokens. A successful API
-response is not the required real alert delivery/expiry staging evidence.
+These explicit mutation commands use the already-selected exact inventory host and environment. They do not deploy, alter metrics, reset incident times, or claim recovery. Alertmanager expires a silence at its finite end even if the gateway is temporarily down. The private bounded audit retains categorical creation, expiry and deletion records without bearer tokens. A successful API response is not the required real alert delivery/expiry staging evidence.
 
 ## Migration and acceptance
 
 1. Complete local schema, render, unit, security and full repository gates.
-2. With exact-host access permission, measure collector and observer admission,
-   verify private connectivity/runtime/backup storage and record matched VPN baselines.
-3. With deployment and credential authority, configure the independent observer
-   with N+1 real monitors for panel-only mode or N+2 for Telegram mode. Verify
-   private UI/ingress separation, persistence and encrypted isolated restore.
-   Telegram mode also requires the actual secondary human receipt.
-4. Deploy the collector and node agents serially on existing hosts. Require
-   qualified heartbeats and fresh expected-target metrics after each.
-5. Perform explicitly scoped missing-push, collector, observer, stale-receipt,
-   revoked/wrong-SAN, token-rotation, storage and recovery drills. Verify primary
-   observer-loss alerting and secondary collector-loss alerting separately.
-6. Compare three matched baseline/enabled authenticated VPN runs: median
-   throughput loss <=5%, p95 latency increase <=10%, no attributable new
-   connection failures or VPN restarts. Unresolvable noise is unverified.
-7. Request cutover only after the agreed failure/recovery and operator acceptance.
-   Human notification receipts apply only when the selected mode sends notifications.
-   Do not disable or delete working old routes or their secrets automatically.
+2. With exact-host access permission, measure collector and observer admission, verify private connectivity/runtime/backup storage and record matched VPN baselines.
+3. With deployment and credential authority, configure the independent observer with N+1 real monitors for panel-only mode or N+2 for Telegram mode. Verify private UI/ingress separation, persistence and encrypted isolated restore. Telegram mode also requires the actual secondary human receipt.
+4. Deploy the collector and node agents serially on existing hosts. Require qualified heartbeats and fresh expected-target metrics after each.
+5. Perform explicitly scoped missing-push, collector, observer, stale-receipt, revoked/wrong-SAN, token-rotation, storage and recovery drills. Verify primary observer-loss alerting and secondary collector-loss alerting separately.
+6. Compare three matched baseline/enabled authenticated VPN runs: median throughput loss <=5%, p95 latency increase <=10%, no attributable new connection failures or VPN restarts. Unresolvable noise is unverified.
+7. Request cutover only after the agreed failure/recovery and operator acceptance. Human notification receipts apply only when the selected mode sends notifications. Do not disable or delete working old routes or their secrets automatically.
 
-Collector rollback uses the retained exact generation and digest-bound private
-manifest. Agent rollback is reviewed reconvergence; monitoring-only disable
-stops its units without touching VPN configuration or deleting retained data.
-Kuma rollback requires a matching verified database/image pair. Failed authority
-restoration retains its private recovery snapshot and blocks later publication;
-do not delete it or blindly restart services.
+Collector rollback uses the retained exact generation and digest-bound private manifest. Agent rollback is reviewed reconvergence; monitoring-only disable stops its units without touching VPN configuration or deleting retained data. Kuma rollback requires a matching verified database/image pair. Failed authority restoration retains its private recovery snapshot and blocks later publication; do not delete it or blindly restart services.
 
-Keep local source, local disposable runtime, hosted CI, host admission, API
-receipts, human notification, and authenticated client evidence separate.
-Mock/fixture results never establish resource admission, real scheduler timing,
-Telegram delivery, VPN non-regression or live cutover. No step or feature closes
-while its named required evidence is missing. The earlier dedicated-staging
-task remains separate and open.
+Keep local source, local disposable runtime, hosted CI, host admission, API receipts, human notification, and authenticated client evidence separate. Mock/fixture results never establish resource admission, real scheduler timing, Telegram delivery, VPN non-regression or live cutover. No step or feature closes while its named required evidence is missing. The earlier dedicated-staging task remains separate and open.
 
 ## Retained dedicated-staging cleanup only
 
-The old three-provider resources and their private cleanup journal, if any,
-remain governed by the existing sealed destructive-action workflow below.
-This does not authorize creating dedicated hosts or resuming the retired
-deployment/acceptance topology. Do not reinterpret its prior receipts as
-acceptance of co-hosted monitoring.
+The old three-provider resources and their private cleanup journal, if any, remain governed by the existing sealed destructive-action workflow below. This does not authorize creating dedicated hosts or resuming the retired deployment/acceptance topology. Do not reinterpret its prior receipts as acceptance of co-hosted monitoring.
 
 ### Guarded provider cleanup
 
-Cleanup is a separate post-evidence transaction. First create a private scope
-snapshot from the terminal acceptance journal, review its delete-only plans,
-then seal it with a fresh private approval whose scope digest closes the
-rollback/retention window. Only the sealed manifest may be passed to the run
-target. The guard is fixed to staging UpCloud, Hetzner and Scaleway roots; it
-rechecks clean source, account/project, state digest, complete Terraform address
-set, provider identities and every reviewed plan before the first delete.
-Final success requires independently authenticated 404 absence for every
-addressable resource. Do not retire local recovery material until the redacted
-receipt says `provider-absence-verified`; a missing approval or partial outcome
-keeps it retained.
+Cleanup is a separate post-evidence transaction. First create a private scope snapshot from the terminal acceptance journal, review its delete-only plans, then seal it with a fresh private approval whose scope digest closes the rollback/retention window. Only the sealed manifest may be passed to the run target. The guard is fixed to staging UpCloud, Hetzner and Scaleway roots; it rechecks clean source, account/project, state digest, complete Terraform address set, provider identities and every reviewed plan before the first delete. Final success requires independently authenticated 404 absence for every addressable resource. Do not retire local recovery material until the redacted receipt says `provider-absence-verified`; a missing approval or partial outcome keeps it retained.
 
-The destructive approval passed to `seal` has exactly:
-`schema_version`, `task_id`, `change`, `snapshot_sha256`, `source_revision`,
-`deployable_digest`, `acceptance_journal_sha256`, `scope_sha256`,
-`approval_id`, `approved_at`, `expires_at`, and
-`rollback_retention_closed: true`. Its hashes are copied from the reviewed
-snapshot, never recomputed from hand-entered resource IDs. Use the Make
-preparation surfaces in order:
+The destructive approval passed to `seal` has exactly: `schema_version`, `task_id`, `change`, `snapshot_sha256`, `source_revision`, `deployable_digest`, `acceptance_journal_sha256`, `scope_sha256`, `approval_id`, `approved_at`, `expires_at`, and `rollback_retention_closed: true`. Its hashes are copied from the reviewed snapshot, never recomputed from hand-entered resource IDs. Use the Make preparation surfaces in order:
 
 ```sh
 make observability-staging-cleanup-snapshot \

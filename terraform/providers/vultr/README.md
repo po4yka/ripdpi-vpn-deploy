@@ -1,20 +1,10 @@
 # Vultr provider
 
-Terraform root for a single Vultr VPS running the provider-neutral Ansible
-stack.
+Terraform root for a single Vultr VPS running the provider-neutral Ansible stack.
 
-Credentials come from the `VULTR_API_KEY` environment variable; the provider
-block stays empty, matching the other provider roots. Never write tokens into
-tfvars or the provider config.
+Credentials come from the `VULTR_API_KEY` environment variable; the provider block stays empty, matching the other provider roots. Never write tokens into tfvars or the provider config.
 
-When API access is restricted by an
-allowlist, add only the current operator egress address as an exact IP/CIDR
-before planning; do not admit all IPv4 or IPv6 ranges. The canonical
-`scripts/terraform-env.sh` wrapper performs a redacted authenticated preflight
-before Vultr plan/apply/import/refresh operations and distinguishes an ACL
-rejection from invalid credentials or network failure. After a key replacement,
-run a scoped `make PROVIDER=vultr ENV=<environment> plan` before revoking the
-prior key. Never pass a key on the command line or commit it to this repository.
+When API access is restricted by an allowlist, add only the current operator egress address as an exact IP/CIDR before planning; do not admit all IPv4 or IPv6 ranges. The canonical `scripts/terraform-env.sh` wrapper performs a redacted authenticated preflight before Vultr plan/apply/import/refresh operations and distinguishes an ACL rejection from invalid credentials or network failure. After a key replacement, run a scoped `make PROVIDER=vultr ENV=<environment> plan` before revoking the prior key. Never pass a key on the command line or commit it to this repository.
 
 The root exports the same inventory-facing outputs as `providers/upcloud/`:
 
@@ -36,10 +26,7 @@ VULTR_API_KEY=... make PROVIDER=vultr ENV=prod init plan
 
 See `terraform/providers/vultr/CLAUDE.md` for design decisions and pitfalls.
 
-Before adopting DNS records, follow the [existing DNS state migration](../../../docs/reference/provider-notes.md#migrate-existing-vultr-dns-state).
-Move a retained legacy binding to the selected `managed` map key instead of
-importing the same remote record twice. Review a plan with no DNS changes for
-adoption before applying endpoint updates.
+Before adopting DNS records, follow the [existing DNS state migration](../../../docs/reference/provider-notes.md#migrate-existing-vultr-dns-state). Move a retained legacy binding to the selected `managed` map key instead of importing the same remote record twice. Review a plan with no DNS changes for adoption before applying endpoint updates.
 
 <!-- BEGIN_TF_DOCS -->
 ## Requirements

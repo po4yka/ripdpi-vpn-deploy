@@ -6,8 +6,7 @@ Snell is a RESEARCH-tier, staging-only transport candidate. It is disabled in ev
 
 ## Deployment boundary
 
-Enable `vpn.enable_snell` only on a non-production host that explicitly lists `snell` in `allow_research_roles`. Add TCP listeners 2443, 2444, and 2445 to that staging environment's typed `public_listeners` contract. The research guard refuses `ENV=prod` for every engine pin. The role pins stable sing-box `v1.14.3`;
-Snell v6 protocol stability and field acceptance remain separate promotion gates.
+Enable `vpn.enable_snell` only on a non-production host that explicitly lists `snell` in `allow_research_roles`. Add TCP listeners 2443, 2444, and 2445 to that staging environment's typed `public_listeners` contract. The research guard refuses `ENV=prod` for every engine pin. The role pins stable sing-box `v1.14.3`; Snell v6 protocol stability and field acceptance remain separate promotion gates.
 
 The optional same-node control endpoint requires nginx-xhttp and `snell.evaluation_enabled: true`. It serves fixed, uncompressed payload files under the secret `snell_secrets.evaluation_path_token`; access logging is disabled for that location.
 
@@ -25,15 +24,4 @@ Promotion requires a stable Snell protocol release, two technical vantages on th
 
 ## Local engine qualification
 
-The required native test uses the exact checksum-verified sing-box release with
-synthetic loopback credentials. It checks the three role-rendered server variants,
-authenticated byte transfer, refusal of a wrong userkey, and two application
-connections over fresh or reused encrypted transports. The test counts accepted
-outer TCP connections, so configuration text alone cannot prove reuse. Run
-`python3 -m pytest -q tests/unit/test_snell_native.py --fail-on-skip -o addopts=`.
-Its private pytest cache stores only public release artifacts. Set
-`SNELL_NATIVE_ARCHIVE` to a local release archive to avoid a download; checksum and
-version checks still apply. Required CI can set `SNELL_NATIVE_BINARY` to the exact
-release executable that its checksum-gated setup has already installed. The test
-checks its version and executes the same parser and wire cases. Molecule uses a synthetic service binary for lifecycle
-checks and does not establish protocol or field acceptance.
+The required native test uses the exact checksum-verified sing-box release with synthetic loopback credentials. It checks the three role-rendered server variants, authenticated byte transfer, refusal of a wrong userkey, and two application connections over fresh or reused encrypted transports. The test counts accepted outer TCP connections, so configuration text alone cannot prove reuse. Run `python3 -m pytest -q tests/unit/test_snell_native.py --fail-on-skip -o addopts=`. Its private pytest cache stores only public release artifacts. Set `SNELL_NATIVE_ARCHIVE` to a local release archive to avoid a download; checksum and version checks still apply. Required CI can set `SNELL_NATIVE_BINARY` to the exact release executable that its checksum-gated setup has already installed. The test checks its version and executes the same parser and wire cases. Molecule uses a synthetic service binary for lifecycle checks and does not establish protocol or field acceptance.
