@@ -33,6 +33,9 @@ def test_native_package_pins_use_the_immutable_ubuntu_snapshot_with_exact_versio
     assert script.count("--snapshot 20261101T120000Z") == 2
     assert "APT::Update::Error-Mode=any" in script
     assert "Acquire::Retries=5" in script
+    # A snapshot download failure after a good snapshot update retries install from the live archive.
+    assert re.search(r"if ! install_packages; then\n(.*\n)*?\s*apt_options=\(-o Acquire::Retries=5\)\n"
+                     r"\s*apt-get \"\$\{apt_options\[@\]\}\" update\n\s*install_packages\n", script)
     for pin in ("nftables=1.0.9-1ubuntu0.1", "libnftables1=1.0.9-1ubuntu0.1",
                 "nginx=1.24.0-2ubuntu7.19", "nginx-common=1.24.0-2ubuntu7.19"):
         assert pin in script
