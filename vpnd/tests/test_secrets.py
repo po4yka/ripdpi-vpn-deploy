@@ -257,3 +257,71 @@ def test_binary_yaml_numeric_client_names_and_ports(tmp_path):
     assert loaded.subscription_port() == 10
     with pytest.raises(ValueError):
         Secrets.load(secret(tmp_path, "xray: {clients: [{name: 0b1010}]}\n"))
+
+
+FULL_DOC = """\
+xray:
+  reality_key: rk
+  clients:
+    - name: phone
+      uuid: u-1
+      short_id: s-1
+      note: n1
+    - name: bare
+nginx_xhttp:
+  server_name: nginx.example
+  path: /p
+subscription:
+  server_name: sub.example
+  port: 8443
+  token_ttl: 60
+other: 1
+"""
+
+
+def test_load_splits_known_fields_from_extras(tmp_path):
+    loaded = Secrets.load(secret(tmp_path, FULL_DOC))
+    phone, bare = loaded.xray.clients
+    assert (phone.name, phone.uuid, phone.short_id, phone._extra) == (
+        "phone",
+        "u-1",
+        "s-1",
+        {"note": "n1"},
+    )
+    assert (bare.name, bare.uuid, bare.short_id, bare._extra) == ("bare", None, None, {})
+    assert loaded.xray._extra == {"reality_key": "rk"}
+    assert loaded.nginx_xhttp.server_name == "nginx.example"
+    assert loaded.nginx_xhttp._extra == {"path": "/p"}
+    assert (loaded.subscription_host(), loaded.subscription_port()) == ("sub.example", 8443)
+    assert loaded.subscription._extra == {"token_ttl": 60}
+    assert loaded._extra == {"other": 1}
+
+
+@pytest.mark.parametrize(
+    ("raw", "message"),
+    [
+        ("42", "decrypted secrets YAML must contain a mapping"),
+        ("xray: 7", "parse decrypted secrets YAML: expected mapping"),
+        ("xray: {clients: x}", "parse decrypted secrets YAML: clients must be a sequence"),
+        ("xray: {clients: [{uuid: a}]}", "parse decrypted secrets YAML: client name required"),
+        ("xray: {clients: [{name: 1}]}", "parse decrypted secrets YAML: client name required"),
+        ("xray: {clients: [{name: a, uuid: 1}]}", "parse decrypted secrets YAML: expected string"),
+        ("xray: {clients: [{name: a, short_id: 1}]}", "parse decrypted secrets YAML: expected string"),
+        ("nginx_xhttp: {server_name: 1}", "parse decrypted secrets YAML: expected string"),
+        ("subscription: {port: -1}", "parse decrypted secrets YAML: subscription port must be u64"),
+        (
+            "subscription: {port: 18446744073709551616}",
+            "parse decrypted secrets YAML: subscription port must be u64",
+        ),
+    ],
+)
+def test_load_error_messages_are_exact(tmp_path, raw, message):
+    with pytest.raises(ValueError) as info:
+        Secrets.load(secret(tmp_path, raw))
+    assert str(info.value) == message
+
+
+@pytest.mark.parametrize("port", [0, 1, 18446744073709551615])
+def test_load_accepts_u64_port_bounds(tmp_path, port):
+    loaded = Secrets.load(secret(tmp_path, f"subscription: {{port: {port}}}\n"))
+    assert loaded.subscription_port() == port

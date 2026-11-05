@@ -24,12 +24,14 @@ MARKER = "<redacted: secrets file path>"
 
 def redact_secrets(text, resolved_secrets_path):
     if resolved_secrets_path:
-        offset = 0
+        # Equivalent mutants: find(path, None) scans from 0.
+        offset = 0  # pragma: no mutate
         while (start := text.find(resolved_secrets_path, offset)) >= 0:
             end = start + len(resolved_secrets_path)
-            line_start = text.rfind("\n", 0, start) + 1
+            line_start = text[:start].rfind("\n") + 1
             line_end = text.find("\n", end)
-            if line_end < 0:
+            # Equivalent mutants: line_end >= end > 0, so < 0, <= 0 and < 1 agree.
+            if line_end < 0:  # pragma: no mutate
                 line_end = len(text)
             text = text[:line_start] + MARKER + text[line_end:]
             offset = line_start + len(MARKER)
@@ -83,7 +85,7 @@ async def run_capture(program, args):
             await Cmd.new(program)
             .args(args)
             .capture_policy(CapturePolicy.OWNED_PROCESS_GROUP)
-            .capture_detailed(False)
+            .capture_detailed()
         ).stdout
     except OSError as error:
         return f"({program} unavailable: {error})\n"
@@ -104,7 +106,7 @@ async def write_bundle(ctx, report, out_path):
         audit = (
             await make.target(ctx, "audit-log")
             .capture_policy(CapturePolicy.OWNED_PROCESS_GROUP)
-            .capture(False)
+            .capture()
         ).stdout
     except Exception as error:
         audit = f"(audit-log unavailable: {error})\n"
@@ -150,15 +152,11 @@ async def run(ctx, args):
         scope = " (global check)" if step in {"fleet-status", "audit-permissions"} else ""
         try:
             result = await command.capture_detailed(ctx.explain)
-            failed += result.rc != 0
-            report += render_step_section(
-                command.redacted_explain() + scope, result.stdout, result.stderr, result.rc != 0
-            )
+            stdout, stderr, ok = result.stdout, result.stderr, result.rc == 0
         except Exception as error:
-            failed += 1
-            report += render_step_section(
-                command.redacted_explain() + scope, "", f"(capture failed: {error})", True
-            )
+            stdout, stderr, ok = "", f"(capture failed: {error})", False
+        failed += not ok
+        report += render_step_section(command.redacted_explain() + scope, stdout, stderr, not ok)
     if ctx.explain:
         return 0
     if args.bundle:

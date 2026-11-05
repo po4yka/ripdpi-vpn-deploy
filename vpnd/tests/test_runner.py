@@ -2,6 +2,7 @@ from pathlib import Path
 from dataclasses import replace
 import asyncio
 import os
+import re
 import json
 import signal
 import threading
@@ -221,6 +222,26 @@ def test_target_with_first_failing_key_aborts_and_nothing_spawns():
     assert "HOST" in str(error.value) and "IPv4 literal" in str(error.value)
 
 
+@pytest.mark.parametrize(
+    "build, description, arguments",
+    [
+        (terraform.init, "terraform init for upcloud/prod", "init"),
+        (
+            terraform.plan,
+            "terraform plan -out=prod.tfplan",
+            "plan -var-file=environments/prod.tfvars -out=prod.tfplan",
+        ),
+        (terraform.apply, "terraform apply prod.tfplan", "apply prod.tfplan"),
+        (terraform.output, "terraform output -json", "output -json"),
+    ],
+)
+def test_terraform_commands_and_descriptions_are_exact(capsys, build, description, arguments):
+    build(fake_ctx()).print_explain()
+    assert capsys.readouterr().err == (
+        f"\u2192 {description}\n  $ PROVIDER=upcloud ENV=prod /repo/scripts/terraform-env.sh {arguments}\n"
+    )
+
+
 # Rust test: vpnd/src/runner/terraform.rs::init_uses_environment_wrapper
 def test_init_uses_environment_wrapper():
     s = terraform.init(fake_ctx()).explain()
@@ -256,6 +277,14 @@ def test_output_contains_json_flag():
 def test_all_cmds_use_environment_wrapper():
     for function in (terraform.plan, terraform.apply, terraform.output):
         assert "scripts/terraform-env.sh" in function(fake_ctx()).explain()
+
+
+def test_decrypt_command_and_description_are_exact_and_redact_both_paths(capsys):
+    sops.decrypt(fake_ctx()).print_explain()
+    assert capsys.readouterr().err == (
+        "\u2192 sops --decrypt \u2192 (runtime plaintext \u2014 never logged)\n  $ "
+        "sops --decrypt --output '<redacted: secrets file path>' '<redacted: secrets file path>'\n"
+    )
 
 
 # Rust test: vpnd/src/runner/sops.rs::decrypt_program_is_sops
@@ -308,6 +337,111 @@ def test_dry_run_appends_check_and_diff():
     assert "--check" in s and "--diff" in s
 
 
+PLAYBOOK_HEAD = (
+    "(cd /repo && ANSIBLE_CONFIG=/repo/ansible/ansible.cfg VPN_SECRETS_FILE='<redacted: secrets file path>' "
+    "ansible-playbook /repo/ansible/playbooks/site.yml --inventory /repo/ansible/inventory/generated.ini"
+)
+
+
+def test_playbook_command_and_description_are_exact_and_redact_the_secrets_path(capsys):
+    ansible.playbook(fake_ctx(), "site").print_explain()
+    assert capsys.readouterr().err == f"\u2192 ansible-playbook playbooks/site.yml\n  $ {PLAYBOOK_HEAD})\n"
+
+
+def test_dry_run_command_and_description_are_exact(capsys):
+    ansible.dry_run(fake_ctx()).print_explain()
+    assert capsys.readouterr().err == (
+        f"\u2192 ansible-playbook site.yml --check --diff\n  $ {PLAYBOOK_HEAD} --check --diff)\n"
+    )
+
+
+def test_scoped_limit_explain_shows_the_inventory_command(capsys):
+    assert asyncio.run(ansible.scoped_limit(fake_ctx(explain=True))) == "<validated inventory host keys>"
+    assert capsys.readouterr().err == (
+        "\u2192 resolve exact inventory hosts for the selected environment and provider\n  $ "
+        "(cd /repo && ANSIBLE_CONFIG=/repo/ansible/ansible.cfg ansible-inventory "
+        "--inventory /repo/ansible/inventory/generated.ini --list)\n"
+    )
+
+
+def node(address="192.0.2.1", **fields):
+    return {"env": "prod", "provider": "upcloud", "ansible_host": address, **fields}
+
+
+def listing(hostvars, hosts=None, **groups):
+    """An inventory whose vpn group lists `hosts` (default: every hostvars key); extra keys add groups."""
+    vpn = {"hosts": list(hostvars) if hosts is None else hosts}
+    return json.dumps({"vpn": vpn, "_meta": {"hostvars": hostvars}, **groups})
+
+
+def refused(raw, message, expected_ip=None):
+    with pytest.raises(ValueError, match="^" + re.escape(message) + "$"):
+        ansible.inventory_limit(raw, "prod", "upcloud", expected_ip)
+
+
+@pytest.mark.parametrize(
+    "raw, message",
+    [
+        (json.dumps({"vpn": {"hosts": []}}), "inventory is missing hostvars"),
+        (json.dumps({"vpn": {"hosts": []}, "_meta": {"hostvars": []}}), "inventory is missing hostvars"),
+        (json.dumps({"_meta": {"hostvars": {}}}), "inventory is missing group 'vpn'"),
+        (
+            json.dumps({"vpn": {"children": ["gone"]}, "_meta": {"hostvars": {}}}),
+            "inventory is missing group 'gone'",
+        ),
+        (listing({}, hosts="abc"), "invalid inventory hosts/groups"),
+        (listing({}, hosts=[1]), "invalid inventory hosts/groups"),
+        (
+            json.dumps({"vpn": {"children": "abc"}, "_meta": {"hostvars": {}}}),
+            "invalid inventory hosts/groups",
+        ),
+        (listing({}, hosts=["a"]), "missing variables for inventory host 'a'"),
+        (listing({"a": {"provider": "upcloud"}}), "missing env for inventory host 'a'"),
+        (listing({"a": {"env": "prod"}}), "missing provider for inventory host 'a'"),
+        (listing({"a": {"env": "prod", "provider": "upcloud"}}), "missing address for inventory host 'a'"),
+        (listing({"a": node("not-an-ip")}), "invalid IPv4 for inventory host 'a'"),
+        (listing({"a b": node()}), "inventory host 'a b' is not a safe exact limit"),
+        (listing({"all": node()}), "inventory host 'all' is not a safe exact limit"),
+        (listing({"ungrouped": node()}), "inventory host 'ungrouped' is not a safe exact limit"),
+        (listing({"b": node()}, b={"hosts": []}), "inventory host 'b' is not a safe exact limit"),
+        (listing({"a": node(env="stage")}), "expected at least one matching inventory hosts, found 0"),
+    ],
+)
+def test_inventory_limit_refusals_name_the_exact_reason(raw, message):
+    refused(raw, message)
+
+
+def test_inventory_limit_requires_exactly_one_host_for_an_expected_address():
+    raw = listing({"a": node("192.0.2.1"), "b": node("192.0.2.2")})
+    refused(raw, "expected exactly one matching inventory hosts, found 0", "192.0.2.9")
+    refused(
+        listing({"a": node("192.0.2.1"), "b": node("192.0.2.1")}),
+        "expected exactly one matching inventory hosts, found 2",
+        "192.0.2.1",
+    )
+    assert ansible.inventory_limit(raw, "prod", "upcloud", "192.0.2.2") == "b"
+
+
+def test_inventory_limit_skips_foreign_hosts_before_validating_their_names():
+    raw = listing({"ok": node(), "Not Safe": node("192.0.2.2", provider="hetzner")})
+    assert ansible.inventory_limit(raw, "prod", "upcloud") == "ok"
+
+
+def test_inventory_limit_accepts_uppercase_names_and_visits_each_group_once_despite_cycles():
+    hostvars = {name: node(f"192.0.2.{i}") for i, name in enumerate(["Upper-1", "c", "d"], 1)}
+    raw = json.dumps(
+        {
+            "vpn": {"children": ["d_group", "a_group", "b_group"]},
+            "a_group": {"children": ["c_group", "vpn"]},
+            "b_group": {"children": ["c_group"], "hosts": ["Upper-1"]},
+            "c_group": {"hosts": ["c"]},
+            "d_group": {"hosts": ["d"]},
+            "_meta": {"hostvars": hostvars},
+        }
+    )
+    assert ansible.inventory_limit(raw, "prod", "upcloud") == "Upper-1,c,d"
+
+
 # Rust test: vpnd/src/runner/ansible.rs::site_uses_site_playbook
 def test_site_uses_site_playbook():
     assert "site.yml" in ansible.site(fake_ctx()).explain()
@@ -331,7 +465,7 @@ def test_rotate_accepts_one_exact_alias(alias):
      "node-a\n", "n\u00e9ud", "n" * 129],
 )
 def test_rotate_requires_one_exact_alias(alias):
-    with pytest.raises(ValueError, match="one exact inventory alias"):
+    with pytest.raises(ValueError, match="^rotate-credentials requires one exact inventory alias$"):
         ansible.rotate(fake_ctx(), alias)
 
 
