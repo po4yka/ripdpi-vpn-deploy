@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-05
+goal: SCR-1793858662430806 Renew the REALITY self-steal certificate off-node on
+  a schedule
