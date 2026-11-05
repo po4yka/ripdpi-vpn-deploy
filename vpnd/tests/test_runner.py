@@ -808,8 +808,8 @@ async def _cancel_latency(cmd, started):
         await asyncio.sleep(0.01)
     begin = time.monotonic()
     task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
+    await asyncio.wait({task})
+    assert task.cancelled()
     return time.monotonic() - begin
 
 
