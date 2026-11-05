@@ -1,6 +1,6 @@
 # Protocol-level liveness and rotation
 
-> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-05
 
 Process state, a listening socket, and a bare TLS response do not prove that a real client can authenticate and carry traffic across a filtered path. Rotation uses a separate operator-side module that pulls authenticated data-plane probes from managed sentinels and requires sustained failure from a configured quorum. The local watchdog remains process supervision.
 

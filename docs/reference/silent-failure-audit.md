@@ -1,6 +1,6 @@
 # Audit: silent-failure on an unverified or unstable external contract
 
-> **Status:** Snapshot (2026-07-26) · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-10-21
+> **Status:** Snapshot (2026-07-26) · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-11-05
 
 Status: audit completed 2026-06-11; current dispositions reviewed 2026-07-26 Method: multi-agent audit, one analyst per control plus an independent adversarial verifier per verdict. Upstream behaviour (Xray-core, sing-box, restic, rclone, openssl, check-host.net, node_exporter) verified against source/docs, not assumed.
 
@@ -116,7 +116,7 @@ The verifier's rebuttals (LAN exemption by design; Android-only; possibly-IPv4-o
 
 **Why it is BROKEN — all four fail independently:**
 1. `ansible/roles/monitoring/tasks/main.yml:21-24` sets node_exporter `ARGS` to `--web.listen-address=… --collector.systemd --collector.processes --no-collector.wifi`. **No `--collector.textfile.directory`.** The honeypot writes to `/var/lib/node_exporter/textfile` (a non-default path); the metrics are never scraped.
-2. No Prometheus server, alert rule, or alertmanager exists anywhere in the repo (`find … -iname '*.rules*' -o -iname 'alertmanager*'` → empty). `monitoring/CLAUDE.md` confirms "No alerting included — by design."
+2. No Prometheus server, alert rule, or alertmanager exists anywhere in the repo (`find … -iname '*.rules*' -o -iname 'alertmanager*'` → empty). `ansible/roles/monitoring/CLAUDE.md` confirms "No alerting included — by design."
 3. `scripts/probing-summary-remote.py` `main()` unconditionally `return 0` (line 204); no threshold check, no notification call.
 4. `install-operator-crons.sh` runs `make probing-summary 2>&1 | logger -t vpn-probing` — output swallowed by syslog, no exit-code gate, and the cron is opt-in (manual install on a workstation).
 
@@ -196,7 +196,7 @@ The eight findings share one shape: **a control trusts an external contract it n
 
 3. **Verification must exercise the real surface, not a proxy for it.** A loopback TCP open is not a REALITY handshake; `restic backup` exit 0 is not `restic check`; `rclone size` is not snapshot recency; `openssl rsa -modulus` is not an EC key comparison; a static `route.final` read is not a `route.rules[]` scan. Each fix replaces a proxy signal with a direct one.
 
-4. **Make the alert path infrastructure, not operator discipline.** The honeypot and burn-check both terminate in `logger` with no automated escalation. "Alerting is operator-side" (monitoring/CLAUDE.md) means a real probe wave or a burned IP reaches no one unless someone proactively reads a report. At minimum, wire threshold-driven ntfy/Pushover (the watchdog already has the code) into the honeypot and burn-check paths.
+4. **Make the alert path infrastructure, not operator discipline.** The honeypot and burn-check both terminate in `logger` with no automated escalation. "Alerting is operator-side" (ansible/roles/monitoring/CLAUDE.md) means a real probe wave or a burned IP reaches no one unless someone proactively reads a report. At minimum, wire threshold-driven ntfy/Pushover (the watchdog already has the code) into the honeypot and burn-check paths.
 
 5. **A skipped check must be loud.** The EC modulus guard and the burn-check early-exit both *skip silently*. Prefer fail-closed: when a check cannot run (EC key in an RSA-only path, API unreachable), emit an explicit "could not verify" finding rather than passing.
 
