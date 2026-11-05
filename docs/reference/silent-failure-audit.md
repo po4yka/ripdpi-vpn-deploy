@@ -1,6 +1,6 @@
 # Audit: silent-failure on an unverified or unstable external contract
 
-> **Status:** Snapshot (2026-07-26) · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-11-05
+> **Status:** Snapshot (2026-07-26) · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-10-21
 
 Status: audit completed 2026-06-11; current dispositions reviewed 2026-07-26 Method: multi-agent audit, one analyst per control plus an independent adversarial verifier per verdict. Upstream behaviour (Xray-core, sing-box, restic, rclone, openssl, check-host.net, node_exporter) verified against source/docs, not assumed.
 

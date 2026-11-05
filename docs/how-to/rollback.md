@@ -78,14 +78,16 @@ PROVIDER=upcloud BLUE_ENV=prod GREEN_ENV=green-2026-05 \
   make blue-green
 ```
 
-`scripts/blue-green.sh` walks eight steps. It waits for a typed `yes` after the green plan and after the green dry-run. It stops at the operator pivot so that you move DNS or the floating IP yourself. BLUE_ENV selects the live source node; without it, ENV does. A different explicit ENV beside BLUE_ENV is refused. The script prints its planned sequence without changes in its dry-run mode.
+`scripts/blue-green.sh` walks eight steps. It waits for a typed `yes` after the green plan and after the green dry-run. It stops at the operator pivot so that you move DNS or the floating IP yourself. BLUE_ENV selects the live source node; without it, ENV does. A different explicit ENV beside BLUE_ENV is refused. With `DRY_RUN=1` (or `scripts/blue-green.sh --dry-run`) the script prints its planned sequence and changes nothing.
 
 ```mermaid
 flowchart LR
-  A["1 verify blue"] --> B["2 green tfvars"]
-  B -->|"typed yes after plan"| C["3 provision green"]
-  C --> D["4 ownership, dry-run, deploy"]
-  D -->|"typed yes after dry-run"| E["5 verify, smoke-test, publish"]
+  A["1 verify blue"] --> B["2 create green tfvars<br/>only if missing"]
+  B --> P["3 green plan"]
+  P -->|"typed yes"| C["3 apply green"]
+  C --> D["4 ownership + dry-run"]
+  D -->|"typed yes"| DE["4 deploy green"]
+  DE --> E["5 verify, smoke-test, publish"]
   E --> F["6 operator pivot"]
   F -->|"every device verified"| G["7 drain blue"]
   F -->|"not verified"| H["keep blue and green"]
