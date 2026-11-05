@@ -1,6 +1,6 @@
 # Runbook — rollback
 
-> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-11-05
 
 ## Purpose and scope
 
@@ -13,7 +13,7 @@ Three rollback levels. Pick the smallest one that fixes the failure. A deploy th
 - You know which change broke the node (`make verify` output, the watchdog, or a client report) and which level addresses it.
 - `ANSIBLE_LIMIT` names exactly one inventory alias; the rollback verbs refuse groups and patterns.
 - For level 2, `ROLLBACK_XRAY_VERSION` names a version listed in [the release-line tracker](../reference/xray-release-line.md).
-- For level 3, the inputs `scripts/blue-green.sh` reads: `BLUE_ENV`, `GREEN_ENV`, `PROVIDER`, `ANSIBLE_SSH_PRIVATE_KEY_FILE`, and the private `GREEN_TAILNET_HANDOFF` and `DEPLOY_SSH_CONTEXTS_FILE` paths it requires before the green node converges; the green node's enrollment config follows [Bootstrap one node](tailnet-management.md#bootstrap-one-node).
+- For level 3, the inputs `scripts/blue-green.sh` reads: `BLUE_ENV`, `GREEN_ENV`, `PROVIDER`, `ANSIBLE_SSH_PRIVATE_KEY_FILE`, a separate `GREEN_SOPS_FILE`, a reviewed `DEVICE_MIGRATION_PLAN`, and the private `GREEN_TAILNET_HANDOFF` and `DEPLOY_SSH_CONTEXTS_FILE` paths it requires before the green node converges; the green node's enrollment config follows [Bootstrap one node](tailnet-management.md#bootstrap-one-node).
 
 ## Authorization
 
@@ -65,43 +65,41 @@ To make the rollback permanent, also update `xray.version` and `xray.linux_*_sha
 
 Use when the host itself is the problem: IP burned, kernel panic loop, hypervisor outage, or you suspect compromise.
 
+> [!CAUTION]
+> `make blue-green` creates a billable VPS and later steps destroy resources. It needs live cloud credentials, SSH and decrypted secrets, so it needs operator authorization for the exact environments. Review the green plan and the green dry-run before you type `yes`.
+
 ```bash
-# Orchestrated form (recommended):
 PROVIDER=upcloud BLUE_ENV=prod GREEN_ENV=green-2026-05 \
   ANSIBLE_SSH_PRIVATE_KEY_FILE=~/.ssh/vpn_deploy \
-  make blue-green GREEN_ENV=green-2026-05
-#
-# scripts/blue-green.sh walks 8 phases (verify blue → bootstrap green
-# tfvars → provision → multi-host inventory → deploy + verify + smoke-test
-# → operator pivot → drain → optional retire). It waits for a typed yes
-# after the green plan and after the green dry-run, and pauses at the
-# operator pivot step so you flip DNS / floating IP yourself.
-# BLUE_ENV selects the live source node; without it, ENV does. A
-# different explicit ENV beside BLUE_ENV refuses.
-#
-# Manual form (for finer control):
-# 1. Bring up a green node alongside blue. Use a different server_name in tfvars
-#    (e.g., vpn-prod-fi2 instead of vpn-prod-fi1) so they coexist. You'll have
-#    to drop or temporarily relax `prevent_destroy` on blue if you want
-#    Terraform to manage both — easiest is a separate ENV value:
-ENV=green make plan              # READ THE PLAN; stop on any destroy or replace
-ENV=green make apply             # only after the plan review
-ENV=green make inventory wait
-ENV=green make dry-run           # review the change set
-ENV=green make deploy verify     # only after the dry-run review
-
-# 2. Test green with a real client.
-
-# 3. Switch DNS / floating IP / subscription URL to green. If clients use bare
-#    IP, reissue subscriptions — they'll need the new IP anyway.
-
-# 4. Drain blue: keep it alive 24-72 hours so any cached client connections
-#    can fail over to green's URI on next reconnect.
-
-# 5. Destroy blue:
-PROVIDER=upcloud ENV=prod make destroy
-# (You'll need to remove `prevent_destroy = true` first — by design.)
+  GREEN_SOPS_FILE=<private-green-secrets-path> \
+  DEVICE_MIGRATION_PLAN=<reviewed-plan-path> \
+  GREEN_TAILNET_HANDOFF=<private-handoff-output-path> \
+  DEPLOY_SSH_CONTEXTS_FILE=<private-contexts-path> \
+  make blue-green
 ```
+
+`scripts/blue-green.sh` walks eight steps. It waits for a typed `yes` after the green plan and after the green dry-run. It stops at the operator pivot so that you move DNS or the floating IP yourself. BLUE_ENV selects the live source node; without it, ENV does. A different explicit ENV beside BLUE_ENV is refused. The script prints its planned sequence without changes in its dry-run mode.
+
+```mermaid
+flowchart LR
+  A["1 verify blue"] --> B["2 green tfvars"]
+  B -->|"typed yes after plan"| C["3 provision green"]
+  C --> D["4 ownership, dry-run, deploy"]
+  D -->|"typed yes after dry-run"| E["5 verify, smoke-test, publish"]
+  E --> F["6 operator pivot"]
+  F -->|"every device verified"| G["7 drain blue"]
+  F -->|"not verified"| H["keep blue and green"]
+  G --> I["8 keep green identity"]
+```
+
+To work by hand, provision the green environment with the [Terraform procedure](deploy.md#re-deploy-after-a-terraform-change-instance-type-zone-firewall), then complete enrollment and the [ordinary re-deploy recipe](deploy.md#ordinary-re-deploy-recipe) for the green alias, and follow [Device migration](device-migration.md) for the devices. Keep blue for 24-72 hours after the pivot so that cached client connections can fail over. Then retire it:
+
+```bash
+PROVIDER=upcloud ENV=prod make destroy
+```
+
+> [!WARNING]
+> `make destroy` removes the blue server. It lifts `prevent_destroy` by design, through a temporary override file. Run it only after every device has a verified path to green.
 
 If you have a UpCloud floating IP attached to blue, transfer it to green in the UpCloud console (or via API), and the IP-bound clients reconnect without reissuing.
 
