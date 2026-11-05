@@ -1,6 +1,6 @@
 # Architecture rationale
 
-> **Status:** Current · **Type:** explanation · **Tier:** CORE · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** explanation · **Tier:** CORE · **Reviewed:** 2026-11-05
 
 [The architecture reference](../reference/architecture.md) records what each layer owns and which role listens where. This page records why.
 
@@ -15,7 +15,7 @@ Lose the secrets file and you must rotate every credential. Lose the Terraform s
 
 ## Why direct nginx and no CDN
 
-[Decision 0001](../decisions/0001-cdn-not-filtered-path-baseline.md) is the record. The short version: as of April–May 2026 the major CDN's in-country points of presence sit behind the same DPI enforcement point, one regional CDN closed its write methods and another dropped anonymous endpoints. A CDN-fronted P1 is no longer a baseline; it is a tactical option that the `cdn-front` role keeps off by default.
+[Decision 0001](../decisions/0001-cdn-not-filtered-path-baseline.md) is the record. The short version: measurements show that a CDN path can share the same DPI enforcement point as direct traffic (SNI and IP blocking with a byte-threshold cut). Account-bound CDNs can lack write methods for anonymous accounts, and allowlist CDNs can lack anonymous endpoints. A CDN-fronted P1 is no longer a baseline; it is a tactical option that the `cdn-front` role keeps off by default (`vpn.enable_cdn_front: false`).
 
 ## Why one Terraform root per provider
 

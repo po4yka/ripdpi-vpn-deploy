@@ -1,6 +1,6 @@
 # Threat model
 
-> **Status:** Current · **Type:** explanation · **Tier:** CORE · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** explanation · **Tier:** CORE · **Reviewed:** 2026-11-05
 
 This page explains what the stack is built to survive and why each layer exists. It uses behavioural terms only; the repository does not name countries, carriers or enforcement bodies (see [the style guide](../STYLE.md)).
 
@@ -16,8 +16,8 @@ The target path is a filtered network with an in-path policy enforcement point t
 | UDP throttling and QUIC degradation | UDP/443 is rate-limited or dropped after a volume threshold | P2 Hysteria2 with Salamander obfuscation and optional port hopping; AmneziaWG cohorts with tuned junk packets and header shapes |
 | Payload-size throttling | Flows stall once a single response body crosses a size near 16 KiB | A probe measures the threshold per path; P1 and P2 give the client alternatives |
 | Concurrent-TLS policing on home access | Roughly a dozen concurrent TLS sessions to one endpoint trigger a penalty | Mux and cohort choices keep the connection count low; a probe exists for the rule |
-| ASN-tier blocking | Whole hosting ASNs are freeze-listed; some allowlisted domestic ASNs ride through | Provider notes rank ASNs; a fail-closed attestation gate guards the hosting-jurisdiction exception |
-| CDN PoP peering | A CDN's in-country PoPs sit behind the same enforcement point | Decision 0001: the CDN is not the baseline; P1 is direct nginx |
+| ASN-tier blocking | Whole hosting ASNs are freeze-listed; some allowlisted ASNs ride through | Provider notes rank ASNs; a fail-closed attestation gate ([decision 0005](../decisions/0005-per-asn-allowlist-attestation.md)) guards the separate-hosting-jurisdiction exception |
+| CDN PoP peering | CDN edge addresses sit behind the same enforcement point as direct traffic | Decision 0001: the CDN is not the baseline; P1 is direct nginx |
 | Per-IP dual-role flow classification | One IP that both receives client flows and originates upstream flows is scored as a relay | Decision 0003: the split-hop pilot separates ingress and egress hosts |
 | IP reputation burn | An address is listed once and stays listed | Nodes are disposable: recreate from git plus secrets, never repair in place |
 
