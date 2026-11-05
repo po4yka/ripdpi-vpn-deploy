@@ -782,7 +782,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         pre-deploy-check network-exposure-review \
         rollback-xray rollback-config rotate-credentials rotate-credentials-check check-prereqs \
         destroy backup-state burn-check diff-secrets emit-singbox emit-xray emit-awg emit-bundle install-hooks \
-        molecule-test smoke-test validate-target monitor-reality-target probe-sni-survival scan-targets blue-green \
+        molecule-test smoke-test validate-target monitor-reality-target renew-self-steal-cert probe-sni-survival scan-targets blue-green \
         spot-check-secrets bootstrap-secrets probe-asn probe-matrix-control probe-matrix-cell probe-matrix-tools emit-probe-matrix-profile emit-qr check-certs \
         audit-permissions asn-drift check-ip-reputation issue-bootstrap naive-issue naive-revoke naive-readout \
         test-tls-policing probe-payload-throttle fleet-status drift-since-tag fleet-rotate \
@@ -835,6 +835,7 @@ help:
 	@echo "  scan-targets {SEEDS=…|CIDR=…|CRAWL=…}  Discover REALITY targets (RealiTLScanner)"
 	@echo "  validate-target            Bounded REALITY target validation (local hygiene only)"
 	@echo "  monitor-reality-target     Daily ASN/path signal from an explicit filtered VANTAGE"
+	@echo "  renew-self-steal-cert      Reissue the P0 self-steal pair into a new SOPS document when due"
 	@echo "  probe-sni-survival         EXIT_IP=… bare/www SNI survival probe (run from a filtered vantage)"
 	@echo "  probe-asn HOST=…           Team Cymru ASN lookup"
 	@echo "  install-hooks              Install pre-commit hooks"
@@ -1717,6 +1718,14 @@ smoke-test: require-inventory
 
 validate-target:
 	SOPS_FILE=$(SOPS_FILE) ENV=$(ENV) ./scripts/validate-reality-target.sh
+
+# Off-node DNS-01 reissue of the self-steal pair; deployment of the new
+# document stays a reviewed dry-run and deploy.
+SELF_STEAL_RENEWAL_DIR ?= $(HOME)/.local/state/vpn-deploy/self-steal-renewal
+renew-self-steal-cert:
+	@test -n "$(SELF_STEAL_SOPS_FILE)" -a -n "$(SELF_STEAL_DNS_SOPS_FILE)" || { echo "usage: make renew-self-steal-cert SELF_STEAL_SOPS_FILE=<P0 SOPS> SELF_STEAL_DNS_SOPS_FILE=<Vultr API SOPS>"; exit 1; }
+	python3 ./scripts/renew-self-steal-cert.py --sops-file "$(SELF_STEAL_SOPS_FILE)" \
+	  --dns-sops-file "$(SELF_STEAL_DNS_SOPS_FILE)" --lego-path "$(SELF_STEAL_RENEWAL_DIR)/lego"
 
 monitor-reality-target:
 	@test -n "$(VANTAGE)" || { echo "usage: make monitor-reality-target VANTAGE=<technical-filtered-label> [ACCEPT_BASELINE=1]"; exit 1; }

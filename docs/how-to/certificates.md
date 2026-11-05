@@ -43,6 +43,12 @@ Diagnostics name the check category and do not print certificate, key, or host
 values. This source preflight does not prove that a live endpoint serves the
 same chain or negotiates the expected TLS and ALPN settings.
 
+## REALITY self-steal renewal
+
+The P0 node exposes no public HTTP listener, so the self-steal pair is issued off-node with an ACME DNS-01 challenge on the Vultr zone. `make renew-self-steal-cert SELF_STEAL_SOPS_FILE=<P0 SOPS> SELF_STEAL_DNS_SOPS_FILE=<Vultr API SOPS>` reads only the public certificate first and does nothing while more than 30 days remain. When the pair is due, the target requires the pinned lego release, issues a new pair for `reality_self_steal.server_name` and checks the SAN, key match and a lifetime of at least 40 days. It then writes the pair into a new `<document>-self-steal-renewed-<date>.<extension>` next to the source and deletes the issued key from disk; the source document is not changed. While such a renewed document exists, later runs report `awaiting-deploy` instead of issuing again. A hostname shared with the nginx-XHTTP frontend is refused, because both roles must carry the same pair. The DNS API key reaches lego only through its environment, and output reports categories, never values.
+
+The command does not deploy. Review the new document as the runtime authority, run the P0 dry-run and deploy, make it the new source, and record it in the private catalog; the next renewal then starts from it. Set `SELF_STEAL_SOPS_FILE` and `SELF_STEAL_DNS_SOPS_FILE` for `make install-operator-crons` to run the check daily; a macOS notification reports a renewal or a refusal.
+
 ## Managed public HTTPS
 
 The public site's ACME mode and a supplied certificate pair are separate paths.
