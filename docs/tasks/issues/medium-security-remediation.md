@@ -2,7 +2,7 @@
 id: SEC-1793774981005821
 title: Remediate medium security audit findings
 kind: bug
-status: backlog
+status: review
 area: security
 priority: high
 risk: high
@@ -12,8 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: sec-1793774981005821-medium-security-remediation
 created: 2026-11-04
-updated: 2026-11-04
+updated: 2026-11-05
 related_tasks: []
+status_detail: Fixes merged and deployed; live, client and CI evidence recorded
 ---
 
 ## Goal
