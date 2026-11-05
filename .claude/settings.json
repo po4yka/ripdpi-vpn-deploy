@@ -6,11 +6,10 @@
     "sessionUrl": false
   },
   "permissions": {
-    "allow": [
-      "Read(./secrets/local/**)",
-      "Edit(./secrets/local/**)"
-    ],
     "deny": [
+      "Read(./secrets/local/*/*/**)",
+      "Read(./secrets/local/README.md)",
+      "Read(./secrets/local/.*)",
       "Read(.env)",
       "Read(.envrc)",
       "Read(**/*.tfstate)",
