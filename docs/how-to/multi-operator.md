@@ -1,10 +1,10 @@
 # Multi-operator RBAC
 
-> **Status:** Current · **Type:** how-to · **Tier:** TACTICAL · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** TACTICAL · **Reviewed:** 2026-11-05
 
 The v1 model assumes one operator (or one trusted operator-set sharing the same age recipients). Larger deployments need finer separation: the subscription-operator should not be able to decrypt the REALITY private key; CI bots should not be able to decrypt the audit log; staging-dev access should not extend to prod.
 
-SOPS already supports this via per-file `creation_rules` in `.sops.yaml`. This doc captures the discipline and shows the working shape.
+SOPS already supports this via per-file `creation_rules` in `.sops.yaml`. This page shows the working shape.
 
 ## The split
 
@@ -36,11 +36,12 @@ The subscription-only file carries:
 ```yaml
 subscription:
   port: 8444
+  server_name: "sub.example.com"
+  cert_pem: ...
+  key_pem: ...
   rate_limit: "5r/m"
   rate_burst: 3
   revoked_tokens: []
-  enable_bootstrap: true
-  bootstrap_dir: /var/lib/vpn-bootstrap
   ...
 ```
 
@@ -77,7 +78,7 @@ vpn-sub-01 ansible_host=… vpn_secrets_file=~/.config/vpn-provision/subscriptio
 vpn_subscription_only=true
 ```
 
-The play's role list checks `vpn_subscription_only` (group_vars/all) and skips transport roles (xray, hysteria, amneziawg) when true. The mechanism is documented in `docs/how-to/subscription-host-separation.md`.
+The play's role list checks `vpn_subscription_only` (group_vars/all) and skips transport roles (xray, hysteria, amneziawg) when true. The mechanism is documented in [subscription host separation](subscription-host-separation.md).
 
 ## Audit boundaries
 
@@ -88,4 +89,4 @@ The play's role list checks `vpn_subscription_only` (group_vars/all) and skips t
 
 - NEVER commit a real `.sops.yaml` into this repo. The `secrets/.sops.yaml.example` file is the template; the live `.sops.yaml` lives at `~/.config/vpn-provision/.sops.yaml` on each operator's workstation.
 - Audit the recipient list every time an operator's hardware token is replaced or a workstation is reprovisioned.
-- When a recipient is removed, treat all data they had decrypt access to as "they may still have a plaintext copy on disk" — rotate per docs/reference/secrets.md.
+- When a recipient is removed, treat all data they had decrypt access to as "they may still have a plaintext copy on disk" — rotate per [secrets operations](../reference/secrets.md).
