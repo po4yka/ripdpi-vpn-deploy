@@ -1,6 +1,6 @@
 # Runbook — disaster recovery / restore
 
-> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-11-05
+> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-11-03
 
 ## Purpose and scope
 

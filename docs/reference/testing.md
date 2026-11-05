@@ -1,6 +1,6 @@
 # Testing — what's covered and what isn't
 
-> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-05
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-03
 
 The repo's defense-in-depth philosophy applies to its own correctness: every config, role, and script is checked at multiple layers before it can hit a real VPS. This doc enumerates each layer and where coverage gaps exist (with explicit reasons).
 

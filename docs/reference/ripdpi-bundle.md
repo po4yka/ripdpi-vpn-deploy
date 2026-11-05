@@ -1,6 +1,6 @@
 # RIPDPI Bundle — server-side schema specification
 
-> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-05
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-23
 
 > **The executable contract is [`contract/ripdpi-bundle.schema.json`](../../contract/ripdpi-bundle.schema.json)** — a JSON Schema (draft 2020-12) that is the single source of truth for the `ripdpi` object. This document is its prose companion. The schema is vendored byte-identical into the RIPDPI Android client repo and validated by a contract test in **both** CIs (`scripts/validate-bundle.py` + `tests/unit/test_bundle_schema.py` here; `RipdpiBundleContractTest` there), so the contract cannot drift silently between the two repos. When you change the shape of the `ripdpi` object, change the schema first.
 
