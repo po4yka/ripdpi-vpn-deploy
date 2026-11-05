@@ -16,6 +16,8 @@ RUN cp -a node_modules/@louislam/sqlite3/lib/binding /tmp/sqlite3-binding \
     && mv /tmp/sqlite3-binding node_modules/@louislam/sqlite3/lib/binding \
     && apt-get update \
     && apt-get install --no-install-recommends -y \
+       apt=2.6.2 \
+       libapt-pkg6.0=2.6.2 \
        libbrotli1=1.0.9-2+deb12u1 \
        libssl3=3.0.22-1~deb12u2 \
        openssl=3.0.22-1~deb12u2 \

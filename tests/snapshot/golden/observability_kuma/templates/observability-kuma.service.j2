@@ -9,7 +9,7 @@ Type=simple
 # The root Docker client manages only this role-owned container; the container
 # itself is rootless with no capabilities or host runtime socket.
 User=root
-ExecStart=/usr/bin/docker run --rm --name observability-kuma --label vpn-deploy.owner=observability-kuma --pull=never --user 1000:1000 --read-only --tmpfs /tmp:rw,nosuid,nodev,noexec,size=67108864 --cap-drop ALL --security-opt no-new-privileges --memory 536870912 --memory-swap 536870912 --cpus 0.25 --pids-limit 128 --log-driver none --publish 127.0.0.1:13001:3001 --mount type=bind,src=/var/lib/observability-kuma,dst=/app/data --env UPTIME_KUMA_DB_TYPE=sqlite --env UPTIME_KUMA_HOST=0.0.0.0 ghcr.io/po4yka/ripdpi-vpn-deploy/observability-kuma@sha256:82bc8172ff6bfd560ed02d976eb2d211632f33d132c18fd529cd28be49e602cb
+ExecStart=/usr/bin/docker run --rm --name observability-kuma --label vpn-deploy.owner=observability-kuma --pull=never --user 1000:1000 --read-only --tmpfs /tmp:rw,nosuid,nodev,noexec,size=67108864 --cap-drop ALL --security-opt no-new-privileges --memory 536870912 --memory-swap 536870912 --cpus 0.25 --pids-limit 128 --log-driver none --publish 127.0.0.1:13001:3001 --mount type=bind,src=/var/lib/observability-kuma,dst=/app/data --env UPTIME_KUMA_DB_TYPE=sqlite --env UPTIME_KUMA_HOST=0.0.0.0 ghcr.io/po4yka/ripdpi-vpn-deploy/observability-kuma@sha256:bfa4bc30bf1f9cf89c73f1fa6a276e02c0bcf5ae88fb8291dca24cf9b80b7235
 ExecStop=/usr/bin/docker stop --time 30 observability-kuma
 Restart=on-failure
 RestartSec=10
