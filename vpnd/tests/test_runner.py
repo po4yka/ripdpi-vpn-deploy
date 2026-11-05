@@ -221,6 +221,26 @@ def test_target_with_first_failing_key_aborts_and_nothing_spawns():
     assert "HOST" in str(error.value) and "IPv4 literal" in str(error.value)
 
 
+@pytest.mark.parametrize(
+    "build, description, arguments",
+    [
+        (terraform.init, "terraform init for upcloud/prod", "init"),
+        (
+            terraform.plan,
+            "terraform plan -out=prod.tfplan",
+            "plan -var-file=environments/prod.tfvars -out=prod.tfplan",
+        ),
+        (terraform.apply, "terraform apply prod.tfplan", "apply prod.tfplan"),
+        (terraform.output, "terraform output -json", "output -json"),
+    ],
+)
+def test_terraform_commands_and_descriptions_are_exact(capsys, build, description, arguments):
+    build(fake_ctx()).print_explain()
+    assert capsys.readouterr().err == (
+        f"\u2192 {description}\n  $ PROVIDER=upcloud ENV=prod /repo/scripts/terraform-env.sh {arguments}\n"
+    )
+
+
 # Rust test: vpnd/src/runner/terraform.rs::init_uses_environment_wrapper
 def test_init_uses_environment_wrapper():
     s = terraform.init(fake_ctx()).explain()
