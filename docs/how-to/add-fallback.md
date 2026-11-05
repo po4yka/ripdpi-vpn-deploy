@@ -1,6 +1,6 @@
 # Runbook — add a fallback VPS
 
-> **Status:** Current · **Type:** how-to · **Tier:** TACTICAL · **Reviewed:** 2026-11-04
+> **Status:** Current · **Type:** how-to · **Tier:** TACTICAL · **Reviewed:** 2026-11-05
 
 ## Purpose and scope
 

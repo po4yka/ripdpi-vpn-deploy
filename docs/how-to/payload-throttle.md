@@ -1,6 +1,6 @@
 # Exact payload probes
 
-> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-23
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-11-05
 
 `make probe-payload-throttle` checks useful data on the selected client path. Run it from that path, not from the VPN server. Every completed step requires HTTP 200, the exact requested length and the canonical bytes below. A successful handshake, empty HTTP 200, redirect or same-length error page cannot pass.
 
@@ -31,6 +31,8 @@ make probe-payload-throttle HOST=control.example ASN=AS64500
 scripts/probe-payload-throttle.sh --host control.example --asn AS64500 \
   --sizes 1024,4096,16384,32768,65536 --socks-port 1080 --upload
 ```
+
+`make probe-payload-throttle` takes `HOST` (required) and the optional variables `PORT`, `SIZES`, `ASN`, `SOCKS_PORT`, `UPLOAD` (`0` or `1`), `CA_FILE`, `SCHEME`, `ECHO_PATH`, `TIMEOUT` and `NO_STATE`. They map to the script flags of the same names.
 
 `--socks-port` selects a loopback SOCKS5 endpoint and resolves the origin name through SOCKS. It requires `--asn` so metadata lookup cannot issue direct DNS/whois traffic. Failure never retries directly. Without it, curl explicitly uses the current direct/TUN route. The probe ignores ambient proxy variables, `NO_PROXY` and `.curlrc`; it never follows redirects. HTTPS is the default; `--ca-file` selects an explicit owned CA when needed. `--scheme http` is for local endpoint testing and does not provide authenticated origin identity.
 
