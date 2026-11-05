@@ -255,6 +255,14 @@ def test_all_cmds_use_environment_wrapper():
         assert "scripts/terraform-env.sh" in function(fake_ctx()).explain()
 
 
+def test_decrypt_command_and_description_are_exact_and_redact_both_paths(capsys):
+    sops.decrypt(fake_ctx()).print_explain()
+    assert capsys.readouterr().err == (
+        "\u2192 sops --decrypt \u2192 (runtime plaintext \u2014 never logged)\n  $ "
+        "sops --decrypt --output '<redacted: secrets file path>' '<redacted: secrets file path>'\n"
+    )
+
+
 # Rust test: vpnd/src/runner/sops.rs::decrypt_program_is_sops
 def test_decrypt_program_is_sops():
     s = sops.decrypt(fake_ctx()).explain()
