@@ -41,6 +41,7 @@ Variables (override on command line):
   scan-targets {SEEDS=…|CIDR=…|CRAWL=…}  Discover REALITY targets (RealiTLScanner)
   validate-target            Bounded REALITY target validation (local hygiene only)
   monitor-reality-target     Daily ASN/path signal from an explicit filtered VANTAGE
+  renew-self-steal-cert      Reissue the P0 self-steal pair into a new SOPS document when due
   probe-sni-survival         EXIT_IP=… bare/www SNI survival probe (run from a filtered vantage)
   probe-asn HOST=…           Team Cymru ASN lookup
   install-hooks              Install pre-commit hooks

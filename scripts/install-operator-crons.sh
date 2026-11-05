@@ -27,6 +27,9 @@
 #                                      (only when PAYLOAD_THROTTLE_HOST is set)
 #   daily   monitor-reality-target    active target ASN/path signal
 #                                      (only when REALITY_TARGET_VANTAGE is set)
+#   daily   renew-self-steal-cert     reissue the P0 self-steal pair when due
+#                                      (only when SELF_STEAL_SOPS_FILE and
+#                                      SELF_STEAL_DNS_SOPS_FILE are set)
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -35,6 +38,8 @@ ENV="${ENV:-prod}"
 WARM_SPARE_ENV="${WARM_SPARE_ENV:-}"
 PAYLOAD_THROTTLE_HOST="${PAYLOAD_THROTTLE_HOST:-}"
 REALITY_TARGET_VANTAGE="${REALITY_TARGET_VANTAGE:-}"
+SELF_STEAL_SOPS_FILE="${SELF_STEAL_SOPS_FILE:-}"
+SELF_STEAL_DNS_SOPS_FILE="${SELF_STEAL_DNS_SOPS_FILE:-}"
 LIVENESS_CONFIG="${LIVENESS_CONFIG:-}"
 SOPS_FILE="${SOPS_FILE:-}"
 SOPS_AGE_KEY_FILE="${SOPS_AGE_KEY_FILE:-}"
@@ -69,7 +74,7 @@ build_operator_path() {
   fi
   # Order is significant: the validated operator Python must precede Apple's
   # dependency-minimal /usr/bin/python3 in cron's lookup path.
-  for command_name in python3 sops age terraform ansible-playbook jq make curl ssh logger openssl git gtimeout timeout whois dig host; do
+  for command_name in python3 sops age lego terraform ansible-playbook jq make curl ssh logger openssl git gtimeout timeout whois dig host; do
     command_path="$(command -v "$command_name" 2>/dev/null || true)"
     [[ "$command_path" == /* ]] || continue
     directory="${command_path%/*}"
@@ -167,6 +172,26 @@ EOF
 EOF
   else
     echo "REALITY target monitor skipped: set REALITY_TARGET_VANTAGE to a filtered technical label" >&2
+  fi
+  if [[ -n "$SELF_STEAL_SOPS_FILE" || -n "$SELF_STEAL_DNS_SOPS_FILE" ]]; then
+    local steal_q steal_dns_q
+    [[ -f "$SELF_STEAL_SOPS_FILE" && -f "$SELF_STEAL_DNS_SOPS_FILE" ]] || {
+      echo "SELF_STEAL_SOPS_FILE and SELF_STEAL_DNS_SOPS_FILE must both name existing files" >&2
+      return 1
+    }
+    # cron runs from the repository and turns % into a newline.
+    [[ "$SELF_STEAL_SOPS_FILE" == /* && "$SELF_STEAL_DNS_SOPS_FILE" == /* &&
+       "$SELF_STEAL_SOPS_FILE$SELF_STEAL_DNS_SOPS_FILE" != *%* ]] || {
+      echo "SELF_STEAL_SOPS_FILE and SELF_STEAL_DNS_SOPS_FILE must be absolute paths without %" >&2
+      return 1
+    }
+    printf -v steal_q '%q' "$SELF_STEAL_SOPS_FILE"
+    printf -v steal_dns_q '%q' "$SELF_STEAL_DNS_SOPS_FILE"
+    cat <<EOF
+27 4 * * *     cd ${repo_q} && SOPS_AGE_KEY_FILE=${age_key_q} make renew-self-steal-cert SELF_STEAL_SOPS_FILE=${steal_q} SELF_STEAL_DNS_SOPS_FILE=${steal_dns_q}  2>&1 | logger -t vpn-self-steal-renewal
+EOF
+  else
+    echo "self-steal renewal skipped: set SELF_STEAL_SOPS_FILE and SELF_STEAL_DNS_SOPS_FILE" >&2
   fi
   echo "${MARKER_END}"
 }
