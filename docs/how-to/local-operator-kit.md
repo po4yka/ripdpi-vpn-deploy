@@ -1,8 +1,11 @@
 # Local operator kit
 
-> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-11-03
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-11-05
 
 ## Contract
+
+> [!WARNING]
+> The kit holds live credentials. Never print, quote or commit its secret values, and never put them in command arguments or logs.
 
 Use `secrets/local/` as the private operator kit on the deployment MacBook. The existing `.gitignore` rule for `secrets/*` covers the complete tree. This is an operator storage convention, not a new secrets schema or an automatic migration. Existing external paths remain supported; command defaults do not change.
 
@@ -25,6 +28,7 @@ secrets/local/
     ssh.conf                           # SSH configuration; no embedded secrets
     known_hosts                        # host identities; verified before use
   keys/                                # SSH identities/certificates, if exportable
+  plans/                               # private operation and maintenance plans
   clients/<device-id>/                  # current delivery artifacts; short retention
   state-backups/                       # encrypted Terraform snapshots
   receipts/                            # private grants, revocations, restore results

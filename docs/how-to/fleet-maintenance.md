@@ -1,6 +1,6 @@
 # Maintain existing nodes and verify operator recovery
 
-> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-11-03
+> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-11-05
 
 Use the canonical Make commands below from a clean controller checkout without `.fleet.mk`. Store private configuration, plans, receipts and working identities under the [local operator kit](local-operator-kit.md). Configuration files must be owner-only regular files; operation and runtime directories must be mode 0700. The operation requires the exact-node authorization described in [deploy](deploy.md#authorization), including an explicit expiry.
 

@@ -1,6 +1,6 @@
 # Operator maintenance
 
-> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-11-03
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-11-05
 
 Use this guide after an interruption, before a component update, or when checking private diagnostics and recovery material. The Make targets below read one explicit private JSON plan. They do not load `.fleet.mk`, inventory or secrets implicitly. They do not replace the canonical deployment transaction.
 
