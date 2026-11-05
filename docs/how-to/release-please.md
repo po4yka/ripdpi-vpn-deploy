@@ -1,8 +1,8 @@
 # Automatic vpnd releases
 
-> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-11-05
 
-The `release-please` workflow runs on `main` by default. It maintains the release PR from conventional commits. Merging that PR creates the `vpnd-vX.Y.Z` tag and a draft GitHub Release. Release PR approval and merge remain operator decisions. The version updater changes `vpnd/pyproject.toml` at `$.project.version`. Runtime dependency pins and hashes remain in `vpnd/requirements.in` and `vpnd/requirements.txt`; a release version bump does not refresh dependencies. When changing release-please configuration, verify the resulting package version against the release manifest and run `make vpnd-package-check` on the candidate.
+The `release-please` workflow runs on `main` by default. It maintains the release PR from conventional commits. Merging that PR creates the `vpnd-vX.Y.Z` tag and a draft GitHub Release. Release PR approval and merge remain operator decisions. The version updater changes `vpnd/pyproject.toml` at `$.project.version`. Runtime dependency pins and hashes remain in `vpnd/requirements.in` and `vpnd/requirements.txt`; a release version bump does not refresh dependencies. The configuration is in `.github/release-please-config.json` and `.github/release-please-manifest.json`. When changing it, verify the resulting package version against the release manifest and run `make vpnd-package-check` on the candidate.
 
 The repository must allow GitHub Actions to create pull requests under **Settings → Actions → General → Workflow permissions**. Missing permissions or release-please errors fail the workflow; they are not informational success. The default token remains read-only, with write permissions scoped to each job.
 

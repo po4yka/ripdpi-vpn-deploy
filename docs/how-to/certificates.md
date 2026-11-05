@@ -1,6 +1,6 @@
 # Certificate preflight and public HTTPS renewal
 
-> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-11-03
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-11-05
 
 `make check-certs` validates the certificate material for the selected runtime profile. The check requires a DNS SAN for the configured TLS name, current validity, at least 14 days before expiry, a matching private key, TLS server purpose, and a chain to the operator's trusted CA store. A matching common name does not replace a DNS SAN. Wildcards must cover one complete leftmost label.
 
