@@ -1723,12 +1723,13 @@ validate-target:
 # canonical decrypt/clean gate; VULTR_API_KEY must come from an approved
 # loader such as `sops exec-env`. Deploying the new document stays reviewed.
 SELF_STEAL_RENEWAL_DIR ?= $(HOME)/.local/state/vpn-deploy/self-steal-renewal
-renew-self-steal-cert: SECRETS_FILE = $(RUNTIME_DIR)/vpn-self-steal-renewal.secrets.yaml
 renew-self-steal-cert:
 	@test -n "$(SELF_STEAL_SOPS_FILE)" || { echo "usage: VULTR_API_KEY from an approved loader; make renew-self-steal-cert SELF_STEAL_SOPS_FILE=<P0 SOPS>"; exit 1; }
-	@set -eu; trap '$(MAKE) --no-print-directory clean SECRETS_FILE="$(SECRETS_FILE)" >/dev/null' EXIT; \
-	  $(MAKE) --no-print-directory decrypt SOPS_FILE="$(SELF_STEAL_SOPS_FILE)" SECRETS_FILE="$(SECRETS_FILE)" >/dev/null; \
-	  VPN_SECRETS_FILE="$(SECRETS_FILE)" python3 ./scripts/renew-self-steal-cert.py \
+	@# One plaintext path per invocation, so overlapping runs never read or remove each other's input.
+	@set -eu; secrets="$(RUNTIME_DIR)/vpn-self-steal-renewal-$$$$.secrets.yaml"; \
+	  trap '$(MAKE) --no-print-directory clean SECRETS_FILE="'"$$secrets"'" >/dev/null' EXIT; \
+	  $(MAKE) --no-print-directory decrypt SOPS_FILE="$(SELF_STEAL_SOPS_FILE)" SECRETS_FILE="$$secrets" >/dev/null; \
+	  VPN_SECRETS_FILE="$$secrets" python3 ./scripts/renew-self-steal-cert.py \
 	    --sops-file "$(SELF_STEAL_SOPS_FILE)" --lego-path "$(SELF_STEAL_RENEWAL_DIR)/lego"
 
 monitor-reality-target:
