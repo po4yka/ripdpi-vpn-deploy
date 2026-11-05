@@ -1,4 +1,9 @@
+import re
 import xml.etree.ElementTree as ET
+
+import pytest
+import qrcode
+
 from vpnd.pages.qr import write_svg
 
 PAYLOAD = "https://vpn.example.com/sub/phone"
@@ -45,3 +50,30 @@ def test_qr_has_original_white_canvas_and_crisp_edges(tmp_path):
     assert canvas.attrib.get("x", "0") == "0" and canvas.attrib.get("y", "0") == "0"
     assert root.attrib["shape-rendering"] == "crispEdges"
     assert root.find("{http://www.w3.org/2000/svg}path") is not None
+
+
+def _oracle(payload):
+    # Library oracle with literal parameters: byte mode only (no mode optimisation), level M, 4-module quiet zone.
+    code = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, border=4)
+    code.add_data(payload.encode("utf-8"), optimize=0)
+    code.make(fit=True)
+    return code.get_matrix()
+
+
+# A numeric run inside letters changes the encoding when mode optimisation is on; the long payload forces a matrix above 32 modules.
+@pytest.mark.parametrize(
+    "payload",
+    [PAYLOAD, "None", "ABC" + "1" * 40 + "xyz", "https://vpn.example.com/sub/" + "tok0123456789" * 8],
+)
+def test_write_svg_draws_the_expected_matrix_and_scales(tmp_path, payload):
+    path = tmp_path / "qr.svg"
+    write_svg(payload, path)
+    root = ET.parse(path).getroot()
+    d = root.find("{http://www.w3.org/2000/svg}path").attrib["d"]
+    dark = {(int(x), int(y)) for x, y in re.findall(r"M(\d+),(\d+)H", d)}
+    matrix = _oracle(payload)
+    assert dark == {(x, y) for y, row in enumerate(matrix) for x, cell in enumerate(row) if cell}
+    side = len(matrix)
+    assert root.attrib["viewBox"] == f"0 0 {side} {side}"
+    expected = str(max(256, side * 8))
+    assert root.attrib["width"] == expected and root.attrib["height"] == expected

@@ -7,9 +7,10 @@ from vpnd.protected_file import write_private
 
 
 def write_svg(payload, out):
-    code = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, border=4)
-    code.add_data(payload.encode("utf-8"), optimize=0)
-    code.make(fit=True)
+    # Library defaults: error correction M, 4-module quiet zone, smallest fitting version. Tests pin all three.
+    code = qrcode.QRCode()
+    code.add_data(payload.encode(), optimize=0)  # pragma: no mutate (qrcode tests optimize by truthiness, so None equals 0)
+    code.make()
     image = code.make_image(image_factory=SvgPathFillImage)
     svg = ET.fromstring(image.to_string())
     size = len(code.get_matrix())
@@ -18,4 +19,5 @@ def write_svg(payload, out):
     svg.set("width", str(dimension))
     svg.set("height", str(dimension))
     ET.register_namespace("", "http://www.w3.org/2000/svg")
-    write_private(out, ET.tostring(svg, encoding="utf-8"))
+    # The SVG is pure ASCII, so every ElementTree encoding spelling emits the same bytes.
+    write_private(out, ET.tostring(svg, encoding="utf-8"))  # pragma: no mutate
