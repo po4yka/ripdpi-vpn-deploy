@@ -1,6 +1,6 @@
 # Xray-core release-line tracker
 
-> **Status:** Current · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-10-23
+> **Status:** Current · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-11-05
 
 Pinned version: see `secrets/prod.secrets.example.yaml` → `xray.version`. The repo policy is: stay on the GitHub-tagged Latest build, never on a Pre-release in production.
 
@@ -17,18 +17,11 @@ This file tracks notable behavioural changes per release so an operator deciding
 - **Finalmask UDP expansion** — Finalmask now covers WireGuard UDP, Shadowsocks AEAD/2022 UDP. Variants `XDNS`, `XICMP`, `header-*`, `mkcp-*` added.
 - **Dynamic Chrome User-Agent** — Xray-core HTTP requests now use a dynamic Chrome UA by default, replacing the static `Go-http-client` string. No config change required.
 
-## v26.10.31 — 2026-10-31 (repository pin)
-
-- Stable security release built with Go 1.27.3. Verify the exact archive digests and keep staged native validation before activation.
-- Disable the unused MPTCP listener path. The host baseline also disables MPTCP where the kernel provides it.
-- Freedom gateways use an explicit first allow rule. REALITY retains classical decryption and the PQE HOLD decision.
-- On 2026-11-02, the owner approved a one-time exception to the staging soak for this security update. After successful PR CI, update existing nodes in sequence with authenticated traffic checks and retained rollback at each node. Other release updates retain the 48-hour staging requirement below.
-
 ## v26.3.27 — 2026-03-27 (previous repository pin)
 
 - **REALITY auto-probe defence** improvements.
 - **ECH full mode** — `echForceQuery` default changed to `"full"`.
-- **Finalmask Sudoku** byte-distribution obfuscation. The `vpn.xray_finalmask` group_vars toggle in this repo enables this.
+- **Finalmask Sudoku** byte-distribution obfuscation. The `finalmask` member of a shape in `p0_reality_shapes` (`ansible/group_vars/all.yml`) enables this. Both shipped shapes set it to `false`. A host or profile can override the shape value with `vpn.xray_finalmask` (`ansible/templates/p0-reality-shape.json.j2`, `scripts/client_payload.py`).
 - Warning emitted when listening on non-443 ports — non-443 listeners are pushed onto the IP blacklist faster.
 - Warning when REALITY target SNI is Apple/iCloud — flagged for fast ban.
 - New `pinnedPeerCertSha256` (outbound-side); deprecates `allowInsecure`.
@@ -64,12 +57,12 @@ This file tracks notable behavioural changes per release so an operator deciding
 
 - The tag remains marked Pre-release and its release entry carries no repository-adopted migration guidance.
 - It does not satisfy the stable-release or supported-client gates for VLESS Encryption over REALITY for those prerelease artifacts. Stable engine support in v26.3.27 does not replace the missing client-delivery and acceptance evidence.
-- Production therefore remains pinned to v26.3.27. Any evaluation belongs to an isolated staging cohort and still passes the guards below.
+- At that review, production remained pinned to v26.3.27. Any evaluation belongs to an isolated staging cohort and still passes the guards below.
 
 ## v26.7.28 through v26.10.17 — Pre-release as of 2026-10-17
 
 - At the October 17 review, upstream Latest remained v26.3.27. Newer tags were Pre-release.
-- The server pin and enforced PQE HOLD remain unchanged. The HOLD is based on the unsupported client-delivery contract and missing promotion evidence.
+- The server pin (then v26.3.27) and enforced PQE HOLD remain unchanged. The HOLD is based on the unsupported client-delivery contract and missing promotion evidence.
 
 ## v26.10.21 — 2026-10-21 (upstream Latest reviewed 2026-10-23)
 
@@ -77,6 +70,13 @@ This file tracks notable behavioural changes per release so an operator deciding
 - The release removes three roots from the newer bundled trust store and uses Go 1.27.3 to reject compromised intermediate public keys. The compiler fix is GO-2026-6809 / CVE-2026-111943. Fixed supported compiler versions are Go 1.27.3 and Go 1.26.10; the denylist protects verification when system trust has not yet been updated.
 - The retained v26.3.27 source has no bundled fallback-root dependency. The Android client rebuild uses Go 1.27.3 while retaining its reviewed source and protection patches. Metadata and each packaged ABI must identify that compiler.
 - Availability does not promote a server pin. Qualify the actual candidate binary against rendered configurations and preserve the 48-hour staging, rollback, and explicit production authorization gates below. The removed ECH field and Freedom finalRules guard still apply. PQE remains on HOLD.
+
+## v26.10.31 — 2026-10-31 (repository pin)
+
+- Stable security release built with Go 1.27.3. Verify the exact archive digests and keep staged native validation before activation.
+- Disable the unused MPTCP listener path. The host baseline also disables MPTCP where the kernel provides it.
+- Freedom gateways use an explicit first allow rule. REALITY retains classical decryption and the PQE HOLD decision.
+- On 2026-11-02, the owner approved a one-time exception to the staging soak for this security update. After successful PR CI, update existing nodes in sequence with authenticated traffic checks and retained rollback at each node. Other release updates retain the 48-hour staging requirement below.
 
 The fenced registry below is the machine-readable source for CI. `always` rules apply before an upgrade when the migration is backwards-compatible; `pinned-at-least` rules activate only when `xray.version` reaches the declared release. Selectors must match at least one object and assertions apply to every match.
 

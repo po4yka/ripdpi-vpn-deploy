@@ -1,12 +1,12 @@
 # AmneziaWG cohort obfuscation profiles
 
-> **Status:** Current · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-10-23
+> **Status:** Current · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-11-05
 
-The `amneziawg_secrets.instances[].{wire_profile,jc,jmin,jmax,s1,s2,h1,h2,h3,h4,i1,i2,i3,i4,i5}` block is what turns plain WireGuard into AmneziaWG. The role's broad defaults work on most networks, but some DPI deployments apply WireGuard-shaped rules that need cohort-specific tuning. This file lists the shipped profiles; verify on the target network before locking.
+The `amneziawg_secrets.instances[].{wire_profile,jc,jmin,jmax,s1,s2,h1,h2,h3,h4,i1,i2,i3,i4,i5}` block is what turns plain WireGuard into AmneziaWG. The broad baseline works on most networks, but some DPI deployments apply WireGuard-shaped rules that need cohort-specific tuning. This file lists the shipped profiles; verify on the target network before locking.
 
 ## Source pinning invariant
 
-The userspace role builds `amneziawg-go` and `amneziawg-tools` from upstream git. Tags are mutable, so a family deploy must pin both the checkout ref and the exact resolved commit SHA:
+The userspace role builds `amneziawg-go` and `amneziawg-tools` from upstream git. Tags are mutable, so a family deploy must pin both the checkout ref and the exact resolved commit SHA. Set the four keys as top-level SOPS secrets (see `secrets/prod.secrets.example.yaml`). The role defaults in `ansible/roles/amneziawg/defaults/main.yml` leave them empty:
 
 ```yaml
 amneziawg_go_version: "v0.2.12"        # tag or immutable commit ref to checkout
@@ -23,10 +23,10 @@ Plain WireGuard Initiation messages are deterministically identifiable: 148 byte
 
 ## Shipped profiles
 
-| Profile | Jc | Jmin | Jmax | S1 | S2 | H1..H4 | Cohort file |
-|---|---|---|---|---|---|---|---|
-| `narrow-junk-sequential` | 4 | 10 | 50 | 0 | 0 | 1, 2, 3, 4 | `ansible/roles/amneziawg/vars/cohorts/narrow-junk-sequential.yml` |
-| broad-rule baseline (role default) | 4 | 40 | 70 | 50 | 100 | random per instance | — (role defaults) |
+| Profile | Jc | Jmin | Jmax | S1 | S2 | H1..H4 | `wire_profile` | Cohort file |
+|---|---|---|---|---|---|---|---|---|
+| `narrow-junk-sequential` | 4 | 10 | 50 | 0 | 0 | 1, 2, 3, 4 | `awg-3.1-ranges-v1` | `ansible/roles/amneziawg/vars/cohorts/narrow-junk-sequential.yml` |
+| broad-rule baseline (role default) | 4 | 40 | 70 | 50 | 100 | random per instance (no default; set per instance) | set per instance | — (`AWG_PARAMETERS` in `scripts/transport_semantics.py`) |
 
 `narrow-junk-sequential` targets DPI rules that discriminate against the broad-baseline shape (long junks + non-zero S1/S2) but still accept the compact form with sequential header magic. Behaviour observed against such a rule: the handshake completes most of the time but occasionally stalls and the client needs 3–4 retries.
 
@@ -34,7 +34,7 @@ Plain WireGuard Initiation messages are deterministically identifiable: 148 byte
 
 Cohort profiles ship as YAML files under `ansible/roles/amneziawg/vars/cohorts/<slug>.yml`. Activate one by setting `vpn.awg_cohort: <slug>` in `ansible/group_vars/all.yml` (or a host-specific group_vars file). The role reads the cohort file at runtime and uses its `wire_profile/jc/jmin/jmax/s1/s2/h1..h4/i1..i5` as defaults; explicit values in each `amneziawg_secrets.instances[]` still win, so the cohort file sets the profile and SOPS overrides anything per-deployment.
 
-Leaving `vpn.awg_cohort` empty keeps the broad-rule baseline baked into the role defaults — that is the right starting point on any network without a documented profile. Because `narrow-junk-sequential` keeps the plain 148-byte Initiation behind its junk (`S1 = S2 = 0`, `H1..H4 = 1, 2, 3, 4`), a host whose inventory `env` is `prod` refuses it unless `awg_wireguard_shaped_measurement` names the measurement record that justifies it (see [deploy-profiles](deploy-profiles.md)).
+Leaving `vpn.awg_cohort` empty keeps the broad-rule baseline from `AWG_PARAMETERS` in `scripts/transport_semantics.py` — that is the right starting point on any network without a documented profile. Because `narrow-junk-sequential` keeps the plain 148-byte Initiation behind its junk (`S1 = S2 = 0`, `H1..H4 = 1, 2, 3, 4`), a host whose inventory `env` is `prod` refuses it unless `awg_wireguard_shaped_measurement` names the measurement record that justifies it (see [deploy-profiles](deploy-profiles.md)).
 
 `vpn.awg_cohort` supplies defaults for every instance; explicit per-instance parameters win. A single instance uses the same nonempty list contract.
 
