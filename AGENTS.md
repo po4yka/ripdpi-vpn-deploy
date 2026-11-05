@@ -33,7 +33,7 @@ Run `env -u MAKEFILES -u MAKEFLAGS -u GNUMAKEFLAGS -u MFLAGS make workspace-stat
 
 ## Hard rules
 
-- Keep operator credentials and VPN secrets out of Git, Terraform inputs/outputs, cloud-init `user_data`, Ansible output, and screenshots. Provider credentials live in env vars only. Providers can record generated credentials in Terraform state and saved plans; protect those files as sensitive data and use encrypted state backups. Do not load or print plaintext secret material (`.env`, `secrets/local/`, decrypted SOPS output, state or saved plan JSON) into the session: transcripts and logs leave the operator machine.
+- Keep operator credentials and VPN secrets out of Git, Terraform inputs/outputs, cloud-init `user_data`, Ansible output, and screenshots. Provider credentials live in env vars only. Providers can record generated credentials in Terraform state and saved plans; protect those files as sensitive data and use encrypted state backups. Do not load or print plaintext secret material (`.env`, decrypted SOPS output, state or saved plan JSON) into the session: transcripts and logs leave the operator machine. Agents may read and edit `secrets/local/` to maintain the local operator kit; never quote its secret values in replies, commits, logs or task notes.
 - Never bypass safety gates (`--no-verify`, `--no-gpg-sign`, skipping gitleaks, pre-commit, or ansible-lint) unless the user explicitly asks. When a hook fails, fix the cause.
 - One UUID, REALITY shortId, and AmneziaWG peer key per device. Never share or copy them between devices: shared material links devices and makes per-device revocation impossible.
 - No public admin panel. No remote installer piped into a root shell.
