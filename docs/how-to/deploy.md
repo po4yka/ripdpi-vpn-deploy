@@ -1,6 +1,6 @@
 # Runbook — deploy
 
-> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-11-03
+> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-11-05
 
 ## Purpose and scope
 
@@ -110,6 +110,21 @@ Do not put addresses, identities, probe receipts, or credentials on the command 
 
 Use this only after the recovery/bootstrap/ownership prerequisites above are satisfied and all three private mappings have been prepared for exactly the selected alias. Review the promotion inputs and choose fresh failure-receipt sink paths before starting. Replace the example alias and paths with your reviewed inputs; do not create empty mappings to satisfy preflight. Commit the reviewed source change first: `deploy` requires an immutable clean checkout.
 
+```mermaid
+flowchart LR
+  A["Preflight block: decrypt, validate, dry-run"] -->|"changes as expected"| B["Review every changed line"]
+  A -->|"unexpected changes"| X["Stop and investigate"]
+  A -->|"interrupted-* refusal"| R["Recovery deploy block"]
+  B --> C["Deploy block: deploy, verify, source-drift"]
+  R --> A
+  C -->|"pass"| D["make clean runs on exit"]
+  C -->|"verify fails"| E["Rollback guide, level 1 to 3"]
+  E --> A
+```
+
+> [!WARNING]
+> Both blocks use live SSH and decrypted secrets. `make decrypt` writes plaintext to `SECRETS_FILE`. Run `make clean` yourself after SIGKILL, power loss or an abandoned run.
+
 ```bash
 deploy_alias='vpn-p0-node-a' # Replace with the exact inventory alias.
 : "${ANSIBLE_SSH_PRIVATE_KEY_FILE:?Select and export the reviewed key for this node first}"
@@ -184,13 +199,16 @@ Timeout, DNS child interruption or CA failure uses normal protected ingress/fire
 
 ## Re-deploy after a Terraform change (instance type, zone, firewall)
 
+> [!CAUTION]
+> `make apply` changes real provider resources and can bill. Stop at any destroy or replace in the plan.
+
 ```bash
 : "${ANSIBLE_SSH_PRIVATE_KEY_FILE:?Select and export the reviewed key for this node first}"
 make init              # initialize/select the chosen PROVIDER + ENV workspace
 make plan              # READ THE PLAN
 # If it shows "destroy and recreate" on the server, STOP — that's
 # infrastructure rollback, not config rollback. See rollback.md
-# § "blue-green replacement".
+# § "Level 3 — blue-green VPS replacement".
 make apply             # only if the plan was non-destructive
 make inventory
 make wait              # cloud-init must finish before either guest installer
@@ -199,7 +217,8 @@ make wait              # cloud-init must finish before either guest installer
 # Continue with the ordinary re-deploy recipe above, including its private inputs.
 ```
 
-`prevent_destroy = true` on `upcloud_server` blocks accidental destruction in `terraform apply`. To deliberately destroy, run `make destroy`: the wrapper lifts that lifecycle block through a temporary override file so the tracked source stays clean.
+> [!WARNING]
+> `make destroy` is irreversible. `prevent_destroy = true` on `upcloud_server` blocks accidental destruction in `terraform apply`; `make destroy` lifts it on purpose through a temporary override file so the tracked source stays clean.
 
 ## Replace a server with existing devices
 

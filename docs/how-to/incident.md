@@ -1,6 +1,6 @@
 # Runbook — incidents
 
-> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-11-05
 
 ## Purpose and scope
 
@@ -61,6 +61,9 @@ The SOPS secrets file is unrecoverable.
 
 If you encrypted to multiple recipients (recommended for teams), use the other operator's age key. `sops` tries each recipient until one succeeds.
 
+> [!WARNING]
+> Without another recipient key, the lost key means a complete credential leak. Rotate everything.
+
 If you didn't, treat this as a **complete credential leak**:
 
 1. Provision a fresh VPS (new IP, ideally different ASN).
@@ -116,6 +119,9 @@ Find `<SERVER_UUID>` in the UpCloud console (server details → "ID").
 After restoration, **back up the state file out of band** (encrypted USB, 1Password Documents, age-encrypted in the same recipient as your secrets). Don't lose it twice.
 
 ## Suspected compromise of the VPS
+
+> [!CAUTION]
+> Do not log in to a node that you suspect is compromised. Every observation can let the attacker change or remove evidence.
 
 If you suspect the running VPS has been compromised at the OS level (root escalation, persistent attacker, unknown process):
 
