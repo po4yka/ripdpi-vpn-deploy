@@ -1,12 +1,22 @@
 # Issue, refresh or revoke a device
 
-> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-10-22
+> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-11-05
 
 ## Purpose and scope
 
 Use one private operation manifest to issue a device, refresh every active subscription, or revoke its credentials across the complete declared fleet. The controller preserves unrelated devices and server identities. It does not provision nodes or change provider resources.
 
 Issuance creates device credentials only for the selected enabled transports. The private recipient artifact contains the subscription URL, rendered profile, AWG configurations with the device private key, and any Naive URI. Refresh keeps each existing URL, format and expiry. Revocation removes matching credentials from all declared authorities, including disabled variants and former migration sources. It also revokes all discovered subscription grants.
+
+```mermaid
+flowchart LR
+    plan -->|approval digest| prepare
+    prepare -->|encrypted intent| run
+    run -->|interrupted| resume
+    resume --> run
+    run -->|checks pass| complete
+    status -.->|reads stored evidence| run
+```
 
 ## Preconditions
 
@@ -76,6 +86,9 @@ The publisher check first serves an owned private canary through the exact TLS o
 `complete` records the finished operation. Running or resuming it again repeats runtime and native checks. `status` reports stored evidence only. Server-side native checks do not prove delivery to a physical device or reachability from its access network. Deliver the private artifact through the approved channel and record any separately requested device acceptance.
 
 ## Rollback
+
+> [!WARNING]
+> Revocation is not reversible. A new issuance is a new authorized action.
 
 Do not restore revoked credentials automatically. A failed or interrupted action retains encrypted intent and completed per-node steps. The runtime barrier binds the operation UUID and immutable intent digest, quiesces a failed candidate and forbids compensation to credentials removed by an accepted revocation. Resume the same operation after resolving the reported boundary. Do not delete its journal to regenerate keys or tokens. An input conflict requires explicit reconciliation. A separate new issuance is a new authorized action.
 

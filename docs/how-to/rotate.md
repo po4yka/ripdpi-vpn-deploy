@@ -1,12 +1,10 @@
 # Runbook — credential rotation
 
-> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-11-05
 
 ## Purpose and scope
 
 Rotate credentials at the smallest scope that addresses the threat: one device, the server-wide REALITY keypair, the Hysteria or AmneziaWG server keys, the restic password, or the deploy user's SSH key.
-
-Three rotation scopes. Pick the smallest one that addresses the threat.
 
 Infrastructure rotation caused by sustained protocol failure is separate from credential rotation. Follow `docs/reference/protocol-liveness.md`: only fresh authenticated client-path failures with a successful direct control can create a quorum candidate, and the resulting OTP still enters the normal blue-green verification and operator-confirmation flow.
 
@@ -178,6 +176,9 @@ If you've truly lost the old key (no remaining SSH access), see `incident.md` §
 - Don't reuse a UUID, shortId, peer keypair, or password. Always generate fresh.
 - Don't keep the previous secrets file around as a "backup". The encrypted blob in your SOPS file IS the only durable copy; rotation overwrites it.
 - Don't leave the old client entry in secrets and just disable on the server. The server is the only enforcement point — secrets are a record of what should be enforced. Mismatch breaks rotation hygiene.
+
+> [!CAUTION]
+> A leaked credential has no rollback. Rotate forward with fresh material (see [Rollback](#rollback)).
 
 ## Verification
 
