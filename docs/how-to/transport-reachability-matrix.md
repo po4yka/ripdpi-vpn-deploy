@@ -1,6 +1,6 @@
 # Transport reachability matrix
 
-> **Status:** Current · **Type:** how-to · **Tier:** TACTICAL · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** TACTICAL · **Reviewed:** 2026-11-05
 
 The harness deploys one tracked transport profile to a fresh disposable node, then requires canonical server verification and smoke tests before collecting SNI probes and a direct runner URL baseline. CI must provision a separate node for each profile; toggling profiles on one guest leaves skipped services behind.
 
@@ -32,6 +32,17 @@ The workflow must provision each selected profile on a fresh node whose provider
 ```bash
 scripts/transport-reachability-matrix.sh --profile p0 \
   --secrets "$SECRETS_FILE" --output-dir "$RUN_OUTPUT"
+```
+
+```mermaid
+flowchart LR
+  A["fresh node per profile"] --> B["make deploy verify smoke-test"]
+  B -->|"passed"| C["probe-sni-survival.sh (unfiltered)"]
+  C --> D["runner direct URL baseline"]
+  D --> E["index.json schema 2"]
+  B -->|"failed"| F["run fails, no index"]
+  E --> G["artifacts kept, node destroyed"]
+  F --> G
 ```
 
 `RUN_OUTPUT` must not already exist. The script runs scoped `make deploy verify smoke-test`, then both probes. Missing tools, failed probes and absent/malformed reports fail the run. The schema-2 index is written only after those checks. The workflow retains artifacts and destroys its exact disposable resources even when a deployment or probe fails. Both workflows use the protected reusable `ci-disposable-deploy.yml` job and the configuration documented in `docs/how-to/ci-real-deploy.md`. Each run creates an SSH host key on an encrypted provider seed disk, checks its import hash, and installs it before first SSH. The controller uses that exact pin for bootstrap and recovery. Research profiles additionally require their reviewed artifact hashes in `CI_DEPLOY_CONFIG`.
@@ -139,4 +150,4 @@ Save the consolidated two-vantage table as a dated field report at `docs/measure
 - …
 ```
 
-Do not include operator/carrier/ISP/geographic labels in the table or findings — describe by technical signature (per the hard rules in root `CLAUDE.md`). Acceptable: "filtered residential vantage with TLS-cap policing on port 443". Not acceptable: anything naming a carrier or oblast.
+Do not include operator/carrier/ISP/geographic labels in the table or findings — describe by technical signature (per the hard rules in root `AGENTS.md`). Acceptable: "filtered residential vantage with TLS-cap policing on port 443". Not acceptable: anything naming a carrier or oblast.
