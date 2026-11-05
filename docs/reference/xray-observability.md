@@ -1,12 +1,12 @@
 # Xray observability
 
-> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-05
 
 Xray diagnostics stay local to each node. `StatsService` listens only on `127.0.0.1:10086`; node_exporter listens only on `127.0.0.1:9100`. Neither endpoint belongs in the Terraform public-listener contract or the firewall allowlist.
 
 ## What is collected
 
-`xray-stats-exporter.timer` queries StatsService every 60 seconds and writes `/var/lib/node_exporter/textfile/vpn_xray.prom` atomically. The exporter emits:
+`xray-stats-exporter.timer` queries StatsService every 60 seconds by default (`monitoring.xray_stats_interval`) and writes `/var/lib/node_exporter/textfile/vpn_xray.prom` atomically. The exporter emits:
 
 - collector success, record count, and collection timestamp;
 - cumulative traffic by technical inbound/outbound tag and direction;

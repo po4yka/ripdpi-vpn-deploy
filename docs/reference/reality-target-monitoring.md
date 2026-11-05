@@ -1,6 +1,6 @@
 # REALITY active-target ASN monitoring
 
-> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-05
 
 `make validate-target` is a point-in-time hygiene check. A target that passed it can later become unsafe when the filtered path begins dropping traffic associated with one of the target's hosting prefixes. `make monitor-reality-target` closes that gap with an observed-path signal; it is not a global ASN reputation service and does not contain a permanent ASN denylist.
 
@@ -68,7 +68,6 @@ Ordinary curl reports HTTP/TLS hygiene. To request a separate browser-shaped Cli
 
 Promotion still requires separately authorized target ownership, a supported real recipient handshake, approved filtered-vantage evidence and authenticated rollback to the accepted target. Local hygiene, this named client profile and an asserted vantage label do not establish those facts. Runtime pins and PQE HOLD are unchanged.
 
-
-The monitor fingerprint now binds validation mode and the explicit service endpoint. This changes its state key: the first healthy observation after this upgrade establishes a fresh local metadata baseline. Accepted target and certificate authority are unchanged.
+The monitor fingerprint binds the validation mode and the explicit service endpoint. A change to either value changes the state key, and the next healthy observation establishes a fresh local metadata baseline.
 
 The monitor has an outer owned process session (default 120 seconds; `REALITY_MONITOR_BUDGET` accepts 1–120). Its parent owns the temporary directory, including secret staging, and reclaims children after timeout or cancellation. An exhausted run replaces only `last_report`, retaining accepted baselines and alert budgets. Invalid explicit validator inputs refuse before private defaults are loaded.
