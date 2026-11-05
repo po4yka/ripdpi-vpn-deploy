@@ -67,4 +67,9 @@ if (( export_status != 0 )); then
   fi
   exit "$export_status"
 fi
+# The survivor list is part of the finding; a verdict without it is unusable.
+if ! clean mutmut results > "$report/mutmut-results.txt"; then
+  echo "Cannot list mutation results" >&2
+  exit 1
+fi
 clean python3 "$root/scripts/check-vpnd-mutation-results.py" "$report/mutmut-cicd-stats.json"

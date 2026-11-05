@@ -1,5 +1,6 @@
 """Exercise mutation runner isolation and the hosted step's exit-code contract."""
 
+import json
 import os
 import shlex
 import subprocess
@@ -176,6 +177,7 @@ sys.exit(4)
     ("timeout-mixed-detected", 0), ("timeout-survivor", 2),
     ("timeout-tool-failure", 4), ("timeout-partial", 1),
     ("timeout-no-tests", 1), ("timeout-export-failure", 23),
+    ("results-failure", 1),
 ])
 def test_runner_normalizes_only_complete_executed_mutation_results(tmp_path, mode, expected):
     repo = tmp_path / "repo"
@@ -211,6 +213,12 @@ output.mkdir(exist_ok=True)
 if sys.argv[1:] == ['run', '--max-children', '2']:
     (Path('vpnd/src/vpnd/core.py')).write_text('mutated')
     sys.exit(4 if mode in ('tool-failure', 'timeout-tool-failure') else 2 if mode == 'backend-usage' else 0)
+if sys.argv[1:] == ['results']:
+    if mode == 'results-failure':
+        sys.exit(1)
+    if mode in ('survived', 'timeout-survivor'):
+        print('    vpnd.core.x_f__mutmut_1: survived')
+    sys.exit(0)
 assert sys.argv[1:] == ['export-cicd-stats']
 if mode in ('export-failure', 'timeout-export-failure'):
     sys.exit(23)
@@ -258,3 +266,56 @@ path.write_text(json.dumps(document))
     reports = list((repo / "vpnd/mutants").glob("run.*"))
     assert len(reports) == 1
     assert (reports[0] / "diagnostic.txt").read_text() == "retained diagnostic"
+    if expected == 2:
+        assert (reports[0] / "mutmut-results.txt").read_text() == "    vpnd.core.x_f__mutmut_1: survived\n"
+
+
+REPORT_HARNESS = """
+const input = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
+const calls = [];
+const record = method => async args => { calls.push({method, ...args}); return {data: {number: 7}}; };
+const issues = {getLabel: record('getLabel'), createLabel: record('createLabel'),
+                listForRepo: async () => ({data: input.issues}),
+                createComment: record('createComment'), create: record('create')};
+const github = {rest: {issues}};
+const context = {repo: {owner: 'maintainer', repo: 'example'}, serverUrl: 'https://github.com', runId: 42};
+const core = {info: () => {}};
+const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor;
+new AsyncFunction('require', 'github', 'context', 'core', input.script)(require, github, context, core)
+  .then(() => console.log(JSON.stringify(calls)))
+  .catch(error => { console.error(error.message); process.exitCode = 1; });
+"""
+
+
+@pytest.mark.parametrize("issues,listed", [([], 2), ([{"number": 475}], 2), ([], 1)])
+def test_report_step_lists_survivors_from_structured_results(tmp_path, issues, listed):
+    workflow = yaml.safe_load((ROOT / ".github/workflows/mutants.yml").read_text())
+    step = next(step for step in workflow["jobs"]["mutants"]["steps"]
+                if step.get("uses", "").startswith("actions/github-script"))
+    report = tmp_path / "vpnd/mutants/run.abc123"
+    report.mkdir(parents=True)
+    (report / "mutmut-cicd-stats.json").write_text(json.dumps(
+        {"killed": 5, "timeout": 1, "survived": 2, "total": 8}))
+    lines = ["    vpnd.secrets.x_load__mutmut_3: survived",
+             "    vpnd.runner.make.x_target__mutmut_1: timeout",
+             "    vpnd.runner.make.x_validate_kv__mutmut_9: survived"]
+    (report / "mutmut-results.txt").write_text("\n".join(lines[:listed + 1]) + "\n")
+    result = subprocess.run(
+        ["node", "-e", REPORT_HARNESS], cwd=tmp_path, text=True, capture_output=True,
+        input=json.dumps({"script": step["with"]["script"], "issues": issues}), timeout=15,
+        check=False,
+    )
+    if listed != 2:
+        assert result.returncode == 1
+        assert "Listed 1 survivors, stats report 2" in result.stderr
+        return
+    assert result.returncode == 0, result.stderr
+    calls = json.loads(result.stdout)
+    posted = [call for call in calls if call["method"] in ("create", "createComment")]
+    assert [call["method"] for call in posted] == ["createComment" if issues else "create"]
+    body = posted[0]["body"]
+    assert "Killed 5, timeout 1, survived 2 of 8 mutants." in body
+    assert "vpnd.secrets.x_load__mutmut_3\nvpnd.runner.make.x_validate_kv__mutmut_9\n" in body
+    assert "x_target__mutmut_1" not in body
+    if issues:
+        assert posted[0]["issue_number"] == 475

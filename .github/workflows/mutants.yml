@@ -60,7 +60,25 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const output = fs.readFileSync(process.env.RUNNER_TEMP + '/mutants-output.txt', 'utf8');
+            // The console log is mostly progress frames; report the structured results.
+            const runs = fs.readdirSync('vpnd/mutants').filter(name => name.startsWith('run.'));
+            if (runs.length !== 1) {
+              throw new Error(`Expected one mutation report, found ${runs.length}`);
+            }
+            const report = `vpnd/mutants/${runs[0]}`;
+            const stats = JSON.parse(fs.readFileSync(`${report}/mutmut-cicd-stats.json`, 'utf8'));
+            const survivors = fs.readFileSync(`${report}/mutmut-results.txt`, 'utf8')
+              .split('\n').map(line => line.trim())
+              .filter(line => line.endsWith(': survived'))
+              .map(line => line.slice(0, -': survived'.length));
+            if (survivors.length !== stats.survived) {
+              throw new Error(`Listed ${survivors.length} survivors, stats report ${stats.survived}`);
+            }
+            let list = survivors.join('\n');
+            if (list.length > 60000) {
+              list = list.slice(0, list.lastIndexOf('\n', 60000)) +
+                '\n... (truncated; see the vpnd-mutation-results artifact)';
+            }
             const label = 'automation:mutation-testing';
             const weekOf = new Date().toISOString().slice(0, 10);
             const title = `Surviving mutants — week of ${weekOf}`;
@@ -100,8 +118,11 @@ jobs:
                 context.repo.owner + '/' + context.repo.repo +
                 '/actions/runs/' + context.runId,
               '',
+              `Killed ${stats.killed}, timeout ${stats.timeout}, ` +
+                `survived ${stats.survived} of ${stats.total} mutants.`,
+              '',
               '```',
-              output.slice(0, 60000),
+              list,
               '```',
               '',
               'Each surviving mutant either needs a new test in the next PR',
