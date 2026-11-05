@@ -1,6 +1,6 @@
 # Deploy profiles
 
-> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-05
 
 Deploy profiles are `ansible/group_vars/vpn-*.yml` files that define the transport surface and host-hardening posture for a cohort. New hosts should use an explicit profile rather than relying on inherited `all.yml` defaults.
 
@@ -16,6 +16,8 @@ Family profiles are listed in `ansible/role-tiers.yml` under `family_profiles`. 
 | `vpn-p2-udp.yml` | Hysteria2 + AmneziaWG | default family controls | UDP-only fallback endpoint |
 | `vpn-family-standard.yml` | Xray REALITY + nginx-xhttp + Hysteria2 | default family controls | normal family node without AmneziaWG |
 | `vpn-device-full.yml` | family-standard + AmneziaWG | default family controls | full device-VPN family node |
+| `vpn-device-full-tailnet.yml` | family-standard + AmneziaWG; ordinary OpenSSH over the Tailnet | default family controls | device-full node managed over the Tailnet |
+| `vpn-device-full-staging.yml` | device-full transports with transport egress on; monitoring, watchdog and backup off | default family controls | scoped transport and SSH recovery rehearsal, not monitoring or backup acceptance |
 | `vpn-prod-hardened.yml` | device-full | Fail2Ban, tighter SSH limits, egress observation counters | production node when the operator accepts extra host controls |
 
 `vpn-p0-minimal.yml` intentionally leaves `vpn.enable_reality_self_steal` off. Use `vpn-p0-self-steal.yml` only after adding the owned certificate secret contract and changing `xray.target` plus `xray.server_names` together; the role adds a private loopback TLS target without widening the profile's public listener surface.

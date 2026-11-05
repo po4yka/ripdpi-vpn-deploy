@@ -1,6 +1,6 @@
 # Architecture
 
-> **Status:** Current · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-11-03
+> **Status:** Current · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-11-05
 
 This page is the map: layer ownership, profile-to-role mapping and port ownership. This repo implements a four-tier multi-profile access stack:
 
@@ -49,6 +49,9 @@ Deployment profile files make public listener surfaces explicit:
 | `vpn-p2-udp.yml` | P2 Hysteria2 + AmneziaWG only |
 | `vpn-family-standard.yml` | P0 REALITY + P1 XHTTP + P2 Hysteria2 |
 | `vpn-device-full.yml` | family-standard + P2 AmneziaWG |
+| `vpn-device-full-tailnet.yml` | device-full surface; SSH over the Tailnet |
+| `vpn-device-full-staging.yml` | device-full transports for recovery rehearsal; monitoring and backup off |
+| `vpn-prod-hardened.yml` | device-full surface + stricter host hardening |
 | `vpn-lab.yml` | lab/pilot surface; research roles require `allow_research_roles` |
 
 Legacy aliases remain for existing inventories: `vpn-p0.yml`, `vpn-p1p2.yml`, and `vpn-fullstack.yml`.

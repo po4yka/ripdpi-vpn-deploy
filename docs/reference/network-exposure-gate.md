@@ -1,6 +1,6 @@
 # Reviewed network exposure policy
 
-> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-05
 
 The gate is disabled by default. It never downloads a feed, starts an updater, or promotes a policy automatically. Terraform is unchanged; the existing firewall role remains the only runtime renderer.
 
