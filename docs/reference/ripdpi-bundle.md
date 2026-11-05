@@ -1,6 +1,6 @@
 # RIPDPI Bundle — server-side schema specification
 
-> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-23
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-05
 
 > **The executable contract is [`contract/ripdpi-bundle.schema.json`](../../contract/ripdpi-bundle.schema.json)** — a JSON Schema (draft 2020-12) that is the single source of truth for the `ripdpi` object. This document is its prose companion. The schema is vendored byte-identical into the RIPDPI Android client repo and validated by a contract test in **both** CIs (`scripts/validate-bundle.py` + `tests/unit/test_bundle_schema.py` here; `RipdpiBundleContractTest` there), so the contract cannot drift silently between the two repos. When you change the shape of the `ripdpi` object, change the schema first.
 
@@ -28,6 +28,7 @@ Do not send this artifact to standard sing-box clients. They may reject the unkn
     "hysteria_extras": { "<tag>": <HysteriaExtras>, ... },
     "topology":       <Topology>,        // declares split-hop / realm relay
     "expires":        "2026-12-31T23:59:59Z"  // optional; ISO-8601 UTC
+    "migration":      <Migration>,       // optional; device server migration receipt metadata
   }
 }
 ```
@@ -231,6 +232,19 @@ Declares the transport topology the client cannot infer from the flat `outbounds
 ```
 
 `split_hop_egress` is `false` for every emitted bundle. The split-hop ingress responder routes only the research probe runtimes through Node B; the family transports on that host still exit from the entry IP, so the flag must not claim otherwise until a family transport is routed through Node B. `hysteria_realm` remains explicit `vpn.hysteria_realm` metadata because the enable toggle alone does not define a stable realm identifier. Both default to the direct-deployment values (`false` / `null`). Pure egress roles (e.g. `warp-outbound`) are server-side only and intentionally absent — the client has no half to play there. Multi-host emission aggregates every entry rather than trusting `HOSTS` order: the first non-null realm identifier is retained, and conflicting non-null realm identifiers fail closed.
+
+## `ripdpi.migration`
+
+Optional object that carries device server-migration receipt metadata. The producer is the device-migration workflow in [Device migration](../how-to/device-migration.md), not `emit-bundle.sh`. The schema accepts the object and rejects unknown fields. All fields are required:
+
+| Field | Type | Rule |
+|---|---|---|
+| `schema_version` | integer | Constant `1`. |
+| `migration_id` | string | Lowercase UUID. |
+| `delivery_id` | string | Lowercase UUID. |
+| `target_tags` | array of strings | 1 to 128 unique tags. Each tag matches `^[A-Za-z0-9_.:-]{1,128}$`. |
+| `receipt_key` | string | 64 lowercase hexadecimal characters. |
+| `awg_previous_tags` | object | Up to 128 entries. Each key and value is a tag that matches the same pattern. |
 
 ## `ripdpi.expires`
 

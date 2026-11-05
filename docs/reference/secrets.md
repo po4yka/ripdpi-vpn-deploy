@@ -1,6 +1,6 @@
 # Secrets — SOPS + age model
 
-> **Status:** Current · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-11-03
+> **Status:** Current · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-11-05
 
 This page is the one home for the secrets model. Two how-to guides build on it and do not restate it: [the local operator kit](../how-to/local-operator-kit.md) catalogues where private material lives on the operator machine, and [multi-operator RBAC](../how-to/multi-operator.md) splits the schema per operator scope. [Age key recovery](../how-to/age-recovery.md) covers the Shamir split of the age key.
 
@@ -106,16 +106,24 @@ This intentionally rejects older accepted inputs. Before rollout, validate the p
 See `secrets/prod.secrets.example.yaml` for the full schema. High-level:
 
 ```
-xray.{version, linux_*_sha256, reality_*, target, server_names, xhttp_path, clients[*]}
-nginx_xhttp.{server_name, cert_pem, key_pem}
-hysteria.{version, linux_*_sha256, cert_pem, key_pem, bandwidth_*, salamander_*, clients[*]}
+xray.{version, linux_*_sha256, source_*, reality_*, target, server_names, xhttp_mode, xhttp_path, xhttp_tuning, cohorts, clients[*]}
+nginx_xhttp.{server_name, cert_pem, key_pem, fallback_*}
+hysteria.{version, linux_*_sha256, server_name, cert_pem, key_pem, bandwidth_*, masquerade_*, salamander_*, resource_profile, clients[*]}
 geodata.{geosite_url, geoip_url, geosite_sha256, geoip_sha256, install_dir, refresh_interval}
 amneziawg_go_version + amneziawg_go_commit / amneziawg_tools_version + amneziawg_tools_commit
-amneziawg_secrets.instances[*].{name, listen_port, address_v4, address_v6, server_private_key, jc/jmin/jmax/s1-s4/h1-h4, peers[*]}
+amneziawg_secrets.instances[*].{name, listen_port, address_v4, address_v6, server_private_key, jc/jmin/jmax/s1-s4/h1-h4/i1-i5, mtu, wire_profile, peers[*]}
 backup.restic_password
-client_registry.<device>.{status, issued_at, formats, hosts, cohorts, token_hash_prefix, token_expires, awg_binding, awg_delivery_host, awg_public_key_fingerprint, awg_private_key, delivery_options, delivery_sources, last_payload_identity}
+client_registry.<device>.{status, issued_at, formats, hosts, cohorts, token_hash_prefix, token_expires, awg_binding, awg_delivery_host, awg_public_key_fingerprint, awg_private_key, delivery_options, delivery_sources, last_payload_identity, migration_delivery}
 client_delivery_identity.{version, generation, key}  # created by authorized delivery
-subscription.{port, server_name}     # optional
+subscription.{port, server_name, ...}  # optional; the schema lists the bootstrap, rate-limit, log and revocation keys
+naive_secrets.{server_name, cert_pem, key_pem, probe_resistance_secret, clients[*].{name, username, password}}
+reality_self_steal.{server_name, cert_pem, key_pem}
+# Optional per-feature sections. secrets/schema.json defines each one:
+#   snell_secrets, dns_morph_bridge_secrets, hysteria_realm_secrets, cascade_secrets,
+#   split_hop_ingress_secrets, split_hop_egress_secrets, transport_egress_secrets,
+#   probe_matrix_target_secrets, real_vps_awg_nat_secrets, watchdog_secrets,
+#   observability_secrets, observability_kuma_secrets, observability_deadman_secrets,
+#   device_migrations, device_operations
 ```
 
 `client_registry` is operator-side per-device metadata (never consumed by Ansible roles): issuance options for each device so `issue-sub-token.sh --refresh-token` can reproduce the original payload instead of falling back to defaults, the lifecycle status (`issued → delivered → active → stale | revoked | burned`), the AWG client private key as a recovery copy (the device-local key stays primary), and the payload identity (versioned private HMAC-SHA256 over the canonical selected-device payload, format, exact options and AWG binding including the enrolled peer public key) recorded at last delivery for `make client-drift CLIENT=<device>`. Inspection re-renders in memory and emits only `current`, `stale` or `unknown`; it never prints the digest or creates identity authority. The encrypted authority has a 256-bit random key and a key-bound generation. Re-encryption and unrelated device/metadata edits keep the selected device current. Missing, malformed or rotated authority, absent recorded source selectors, and old source/output identities are unknown until an explicitly authorized redelivery. Issuance alone initializes missing authority; malformed existing authority refuses instead of being replaced. Refresh retains private per-host source selectors, format, hosts, cohorts, AWG host, UTLS selection and expiry. Explicit `--format` / `--expires` overrides are recorded with the new identity. A staging/verification failure preserves prior encrypted state and precedes remote writes. Local SOPS and remote publication cannot commit atomically together: reconcile both after an interrupted or failed publication before retrying. The CLI returns 3 with that reconciliation warning once a mutating SSH attempt has started, even if its reply or subsequent local publication fails. Preflight and candidate-verification refusals precede that boundary.
