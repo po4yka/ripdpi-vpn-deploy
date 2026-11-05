@@ -1,6 +1,6 @@
 # Topology-aware multi-protocol probe matrix
 
-> **Status:** Current · **Type:** how-to · **Tier:** RESEARCH · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** RESEARCH · **Reviewed:** 2026-11-05
 
 `vpnd probe-matrix` runs all configured protocol × target cells concurrently on a fixed schedule. It records authenticated data-plane verdicts without writing endpoint addresses or credentials to the report, then emits conservative observations for protocol-specific filtering, destination-class-wide collateral, and topology-specific dual-role targeting candidates.
 
@@ -23,6 +23,9 @@ Each `comparison_set` contains exactly two targets in the same destination class
 ## Operator artifacts
 
 Copy `vpnd/config/probe-matrix.example.yaml` outside the repository. Its `profile_file` entries point to per-target JSON files generated with mode `0600`:
+
+> [!WARNING]
+> `make decrypt` writes plaintext secrets to disk, and the profile files hold credentials. Both steps need operator authorization for the environment. Delete the decrypted file after use.
 
 ```bash
 make decrypt ENV=staging

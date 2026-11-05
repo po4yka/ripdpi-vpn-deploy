@@ -1,6 +1,6 @@
 # Multi-cohort host
 
-> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-11-05
 
 A single VPS can serve several cohorts at once, each with its own port, flow mode, finalmask setting, and client list, while sharing one REALITY identity (target + server_names + private key).
 
@@ -53,17 +53,17 @@ Properties:
 
 * `xray.cohorts` is optional. When empty / missing, the role renders a single VLESS+REALITY inbound on `xray_port` with `vpn.xray_flow_mode`, identical to single-cohort behaviour (no diff in the generated config.json).
 * The `clients` list under each cohort is **names** that reference the global `xray.clients` array. UUIDs and shortIds stay in one place.
-* `flow_mode` and `finalmask` per cohort override the global toggles.
+* `flow_mode` is `vision` or `mux`. It must name a shape in `p0_reality_shapes` (`ansible/group_vars/all.yml`); the role refuses an unknown shape. `flow_mode` and `finalmask` per cohort override the profile defaults (`vpn.xray_flow_mode`, `p0_reality_flow_mode`).
 * All cohorts share `xray.target`, `xray.server_names`, and `xray.reality_private_key` — one REALITY identity, multiple ports.
-* The dedicated `watchdog` client must be listed in every cohort. The role refuses to deploy a cohort that the on-node authenticated probe cannot exercise.
+* The dedicated probe client must be listed in every cohort, so the on-node authenticated probe covers every REALITY listener. Its name is `watchdog.reality_probe_client` (default `watchdog`). The watchdog role fails the deployment when a cohort does not list it (`ansible/roles/watchdog/tasks/enable.yml`).
 
 ## Firewall
 
-The `firewall` role automatically opens every cohort port. The single- port fallback uses `xray_port` (group_vars) as before.
+The `firewall` role opens every cohort port. Without cohorts, it opens `xray_port` (`ansible/group_vars/all.yml`).
 
 ## Client emit (cohort-aware)
 
-`scripts/emit-singbox.sh` is multi-cohort aware for REALITY. When `xray.cohorts` is non-empty, it emits one REALITY outbound per cohort that lists the requested client, using that cohort's `port` and `flow_mode`. When `xray.cohorts` is empty or missing, it keeps the legacy single-outbound behavior on `xray_port` with `vpn.xray_flow_mode`.
+`scripts/emit-singbox.sh` is a thin wrapper over `scripts/client_payload.py`, which is multi-cohort aware for REALITY. When `xray.cohorts` is non-empty, it emits one REALITY outbound per cohort that lists the requested client, using that cohort's `port` and `flow_mode`. When `xray.cohorts` is empty or missing, it emits one outbound on `xray_port` with `vpn.xray_flow_mode`.
 
 For multi-host bundles, pass `HOSTS=provider:env,...` and optionally `COHORTS=name,...`. When `COHORTS` is omitted, the emitter can infer a cohort from `ansible/inventory/generated.ini` by matching the Terraform `server_hostname` to a `vpn-<cohort>` inventory group. If a client is not listed in any configured cohort, the emitter fails instead of silently producing a bundle with the wrong port.
 

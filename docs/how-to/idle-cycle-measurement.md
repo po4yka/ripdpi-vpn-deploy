@@ -1,6 +1,6 @@
 # Runbook: idle-cycle access-attempt measurement spike
 
-> **Status:** Current · **Type:** how-to · **Tier:** RESEARCH · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** RESEARCH · **Reviewed:** 2026-11-05
 
 ## Purpose and scope
 
