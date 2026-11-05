@@ -14,7 +14,7 @@ def validate_kv(key, value):
             ipaddress.IPv4Address(value)
             valid = True
         except ipaddress.AddressValueError:
-            valid = False
+            valid = False  # pragma: no mutate (only truthiness is read, so None equals False)
     elif key in {"MATRIX_CONFIG", "PLAN"}:
         rule = "absolute path [A-Za-z0-9._/-] without .. components"
         valid = (

@@ -727,3 +727,62 @@ def test_repeated_cancellation_joins_worker_before_caller_cleanup(monkeypatch, w
             await asyncio.gather(task, return_exceptions=True)
 
     asyncio.run(exercise())
+
+
+@pytest.mark.parametrize(
+    "key,value,shown,rule",
+    [
+        ("HOST", "203.0.113.5; rm", "'203.0.113.5; rm'", "IPv4 literal"),
+        ("PLAN", "relative.yaml", "'relative.yaml'", "absolute path [A-Za-z0-9._/-] without .. components"),
+        ("MATRIX_CONFIG", "/a/../b", "'/a/../b'", "absolute path [A-Za-z0-9._/-] without .. components"),
+        ("SECRETS_FILE", "/run/has space.yaml", "(redacted)", "runtime path without make, shell metacharacters, or whitespace"),
+        ("CLIENT", "a b", "'a b'", "identifier [A-Za-z0-9._-]"),
+    ],
+)
+def test_validate_kv_refusal_message_is_exact(key, value, shown, rule):
+    expected = (
+        f"refusing to spawn make: variable {key} value {shown} fails the {rule} rule"
+        " — make expands command-line variable values inside recipe shells"
+    )
+    with pytest.raises(ValueError) as failure:
+        make.validate_kv(key, value)
+    assert str(failure.value) == expected
+
+
+@pytest.mark.parametrize("field,key", [("env", "ENV"), ("provider", "PROVIDER")])
+def test_target_refuses_unsafe_context_values_naming_their_variable(field, key):
+    ctx = replace(fake_ctx(), **{field: "bad value"})
+    with pytest.raises(ValueError, match=f"variable {key} value 'bad value'"):
+        make.target(ctx, "deploy")
+
+
+def test_target_registers_both_secret_paths_for_redaction():
+    cmd = make.target(fake_ctx(), "decrypt")
+    marker = "<redacted: secrets file path>"
+    assert cmd.redacted("/tmp/vpn-prod.secrets.yaml") == marker
+    assert cmd.redacted("/config/prod.secrets.sops.yaml") == marker
+
+
+def test_target_with_accepts_a_mapping():
+    s = make.target_with(fake_ctx(), "emit-singbox", {"CLIENT": "phone", "EXTRA": "1"}).explain()
+    assert s.index("PROVIDER=") < s.index("CLIENT=phone") < s.index("EXTRA=1")
+
+
+def test_target_child_drops_every_inherited_make_control(tmp_path, monkeypatch):
+    stub = tmp_path / "bin"
+    stub.mkdir()
+    program = stub / "make"
+    program.write_text("#!/bin/sh\nenv | grep -E '^(MAKELEVEL|MAKEFLAGS|MAKEFILES|MFLAGS|GNUMAKEFLAGS)='\nexit 0\n")
+    program.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{stub}{os.pathsep}{os.environ['PATH']}")
+    for name in ("MAKELEVEL", "MAKEFLAGS", "MAKEFILES", "MFLAGS", "GNUMAKEFLAGS"):
+        monkeypatch.setenv(name, "1")
+    out = asyncio.run(make.target(fake_ctx(root=tmp_path), "deploy").capture())
+    assert out.rc == 0 and out.stdout == ""
+
+
+def test_secrets_file_path_allows_ordinary_letters_but_not_shell_metacharacters():
+    make.validate_kv("SECRETS_FILE", "/run/XDG-X/vpn_prod.yaml")
+    for c in "$`\"';|&<>()\\#":
+        with pytest.raises(ValueError):
+            make.validate_kv("SECRETS_FILE", f"/run/a{c}b.yaml")
