@@ -1,6 +1,6 @@
 # Provider notes
 
-> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-05
 
 The sanitized mapping and last observed convergence state of the accepted four-host, three-provider fleet are recorded in [the deployment snapshot](deployment-status.md). Provider support in this file is a capability statement; only a refreshed plan against the named environment is evidence of current provider state.
 
@@ -11,12 +11,12 @@ Source: repository-local deployment measurements and operator validation.
 | Tier | Provider / ASN | Notes |
 |---|---|---|
 | Avoid | Cloudflare AS13335 | DPI peering at several exchange points; 8–16 KB cut; see `../decisions/0001-cdn-not-filtered-path-baseline.md` |
-| Avoid | OVH AS16276, Hetzner AS24940, DigitalOcean AS14061 | "Foreign datacenter" ASN bucket triggers TCP freeze (~14–25 KB on filtered mobile paths) |
+| Avoid | OVH AS16276, Hetzner AS24940, DigitalOcean AS14061 | Large-datacenter ASN bucket triggers TCP freeze (~14–25 KB on filtered mobile paths) |
 | Avoid | JustHost AS26383, VDSina AS216071 | Frequently flagged as VPN-tenant ranges; high churn |
 | Acceptable | UpCloud (current primary) | Not on the public public DPI watch lists as of 2026-05; verify ASN before rollout |
 | Unmeasured | Scaleway | Independent provider root is implemented, but no repository-local filtered-path baseline exists yet; verify the assigned IP and ASN before rollout |
 | Preferred | Hostkey, nuxt.cloud (DE/NL), hostvds.com (FI) | Smaller, less-flagged ranges per community testing |
-| Jurisdiction-Exception (opt-in only, never Preferred/Acceptable) | *(no provider/ASN preselected — see note)* | domestically hosted cascade entry node for temporary whitelist-riding only. No brand/ASN is listed here on purpose: eligibility is a per-ASN empirical, expiring, fail-closed attestation, never a brand assumption (Yandex.Cloud LLC vs YANDEX LLC are distinct ASNs). First hosting-jurisdiction exception in this repo; accepts bounded domestic legal/data-retention/seizure exposure for a temporary node. See `../decisions/0004-geoip-split-cascade.md` + `../decisions/0005-per-asn-allowlist-attestation.md` + the EXCEPTION tier in `../decisions/0002-role-and-doc-tiering.md` |
+| Jurisdiction-Exception (opt-in only, never Preferred/Acceptable) | *(no provider/ASN preselected — see note)* | cascade entry node hosted under a separate hosting jurisdiction, for temporary whitelist-riding only. No brand/ASN is listed here on purpose: eligibility is a per-ASN empirical, expiring, fail-closed attestation, never a brand assumption (Yandex.Cloud LLC vs YANDEX LLC are distinct ASNs). First hosting-jurisdiction exception in this repo; accepts bounded legal, data-retention and seizure exposure for a temporary node. See `../decisions/0004-geoip-split-cascade.md` + `../decisions/0005-per-asn-allowlist-attestation.md` + the EXCEPTION tier in `../decisions/0002-role-and-doc-tiering.md` |
 
 For a full deploy this primarily affects the **egress** IP, not the ingress: a node that ingresses on REALITY/TCP and egresses through the same VPS IP will hit the TCP-freeze rule when the upstream is on one of the "Avoid" ASNs. Split-hop egress (a separate exit VPS) is specified in `docs/decisions/0003-split-hop-relay-topology.md`, with the operator procedure in `docs/how-to/split-hop-pilot.md`.
 
@@ -50,7 +50,7 @@ UpCloud is the primary provider in v1. Resource shape:
 - `upcloud_server` — the VPS itself, with `template { … }` cloning a public storage template UUID into the root disk.
 - `upcloud_firewall_rules` — attached to the server. Note that UpCloud's firewall is on the hypervisor, not the OS — so even if `nftables` is misconfigured, UpCloud's rules apply first.
 - `network_interface { type = "public" }` + `{ type = "utility" }` are required for the server to be reachable; `private` interfaces are optional for multi-VPS networking (out of scope for v1).
-- Daily snapshots are enabled in `template.backup_rule` (7-day retention). This is a hypervisor-level safety net **separate from** restic backups, which contain the configs you can restore onto a fresh VPS.
+- Daily snapshots are enabled in `template.backup_rule` (7-day retention) when `enable_backups` is true (the default). This is a hypervisor-level safety net **separate from** restic backups, which contain the configs you can restore onto a fresh VPS.
 
 ### Forwarded NAT and stateless filtering
 
@@ -118,7 +118,7 @@ Keep provider credentials in an ignored, local environment file or the operator'
 Uses:
 
 - `hcloud_server`, `hcloud_ssh_key`, `hcloud_firewall`, `hcloud_firewall_attachment`, and optional `hcloud_floating_ip` for the honeypot secondary IPv4.
-- ASN AS24940 — flagged in the TCP-freeze rule on mobile access networks (see the "Avoid" tier above). Hetzner remains useful for non-domestic mobile cohorts and for development; rotate IPs more aggressively than UpCloud.
+- ASN AS24940 — flagged in the TCP-freeze rule on mobile access networks (see the "Avoid" tier above). Hetzner remains useful for cohorts outside the flagged-ASN pattern and for development; rotate IPs more aggressively than UpCloud.
 - Cheaper than UpCloud per spec; smaller geographic surface (EU-heavy + US East/West, no APAC).
 - IPv6 is enabled by default via `enable_ipv6 = true`; set it false in `tfvars` only for regions or plans where you explicitly do not want it.
 - Credentials come from `HCLOUD_TOKEN`.

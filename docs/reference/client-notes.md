@@ -1,6 +1,6 @@
 # Client-side known issues and version pins
 
-> **Status:** Current · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-11-05
 
 The server stack is only one half of the story. These items are client-side, but the operator distributing clients should know about them because a vulnerable client undoes the server's protections.
 
@@ -59,7 +59,7 @@ The VPS exit IP is observable from a desktop client process by an attacker with 
 
 ## VLESS Android SOCKS5 client exposure
 
-Refs: `docs/reference/client-notes.md` and the client release notes.
+Refs: the client release notes.
 
 Some VLESS Android clients expose a local SOCKS5 listener that non-VPN apps on the same device can reach. This is functional design for per-app routing, but it lets a detection-capable app determine that a proxy is running by probing the local port. Per-app routing should be configured via packageNameRegex rather than via app-side SOCKS5.
 
@@ -77,21 +77,21 @@ Existing private configurations are not rewritten by this source change. Keep bo
 
 Every REALITY inbound sets `maxTimeDiff` from `xray_reality_max_time_diff_ms`, which defaults to 90000 ms. Without it, Xray accepts a captured ClientHello at any later time. A replayed hello then takes the authenticated REALITY path instead of the borrowed target's handshake, and that difference can identify the node. A device whose clock is more than 90 s off fails P0 silently: it receives the target's certificate and no tunnel. Fix the device clock (automatic network time); do not widen the window to compensate. The role refuses zero, which disables the check.
 
-## uTLS fingerprint + the "TLS frozen" failover caveat (domestic-AS cascade only)
+## uTLS fingerprint + the "TLS frozen" failover caveat (flagged-AS relay only)
 
 The client uTLS fingerprint for the REALITY and XHTTP outbounds is configurable per profile via `xray_utls_fingerprint` (xray role default `chrome`; override in group_vars, or `UTLS_FINGERPRINT=firefox make emit-singbox CLIENT=name` for a single run). Hysteria2's QUIC TLS has no uTLS knob, so this does not apply to it. The watchdog and smoke-test REALITY clients, and the watchdog XHTTP client, send the same configured value, so they verify the fingerprint that recipients use.
 
-**Honest scope — not active on the baseline.** This matters only under the June-2026 three-condition TLS pattern, whose Condition 1 requires the *server* to sit on a flagged domestic cloud AS. The baseline runs foreign VPS (UpCloud / Hetzner / Vultr), which take a different enforcement path (TCP port-range, not this TLS-rate rule). So this is a **latent** caveat for any domestically hosted relay/cascade node and general client guidance — **not** an active baseline threat. Do not over-state it elsewhere.
+**Honest scope — not active on the baseline.** This matters only under the June-2026 three-condition TLS pattern, whose Condition 1 requires the *server* to sit on a flagged cloud AS. The baseline runs on VPS providers (UpCloud / Hetzner / Vultr) outside such an AS, which take a different enforcement path (TCP port-range, not this TLS-rate rule). So this is a **latent** caveat for any relay or cascade node on such an AS and general client guidance — **not** an active baseline threat. Do not over-state it elsewhere.
 
-Under that domestic-AS pattern:
+Under that flagged-AS pattern:
 
-- **Fingerprint class (Condition 2)** flags Chrome/Safari/iOS; Firefox and standard Android currently pass. For a domestically hosted cohort, pre-selecting `xray_utls_fingerprint: firefox` sidesteps Condition 2 — but pick once and hold it (see the caveat below).
+- **Fingerprint class (Condition 2)** flags Chrome/Safari/iOS; Firefox and standard Android currently pass. For a cohort on such an AS, pre-selecting `xray_utls_fingerprint: firefox` sidesteps Condition 2 — but pick once and hold it (see the caveat below).
 - **Failover-backoff caveat.** When the observed failure shape is **"TCP reachable but TLS frozen"** (TCP handshakes still connect, TLS stalls), the client should **back off and wait out the freeze** rather than thrashing through transports/fingerprints. The first violation is a ~120 s TLS freeze; **rotating the uTLS fingerprint while that freeze is active escalates it to a 600 s full block.** An automated fingerprint-rotation loop is therefore counterproductive here. (Rolling over to a structurally different transport or port is not itself the trigger — it is *fingerprint* churn during the freeze that escalates. The emitted bundle never rotates the uTLS fingerprint, and `interrupt_exist_connections` is `false`, so the default config does not trip this on its own.)
 - **HTTP/2 structural advantage (XHTTP).** The XHTTP path multiplexes concurrent requests into a single TLS session, keeping the per-SNI TLS connection count below Condition 3's burst trigger (>3 parallel TLS to the same SNI within ~350–400 ms).
 
 ## sing-box clients: use the standard artifact
 
-When `make emit-singbox CLIENT=name` is available, prefer the sing-box JSON output over manual VLESS URI strings. It wires every supported P0/P2 transport into a single selector + urltest group, which matters for the home-ISP TLS policing failure mode. The standard artifact's urltest interval is 30 minutes, and the RIPDPI bundle uses the same cadence: a shorter one opens one session per transport to the same address in a synchronous burst, which is the concurrent-session pattern that policing targets. P1 XHTTP requires an Xray-family profile or the RIPDPI-specific bundle; never copy that unsupported outbound into the standard document.
+When `make emit-singbox CLIENT=name` is available, prefer the sing-box JSON output over manual VLESS URI strings. It wires every supported P0/P2 transport into a single selector + urltest group, which matters for the TLS-rate policing failure mode. The standard artifact's urltest interval is 30 minutes, and the RIPDPI bundle uses the same cadence: a shorter one opens one session per transport to the same address in a synchronous burst, which is the concurrent-session pattern that policing targets. P1 XHTTP requires an Xray-family profile or the RIPDPI-specific bundle; never copy that unsupported outbound into the standard document.
 
 ## Hysteria ECH-required profiles
 
