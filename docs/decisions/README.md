@@ -2,9 +2,7 @@
 
 > **Status:** Current · **Type:** decision · **Tier:** —
 
-Accepted decisions, numbered in the order they were recorded. A decision is
-never edited after acceptance; a later record supersedes it. The template
-and the status-line rules are in [the style guide](../STYLE.md).
+Accepted decisions, numbered in the order they were recorded. A decision is never edited after acceptance; a later record supersedes it. The template and the status-line rules are in [the style guide](../STYLE.md).
 
 | # | Decision | Status | Tier |
 |---|---|---|---|
@@ -15,10 +13,4 @@ and the status-line rules are in [the style guide](../STYLE.md).
 | [0005](0005-per-asn-allowlist-attestation.md) | Per-ASN allowlist attestation gate for the cascade ingress; empirical, expiring, fail-closed | Accepted 2026-07-11 | EXCEPTION |
 | [0006](0006-pq-reality-adoption.md) | VLESS Encryption (post-quantum) over REALITY follows an enforced HOLD / STAGING / PRODUCTION policy | Accepted 2026-10-17 | CORE |
 
-Record history: the 2026-10 documentation rewrite renamed 0004 and 0005 to
-remove a geographic label from their file names and, in 0001, 0002, 0004 and
-0005, replaced geographic and censor-apparatus labels in headings, table cells
-and prose with the behavioural vocabulary of [the style guide](../STYLE.md)
-(`domestic`, `in-country`, `foreign`, `filtered-path baseline`, `DPI threat
-model`, `enforcement point`). No decision, scope or date changed. Git history
-keeps the old names and the original wording.
+Record history: the 2026-10 documentation rewrite renamed 0004 and 0005 to remove a geographic label from their file names and, in 0001, 0002, 0004 and 0005, replaced geographic and censor-apparatus labels in headings, table cells and prose with the behavioural vocabulary of [the style guide](../STYLE.md) (`domestic`, `in-country`, `foreign`, `filtered-path baseline`, `DPI threat model`, `enforcement point`). No decision, scope or date changed. Git history keeps the old names and the original wording.

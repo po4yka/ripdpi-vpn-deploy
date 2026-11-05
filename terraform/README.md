@@ -1,18 +1,12 @@
 # Terraform layer
 
-Each provider lives in its own root module under `providers/<name>/`. They
-share `shared/cloud-init.yaml.tftpl` for the bootstrap template.
+Each provider lives in its own root module under `providers/<name>/`. They share `shared/cloud-init.yaml.tftpl` for the bootstrap template.
 
-Use Terraform >= 1.15. Each provider root commits its own
-`.terraform.lock.hcl` so CI and operator workstations resolve the same provider
-builds.
+Use Terraform >= 1.15. Each provider root commits its own `.terraform.lock.hcl` so CI and operator workstations resolve the same provider builds.
 
 ## Why per-provider root modules
 
-Terraform requires every `module "x" { source = "…" }` to use a static
-path; you cannot pick a provider through a variable. Per-provider roots
-give you a clean drop-in: the operator runs `make PROVIDER=upcloud …` (or
-`hetzner`, `vultr`, `scaleway`), and the Makefile `cd`s into the right directory.
+Terraform requires every `module "x" { source = "…" }` to use a static path; you cannot pick a provider through a variable. Per-provider roots give you a clean drop-in: the operator runs `make PROVIDER=upcloud …` (or `hetzner`, `vultr`, `scaleway`), and the Makefile `cd`s into the right directory.
 
 ## Switching providers
 
@@ -23,17 +17,11 @@ make PROVIDER=vultr     init plan apply
 make PROVIDER=scaleway  init plan apply
 ```
 
-The Ansible layer is provider-neutral — only the inventory render script
-reads the common Terraform output contract. `nat_source_port_range` is empty
-for stateful provider firewalls and the inert exception root. Enabled UpCloud
-stateless filtering exports its exact admitted return range for guest NAT.
+The Ansible layer is provider-neutral — only the inventory render script reads the common Terraform output contract. `nat_source_port_range` is empty for stateful provider firewalls and the inert exception root. Enabled UpCloud stateless filtering exports its exact admitted return range for guest NAT.
 
 ## Native tests
 
-Each provider root has provider-mocked `terraform test` coverage under
-`providers/<name>/tests/`. These tests run without contacting cloud APIs
-and assert the shared inventory output contract plus provider-specific
-firewall and server-resource invariants:
+Each provider root has provider-mocked `terraform test` coverage under `providers/<name>/tests/`. These tests run without contacting cloud APIs and assert the shared inventory output contract plus provider-specific firewall and server-resource invariants:
 
 ```bash
 terraform -chdir=terraform/providers/upcloud init -backend=false
@@ -79,5 +67,4 @@ The Rego rules under `terraform/policy/` gate plans through conftest in two plac
 | `vultr` | 2.32.0 | Uses `vultr/vultr`. Export `VULTR_API_KEY` before planning. |
 | `scaleway` | 2.78.0 | Uses `scaleway/scaleway`. Export `SCW_ACCESS_KEY`, `SCW_SECRET_KEY`, and `SCW_DEFAULT_PROJECT_ID` before planning. |
 
-The committed `.terraform.lock.hcl` files are authoritative; this summary is
-updated when those locks change.
+The committed `.terraform.lock.hcl` files are authoritative; this summary is updated when those locks change.

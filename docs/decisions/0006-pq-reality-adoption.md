@@ -10,16 +10,9 @@ The canonical capability name is **VLESS Encryption (PQE) over REALITY**. This d
 
 PQ-REALITY is not an operator-configurable feature in this repository. Every VLESS inbound whose `streamSettings.security` is `reality` must retain `settings.decryption: "none"`, and the changelog-driven guard in `../reference/xray-release-line.md` enforces that invariant through pre-commit, CI, and `make ci-fast`.
 
-Upstream announced VLESS PQE in `v25.9.5`; the tagged `v26.3.27` source
-already accepts `mlkem768x25519plus` encryption and decryption settings.
-PQE is therefore not limited to the later Pre-release line. Release
-availability alone does not satisfy this repository's adoption criteria.
+Upstream announced VLESS PQE in `v25.9.5`; the tagged `v26.3.27` source already accepts `mlkem768x25519plus` encryption and decryption settings. PQE is therefore not limited to the later Pre-release line. Release availability alone does not satisfy this repository's adoption criteria.
 
-HOLD remains in force because the supported client artifacts and schema do
-not express the matching VLESS Encryption contract. The existing native
-Xray delivery path also selects classical VLESS encryption. Enabling only
-the server side would make supported client artifacts incompatible. The
-server/client, staging, rollback and production gates below remain required.
+HOLD remains in force because the supported client artifacts and schema do not express the matching VLESS Encryption contract. The existing native Xray delivery path also selects classical VLESS encryption. Enabling only the server side would make supported client artifacts incompatible. The server/client, staging, rollback and production gates below remain required.
 
 HOLD means there is no PQE secret, schema field, Ansible variable, environment override, Make target, client field, or generated bundle field. Pre-release Xray builds may still be evaluated under the repository's general staging-only policy, but PQ-REALITY remains disabled in every environment until this policy moves to STAGING.
 
@@ -63,8 +56,4 @@ If a staging or production trial fails, restore the prior Xray binary and classi
 
 ## Review evidence
 
-Refresh the decision from primary upstream sources on every Xray release that
-mentions VLESS Encryption and every release of the supported client engine.
-Record the distilled result in `../reference/xray-release-line.md` and keep the executable
-guard in `scripts/check-xray-breaking-changes.py`; external pages are research
-inputs, not load-bearing repository documentation.
+Refresh the decision from primary upstream sources on every Xray release that mentions VLESS Encryption and every release of the supported client engine. Record the distilled result in `../reference/xray-release-line.md` and keep the executable guard in `scripts/check-xray-breaking-changes.py`; external pages are research inputs, not load-bearing repository documentation.

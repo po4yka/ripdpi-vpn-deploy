@@ -2,10 +2,7 @@
 
 > **Status:** Current · **Type:** decision · **Tier:** EXCEPTION · **Reviewed:** 2026-10-21
 
-**Date:** 2026-07-10
-**Status:** Implementation authorized; live activation remains no-go. The 2026-07-11 measurement did not produce a qualifying candidate-ASN attestation, so no domestically hosted server/account, provisioning apply, EXCEPTION registration, or cascade converge is authorized. A 2026-07-11 follow-up authorizes inert, default-off implementation and tests for Phases 1–6 so the complete fail-closed system can be reviewed before any hosting decision.
-**Scope:** implemented-but-inert cascade ingress/egress scaffolds, a dedicated domestic-hosting jurisdiction EXCEPTION tier, a fail-closed classifier invariant, and an empirical per-ASN attestation gate.
-**Source anchor:** Habr 1056220 (community report), read against this repo's existing `../reference/provider-notes.md` ASN risk tiers and `0002-role-and-doc-tiering.md` tier guard.
+**Date:** 2026-07-10 **Status:** Implementation authorized; live activation remains no-go. The 2026-07-11 measurement did not produce a qualifying candidate-ASN attestation, so no domestically hosted server/account, provisioning apply, EXCEPTION registration, or cascade converge is authorized. A 2026-07-11 follow-up authorizes inert, default-off implementation and tests for Phases 1–6 so the complete fail-closed system can be reviewed before any hosting decision. **Scope:** implemented-but-inert cascade ingress/egress scaffolds, a dedicated domestic-hosting jurisdiction EXCEPTION tier, a fail-closed classifier invariant, and an empirical per-ASN attestation gate. **Source anchor:** Habr 1056220 (community report), read against this repo's existing `../reference/provider-notes.md` ASN risk tiers and `0002-role-and-doc-tiering.md` tier guard.
 
 ## Context
 

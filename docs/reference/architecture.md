@@ -2,8 +2,7 @@
 
 > **Status:** Current · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-11-03
 
-This page is the map: layer ownership, profile-to-role mapping and port
-ownership. This repo implements a four-tier multi-profile access stack:
+This page is the map: layer ownership, profile-to-role mapping and port ownership. This repo implements a four-tier multi-profile access stack:
 
 ```
 P0 Primary       VLESS + REALITY + XTLS-Vision over RAW/TCP/443
@@ -23,16 +22,9 @@ P3 Research      Snell v4/v6 candidate (staging only; manual selector)
 | Ansible | All runtime state — packages, nftables, xray, nginx, hysteria, awg, monitoring, backup | `ansible/roles/*/` |
 | SOPS+age | Secrets at rest | external `~/.config/vpn-provision/` (default) or git-ignored `secrets/local/` |
 
-The boundary is strict: VPN secrets stay out of Terraform inputs and outputs,
-cloud-init `user_data`, Ansible output and Git. Provider credentials live in
-environment variables only. Providers can persist generated credentials in
-Terraform state and saved plans; protect these files as sensitive data and
-encrypt their backups. See [the secrets model](secrets.md).
+The boundary is strict: VPN secrets stay out of Terraform inputs and outputs, cloud-init `user_data`, Ansible output and Git. Provider credentials live in environment variables only. Providers can persist generated credentials in Terraform state and saved plans; protect these files as sensitive data and encrypt their backups. See [the secrets model](secrets.md).
 
-The [deployment snapshot](deployment-status.md) maps the accepted four-host
-service to these reusable profiles. The independent observer is outside the
-VPN inventory; the collector shares a VPN host. Public HTTPS, private monitoring
-and operator recovery have separate owners and acceptance checks.
+The [deployment snapshot](deployment-status.md) maps the accepted four-host service to these reusable profiles. The independent observer is outside the VPN inventory; the collector shares a VPN host. Public HTTPS, private monitoring and operator recovery have separate owners and acceptance checks.
 
 ## Profile-to-role mapping
 
@@ -45,8 +37,7 @@ and operator recovery have separate owners and acceptance checks.
 | P2 AmneziaWG | `amneziawg` | `vpn.enable_amneziawg` |
 | P3 Snell candidate | `snell` | `vpn.enable_snell` |
 
-Cross-cutting roles: `baseline`, `firewall`, `monitoring`, `backup`,
-optional `subscription-host`.
+Cross-cutting roles: `baseline`, `firewall`, `monitoring`, `backup`, optional `subscription-host`.
 
 Deployment profile files make public listener surfaces explicit:
 
@@ -60,8 +51,7 @@ Deployment profile files make public listener surfaces explicit:
 | `vpn-device-full.yml` | family-standard + P2 AmneziaWG |
 | `vpn-lab.yml` | lab/pilot surface; research roles require `allow_research_roles` |
 
-Legacy aliases remain for existing inventories: `vpn-p0.yml`, `vpn-p1p2.yml`,
-and `vpn-fullstack.yml`.
+Legacy aliases remain for existing inventories: `vpn-p0.yml`, `vpn-p1p2.yml`, and `vpn-fullstack.yml`.
 
 Default single-host port ownership:
 
@@ -77,11 +67,9 @@ Default single-host port ownership:
 | UDP/443 | P2 Hysteria2 | `hysteria_port` |
 | TCP/2443–2445 | P3 Snell evaluation variants | `snell.variants[*].listen_port` |
 
-Direct-only cohorts with REALITY disabled can set `nginx_xhttp_public_port` to
-`443`; full-stack hosts must keep the nginx public listener off `xray_port`.
+Direct-only cohorts with REALITY disabled can set `nginx_xhttp_public_port` to `443`; full-stack hosts must keep the nginx public listener off `xray_port`.
 
-The diagnostic listeners are loopback-only and never enter the public-listener
-contract. See `docs/reference/xray-observability.md` for privacy and failure semantics.
+The diagnostic listeners are loopback-only and never enter the public-listener contract. See `docs/reference/xray-observability.md` for privacy and failure semantics.
 
 The tactical P0 self-steal mode makes the REALITY destination an nginx TLS site on loopback. Enabling it requires `xray.target` to equal `127.0.0.1:<reality_self_steal_port>`, requires the single `xray.server_names` entry to match the SAN of the owned certificate, and does not add TCP/80 or any other public listener. The Xray inbound remains the sole owner of public TCP/443.
 

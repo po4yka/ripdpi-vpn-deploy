@@ -2,10 +2,7 @@
 
 > **Status:** Current · **Type:** decision · **Tier:** EXCEPTION · **Reviewed:** 2026-10-21
 
-**Date:** 2026-07-10
-**Last reviewed:** 2026-07-11
-**Status:** accepted (framework); attestation record below is PENDING / UNVERIFIED
-**Scope:** domestic-jurisdiction cascade entry node (EXCEPTION tier, opt-in only)
+**Date:** 2026-07-10 **Last reviewed:** 2026-07-11 **Status:** accepted (framework); attestation record below is PENDING / UNVERIFIED **Scope:** domestic-jurisdiction cascade entry node (EXCEPTION tier, opt-in only)
 
 ## Purpose
 

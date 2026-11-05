@@ -4,9 +4,7 @@
 
 Source: repository-local subscription requirements.
 
-This document compares the documented subscription-delivery
-architecture against what `roles/subscription-host` actually ships, so
-the gap is visible and the next iteration has a backlog.
+This document compares the documented subscription-delivery architecture against what `roles/subscription-host` actually ships, so the gap is visible and the next iteration has a backlog.
 
 ## Architecture target
 
@@ -22,32 +20,13 @@ Control plane (Terraform + Ansible + secrets)
                                deploy SSH keys, master subscription
 ```
 
-Key principle: a subscription URL is a **bearer secret** (RFC 6750),
-so it must be issued, scoped, expirable, and revocable. Human-readable
-or enumerable path segments are forbidden: `vpnd share` must receive an
-opaque token from `./scripts/issue-sub-token.sh <client> --print-token-only`,
-not derive a URL from `clients[*].name`.
+Key principle: a subscription URL is a **bearer secret** (RFC 6750), so it must be issued, scoped, expirable, and revocable. Human-readable or enumerable path segments are forbidden: `vpnd share` must receive an opaque token from `./scripts/issue-sub-token.sh <client> --print-token-only`, not derive a URL from `clients[*].name`.
 
 ## Gap matrix
 
-Bootstrap grants use `b1_<issued-epoch>_<random>` with an intrinsic bounded
-lifetime; old bootstrap URLs require reissuance. Ordinary `/sub/` URLs keep their
-existing contract. A persistent five-minute maintenance timer rotates the private
-read audit and compacts consumed markers only after durably advancing a monotonic
-retirement fence. Restoring old mirror payloads, increasing the lifetime, or moving
-the clock backward cannot revive a grant retired by that fence. Admission refuses
-at the marker capacity instead of deleting fresh replay proof.
-The compaction cutoff uses the absolute supported 30-day lifetime, independent of
-current policy and individual short-lived expirations. Mixed-lifetime unexpired
-proof and earlier valid grants remain intact. Invalid, unknown and already
-consumed bearer requests do not scan the history.
+Bootstrap grants use `b1_<issued-epoch>_<random>` with an intrinsic bounded lifetime; old bootstrap URLs require reissuance. Ordinary `/sub/` URLs keep their existing contract. A persistent five-minute maintenance timer rotates the private read audit and compacts consumed markers only after durably advancing a monotonic retirement fence. Restoring old mirror payloads, increasing the lifetime, or moving the clock backward cannot revive a grant retired by that fence. Admission refuses at the marker capacity instead of deleting fresh replay proof. The compaction cutoff uses the absolute supported 30-day lifetime, independent of current policy and individual short-lived expirations. Mixed-lifetime unexpired proof and earlier valid grants remain intact. Invalid, unknown and already consumed bearer requests do not scan the history.
 
-Fence and lock initialization is limited to a genuinely fresh payload root and
-absent runtime. Missing authority on a retained tree refuses convergence. Legacy
-trees and lost authority require separately reviewed retirement/recreation and
-bootstrap reissuance; deployment must preserve ordinary subscription data. Empty
-legacy markers are retained conservatively, rather than assigned invented epochs.
-Defaults and supported bounds are documented in `docs/reference/secrets.md` and the role.
+Fence and lock initialization is limited to a genuinely fresh payload root and absent runtime. Missing authority on a retained tree refuses convergence. Legacy trees and lost authority require separately reviewed retirement/recreation and bootstrap reissuance; deployment must preserve ordinary subscription data. Empty legacy markers are retained conservatively, rather than assigned invented epochs. Defaults and supported bounds are documented in `docs/reference/secrets.md` and the role.
 
 | Property | Target | This repo today | Gap |
 |---|---|---|---|
@@ -68,45 +47,17 @@ Defaults and supported bounds are documented in `docs/reference/secrets.md` and 
 
 ## Atomic subscription publication
 
-Converge the subscription-host role before new issuance. The issuer requires
-`subscription-publisher-v1` from the installed service, as `vpn-bootstrap`,
-before any remote write. A missing publisher, wrong namespace or mirror mode
-refuses delivery. The publisher accepts one bounded version-1 document with
-`payload_b64`, `client` and `expires`; it validates JSON without changing the
-payload bytes. Empty expiry clears the prior deadline.
+Converge the subscription-host role before new issuance. The issuer requires `subscription-publisher-v1` from the installed service, as `vpn-bootstrap`, before any remote write. A missing publisher, wrong namespace or mirror mode refuses delivery. The publisher accepts one bounded version-1 document with `payload_b64`, `client` and `expires`; it validates JSON without changing the payload bytes. Empty expiry clears the prior deadline.
 
-The service holds the existing private state lock, writes and syncs a private
-sibling, then replaces `<sha256>.document` and syncs its directory. Readers
-prefer this complete document. A malformed or unsafe document fails closed;
-it never exposes a stale legacy payload. Older payload/`.meta` pairs remain a
-read-only compatibility path when no document exists. Mirror generations copy
-the complete document with the payload tree. A failed publication reply requires
-reconciliation of remote delivery and the encrypted registry before retry.
+The service holds the existing private state lock, writes and syncs a private sibling, then replaces `<sha256>.document` and syncs its directory. Readers prefer this complete document. A malformed or unsafe document fails closed; it never exposes a stale legacy payload. Older payload/`.meta` pairs remain a read-only compatibility path when no document exists. Mirror generations copy the complete document with the payload tree. A failed publication reply requires reconciliation of remote delivery and the encrypted registry before retry.
 
 ## What to ship next
 
-The eight items previously on the "ship next" list are now landed —
-the gap matrix above is at parity with the documented contract. Remaining work
-is operational rather than architectural:
+The eight items previously on the "ship next" list are now landed — the gap matrix above is at parity with the documented contract. Remaining work is operational rather than architectural:
 
-1. **Periodic rotation of `/sub/` tokens** — even with expiry,
-   long-lived /sub/ URLs accumulate trust over time. A scheduled
-   re-issue cadence (e.g. quarterly) trims the leak window.
-   `./scripts/issue-sub-token.sh <client> --refresh-token <existing-token>`
-   performs the manual operation; the original format/hosts/cohorts are
-   resolved from the encrypted `client_registry`, so a refresh can no longer
-   silently fall back to default single-host sing-box options. Detect devices
-   whose delivered payload no longer matches current inputs with
-   `make client-drift CLIENT=<device>` (`current` / `stale` / `unknown`).
-2. **`make sub-reads` aggregation** — the read-audit log is JSONL
-   and grep-friendly today; a small summary script (top-pulling
-   tokens, geographic clustering of src_ip, rate spikes) would help
-   forensics. Compose from `jq` + existing tooling for v1.
-3. **Multi-region delivery host** — `vpn_subscription_only` covers
-   the single-host separation case. A multi-region delivery fleet
-   (different ASN, geo-distributed) is the next step; the existing
-   `fleet-rotate` orchestrator can drive it once the inventory
-   pattern is documented.
+1. **Periodic rotation of `/sub/` tokens** — even with expiry, long-lived /sub/ URLs accumulate trust over time. A scheduled re-issue cadence (e.g. quarterly) trims the leak window. `./scripts/issue-sub-token.sh <client> --refresh-token <existing-token>` performs the manual operation; the original format/hosts/cohorts are resolved from the encrypted `client_registry`, so a refresh can no longer silently fall back to default single-host sing-box options. Detect devices whose delivered payload no longer matches current inputs with `make client-drift CLIENT=<device>` (`current` / `stale` / `unknown`).
+2. **`make sub-reads` aggregation** — the read-audit log is JSONL and grep-friendly today; a small summary script (top-pulling tokens, geographic clustering of src_ip, rate spikes) would help forensics. Compose from `jq` + existing tooling for v1.
+3. **Multi-region delivery host** — `vpn_subscription_only` covers the single-host separation case. A multi-region delivery fleet (different ASN, geo-distributed) is the next step; the existing `fleet-rotate` orchestrator can drive it once the inventory pattern is documented.
 
 ## What is NOT a gap
 

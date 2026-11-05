@@ -4,12 +4,9 @@
 
 ## Purpose and scope
 
-Decide what to do when something goes wrong: match the symptom in the
-decision matrix, then follow the linked procedure for lost SSH access, a
-lost age key, state loss or a suspected compromise.
+Decide what to do when something goes wrong: match the symptom in the decision matrix, then follow the linked procedure for lost SSH access, a lost age key, state loss or a suspected compromise.
 
-Decision matrix for things going wrong. Pick the row that matches the
-symptom; cross-reference the linked runbook for the recovery procedure.
+Decision matrix for things going wrong. Pick the row that matches the symptom; cross-reference the linked runbook for the recovery procedure.
 
 ## Preconditions
 
@@ -50,53 +47,28 @@ Every target below that uses cloud credentials, inventory, SSH or decrypted secr
 
 ## Lost SSH access
 
-First distinguish a lost private key from an unreachable controller network,
-provider firewall, wrong listener port or unfinished bootstrap. Use read-only
-checks of the current address, approved image and provider state before choosing
-a recovery action. Recreating nodes cannot repair the controller's network;
-avoid consuming repeated VPS and keys while that path is unavailable.
+First distinguish a lost private key from an unreachable controller network, provider firewall, wrong listener port or unfinished bootstrap. Use read-only checks of the current address, approved image and provider state before choosing a recovery action. Recreating nodes cannot repair the controller's network; avoid consuming repeated VPS and keys while that path is unavailable.
 
-For a disposable node, prefer exact-resource cleanup and fresh provisioning
-with a reviewed `admin_ssh_public_key`. Use `make staging-destroy` and its current
-manifest for owned disposable staging; permanent-node destruction/replacement
-must follow the authorized Terraform lifecycle and rollback runbook. Preserve
-state and evidence, verify provider absence and establish the recreated node's
-host-key identity independently. Do not bypass `prevent_destroy` or accept a
-changed SSH key merely because recreation was expected.
+For a disposable node, prefer exact-resource cleanup and fresh provisioning with a reviewed `admin_ssh_public_key`. Use `make staging-destroy` and its current manifest for owned disposable staging; permanent-node destruction/replacement must follow the authorized Terraform lifecycle and rollback runbook. Preserve state and evidence, verify provider absence and establish the recreated node's host-key identity independently. Do not bypass `prevent_destroy` or accept a changed SSH key merely because recreation was expected.
 
-Rebuild through [fresh staging deployment](deploy.md#staging-first) or
-`../tutorials/quickstart.md`: inventory/wait, recovery foundation, positive Tailnet bootstrap,
-SSH ownership migration and private deploy mappings precede ordinary deployment.
-Then verify the required protocols and [complete cleanup](deploy.md#acceptance-scope-and-completion).
-Existing authorization covers bounded retries and replacement nodes within the
-approved resource/cost limits; ask again only when that scope is exceeded.
+Rebuild through [fresh staging deployment](deploy.md#staging-first) or `../tutorials/quickstart.md`: inventory/wait, recovery foundation, positive Tailnet bootstrap, SSH ownership migration and private deploy mappings precede ordinary deployment. Then verify the required protocols and [complete cleanup](deploy.md#acceptance-scope-and-completion). Existing authorization covers bounded retries and replacement nodes within the approved resource/cost limits; ask again only when that scope is exceeded.
 
-If retaining the existing node is required, explicitly choose provider rescue
-or console recovery within its emergency authorization. Install a reviewed SSH
-public key through that provider's recovery procedure, retire temporary access,
-and prove a fresh strictly pinned connection.
-`make rotate-credentials ANSIBLE_LIMIT=<alias>` acts on one node per run and only
-rerenders that node's per-device VPN configs; it does not rotate the administrator
-SSH key.
+If retaining the existing node is required, explicitly choose provider rescue or console recovery within its emergency authorization. Install a reviewed SSH public key through that provider's recovery procedure, retire temporary access, and prove a fresh strictly pinned connection. `make rotate-credentials ANSIBLE_LIMIT=<alias>` acts on one node per run and only rerenders that node's per-device VPN configs; it does not rotate the administrator SSH key.
 
 ## Lost age key
 
 The SOPS secrets file is unrecoverable.
 
-If you encrypted to multiple recipients (recommended for teams), use the
-other operator's age key. `sops` tries each recipient until one succeeds.
+If you encrypted to multiple recipients (recommended for teams), use the other operator's age key. `sops` tries each recipient until one succeeds.
 
 If you didn't, treat this as a **complete credential leak**:
 
 1. Provision a fresh VPS (new IP, ideally different ASN).
-2. Generate a new age keypair, fresh REALITY keypair, fresh per-client
-   UUIDs / shortIds / passwords / peer keys, fresh restic password.
+2. Generate a new age keypair, fresh REALITY keypair, fresh per-client UUIDs / shortIds / passwords / peer keys, fresh restic password.
 3. Distribute new client URIs to every device.
 4. Decommission the old VPS once every device has switched.
 
-The encrypted SOPS blob may still be holding valid secrets in storage. age
-is computationally hard but not future-proof. Don't keep the old blob
-around.
+The encrypted SOPS blob may still be holding valid secrets in storage. age is computationally hard but not future-proof. Don't keep the old blob around.
 
 ## State loss
 
@@ -104,14 +76,11 @@ Terraform's local state is the only record of which provider resources belong to
 
 - `terraform plan` shows everything as "needs creating".
 - `terraform destroy` does nothing (no resources to destroy).
-- `make rollback-…` blue-green flows still work but become manual (you
-  edit the UpCloud console / API directly).
+- `make rollback-…` blue-green flows still work but become manual (you edit the UpCloud console / API directly).
 
 Recovery path 0 — restore from `make backup-state` snapshot (preferred):
 
-The producer publishes a timestamped name only after encryption completes.
-Its private `.state-backup.*` staging files are not recovery snapshots. Do not
-rename or restore an interrupted staging file.
+The producer publishes a timestamped name only after encryption completes. Its private `.state-backup.*` staging files are not recovery snapshots. Do not rename or restore an interrupted staging file.
 
 ```bash
 # State backups live in ~/.config/vpn-provision/state-backups/<provider>-<env>-<timestamp>.tfstate.age
@@ -144,55 +113,35 @@ PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh plan       # should show no
 
 Find `<SERVER_UUID>` in the UpCloud console (server details → "ID").
 
-After restoration, **back up the state file out of band** (encrypted USB,
-1Password Documents, age-encrypted in the same recipient as your
-secrets). Don't lose it twice.
+After restoration, **back up the state file out of band** (encrypted USB, 1Password Documents, age-encrypted in the same recipient as your secrets). Don't lose it twice.
 
 ## Suspected compromise of the VPS
 
-If you suspect the running VPS has been compromised at the OS level (root
-escalation, persistent attacker, unknown process):
+If you suspect the running VPS has been compromised at the OS level (root escalation, persistent attacker, unknown process):
 
-1. **Do not** SSH in to "look around" — every observation gives the
-   attacker a chance to exfiltrate or alter logs.
+1. **Do not** SSH in to "look around" — every observation gives the attacker a chance to exfiltrate or alter logs.
 2. Power off the VPS via the UpCloud API/console.
-3. Snapshot the disk for forensic analysis (UpCloud has a snapshot
-   feature; export to a separate region if you can).
-4. Treat every credential the VPS could touch as compromised: REALITY
-   private key, Hysteria server cert, AWG server private key, restic
-   password, every client UUID/password/peer that was on it.
+3. Snapshot the disk for forensic analysis (UpCloud has a snapshot feature; export to a separate region if you can).
+4. Treat every credential the VPS could touch as compromised: REALITY private key, Hysteria server cert, AWG server private key, restic password, every client UUID/password/peer that was on it.
 5. Provision a fresh VPS, full credential rotation.
 6. Forensic the snapshot offline.
 
-The "disposable nodes" property of this stack means step 5 is fast: it's
-the same procedure as a normal first-time deploy.
+The "disposable nodes" property of this stack means step 5 is fast: it's the same procedure as a normal first-time deploy.
 
 ## Kernel or firewall security advisory
 
-Inspect the running kernel separately from installed packages. Record the
-vendor patch status and the exact mitigation. A disabled MPTCP setting and an
-early IPv4 TCP-options drop are mitigations, not proof of a patched kernel.
-The [deployment snapshot](../reference/deployment-status.md#runtime-and-hardening)
-records the last accepted state and its remaining reboot qualification gap.
+Inspect the running kernel separately from installed packages. Record the vendor patch status and the exact mitigation. A disabled MPTCP setting and an early IPv4 TCP-options drop are mitigations, not proof of a patched kernel. The [deployment snapshot](../reference/deployment-status.md#runtime-and-hardening) records the last accepted state and its remaining reboot qualification gap.
 
-Before a firewall service restart or reload, check ownership of the VPN and
-independent host-guard tables. Preserve foreign tables and timed sets; do not
-flush the complete ruleset. Verify the effective systemd stop action as well
-as the rules on disk. Repeat the affected native packet and authenticated VPN
-checks after an authorized change. Package presence alone is not live protection.
+Before a firewall service restart or reload, check ownership of the VPN and independent host-guard tables. Preserve foreign tables and timed sets; do not flush the complete ruleset. Verify the effective systemd stop action as well as the rules on disk. Repeat the affected native packet and authenticated VPN checks after an authorized change. Package presence alone is not live protection.
 
 ## Verification
 
-Each linked procedure ends in `make verify` for the affected node or in a
-recreated node that passes the full deploy acceptance.
+Each linked procedure ends in `make verify` for the affected node or in a recreated node that passes the full deploy acceptance.
 
 ## Rollback
 
-Recovery procedures are forward-only: recreation, rotation and restore. There
-is no rollback of an incident response other than completing it.
+Recovery procedures are forward-only: recreation, rotation and restore. There is no rollback of an incident response other than completing it.
 
 ## Evidence to record
 
-The matrix row, the time of detection, the verb run and its result, and the
-rotation or recreation that followed. Suspected compromise also records what
-was rotated and when the old node was destroyed.
+The matrix row, the time of detection, the verb run and its result, and the rotation or recreation that followed. Suspected compromise also records what was rotated and when the old node was destroyed.

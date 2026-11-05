@@ -2,11 +2,7 @@
 
 > **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
 
-The sanitized mapping and last observed convergence state of the accepted
-four-host, three-provider fleet are recorded in
-[the deployment snapshot](deployment-status.md). Provider support in this file is
-a capability statement; only a refreshed plan against the named environment
-is evidence of current provider state.
+The sanitized mapping and last observed convergence state of the accepted four-host, three-provider fleet are recorded in [the deployment snapshot](deployment-status.md). Provider support in this file is a capability statement; only a refreshed plan against the named environment is evidence of current provider state.
 
 ## ASN / hoster risk tiers (filtered-network threat model, 2026-05)
 
@@ -22,17 +18,11 @@ Source: repository-local deployment measurements and operator validation.
 | Preferred | Hostkey, nuxt.cloud (DE/NL), hostvds.com (FI) | Smaller, less-flagged ranges per community testing |
 | Jurisdiction-Exception (opt-in only, never Preferred/Acceptable) | *(no provider/ASN preselected — see note)* | domestically hosted cascade entry node for temporary whitelist-riding only. No brand/ASN is listed here on purpose: eligibility is a per-ASN empirical, expiring, fail-closed attestation, never a brand assumption (Yandex.Cloud LLC vs YANDEX LLC are distinct ASNs). First hosting-jurisdiction exception in this repo; accepts bounded domestic legal/data-retention/seizure exposure for a temporary node. See `../decisions/0004-geoip-split-cascade.md` + `../decisions/0005-per-asn-allowlist-attestation.md` + the EXCEPTION tier in `../decisions/0002-role-and-doc-tiering.md` |
 
-For a full deploy this primarily affects the **egress** IP, not the
-ingress: a node that ingresses on REALITY/TCP and egresses through the
-same VPS IP will hit the TCP-freeze rule when the upstream is on one of
-the "Avoid" ASNs. Split-hop egress (a separate exit VPS) is specified in
-`docs/decisions/0003-split-hop-relay-topology.md`, with the operator procedure in
-`docs/how-to/split-hop-pilot.md`.
+For a full deploy this primarily affects the **egress** IP, not the ingress: a node that ingresses on REALITY/TCP and egresses through the same VPS IP will hit the TCP-freeze rule when the upstream is on one of the "Avoid" ASNs. Split-hop egress (a separate exit VPS) is specified in `docs/decisions/0003-split-hop-relay-topology.md`, with the operator procedure in `docs/how-to/split-hop-pilot.md`.
 
 ## UDP/443 edge reachability (Hysteria2 / P2)
 
-Source: repository-local transport validation.
-(RCQ, 2026-05-27).
+Source: repository-local transport validation. (RCQ, 2026-05-27).
 
 All four provider roots open exactly the typed `public_listeners` contract at the edge firewall, with IPv4 + IPv6 parity. The contract is checked against the runtime listener manifest before deployment:
 
@@ -43,75 +33,34 @@ All four provider roots open exactly the typed `public_listeners` contract at th
 | Vultr | `vultr_firewall_rule.tcp_public` over `public_networks` (`v4`,`v6`) | yes |
 | Scaleway | `scaleway_instance_security_group.vpn` dynamic `inbound_rule` (`0.0.0.0/0`,`::/0`) | yes |
 
-**The gap is not a missing rule — it is silent edge drop.** On ≥2 of 4 cloud
-providers the KB source tested, inbound UDP/443 is dropped by the
-**provider-edge** firewall even when the rule is applied, the instance's own
-`nftables` shows ACCEPT, and the listener is bound. The instance kernel cannot
-see this layer, so on-host checks (`nft list`, `ss -ulnp`, `iptables -L`) all
-look correct while the datagram never arrives.
+**The gap is not a missing rule — it is silent edge drop.** On ≥2 of 4 cloud providers the KB source tested, inbound UDP/443 is dropped by the **provider-edge** firewall even when the rule is applied, the instance's own `nftables` shows ACCEPT, and the listener is bound. The instance kernel cannot see this layer, so on-host checks (`nft list`, `ss -ulnp`, `iptables -L`) all look correct while the datagram never arrives.
 
-Diagnostic rule: **trust `tcpdump` showing inbound packets, not `nft list`
-showing ACCEPT.** Verification chain after a deploy:
+Diagnostic rule: **trust `tcpdump` showing inbound packets, not `nft list` showing ACCEPT.** Verification chain after a deploy:
 
-1. Listener bound — `ss -ulnp` shows hysteria on `:443` (the in-host smoke-test
-   already dials it from localhost).
-2. External probe — `make burn-check` sends an unauthenticated QUIC
-   Version-Negotiation trigger from the operator vantage to `UDP/443` and
-   treats any reply as proof of end-to-end delivery (non-fatal WARN otherwise).
-3. If the probe gets no reply, `tcpdump -i any udp port 443` on the server
-   disambiguates: **zero inbound packets ⇒ the provider edge is dropping UDP.**
+1. Listener bound — `ss -ulnp` shows hysteria on `:443` (the in-host smoke-test already dials it from localhost).
+2. External probe — `make burn-check` sends an unauthenticated QUIC Version-Negotiation trigger from the operator vantage to `UDP/443` and treats any reply as proof of end-to-end delivery (non-fatal WARN otherwise).
+3. If the probe gets no reply, `tcpdump -i any udp port 443` on the server disambiguates: **zero inbound packets ⇒ the provider edge is dropping UDP.**
 
-**Deploy-time manual step when the edge drops UDP despite the rule.** None of
-the provider roots require a UI action to *declare* the UDP/443 rule —
-all accept it through Terraform. But if the burn-check UDP probe fails while
-TCP/443 succeeds, the provider network is dropping UDP at a layer Terraform
-cannot reach. The fix is provider-side and manual: open/confirm UDP/443 in the
-provider's web console security group, or file a support request to lift a
-UDP-default-closed policy. Do not chase the on-host firewall — it is not the
-cause. (Note Hysteria2 also supports a non-443 UDP port via `hysteria_port`;
-moving to e.g. UDP/8443 sidesteps both edge friction and QUIC throttling on the filtered path on
-UDP/443.)
+**Deploy-time manual step when the edge drops UDP despite the rule.** None of the provider roots require a UI action to *declare* the UDP/443 rule — all accept it through Terraform. But if the burn-check UDP probe fails while TCP/443 succeeds, the provider network is dropping UDP at a layer Terraform cannot reach. The fix is provider-side and manual: open/confirm UDP/443 in the provider's web console security group, or file a support request to lift a UDP-default-closed policy. Do not chase the on-host firewall — it is not the cause. (Note Hysteria2 also supports a non-443 UDP port via `hysteria_port`; moving to e.g. UDP/8443 sidesteps both edge friction and QUIC throttling on the filtered path on UDP/443.)
 
 ## UpCloud
 
 UpCloud is the primary provider in v1. Resource shape:
 
-- `upcloud_server` — the VPS itself, with `template { … }` cloning a public
-  storage template UUID into the root disk.
-- `upcloud_firewall_rules` — attached to the server. Note that UpCloud's
-  firewall is on the hypervisor, not the OS — so even if `nftables` is
-  misconfigured, UpCloud's rules apply first.
-- `network_interface { type = "public" }` + `{ type = "utility" }` are
-  required for the server to be reachable; `private` interfaces are
-  optional for multi-VPS networking (out of scope for v1).
-- Daily snapshots are enabled in `template.backup_rule` (7-day retention).
-  This is a hypervisor-level safety net **separate from** restic backups,
-  which contain the configs you can restore onto a fresh VPS.
+- `upcloud_server` — the VPS itself, with `template { … }` cloning a public storage template UUID into the root disk.
+- `upcloud_firewall_rules` — attached to the server. Note that UpCloud's firewall is on the hypervisor, not the OS — so even if `nftables` is misconfigured, UpCloud's rules apply first.
+- `network_interface { type = "public" }` + `{ type = "utility" }` are required for the server to be reachable; `private` interfaces are optional for multi-VPS networking (out of scope for v1).
+- Daily snapshots are enabled in `template.backup_rule` (7-day retention). This is a hypervisor-level safety net **separate from** restic backups, which contain the configs you can restore onto a fresh VPS.
 
 ### Forwarded NAT and stateless filtering
 
-With `enable_provider_firewall=true`, return rules admit only the configured
-`provider_return_ephemeral_ports`. Terraform exports that range through
-`nat_source_port_range`; generated inventory carries it as
-`terraform_nat_source_port_range`. AWG and split-hop egress remap forwarded
-TCP/UDP source ports into it, including client ports 3074 and 62000. Other
-protocols retain address-only NAT. Disabled provider filtering and other
-providers retain ordinary NAT source-port selection.
+With `enable_provider_firewall=true`, return rules admit only the configured `provider_return_ephemeral_ports`. Terraform exports that range through `nat_source_port_range`; generated inventory carries it as `terraform_nat_source_port_range`. AWG and split-hop egress remap forwarded TCP/UDP source ports into it, including client ports 3074 and 62000. Other protocols retain address-only NAT. Disabled provider filtering and other providers retain ordinary NAT source-port selection.
 
-Regenerate inventory and converge the guest NAT policy as part of the authorized
-promotion before accepting routed client traffic. Missing applied output refuses inventory publication; refresh outputs through
-the reviewed Terraform workflow before regeneration. Applied output, not tfvars
-intent, selects NAT. Keep SSH outside the
-return range and retain the guest default-drop input and stateful forwarding
-policy. A local render or mock-provider test does not prove live provider
-traffic or promotion readiness.
+Regenerate inventory and converge the guest NAT policy as part of the authorized promotion before accepting routed client traffic. Missing applied output refuses inventory publication; refresh outputs through the reviewed Terraform workflow before regeneration. Applied output, not tfvars intent, selects NAT. Keep SSH outside the return range and retain the guest default-drop input and stateful forwarding policy. A local render or mock-provider test does not prove live provider traffic or promotion readiness.
 
 ### Useful UpCloud zones for EU baseline
 
-The UpCloud root validates `zone` against an allowlist: `fi-hel1`,
-`de-fra1`, `nl-ams1`, `sg-sin1` (see
-`terraform/providers/upcloud/variables.tf`). Warsaw (`pl-waw1`) is NOT in the
-allowlist and fails `terraform validate`.
+The UpCloud root validates `zone` against an allowlist: `fi-hel1`, `de-fra1`, `nl-ams1`, `sg-sin1` (see `terraform/providers/upcloud/variables.tf`). Warsaw (`pl-waw1`) is NOT in the allowlist and fails `terraform validate`.
 
 - `fi-hel1` — Helsinki (default in `prod.tfvars.example`)
 - `de-fra1` — Frankfurt
@@ -119,10 +68,7 @@ allowlist and fails `terraform validate`.
 
 #### Zone selection by client cohort
 
-Zone choice is primarily a routing-quality decision, with a secondary
-attribution-risk axis. The combination of the IP's prefix-history
-weight and the geographic distance to the cohort matters more than the
-nominal latency number.
+Zone choice is primarily a routing-quality decision, with a secondary attribution-risk axis. The combination of the IP's prefix-history weight and the geographic distance to the cohort matters more than the nominal latency number.
 
 | Cohort | Recommended | Avoid | Why |
 |---|---|---|---|
@@ -132,22 +78,17 @@ nominal latency number.
 | Development cohort | a low-latency zone | n/a | Development is not the same threat surface as production cohorts |
 | Mixed-cohort fleet | two independently measured zones | one zone | Keep a warm spare on a route with different measured behaviour |
 
-After the zone is picked, validate the actual ASN that UpCloud assigns
-your VPS prefix:
+After the zone is picked, validate the actual ASN that UpCloud assigns your VPS prefix:
 
 ```bash
 make probe-asn HOST=$(PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh output -raw server_ipv4)
 ```
 
-If the returned ASN is in the "Avoid" tier from the table at the top of
-this document, blue-green immediately to a new IP in the same zone or
-move to a different zone. Don't deploy clients against an IP whose ASN
-shows up on the TCP-freeze list.
+If the returned ASN is in the "Avoid" tier from the table at the top of this document, blue-green immediately to a new IP in the same zone or move to a different zone. Don't deploy clients against an IP whose ASN shows up on the TCP-freeze list.
 
 ### Storage template UUIDs
 
-UpCloud rotates template UUIDs as new minor versions ship. Always pin a
-specific UUID in `tfvars`, never a slug. List candidates with:
+UpCloud rotates template UUIDs as new minor versions ship. Always pin a specific UUID in `tfvars`, never a slug. List candidates with:
 
 ```bash
 upctl storage list --public --template
@@ -162,20 +103,13 @@ export UPCLOUD_USERNAME='vpn-deploy'   # sub-account, not master
 export UPCLOUD_PASSWORD='…'
 ```
 
-Use a sub-account with only the rights this stack needs. Never bake
-credentials into `*.tfvars` — the provider reads them from env.
+Use a sub-account with only the rights this stack needs. Never bake credentials into `*.tfvars` — the provider reads them from env.
 
-Keep provider credentials in an ignored, local environment file or the
-operator's secret store, readable only by the current operator (`0600` for a
-local file). After creating or replacing a credential, first run the relevant
-scoped Terraform plan and confirm it can refresh provider state. Do not put a
-token in a command line, a `tfvars` file, state, output, or log.
+Keep provider credentials in an ignored, local environment file or the operator's secret store, readable only by the current operator (`0600` for a local file). After creating or replacing a credential, first run the relevant scoped Terraform plan and confirm it can refresh provider state. Do not put a token in a command line, a `tfvars` file, state, output, or log.
 
 ### Limits to be aware of
 
-- Hypervisor firewall has a per-server rule cap. The base 5–7 rules from
-  `firewall.tf` are well within it; if you add per-CIDR carve-outs to the
-  point of dozens, watch the cap.
+- Hypervisor firewall has a per-server rule cap. The base 5–7 rules from `firewall.tf` are well within it; if you add per-CIDR carve-outs to the point of dozens, watch the cap.
 - Object storage / "Managed Database" features are out of scope here.
 - API rate limit: low, but Terraform's default backoff handles it.
 
@@ -183,59 +117,29 @@ token in a command line, a `tfvars` file, state, output, or log.
 
 Uses:
 
-- `hcloud_server`, `hcloud_ssh_key`, `hcloud_firewall`,
-  `hcloud_firewall_attachment`, and optional `hcloud_floating_ip`
-  for the honeypot secondary IPv4.
-- ASN AS24940 — flagged in the TCP-freeze rule on mobile access networks
-  (see the "Avoid" tier above). Hetzner remains useful for non-domestic mobile
-  cohorts and for development; rotate IPs more aggressively than UpCloud.
-- Cheaper than UpCloud per spec; smaller geographic surface (EU-heavy +
-  US East/West, no APAC).
-- IPv6 is enabled by default via `enable_ipv6 = true`; set it false in
-  `tfvars` only for regions or plans where you explicitly do not want it.
+- `hcloud_server`, `hcloud_ssh_key`, `hcloud_firewall`, `hcloud_firewall_attachment`, and optional `hcloud_floating_ip` for the honeypot secondary IPv4.
+- ASN AS24940 — flagged in the TCP-freeze rule on mobile access networks (see the "Avoid" tier above). Hetzner remains useful for non-domestic mobile cohorts and for development; rotate IPs more aggressively than UpCloud.
+- Cheaper than UpCloud per spec; smaller geographic surface (EU-heavy + US East/West, no APAC).
+- IPv6 is enabled by default via `enable_ipv6 = true`; set it false in `tfvars` only for regions or plans where you explicitly do not want it.
 - Credentials come from `HCLOUD_TOKEN`.
 
 ## Vultr
 
 Uses:
 
-- `vultr_instance`, `vultr_ssh_key`, `vultr_firewall_group`,
-  `vultr_firewall_rule`, and optional `vultr_instance_ipv4`
-  for the honeypot secondary IPv4.
+- `vultr_instance`, `vultr_ssh_key`, `vultr_firewall_group`, `vultr_firewall_rule`, and optional `vultr_instance_ipv4` for the honeypot secondary IPv4.
 - Wider region coverage than UpCloud / Hetzner.
-- IP reputation is more variable; rotate regions when burn-check shows
-  a region's prefix is blocked at the enforcement point.
-- The provider schema marks its API key as required but fills it from the
-  `VULTR_API_KEY` environment variable; the provider block stays empty and
-  tokens never enter tfvars or state inputs.
-- If an API access allowlist is enabled, admit only the operator's current
-  egress as an exact IP/CIDR before the first plan; never use an all-addresses
-  entry. The Terraform workspace wrapper runs a redacted authenticated
-  preflight for control-plane operations and reports allowlist, credential,
-  and network failures separately. Validate a replacement key with a scoped
-  plan before revoking its predecessor; a failed plan is not provider-state
-  evidence.
+- IP reputation is more variable; rotate regions when burn-check shows a region's prefix is blocked at the enforcement point.
+- The provider schema marks its API key as required but fills it from the `VULTR_API_KEY` environment variable; the provider block stays empty and tokens never enter tfvars or state inputs.
+- If an API access allowlist is enabled, admit only the operator's current egress as an exact IP/CIDR before the first plan; never use an all-addresses entry. The Terraform workspace wrapper runs a redacted authenticated preflight for control-plane operations and reports allowlist, credential, and network failures separately. Validate a replacement key with a scoped plan before revoking its predecessor; a failed plan is not provider-state evidence.
 - Optional secondary IPv4 allocation uses the provider's reboot path. After apply, `render-inventory.sh` blocks until the address appears on a guest interface over the primary SSH endpoint; API allocation alone is not sufficient evidence for publishing `honeypot_listen_addr`.
-- `vultr_dns_record.managed` owns only the records selected by
-  `managed_dns_records` in the existing `dns_zone`. Keep cross-provider targets
-  in ignored environment `*.tfvars`, populated from the endpoint provider's
-  `server_ipv4` and `server_ipv6` outputs. A server replacement is not complete
-  until DNS is refreshed and `make verify` confirms the published addresses.
+- `vultr_dns_record.managed` owns only the records selected by `managed_dns_records` in the existing `dns_zone`. Keep cross-provider targets in ignored environment `*.tfvars`, populated from the endpoint provider's `server_ipv4` and `server_ipv6` outputs. A server replacement is not complete until DNS is refreshed and `make verify` confirms the published addresses.
 
 ### Migrate existing Vultr DNS state
 
-Before the first plan with `managed_dns_records`, stop concurrent Terraform
-writers and make an encrypted state backup with `make backup-state`, using the
-same `PROVIDER=vultr` and explicit `ENV` as the DNS-owning workspace. Never
-apply a plan that deletes a retained DNS record during adoption.
+Before the first plan with `managed_dns_records`, stop concurrent Terraform writers and make an encrypted state backup with `make backup-state`, using the same `PROVIDER=vultr` and explicit `ENV` as the DNS-owning workspace. Never apply a plan that deletes a retained DNS record during adoption.
 
-If that workspace already contains
-`vultr_dns_record.public_ipv6_endpoint[0]`, configure the retained record under
-one stable map key, such as `apex-aaaa`. Set `dns_zone` and copy its exact name,
-AAAA data, TTL and provider priority into that entry. Remove the old
-`public_ipv6_endpoint_*` and `manage_public_ipv6_endpoint` inputs. Then move
-the existing state binding; do not import a second binding for the same remote
-record:
+If that workspace already contains `vultr_dns_record.public_ipv6_endpoint[0]`, configure the retained record under one stable map key, such as `apex-aaaa`. Set `dns_zone` and copy its exact name, AAAA data, TTL and provider priority into that entry. Remove the old `public_ipv6_endpoint_*` and `manage_public_ipv6_endpoint` inputs. Then move the existing state binding; do not import a second binding for the same remote record:
 
 ```bash
 # Select the actual DNS-owning environment; prod maps to the legacy default workspace.
@@ -246,24 +150,15 @@ export PROVIDER=vultr ENV=prod
   'vultr_dns_record.managed["apex-aaaa"]'
 ```
 
-Replace `apex-aaaa` with the key selected in the private inputs. `state mv`
-changes the local binding without deleting or creating the remote record.
-Confirm that `state list` contains only the new address for this record. Then
-run the ordinary `make plan` and review it before any apply. Adoption must show
-no create, update or delete for this retained record.
+Replace `apex-aaaa` with the key selected in the private inputs. `state mv` changes the local binding without deleting or creating the remote record. Confirm that `state list` contains only the new address for this record. Then run the ordinary `make plan` and review it before any apply. Adoption must show no create, update or delete for this retained record.
 
-If the same remote record was already imported at the new address while its
-old address remains, confirm the equal remote IDs privately and retain the
-encrypted backup. Remove only the duplicate old binding:
+If the same remote record was already imported at the new address while its old address remains, confirm the equal remote IDs privately and retain the encrypted backup. Remove only the duplicate old binding:
 
 ```bash
 ./scripts/terraform-env.sh state rm 'vultr_dns_record.public_ipv6_endpoint[0]'
 ```
 
-This command forgets the duplicate binding; it does not delete the remote
-record. Do not use it unless the new binding already owns that exact record.
-Review a new plan and require no remote DNS change for adoption. Import other
-existing records only when no address in this workspace already owns them.
+This command forgets the duplicate binding; it does not delete the remote record. Do not use it unless the new binding already owns that exact record. Review a new plan and require no remote DNS change for adoption. Import other existing records only when no address in this workspace already owns them.
 
 ## Scaleway
 
@@ -277,83 +172,31 @@ Uses:
 
 ## P4 fallback transport tier
 
-The Ansible role `dns-morph-bridge` adds a bootstrap-channel listener
-on UDP/53 — a fallback tier beyond P0–P2 used when transport-layer
-discovery is itself being interfered with. Auxiliary tiers extend the
-four-profile baseline documented in `architecture.md`; the role is
-tiered RESEARCH in `../decisions/0002-role-and-doc-tiering.md`. Operational profile:
+The Ansible role `dns-morph-bridge` adds a bootstrap-channel listener on UDP/53 — a fallback tier beyond P0–P2 used when transport-layer discovery is itself being interfered with. Auxiliary tiers extend the four-profile baseline documented in `architecture.md`; the role is tiered RESEARCH in `../decisions/0002-role-and-doc-tiering.md`. Operational profile:
 
-- **Port:** UDP/53, public listener (must be allowed inbound on the
-  provider's hypervisor firewall — UpCloud/Hetzner/Vultr/Scaleway all default
-  to closed; add an explicit allow rule in the provider's tfvars).
-- **Co-residency:** non-colliding with P0 (TCP/443), P1 (TCP/8443),
-  P2 (UDP/443, UDP/cohort). Safe to enable alongside the full stack
-  on a single VPS.
-- **Active-probing defense:** the role co-installs `unbound` bound to
-  `127.0.0.1:5353`. Any query the bridge does not recognise as a
-  handshake fragment is forwarded verbatim so the listener responds
-  with local authoritative answers or REFUSED. It does not provide public
-  recursive resolution.
-- **Reflection-attack posture:** unbound uses `refuse_non_local` for loopback
-  and `refuse` for other sources. Forwarding through loopback does not grant
-  recursive access. The listener is not an open resolver.
-- **Operational noise:** UDP/53 attracts indiscriminate scanner
-  traffic. The role caps the active-probing-defense path via
-  `dns_morph_bridge.events_per_minute_max` (default 5000/min) to keep
-  log volume bounded.
-- **Provider compatibility:** any provider that allows arbitrary UDP
-  inbound rules. UpCloud and Hetzner accept UDP/53 in their hypervisor
-  firewall; Vultr requires an explicit rule on the firewall group.
+- **Port:** UDP/53, public listener (must be allowed inbound on the provider's hypervisor firewall — UpCloud/Hetzner/Vultr/Scaleway all default to closed; add an explicit allow rule in the provider's tfvars).
+- **Co-residency:** non-colliding with P0 (TCP/443), P1 (TCP/8443), P2 (UDP/443, UDP/cohort). Safe to enable alongside the full stack on a single VPS.
+- **Active-probing defense:** the role co-installs `unbound` bound to `127.0.0.1:5353`. Any query the bridge does not recognise as a handshake fragment is forwarded verbatim so the listener responds with local authoritative answers or REFUSED. It does not provide public recursive resolution.
+- **Reflection-attack posture:** unbound uses `refuse_non_local` for loopback and `refuse` for other sources. Forwarding through loopback does not grant recursive access. The listener is not an open resolver.
+- **Operational noise:** UDP/53 attracts indiscriminate scanner traffic. The role caps the active-probing-defense path via `dns_morph_bridge.events_per_minute_max` (default 5000/min) to keep log volume bounded.
+- **Provider compatibility:** any provider that allows arbitrary UDP inbound rules. UpCloud and Hetzner accept UDP/53 in their hypervisor firewall; Vultr requires an explicit rule on the firewall group.
 
-The role's binary is operator-supplied (`dns_morph_bridge_secrets.
-binary_url` + `.binary_sha256`); no public release artifact exists.
-Build on a trusted workstation and publish to an internal artifact
-store before enabling. See `ansible/roles/dns-morph-bridge/CLAUDE.md`
-for the per-role design notes.
+The role's binary is operator-supplied (`dns_morph_bridge_secrets. binary_url` + `.binary_sha256`); no public release artifact exists. Build on a trusted workstation and publish to an internal artifact store before enabling. See `ansible/roles/dns-morph-bridge/CLAUDE.md` for the per-role design notes.
 
-The signing key is a private 32-byte Ed25519 seed in canonical padded base64.
-Set `dns_morph_bridge.upstream_endpoint` to a data-plane `host:port` or
-`[IPv6]:port`. Controller preflight rejects invalid keys and missing endpoints
-before host changes, including in check mode. Only isolated tests may set the
-explicit boolean `dns_morph_bridge_allow_echo_only: true` to permit an empty
-endpoint. Molecule uses a shell stub to check files and lifecycle; it does not
-prove a DNS-Morph handshake, wire compatibility or end-to-end forwarding.
+The signing key is a private 32-byte Ed25519 seed in canonical padded base64. Set `dns_morph_bridge.upstream_endpoint` to a data-plane `host:port` or `[IPv6]:port`. Controller preflight rejects invalid keys and missing endpoints before host changes, including in check mode. Only isolated tests may set the explicit boolean `dns_morph_bridge_allow_echo_only: true` to permit an empty endpoint. Molecule uses a shell stub to check files and lifecycle; it does not prove a DNS-Morph handshake, wire compatibility or end-to-end forwarding.
 
 ## P5 rendezvous transport tier
 
-The Ansible role `hysteria-realm` adds a sing-box realm-service inbound
-that mediates UDP-hole-punching handshakes between two peers. The VPN
-data plane never touches this VPS — only the small TLS-wrapped
-rendezvous handshake. Like P4, this auxiliary tier sits beyond the
-P0–P3 baseline; `hysteria-realm` is tiered RESEARCH in
-`../decisions/0002-role-and-doc-tiering.md`. Operational profile:
+The Ansible role `hysteria-realm` adds a sing-box realm-service inbound that mediates UDP-hole-punching handshakes between two peers. The VPN data plane never touches this VPS — only the small TLS-wrapped rendezvous handshake. Like P4, this auxiliary tier sits beyond the P0–P3 baseline; `hysteria-realm` is tiered RESEARCH in `../decisions/0002-role-and-doc-tiering.md`. Operational profile:
 
-- **Port:** TCP/`hysteria_realm.listen_port` (default 8444). The realm
-  flow is TLS-wrapped because the handshake payload is small enough to
-  ride any TLS server, which buys ASN-blocklist resistance.
-- **Co-residency:** non-colliding with P0 (TCP/443), P1 (TCP/8443),
-  P2 (UDP/443, UDP/cohort), P4 (UDP/53). Collides with the
-  subscription-host default port (8444) — operators that enable both on
-  the same VPS must override one.
-- **Sing-box version pin:** realm-service ships on the alpha line.
-  `hysteria_realm.version` is pinned in `defaults/main.yml`; the
-  matching tarball sha256 is in `hysteria_realm_secrets.linux_*_sha256`
-  so a version bump touches the secrets file only. Both peer sides
-  must run sing-box ≥ the pinned tag — asymmetric deployment against
-  mainline `apernet/hysteria` is not yet supported upstream.
-- **Auth-token discipline:** a single pre-shared `auth_token` mediates
-  every handshake. Rotation invalidates every peer; treat it as
-  long-lived and rotate only on compromise.
-- **TLS material:** with `share_hysteria_tls: true` (default) the role
-  symlinks the P2 hysteria role's cert/key into this role's config dir;
-  one renewal path covers both tiers.
-- **Provider compatibility:** any provider that allows arbitrary TCP
-  inbound rules. UpCloud/Hetzner/Vultr/Scaleway all accept TCP/8444 in their
-  hypervisor firewall once the Terraform provider opens it.
+- **Port:** TCP/`hysteria_realm.listen_port` (default 8444). The realm flow is TLS-wrapped because the handshake payload is small enough to ride any TLS server, which buys ASN-blocklist resistance.
+- **Co-residency:** non-colliding with P0 (TCP/443), P1 (TCP/8443), P2 (UDP/443, UDP/cohort), P4 (UDP/53). Collides with the subscription-host default port (8444) — operators that enable both on the same VPS must override one.
+- **Sing-box version pin:** realm-service ships on the alpha line. `hysteria_realm.version` is pinned in `defaults/main.yml`; the matching tarball sha256 is in `hysteria_realm_secrets.linux_*_sha256` so a version bump touches the secrets file only. Both peer sides must run sing-box ≥ the pinned tag — asymmetric deployment against mainline `apernet/hysteria` is not yet supported upstream.
+- **Auth-token discipline:** a single pre-shared `auth_token` mediates every handshake. Rotation invalidates every peer; treat it as long-lived and rotate only on compromise.
+- **TLS material:** with `share_hysteria_tls: true` (default) the role symlinks the P2 hysteria role's cert/key into this role's config dir; one renewal path covers both tiers.
+- **Provider compatibility:** any provider that allows arbitrary TCP inbound rules. UpCloud/Hetzner/Vultr/Scaleway all accept TCP/8444 in their hypervisor firewall once the Terraform provider opens it.
 
-The role's `MemoryDenyWriteExecute=true` lockdown depends on sing-box
-remaining a static Go binary — verify before any future upstream switch
-to a runtime that JITs.
+The role's `MemoryDenyWriteExecute=true` lockdown depends on sing-box remaining a static Go binary — verify before any future upstream switch to a runtime that JITs.
 
 ## What every provider root must export for inventory compatibility
 
@@ -365,8 +208,6 @@ to a runtime that JITs.
 - `admin_user` — required
 - `server_hostname` — required
 - `ssh_port` — required, validated as 1–65535
-- `public_listeners` — required JSON map; exact-matched against the runtime
-  listener manifest before deployment
+- `public_listeners` — required JSON map; exact-matched against the runtime listener manifest before deployment
 
-Provider roots that don't export these names will need a parallel branch in
-the script. Keep the names identical to avoid that.
+Provider roots that don't export these names will need a parallel branch in the script. Keep the names identical to avoid that.

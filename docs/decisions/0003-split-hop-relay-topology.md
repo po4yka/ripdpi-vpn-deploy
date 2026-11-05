@@ -2,35 +2,15 @@
 
 > **Status:** Current · **Type:** decision · **Tier:** RESEARCH · **Reviewed:** 2026-10-21
 
-Status: **Pilot** (reviewed 2026-07-26). Paired Ansible ingress and egress
-roles are implemented; authenticated flow-data verification and family-path
-promotion evidence remain operator-driven.
+Status: **Pilot** (reviewed 2026-07-26). Paired Ansible ingress and egress roles are implemented; authenticated flow-data verification and family-path promotion evidence remain operator-driven.
 
 ## Motivation
 
-A flow-level classifier observing per-IP behaviour over a window can
-score whether an IP both **accepts inbound client connections** and
-**initiates outbound upstream connections** within the same window.
-The repository-owned research summary of the 2026 flow-classification work
-reports 23% relay detection at 0.18% FPR against legitimate traffic
-when using a per-IP **Relay Suspicion Score**: the fraction of flows
-where the IP simultaneously acts in both roles.
+A flow-level classifier observing per-IP behaviour over a window can score whether an IP both **accepts inbound client connections** and **initiates outbound upstream connections** within the same window. The repository-owned research summary of the 2026 flow-classification work reports 23% relay detection at 0.18% FPR against legitimate traffic when using a per-IP **Relay Suspicion Score**: the fraction of flows where the IP simultaneously acts in both roles.
 
-The detection signal is **architectural**, not payload-shape. Every
-payload-obfuscation transport in this repo (REALITY, XHTTP, Hysteria,
-AmneziaWG) leaves the dual-role signature intact, because all of them
-run ingress + egress on the same VPS IP. A flow observer at the
-upstream's vantage cannot read the payload, but it can correlate
-SYN-direction and per-flow byte counts.
+The detection signal is **architectural**, not payload-shape. Every payload-obfuscation transport in this repo (REALITY, XHTTP, Hysteria, AmneziaWG) leaves the dual-role signature intact, because all of them run ingress + egress on the same VPS IP. A flow observer at the upstream's vantage cannot read the payload, but it can correlate SYN-direction and per-flow byte counts.
 
-This is a defensive measure against a *published* technique. We do not
-have direct confirmation that any specific filtering pipeline currently
-runs flow-level dual-role scoring at scale; the cost calculus on the
-classifier side (backbone-scale flow records, per-IP windows) is non-
-trivial, and the published 0.18% FPR means a deployment-scale operator
-absorbs many false positives. The trade-off below evaluates the
-mitigation against the published technique, not against a specific
-adversary deployment.
+This is a defensive measure against a *published* technique. We do not have direct confirmation that any specific filtering pipeline currently runs flow-level dual-role scoring at scale; the cost calculus on the classifier side (backbone-scale flow records, per-IP windows) is non- trivial, and the published 0.18% FPR means a deployment-scale operator absorbs many false positives. The trade-off below evaluates the mitigation against the published technique, not against a specific adversary deployment.
 
 ## Two-node architecture
 
@@ -48,24 +28,13 @@ clients ──▶ Node A (ingress)  ──── WG tunnel ────▶  Node
 | A (ingress) | client TCP, WG UDP from B | none (packets travel **back through the tunnel B opened**) | yes — every flow A is part of was initiated by someone else |
 | B (egress)  | none | persistent UDP to A, plus per-destination TCP/UDP to upstream | yes — every flow B is part of was initiated by B |
 
-The non-obvious property: when Node A forwards a client packet
-upstream, it does **not** open a new socket to the upstream — it
-encapsulates the packet and sends it through the WG tunnel that B
-already opened. From a flow-record observer's perspective, no new
-flow leaves A's IP; the WG datagrams flow inside the pre-existing UDP
-flow that B initiated. That is what restores the single-role
-appearance on A.
+The non-obvious property: when Node A forwards a client packet upstream, it does **not** open a new socket to the upstream — it encapsulates the packet and sends it through the WG tunnel that B already opened. From a flow-record observer's perspective, no new flow leaves A's IP; the WG datagrams flow inside the pre-existing UDP flow that B initiated. That is what restores the single-role appearance on A.
 
-This relies on **Node B being the WG initiator**, not the responder.
-A reversed initiator role (A initiates) re-introduces the dual-role
-signal on A. The role enforces initiator direction with
-`PersistentKeepalive` on B and no keepalive on A; if upstream NAT
-state expires, B re-initiates.
+This relies on **Node B being the WG initiator**, not the responder. A reversed initiator role (A initiates) re-introduces the dual-role signal on A. The role enforces initiator direction with `PersistentKeepalive` on B and no keepalive on A; if upstream NAT state expires, B re-initiates.
 
 ## Tunnel-layer choice: plain WireGuard
 
-Evaluated against the requirement that **the tunnel layer must not
-itself introduce a dual-role pattern on either node**.
+Evaluated against the requirement that **the tunnel layer must not itself introduce a dual-role pattern on either node**.
 
 | Candidate | Dual-role on A? | Dual-role on B? | Notes |
 |-----------|-----------------|-----------------|-------|
@@ -75,9 +44,7 @@ itself introduce a dual-role pattern on either node**.
 | Hysteria2 with B as initiator | no | no | Acceptable; deferred. Adds another encrypted tunnel surface to maintain |
 | AmneziaWG with B as initiator | no | no | Same as WG with obfuscation; deferred until WG-shaped flow becomes itself fingerprinted |
 
-Plain WG is the minimum-complexity choice that satisfies the
-direction constraint. AmneziaWG-shaped variants can drop in later by
-swapping the cohort file under `split-hop-egress`.
+Plain WG is the minimum-complexity choice that satisfies the direction constraint. AmneziaWG-shaped variants can drop in later by swapping the cohort file under `split-hop-egress`.
 
 ## Threat-model coverage
 
@@ -92,23 +59,11 @@ swapping the cohort file under `split-hop-egress`.
 
 ## Operational cost
 
-- **Hosting:** 2× VPS at minimum (one A, one B). For a multi-region
-  fleet, the multiplier compounds — every region needs its own (A, B)
-  pair.
-- **Provisioning surface:** doubles. Both nodes need separate
-  Terraform roots, secrets, and SSH keys.
-- **Latency:** an extra hop between A and B. For an EU-hosted pair
-  (e.g. fi-hel1 ↔ de-fra1) the added RTT is ~10–25 ms; for cross-
-  continent pairs it can exceed 100 ms.
-- **Failure mode:** the protected UIDs cannot use direct egress while the tunnel is stopped.
-  The retained egress boundary survives WireGuard stop and restart. Its IPv4
-  check uses the final POSTROUTING interface after policy routing; IPv6 originals
-  are refused in OUTPUT. When B goes down, A can still answer its local listeners
-  while forwarded traffic fails. Cascade has a separate authenticated
-  per-leg health contract, but split-hop has no equivalent family-path gate.
-- **Current routing scope:** `split-hop-ingress` marks only the dedicated
-  probe-matrix Xray and MTProto runtime UIDs. It does not claim to route every
-  family transport through B.
+- **Hosting:** 2× VPS at minimum (one A, one B). For a multi-region fleet, the multiplier compounds — every region needs its own (A, B) pair.
+- **Provisioning surface:** doubles. Both nodes need separate Terraform roots, secrets, and SSH keys.
+- **Latency:** an extra hop between A and B. For an EU-hosted pair (e.g. fi-hel1 ↔ de-fra1) the added RTT is ~10–25 ms; for cross- continent pairs it can exceed 100 ms.
+- **Failure mode:** the protected UIDs cannot use direct egress while the tunnel is stopped. The retained egress boundary survives WireGuard stop and restart. Its IPv4 check uses the final POSTROUTING interface after policy routing; IPv6 originals are refused in OUTPUT. When B goes down, A can still answer its local listeners while forwarded traffic fails. Cascade has a separate authenticated per-leg health contract, but split-hop has no equivalent family-path gate.
+- **Current routing scope:** `split-hop-ingress` marks only the dedicated probe-matrix Xray and MTProto runtime UIDs. It does not claim to route every family transport through B.
 
 ## When to recommend
 
@@ -120,30 +75,18 @@ swapping the cohort file under `split-hop-egress`.
 
 ## Pilot stand procedure
 
-See `docs/how-to/split-hop-pilot.md` for the operator-side runbook.
-At a high level:
+See `docs/how-to/split-hop-pilot.md` for the operator-side runbook. At a high level:
 
-1. Provision two VPSes via existing Terraform roots — typically in
-   different zones of the same provider, or different providers.
-2. Generate two WireGuard keypairs; load the node-specific halves into
-   `split_hop_ingress_secrets` and `split_hop_egress_secrets` SOPS files.
-3. Run `site.yml` against Node A with `split-hop-ingress` explicitly
-   allowlisted and enabled.
-4. Run `site.yml` against Node B with `split-hop-egress` explicitly
-   allowlisted and enabled.
-5. Verify WireGuard initiator direction, nftables marks, policy rules, and an
-   authenticated probe-matrix cell through the split-hop target.
-6. Collect 24–72 h of flow data from an upstream vantage (provider's
-   flow logs, or a separate observation host). Validate the per-node
-   dual-role score against the threshold the FOCI paper uses.
+1. Provision two VPSes via existing Terraform roots — typically in different zones of the same provider, or different providers.
+2. Generate two WireGuard keypairs; load the node-specific halves into `split_hop_ingress_secrets` and `split_hop_egress_secrets` SOPS files.
+3. Run `site.yml` against Node A with `split-hop-ingress` explicitly allowlisted and enabled.
+4. Run `site.yml` against Node B with `split-hop-egress` explicitly allowlisted and enabled.
+5. Verify WireGuard initiator direction, nftables marks, policy rules, and an authenticated probe-matrix cell through the split-hop target.
+6. Collect 24–72 h of flow data from an upstream vantage (provider's flow logs, or a separate observation host). Validate the per-node dual-role score against the threshold the FOCI paper uses.
 
 ## Out-of-scope follow-ups
 
-- Authenticated split-hop per-leg health with the same fail-closed semantics
-  required by the cascade exception.
+- Authenticated split-hop per-leg health with the same fail-closed semantics required by the cascade exception.
 - AmneziaWG-shaped tunnel variant.
-- Per-cohort split-hop selector in the subscription generator
-  (clients today carry a single A IP; the egress identity is
-  invisible to them, which is correct).
-- A paired multi-host orchestrator; today each provider/environment is
-  deployed independently through the standard Make lifecycle.
+- Per-cohort split-hop selector in the subscription generator (clients today carry a single A IP; the egress identity is invisible to them, which is correct).
+- A paired multi-host orchestrator; today each provider/environment is deployed independently through the standard Make lifecycle.

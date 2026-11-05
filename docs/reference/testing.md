@@ -2,30 +2,19 @@
 
 > **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-03
 
-The repo's defense-in-depth philosophy applies to its own correctness: every
-config, role, and script is checked at multiple layers before it can hit a
-real VPS. This doc enumerates each layer and where coverage gaps exist
-(with explicit reasons).
+The repo's defense-in-depth philosophy applies to its own correctness: every config, role, and script is checked at multiple layers before it can hit a real VPS. This doc enumerates each layer and where coverage gaps exist (with explicit reasons).
 
-The [canonical first-time setup](../../CONTRIBUTING.md#first-time-setup) lists the
-complete local-gate installation inputs and the supported Ubuntu reference
-recipe, including tools outside `mise.toml` and the Python/tasking locks.
+The [canonical first-time setup](../../CONTRIBUTING.md#first-time-setup) lists the complete local-gate installation inputs and the supported Ubuntu reference recipe, including tools outside `mise.toml` and the Python/tasking locks.
 
-Bootstrap-wait regressions require GNU `timeout` on the local test PATH. They
-execute the real remote command under an isolated SSH transport fixture; the
-production target uses its existing coreutils `timeout`, and the controller
-uses Python's standard library for local SSH deadlines.
+Bootstrap-wait regressions require GNU `timeout` on the local test PATH. They execute the real remote command under an isolated SSH transport fixture; the production target uses its existing coreutils `timeout`, and the controller uses Python's standard library for local SSH deadlines.
 
 `make test-topology-authenticated-probes` requires an owned isolated Linux root/systemd/TUN runner. It executes real TLS/authentication failures, every XHTTP frontend and backend outage, pinned AWG warm runtime/unit adoption and encrypted two-instance AWG traffic/revocation. Portable watchdog/smoke suites separately exercise ownership, bounded lifecycle and exact recovery attribution. No mock or selected skip accepts this native target.
 
 ## Coverage matrix
 
-PR jobs run according to the dependency selection described below; this table
-describes their coverage when selected. Main pushes and manual runs execute all
-CI jobs. Operator-only and live checks remain separate.
+PR jobs run according to the dependency selection described below; this table describes their coverage when selected. Main pushes and manual runs execute all CI jobs. Operator-only and live checks remain separate.
 
-Suite sizes come from test-runner output for the revision being tested. This
-matrix records coverage and commands rather than manually maintained totals.
+Suite sizes come from test-runner output for the revision being tested. This matrix records coverage and commands rather than manually maintained totals.
 
 | Artifact | Static check | Render check | Functional test (molecule) | Notes |
 |---|---|---|---|---|
@@ -116,8 +105,7 @@ matrix records coverage and commands rather than manually maintained totals.
 
 Portable Python shards and standalone REALITY validation share checksum-pinned SOPS/age installation through `.github/actions/install-sops-age`. The real YAML input regression creates and retires a fresh synthetic age authority; it never reads fleet secrets.
 
-All shared test inputs live under `tests/fixtures/` and stub binaries under
-`tests/stubs/bin/`.
+All shared test inputs live under `tests/fixtures/` and stub binaries under `tests/stubs/bin/`.
 
 ### `tests/fixtures/`
 
@@ -135,49 +123,23 @@ All shared test inputs live under `tests/fixtures/` and stub binaries under
 
 ### `tests/stubs/bin/`
 
-POSIX shell scripts (shellcheck-clean, ≤30 lines each) that replace real
-binaries during pytest dry-run tests. Tests prepend `tests/stubs/bin` to
-`PATH`; each stub echoes its invocation to `$STUB_LOG` so tests can assert
-exact argument vectors without network or filesystem side-effects.
+POSIX shell scripts (shellcheck-clean, ≤30 lines each) that replace real binaries during pytest dry-run tests. Tests prepend `tests/stubs/bin` to `PATH`; each stub echoes its invocation to `$STUB_LOG` so tests can assert exact argument vectors without network or filesystem side-effects.
 
-Stubs provided: `terraform`, `ansible-playbook`, `sops`, `curl`, `gh`,
-`upcloud`, `hcloud`, `vultr`.
+Stubs provided: `terraform`, `ansible-playbook`, `sops`, `curl`, `gh`, `upcloud`, `hcloud`, `vultr`.
 
-The bats tests under `tests/bats/` use the same `PATH=tests/stubs/bin:$PATH`
-discipline and call the same fixture files. See `tests/stubs/README.md` for
-the discipline contract and how to add a new stub.
+The bats tests under `tests/bats/` use the same `PATH=tests/stubs/bin:$PATH` discipline and call the same fixture files. See `tests/stubs/README.md` for the discipline contract and how to add a new stub.
 
 ## Test phases mapped to operator workflow
 
-Backup configuration regressions require a real `restic` executable on `PATH`
-(validated with 0.16.4 and 0.18.0). CI installs it with the existing unit-test
-system packages. These tests initialize only private temporary repositories and
-exercise `--no-cache --no-lock cat config` with valid, wrong-password, and damaged
-configuration inputs; a missing binary is a failure, not a skip. The separate
-backup Molecule scenario is required to prove systemd/package behavior on Linux.
+Backup configuration regressions require a real `restic` executable on `PATH` (validated with 0.16.4 and 0.18.0). CI installs it with the existing unit-test system packages. These tests initialize only private temporary repositories and exercise `--no-cache --no-lock cat config` with valid, wrong-password, and damaged configuration inputs; a missing binary is a failure, not a skip. The separate backup Molecule scenario is required to prove systemd/package behavior on Linux.
 
 ## CI dependency selection
 
-`engine-interop.yml` tests the fixed client and Xray revisions in
-`tools/engine-interop.json`. It runs real TCP, Vision, XUDP and rejection cases,
-and verifies the actual Prometheus archives for both architectures through the
-release-input consumer. The CI selector adds it for its affected consumers; it
-also runs weekly on Monday at 06:23 UTC and supports manual dispatch. This
-proves the selected engine pair and archive mapping, not installed-device or
-live-fleet acceptance.
+`engine-interop.yml` tests the fixed client and Xray revisions in `tools/engine-interop.json`. It runs real TCP, Vision, XUDP and rejection cases, and verifies the actual Prometheus archives for both architectures through the release-input consumer. The CI selector adds it for its affected consumers; it also runs weekly on Monday at 06:23 UTC and supports manual dispatch. This proves the selected engine pair and archive mapping, not installed-device or live-fleet acceptance.
 
-`daily-security.yml` runs at 06:17 UTC each day and supports manual dispatch.
-It scans locked dependencies and the complete image inventory. Results and
-scan failures update an owner-assigned issue only when the result changes;
-complete clean results close it. The current default-branch revision controls
-that issue. See [security scan operations](../../.github/SECURITY.md#daily-dependency-and-image-checks)
-for report retention, retry and notification rules. These jobs use no fleet
-credentials and do not replace `make security-audit` on an authorized host.
-That host audit records `systemd-analyze security` output, command status and
-diagnostics privately. The isolation score is not a vulnerability verdict.
+`daily-security.yml` runs at 06:17 UTC each day and supports manual dispatch. It scans locked dependencies and the complete image inventory. Results and scan failures update an owner-assigned issue only when the result changes; complete clean results close it. The current default-branch revision controls that issue. See [security scan operations](../../.github/SECURITY.md#daily-dependency-and-image-checks) for report retention, retry and notification rules. These jobs use no fleet credentials and do not replace `make security-audit` on an authorized host. That host audit records `systemd-analyze security` output, command status and diagnostics privately. The isolation score is not a vulnerability verdict.
 
-`ci.yml` always starts for PRs. `scripts/select-ci-checks.py` compares the PR base
-with the checked-out merge commit and follows downstream consumer groups:
+`ci.yml` always starts for PRs. `scripts/select-ci-checks.py` compares the PR base with the checked-out merge commit and follows downstream consumer groups:
 
 | Changed paths | Additional checks beyond the common checks |
 |---|---|
@@ -192,39 +154,17 @@ with the checked-out merge commit and follows downstream consumer groups:
 | Agent instructions: `AGENTS.md`/`CLAUDE.md` outside `docs/`, `.agents/`, `.claude/`, `.github/skills/` | None |
 | Shared scripts, fixtures, tooling/configuration, CI or any unmapped path | Full graph |
 
-The common checks are gitleaks, actionlint, zizmor, task contracts, shellcheck,
-all Python validators and all four pytest groups with their coverage aggregate.
-Python tests inspect many repository contracts, so they are not selected by test
-filename. Molecule selection also stays at the complete Ansible group because
-roles share imports, variables and full-stack interactions. The selector owns
-the exact path rules, including auxiliary test/tasking inputs.
+The common checks are gitleaks, actionlint, zizmor, task contracts, shellcheck, all Python validators and all four pytest groups with their coverage aggregate. Python tests inspect many repository contracts, so they are not selected by test filename. Molecule selection also stays at the complete Ansible group because roles share imports, variables and full-stack interactions. The selector owns the exact path rules, including auxiliary test/tasking inputs.
 
-Main pushes and manual runs always execute the full graph. Invalid or missing
-PR history, a non-ancestor base and an empty diff also select everything. The
-Git diff covers the whole PR without API file limits, uses NUL delimiters and
-retains both sides of renames and deleted paths. No workflow-level path filter
-can suppress the required gate. Each run's summary lists the decisions.
+Main pushes and manual runs always execute the full graph. Invalid or missing PR history, a non-ancestor base and an empty diff also select everything. The Git diff covers the whole PR without API file limits, uses NUL delimiters and retains both sides of renames and deleted paths. No workflow-level path filter can suppress the required gate. Each run's summary lists the decisions.
 
-A new push to a PR cancels that PR's running `ci`. Closing or merging the PR
-cancels it too: `ci-cancel-closed.yml` joins the same concurrency group, which
-both workflows key by PR number because a merged PR's closed event reports the
-base branch as its ref. Main
-runs are not cancelled; each finishes, and only the newest pending main run
-waits behind it.
+A new push to a PR cancels that PR's running `ci`. Closing or merging the PR cancels it too: `ci-cancel-closed.yml` joins the same concurrency group, which both workflows key by PR number because a merged PR's closed event reports the base branch as its ref. Main runs are not cancelled; each finishes, and only the newest pending main run waits behind it.
 
-`required checks` compares every job result with the successful selector's plan.
-Only an explicitly unselected job may be skipped; failures, cancellations,
-unexpected skips and incomplete result maps fail. Keep the workflow jobs, plan
-and [branch protection](../how-to/branch-protection.md) consistent when adding a check.
+`required checks` compares every job result with the successful selector's plan. Only an explicitly unselected job may be skipped; failures, cancellations, unexpected skips and incomplete result maps fail. Keep the workflow jobs, plan and [branch protection](../how-to/branch-protection.md) consistent when adding a check.
 
 ### Verify hosted CI for an exact source revision
 
-Use an authenticated `gh` from this repository root. For a merged source
-revision, this Bash recipe reads the full local `HEAD` SHA, lists only `ci.yml`
-push runs on `main` for it, and requires an explicitly selected run ID.
-Do not substitute the newest run or the branch badge. If no run is listed,
-the revision has no matching CI evidence in this bounded result; do not infer
-success. The subshell keeps a failed verification from exiting your shell.
+Use an authenticated `gh` from this repository root. For a merged source revision, this Bash recipe reads the full local `HEAD` SHA, lists only `ci.yml` push runs on `main` for it, and requires an explicitly selected run ID. Do not substitute the newest run or the branch badge. If no run is listed, the revision has no matching CI evidence in this bounded result; do not infer success. The subshell keeps a failed verification from exiting your shell.
 
 ```bash
 (
@@ -256,19 +196,9 @@ success. The subshell keeps a failed verification from exiting your shell.
 )
 ```
 
-Only `status: completed` with `conclusion: success` and a successful
-`required checks` job returns exit 0. Pending, queued,
-in-progress, cancelled, skipped, missing and other conclusions do not.
-The compact view omits successful jobs and intentionally unselected PR jobs;
-the required aggregator detects unexpected skips. Failed logs are requested
-only after a terminal failure or timeout; a pending run may not have logs yet.
-Separate security workflows and live acceptance retain their own boundaries.
+Only `status: completed` with `conclusion: success` and a successful `required checks` job returns exit 0. Pending, queued, in-progress, cancelled, skipped, missing and other conclusions do not. The compact view omits successful jobs and intentionally unselected PR jobs; the required aggregator detects unexpected skips. Failed logs are requested only after a terminal failure or timeout; a pending run may not have logs yet. Separate security workflows and live acceptance retain their own boundaries.
 
-For a PR, use `gh pr view <number> --json headRefOid,headRefName` to identify
-its current source head, then `gh pr checks <number> --required` for the current
-required checks. PR checks can use dependency selection and test a merge
-checkout; they do not establish a full-graph `main` push result. After merge,
-repeat the recipe at the merged source SHA, which may differ from the PR head.
+For a PR, use `gh pr view <number> --json headRefOid,headRefName` to identify its current source head, then `gh pr checks <number> --required` for the current required checks. PR checks can use dependency selection and test a merge checkout; they do not establish a full-graph `main` push result. After merge, repeat the recipe at the merged source SHA, which may differ from the PR head.
 
 | Operator step | Tests that protect it |
 |---|---|
@@ -292,25 +222,13 @@ repeat the recipe at the merged source SHA, which may differ from the PR head.
 | scheduled daily 06:17 UTC or manual dispatch | **daily-security** scans dependencies and pinned images, retains attempt-bound SARIF and notifies the owner on changed findings or failure. A complete clean run closes the issue. |
 | scheduled Monday 08:00 UTC | **mutmut** (`.github/workflows/mutants.yml`) — full baseline and configured mutations; verified survivors create a tracking issue, technical failures fail the workflow |
 
-| scheduled Monday 12:00 UTC | **drift-since-tag --repo-only** (`.github/workflows/drift.yml`) — repository-level drift detection; opens/updates a rolling issue |
-| scheduled Monday 10:23 UTC | **AmneziaWG arm64 floor watch** (`.github/workflows/amneziawg-arm64-floor.yml`) — flags issue-state or release-note fix claims for physical revalidation; never relaxes guards |
-| weekly weekend | **Renovate** opens dependency-update PRs for supported managers, including grouped Terraform providers and Python tooling/runtime dependencies, GitHub Actions digest pins, and Hysteria Realm / Snell sing-box pins via regex managers. |
-| `make smoke-test` | end-to-end real-traffic dial through every enabled profile |
-| `make check-killswitch BUNDLE=…` | per-client validation of emitted sing-box bundle (5 rules: auto_route, strict_route, sniff, final ≠ direct, DNS detour ≠ direct, no IPv6-only outbound) |
+| scheduled Monday 12:00 UTC | **drift-since-tag --repo-only** (`.github/workflows/drift.yml`) — repository-level drift detection; opens/updates a rolling issue | | scheduled Monday 10:23 UTC | **AmneziaWG arm64 floor watch** (`.github/workflows/amneziawg-arm64-floor.yml`) — flags issue-state or release-note fix claims for physical revalidation; never relaxes guards | | weekly weekend | **Renovate** opens dependency-update PRs for supported managers, including grouped Terraform providers and Python tooling/runtime dependencies, GitHub Actions digest pins, and Hysteria Realm / Snell sing-box pins via regex managers. | | `make smoke-test` | end-to-end real-traffic dial through every enabled profile | | `make check-killswitch BUNDLE=…` | per-client validation of emitted sing-box bundle (5 rules: auto_route, strict_route, sniff, final ≠ direct, DNS detour ≠ direct, no IPv6-only outbound) |
 
-The repository-safe record of the last observed production deployment is
-[the deployment snapshot](deployment-status.md). It distinguishes provider-live
-Terraform refresh, configuration-to-state comparison, Ansible convergence,
-host verification and authenticated client-path evidence. The current snapshot
-records hosted Linux CI separately from local Mac tool and environment failures.
-A successful live deploy does not turn a failed local check into a pass.
+The repository-safe record of the last observed production deployment is [the deployment snapshot](deployment-status.md). It distinguishes provider-live Terraform refresh, configuration-to-state comparison, Ansible convergence, host verification and authenticated client-path evidence. The current snapshot records hosted Linux CI separately from local Mac tool and environment failures. A successful live deploy does not turn a failed local check into a pass.
 
 ## CI runtime limits and superseded runs
 
-Every concrete job in the standard CI graph, including reusable workflows and
-CodeQL/documentation helpers, has an explicit `timeout-minutes`. Reusable calls
-keep the limit inside the called job; GitHub does not accept it on a `uses` job.
-The limits bound running jobs, not time waiting for a runner.
+Every concrete job in the standard CI graph, including reusable workflows and CodeQL/documentation helpers, has an explicit `timeout-minutes`. Reusable calls keep the limit inside the called job; GitHub does not accept it on a `uses` job. The limits bound running jobs, not time waiting for a runner.
 
 | Work | Limit in minutes |
 |---|---:|
@@ -326,51 +244,24 @@ The limits bound running jobs, not time waiting for a runner.
 | Full-stack Molecule scenarios | 30 |
 | Shared Python vpnd test/lint/package/dependency job | 30 |
 
-The limits leave headroom over five prior full executions: the maximum
-observed job runtime was 409 seconds for pytest, 389 for failure/full-stack
-Molecule, 199 for role Molecule and 152 for Rust tests. This small sample includes
-setup and execution but mostly benefits from warm caches. The larger shared
-Rust limit accommodated cold cross-builds. This historical sample predates the
-Python migration and does not establish Python/platform or release-build runtime
-results. Existing bounded reproducible-build jobs retain their per-component
-limits of 20, 15 and 5 minutes.
+The limits leave headroom over five prior full executions: the maximum observed job runtime was 409 seconds for pytest, 389 for failure/full-stack Molecule, 199 for role Molecule and 152 for Rust tests. This small sample includes setup and execution but mostly benefits from warm caches. The larger shared Rust limit accommodated cold cross-builds. This historical sample predates the Python migration and does not establish Python/platform or release-build runtime results. Existing bounded reproducible-build jobs retain their per-component limits of 20, 15 and 5 minutes.
 
-The current native runtime suite completed all 138 tests in about 17 minutes.
-Setup took up to 3.5 minutes, so a 20-minute job limit cancelled successful test
-runs. The 30-minute limit covers the complete job. Test selection, per-process
-deadlines and skip refusal remain unchanged.
+The current native runtime suite completed all 138 tests in about 17 minutes. Setup took up to 3.5 minutes, so a 20-minute job limit cancelled successful test runs. The 30-minute limit covers the complete job. Test selection, per-process deadlines and skip refusal remain unchanged.
 
-`markdown-link-check` uses workflow/event/PR concurrency
-keys and cancels older runs of that PR. The run-ID fallback keeps scheduled
-Markdown checks independent. Different workflows and different PRs do not share
-a key. Main CI and CodeQL retain their existing cancellation policies; the
-reusable Terraform, image and contract checks are cancelled with their CI caller,
-without a second concurrency group that could cancel sibling calls. Release,
-deployment and cleanup cancellation policies remain unchanged. A selected job
-that times out or is cancelled cannot satisfy the strict CI aggregate.
+`markdown-link-check` uses workflow/event/PR concurrency keys and cancels older runs of that PR. The run-ID fallback keeps scheduled Markdown checks independent. Different workflows and different PRs do not share a key. Main CI and CodeQL retain their existing cancellation policies; the reusable Terraform, image and contract checks are cancelled with their CI caller, without a second concurrency group that could cancel sibling calls. Release, deployment and cleanup cancellation policies remain unchanged. A selected job that times out or is cancelled cannot satisfy the strict CI aggregate.
 
 ## Dependency updates
 
-The [daily security workflow](../../.github/SECURITY.md#daily-dependency-and-image-checks)
-checks new advisories in unchanged inputs. It does not update dependencies, rebuild
-images or apply host changes. Renovate updates and operator deployment remain
-separate operations.
+The [daily security workflow](../../.github/SECURITY.md#daily-dependency-and-image-checks) checks new advisories in unchanged inputs. It does not update dependencies, rebuild images or apply host changes. Renovate updates and operator deployment remain separate operations.
 
-Renovate opens weekly PRs for the ecosystems it supports, and each PR runs
-the common checks and affected consumer groups before a human merges. Shared
-tooling and workflow updates select full CI. Xray and AmneziaWG
-remain manual, policy-gated updates because their pins cannot be updated safely
-and completely by the current regex managers.
+Renovate opens weekly PRs for the ecosystems it supports, and each PR runs the common checks and affected consumer groups before a human merges. Shared tooling and workflow updates select full CI. Xray and AmneziaWG remain manual, policy-gated updates because their pins cannot be updated safely and completely by the current regex managers.
 
 Renovate config lives at `renovate.json` at the repo root. Key behaviors:
 
-- `helpers:pinGitHubActionDigests` preset — every Action stays SHA-pinned;
-  Renovate auto-updates digests with the matching version comment preserved.
+- `helpers:pinGitHubActionDigests` preset — every Action stays SHA-pinned; Renovate auto-updates digests with the matching version comment preserved.
 - Terraform provider and Python dependency updates use their configured weekly groups.
 
-- Custom regex managers cover only the Hysteria Realm and Snell sing-box
-  version pins. Xray follows `docs/reference/xray-release-line.md`; AmneziaWG follows
-  the arm64 floor-watch workflow and both require manual updates.
+- Custom regex managers cover only the Hysteria Realm and Snell sing-box version pins. Xray follows `docs/reference/xray-release-line.md`; AmneziaWG follows the arm64 floor-watch workflow and both require manual updates.
 - `vulnerabilityAlerts.enabled: true`. Schedule: weekly on weekends.
 
 | Ecosystem | Renovate covers? | Where pinned | Refresh cadence |
@@ -406,17 +297,11 @@ make molecule-test ROLE=baseline
 # Commit with: chore(deps): refresh Ansible Galaxy collections
 ```
 
-Auto-merge is intentionally **not** enabled for any Renovate PR — every
-update goes through a human review. Operators who want auto-merge can
-configure it per-ecosystem in repo Settings.
+Auto-merge is intentionally **not** enabled for any Renovate PR — every update goes through a human review. Operators who want auto-merge can configure it per-ecosystem in repo Settings.
 
 ## Build provenance
 
-The Python release workflow requests Sigstore-signed build provenance for the
-source and four platform bundle archives through `actions/attest-build-provenance`.
-The verification binds an archive to the repository workflow and source SHA;
-standalone wheel integrity is covered by `SHA256SUMS` and the verified bundle
-manifest.
+The Python release workflow requests Sigstore-signed build provenance for the source and four platform bundle archives through `actions/attest-build-provenance`. The verification binds an archive to the repository workflow and source SHA; standalone wheel integrity is covered by `SHA256SUMS` and the verified bundle manifest.
 
 Verify a downloaded platform bundle:
 
@@ -425,18 +310,9 @@ gh attestation verify ./vpnd-x86_64-unknown-linux-gnu.tar.gz \
   --owner po4yka --signer-workflow .github/workflows/release-vpnd.yml
 ```
 
-`scripts/install-vpnd.sh` calls this when `gh` is on PATH and
-`VPND_SKIP_ATTESTATION` is unset. Missing `gh` retains the existing warning;
-`VPND_SKIP_ATTESTATION=1` explicitly opts out. The native-executable to Python
-wheel-bundle installation break and Python 3.12 prerequisite are documented in
-[vpnd/README.md](../../vpnd/README.md) and [../how-to/release-please.md](../how-to/release-please.md).
+`scripts/install-vpnd.sh` calls this when `gh` is on PATH and `VPND_SKIP_ATTESTATION` is unset. Missing `gh` retains the existing warning; `VPND_SKIP_ATTESTATION=1` explicitly opts out. The native-executable to Python wheel-bundle installation break and Python 3.12 prerequisite are documented in [vpnd/README.md](../../vpnd/README.md) and [../how-to/release-please.md](../how-to/release-please.md).
 
-`make vpnd-package-check` builds reproducible wheel/source artifacts, installs
-locked dependency wheels offline into a private environment, validates actual
-runtime closure and packaged templates/docs/manuals, and exercises failed
-replacement without changing the previous command. All twenty man pages derive
-from the twelve-command parser tree. Local artifact success does not establish
-hosted CI, other-platform execution, mutation results or live deployment.
+`make vpnd-package-check` builds reproducible wheel/source artifacts, installs locked dependency wheels offline into a private environment, validates actual runtime closure and packaged templates/docs/manuals, and exercises failed replacement without changing the previous command. All twenty man pages derive from the twelve-command parser tree. Local artifact success does not establish hosted CI, other-platform execution, mutation results or live deployment.
 
 ## External reachability (post-deploy, operator-side)
 
@@ -445,125 +321,43 @@ hosted CI, other-platform execution, mutation results or live deployment.
 | **TCP/443 (REALITY)** | `make burn-check` via check-host.net nodes | filtered-network and EU third-party | Exits non-zero when ≥`FAIL_THRESHOLD` vantages can't connect — the IP-burn signal. |
 | **UDP/443 (Hysteria2/QUIC)** | `make burn-check` QUIC Version-Negotiation probe | operator workstation | **Always non-fatal (WARN).** Sends an unauthenticated QUIC long-header packet with a `0x?a?a?a?a` force-VN version, padded to QUIC's 1200-byte minimum; any reply proves UDP/443 was delivered end-to-end. Skips (WARN) when `ENABLE_HYSTERIA=false` or `HYSTERIA_SALAMANDER=true` (obfs makes external blackbox probing impossible). Exports `vpn_burn_udp_reachable`. |
 
-When `NODE_EXPORTER_TEXTFILE_DIR` is set, burn-check refreshes
-`vpn_burn.prom` on every exit. `vpn_burn_api_error=1` identifies an external
-API failure and `vpn_burn_run_error=1` identifies a run that ended before a
-reachability classification. Incomplete runs omit stale per-node and summary
-reachability series.
+When `NODE_EXPORTER_TEXTFILE_DIR` is set, burn-check refreshes `vpn_burn.prom` on every exit. `vpn_burn_api_error=1` identifies an external API failure and `vpn_burn_run_error=1` identifies a run that ended before a reachability classification. Incomplete runs omit stale per-node and summary reachability series.
 
-**Why on-host UDP checks are insufficient.** Several cloud providers silently
-drop inbound UDP/443 at the **provider-edge** firewall even when the instance's
-own `nftables` shows ACCEPT and the listener is bound (`ss -ulnp` correct). The
-instance kernel cannot see that layer, so a server-side or molecule check can
-never detect the gap — it must be probed from outside the data center. Diagnostic
-rule: trust `tcpdump` showing inbound packets, not `nft list` showing ACCEPT. If
-the burn-check UDP probe gets no reply, `tcpdump -i any udp port 443` on the
-server disambiguates a provider-edge drop (zero inbound) from server-side silence
-(packets present). See `docs/reference/provider-notes.md` → "UDP/443 edge reachability".
+**Why on-host UDP checks are insufficient.** Several cloud providers silently drop inbound UDP/443 at the **provider-edge** firewall even when the instance's own `nftables` shows ACCEPT and the listener is bound (`ss -ulnp` correct). The instance kernel cannot see that layer, so a server-side or molecule check can never detect the gap — it must be probed from outside the data center. Diagnostic rule: trust `tcpdump` showing inbound packets, not `nft list` showing ACCEPT. If the burn-check UDP probe gets no reply, `tcpdump -i any udp port 443` on the server disambiguates a provider-edge drop (zero inbound) from server-side silence (packets present). See `docs/reference/provider-notes.md` → "UDP/443 edge reachability".
 
 ## Pre-commit hooks
 
-Local pre-commit configuration (`.pre-commit-config.yaml`) catches common
-issues before CI cycles. Each hook takes seconds; ansible-lint lints the whole
-`ansible/` tree, so it runs in `make validate` and in the `ansible` CI job whenever
-Ansible inputs change:
+Local pre-commit configuration (`.pre-commit-config.yaml`) catches common issues before CI cycles. Each hook takes seconds; ansible-lint lints the whole `ansible/` tree, so it runs in `make validate` and in the `ansible` CI job whenever Ansible inputs change:
 
-- `task-contract` — validates portfolio records, mdtask execution, OpenSpec,
-  generated assets, board freshness, and terminal-history rules.
-- `terraform_fmt`, `terraform_docs`, `terraform_tflint` via
-  `antonbabenko/pre-commit-terraform` — Terraform formatting, auto-generated
-  per-provider README, and security linting.
+- `task-contract` — validates portfolio records, mdtask execution, OpenSpec, generated assets, board freshness, and terminal-history rules.
+- `terraform_fmt`, `terraform_docs`, `terraform_tflint` via `antonbabenko/pre-commit-terraform` — Terraform formatting, auto-generated per-provider README, and security linting.
 - `vpnd-python-lint` (local hook) — Ruff over vpnd source/tests, using the pinned Python tooling.
-- `prettier` scoped to JSON files in `tests/fixtures/` and `secrets/schema.json`
-  only — does not touch markdown or vendored package.json files.
+- `prettier` scoped to JSON files in `tests/fixtures/` and `secrets/schema.json` only — does not touch markdown or vendored package.json files.
 
-Generated `terraform/providers/<name>/README.md` files are committed; the
-`terraform_docs` hook keeps them in sync on every commit.
+Generated `terraform/providers/<name>/README.md` files are committed; the `terraform_docs` hook keeps them in sync on every commit.
 
 ## What is intentionally NOT tested
 
-- **Live external network reachability of upstream geodata / Xray / Hysteria
-  binaries.** Test would couple the build to upstream availability. We
-  pin-and-checksum at deploy; CI doesn't re-validate every release.
-- **AmneziaWG TUN converge inside Docker.** Requires kernel TUN device +
-  golang build of amneziawg-go. Render check covers template correctness;
-  `awg show` is part of `verify.yml` against a real VPS.
+- **Live external network reachability of upstream geodata / Xray / Hysteria binaries.** Test would couple the build to upstream availability. We pin-and-checksum at deploy; CI doesn't re-validate every release.
+- **AmneziaWG TUN converge inside Docker.** Requires kernel TUN device + golang build of amneziawg-go. Render check covers template correctness; `awg show` is part of `verify.yml` against a real VPS.
 - **NaiveProxy xcaddy build.** Pulls Go modules; flaky in CI. Render check
-  + bash-syntax cover the artifact shape; the build runs only on the target
-  VPS during deploy.
-- **Cloudflare WARP registration.** Requires a registerable WARP endpoint not
-  available in CI containers. Structure validation only via molecule
-  syntax-only scenario.
-- **RealiTLScanner full-scan integration.** Binary required at runtime;
-  coupling CI to upstream build would introduce flakiness. Shellcheck covers
-  the wrapper script shape.
-- **`scripts/restore.sh` real mode.** The `--dry-run` mode is covered by
-  `tests/unit/test_restore_dryrun.py`. The live restore path (decrypts
-  SOPS secrets, re-provisions real infrastructure) is only safe to exercise
-  against a throwaway VPS; a maintainer TODO covers adding it to the
-  `ci-real-deploy` label workflow.
-- **End-to-end traffic against geographic locations** (filtered network, EU, US). Would
-  require live infrastructure with the right BGP. This is what
-  `make burn-check` (operator-side cron) covers post-deploy — including the
-  external UDP/443 edge-reachability probe (see "External reachability" above).
-- **Long-running stability** (memory leaks, descriptor exhaustion). Out of
-  scope for unit-level testing; the watchdog role catches it post-deploy.
-- **Active-probing simulation** against the deployed REALITY listener. The
-  validator covers the static OPSEC properties; behavior under real
-  probing is observable only against live infrastructure. Note: the
-  `policy-ratelimit` daemon does **not** detect external REALITY probes by
-  design — `xtls/reality`'s `func Server` proxies failed-auth probes to the
-  camouflage `Dest` ("steal-oneself") and surfaces only a returned
-  `fmt.Errorf` logged at `[Info]` to error.log (suppressed at
-  `loglevel: "warning"`), never to the access.log the daemon tails. The daemon
-  rate-limits policy-violating egress (blackholed + VLESS-rejected traffic)
-  instead; `tests/unit/test_policy_ratelimit.py` asserts both the enforceable
-  bans and the prober-invisibility. The role README carries the full ADR (path
-  (b): no nginx-stream front). See
-  `ansible/roles/policy-ratelimit/README.md`.
+  + bash-syntax cover the artifact shape; the build runs only on the target VPS during deploy.
+- **Cloudflare WARP registration.** Requires a registerable WARP endpoint not available in CI containers. Structure validation only via molecule syntax-only scenario.
+- **RealiTLScanner full-scan integration.** Binary required at runtime; coupling CI to upstream build would introduce flakiness. Shellcheck covers the wrapper script shape.
+- **`scripts/restore.sh` real mode.** The `--dry-run` mode is covered by `tests/unit/test_restore_dryrun.py`. The live restore path (decrypts SOPS secrets, re-provisions real infrastructure) is only safe to exercise against a throwaway VPS; a maintainer TODO covers adding it to the `ci-real-deploy` label workflow.
+- **End-to-end traffic against geographic locations** (filtered network, EU, US). Would require live infrastructure with the right BGP. This is what `make burn-check` (operator-side cron) covers post-deploy — including the external UDP/443 edge-reachability probe (see "External reachability" above).
+- **Long-running stability** (memory leaks, descriptor exhaustion). Out of scope for unit-level testing; the watchdog role catches it post-deploy.
+- **Active-probing simulation** against the deployed REALITY listener. The validator covers the static OPSEC properties; behavior under real probing is observable only against live infrastructure. Note: the `policy-ratelimit` daemon does **not** detect external REALITY probes by design — `xtls/reality`'s `func Server` proxies failed-auth probes to the camouflage `Dest` ("steal-oneself") and surfaces only a returned `fmt.Errorf` logged at `[Info]` to error.log (suppressed at `loglevel: "warning"`), never to the access.log the daemon tails. The daemon rate-limits policy-violating egress (blackholed + VLESS-rejected traffic) instead; `tests/unit/test_policy_ratelimit.py` asserts both the enforceable bans and the prober-invisibility. The role README carries the full ADR (path (b): no nginx-stream front). See `ansible/roles/policy-ratelimit/README.md`.
 
 ## Test selection and groups
 
-The checklists for adding a role, template or script live in
-[CONTRIBUTING.md](../../CONTRIBUTING.md#adding-a-role-template-or-script); the
-role recipe itself is in `ansible/CLAUDE.md`.
+The checklists for adding a role, template or script live in [CONTRIBUTING.md](../../CONTRIBUTING.md#adding-a-role-template-or-script); the role recipe itself is in `ansible/CLAUDE.md`.
 
 ### Required test selection
 
-`make test-unit` and the four pytest CI groups select `not native_runtime` from
-`tests/unit/` and `scripts/tests/` (including taskctl regressions);
-The complementary `native_runtime` tests run as root in two separate disposable
-Linux environments: `make test-native-runtime` runs the existing integration
-suite, and `make test-transport-runtime-acceptance` runs every complete consumer
-transaction scenario in a fresh systemd container on its dedicated runner.
-The pinned container isolates host firewall topology and runtime authority.
-Both reject selected skips. Their
-combined selection covers all native tests; the transaction lab preserves its
-refusal of foreign runtime authority left by another fixture.
-Both native lanes are required by `required checks` and deliberately separate from
-the portable `ci-fast` / `check` bundle: never elevate the full local test suite.
-For local native verification, provide Terraform 1.15.9 on PATH and
-`ALERTMANAGER_BIN` pointing to Alertmanager 0.28.1 with sibling `amtool` inside
-a disposable Linux environment, then run `make test-native-runtime` there.
-Run `make test-transport-runtime-acceptance` in a separate fresh disposable root
-with `TRANSPORT_NATIVE_ISOLATED=1`, systemd, nftables, iproute2, OpenSSL and curl.
-The native SSH sentinel also requires a non-root `SUDO_USER` with non-interactive
-sudo inside that disposable test root and a root-owned mode-0755 `/run/sshd`.
-For systemd containers, restore shared `/run` propagation after each restart;
-otherwise per-unit credential paths can disappear from the service namespace.
-Verify actual read-only credentials and their service-user ACL before the suite.
-Keep separate roots sequential when they share a host network namespace.
-The canonical Xray log provisioner also requires root-owned parent directories
-without group/other write permission. Prepare the owned test image with a trusted
-`/var/log` (mode `0755`); a group-writable parent must continue to refuse.
+`make test-unit` and the four pytest CI groups select `not native_runtime` from `tests/unit/` and `scripts/tests/` (including taskctl regressions); The complementary `native_runtime` tests run as root in two separate disposable Linux environments: `make test-native-runtime` runs the existing integration suite, and `make test-transport-runtime-acceptance` runs every complete consumer transaction scenario in a fresh systemd container on its dedicated runner. The pinned container isolates host firewall topology and runtime authority. Both reject selected skips. Their combined selection covers all native tests; the transaction lab preserves its refusal of foreign runtime authority left by another fixture. Both native lanes are required by `required checks` and deliberately separate from the portable `ci-fast` / `check` bundle: never elevate the full local test suite. For local native verification, provide Terraform 1.15.9 on PATH and `ALERTMANAGER_BIN` pointing to Alertmanager 0.28.1 with sibling `amtool` inside a disposable Linux environment, then run `make test-native-runtime` there. Run `make test-transport-runtime-acceptance` in a separate fresh disposable root with `TRANSPORT_NATIVE_ISOLATED=1`, systemd, nftables, iproute2, OpenSSL and curl. The native SSH sentinel also requires a non-root `SUDO_USER` with non-interactive sudo inside that disposable test root and a root-owned mode-0755 `/run/sshd`. For systemd containers, restore shared `/run` propagation after each restart; otherwise per-unit credential paths can disappear from the service namespace. Verify actual read-only credentials and their service-user ACL before the suite. Keep separate roots sequential when they share a host network namespace. The canonical Xray log provisioner also requires root-owned parent directories without group/other write permission. Prepare the owned test image with a trusted `/var/log` (mode `0755`); a group-writable parent must continue to refuse.
 
-`make test-xhttp-delivery-matrix` runs all fourteen native XHTTP cases in an owned
-isolated Linux root lab with systemd, the repository-pinned Xray/Hysteria engines,
-nginx, nftables, iproute2 (including tc), OpenSSL, curl and pinned Python
-dependencies. It covers primary/alternate delivery, TLS/privacy/rollback,
-three untuned modes and bounded-pool comparisons at 1, 2 and 4 connections.
-The target fails on selected skips and emits only technical measurements.
-See [XHTTP delivery profiles](xhttp-delivery-profiles.md) for thresholds.
+`make test-xhttp-delivery-matrix` runs all fourteen native XHTTP cases in an owned isolated Linux root lab with systemd, the repository-pinned Xray/Hysteria engines, nginx, nftables, iproute2 (including tc), OpenSSL, curl and pinned Python dependencies. It covers primary/alternate delivery, TLS/privacy/rollback, three untuned modes and bounded-pool comparisons at 1, 2 and 4 connections. The target fails on selected skips and emits only technical measurements. See [XHTTP delivery profiles](xhttp-delivery-profiles.md) for thresholds.
 
 To inspect the current Python inventory without executing tests:
 
@@ -571,208 +365,65 @@ To inspect the current Python inventory without executing tests:
 mise exec -- python3 -m pytest tests/unit/ scripts/tests/ --collect-only -q
 ```
 
-Collection includes both lanes. Add `-m "not native_runtime"` for the portable
-selection or `-m native_runtime` for the native selection; collection alone
-does not prove execution or a passing gate.
+Collection includes both lanes. Add `-m "not native_runtime"` for the portable selection or `-m native_runtime` for the native selection; collection alone does not prove execution or a passing gate.
 
 
 ### Balanced pytest groups
 
-CI uses `pytest-split` with four groups and `least_duration`, assigning the
-longest measured tests first. The committed `tests/pytest-durations.json.gz` seed
-comes from a complete Linux CI run. Gzip keeps the complete measured dataset
-small; each group decompresses it before pytest-split reads it. New tests use the plugin's average duration
-until the profile is refreshed. Collection order is preserved inside each group.
-A test stalled for two minutes emits its Python stack; each CI group has a
-15-minute deadline. Timeouts fail the required aggregate.
-Run one group locally with `PYTEST_GROUP=1 make test-unit-shard` (1 through 4);
-`make test-unit` still executes the complete portable suite.
-Both targets run pytest-xdist workers with `--dist loadfile`, so each test module
-stays on one worker. `PYTEST_WORKERS` sets the count (default `auto`, one per CPU);
-use `PYTEST_WORKERS=0` to run serially when debugging an order or timing problem.
-With `make -j N check` other targets share the CPU, so on a busy machine also
-lower `PYTEST_WORKERS`; tests with fixed subprocess deadlines can otherwise time out.
+CI uses `pytest-split` with four groups and `least_duration`, assigning the longest measured tests first. The committed `tests/pytest-durations.json.gz` seed comes from a complete Linux CI run. Gzip keeps the complete measured dataset small; each group decompresses it before pytest-split reads it. New tests use the plugin's average duration until the profile is refreshed. Collection order is preserved inside each group. A test stalled for two minutes emits its Python stack; each CI group has a 15-minute deadline. Timeouts fail the required aggregate. Run one group locally with `PYTEST_GROUP=1 make test-unit-shard` (1 through 4); `make test-unit` still executes the complete portable suite. Both targets run pytest-xdist workers with `--dist loadfile`, so each test module stays on one worker. `PYTEST_WORKERS` sets the count (default `auto`, one per CPU); use `PYTEST_WORKERS=0` to run serially when debugging an order or timing problem. With `make -j N check` other targets share the CPU, so on a busy machine also lower `PYTEST_WORKERS`; tests with fixed subprocess deadlines can otherwise time out.
 
-The required `pytest unit tests` status waits for all four groups, then checks
-that every portable test was selected and finished exactly once. Missing groups,
-overlaps, inconsistent collections/profiles, incomplete execution, skips and
-failed tests fail the gate. Native runtime tests retain their separate lane.
+The required `pytest unit tests` status waits for all four groups, then checks that every portable test was selected and finished exactly once. Missing groups, overlaps, inconsistent collections/profiles, incomplete execution, skips and failed tests fail the gate. Native runtime tests retain their separate lane.
 
-After a successful CI run, download its `pytest-durations` artifact to a temporary
-directory and review the measured JSON. Compress it with
-`gzip -n -c pytest-durations.json > tests/pytest-durations.json.gz` from the
-repository root (adjust the source path to the downloaded file), then include
-the refreshed seed in a normal commit. The aggregate produces this fresh profile only after full
-coverage passes. `make test-unit-profile` can also regenerate the profile with a
-complete serial run; use a comparable Linux environment for representative CI
-timings. Group reports and temporary profiles live in ignored `.pytest-shards/`.
+After a successful CI run, download its `pytest-durations` artifact to a temporary directory and review the measured JSON. Compress it with `gzip -n -c pytest-durations.json > tests/pytest-durations.json.gz` from the repository root (adjust the source path to the downloaded file), then include the refreshed seed in a normal commit. The aggregate produces this fresh profile only after full coverage passes. `make test-unit-profile` can also regenerate the profile with a complete serial run; use a comparable Linux environment for representative CI timings. Group reports and temporary profiles live in ignored `.pytest-shards/`.
 
-The native role audit lane builds the exact Naive xcaddy/Caddy/forwardproxy
-composite through `make native-naive-build` before testing its actual parser,
-TCP listener set, UDP absence and authenticated CONNECT behavior. It also uses
-real nginx/systemd credential publication, WireGuard namespaces and Unbound;
-portable template fixtures do not substitute for these runtime gates.
+The native role audit lane builds the exact Naive xcaddy/Caddy/forwardproxy composite through `make native-naive-build` before testing its actual parser, TCP listener set, UDP absence and authenticated CONNECT behavior. It also uses real nginx/systemd credential publication, WireGuard namespaces and Unbound; portable template fixtures do not substitute for these runtime gates.
 
-Hysteria ECH/resource acceptance uses `make test-hysteria-ech-runtime` and
-`make test-hysteria-resource-profiles`: checksum-verified 2.13.0/1.14.3 binaries,
-owned network namespaces, controlled latency/loss, authenticated TCP/UDP/DNS,
-two-client transfer measurements, memory/descriptor bounds, required-ECH trust and
-key failures, client telemetry, and decoded QUIC ClientHello packet observations.
-Missing tools or selected skips fail the lane. The separate complete consumer
-transaction suite includes root-only ECH credential activation, unchanged retry,
-rotation, process death and compensating rollback. Portable tests do not establish
-these Linux results or a staging soak.
+Hysteria ECH/resource acceptance uses `make test-hysteria-ech-runtime` and `make test-hysteria-resource-profiles`: checksum-verified 2.13.0/1.14.3 binaries, owned network namespaces, controlled latency/loss, authenticated TCP/UDP/DNS, two-client transfer measurements, memory/descriptor bounds, required-ECH trust and key failures, client telemetry, and decoded QUIC ClientHello packet observations. Missing tools or selected skips fail the lane. The separate complete consumer transaction suite includes root-only ECH credential activation, unchanged retry, rotation, process death and compensating rollback. Portable tests do not establish these Linux results or a staging soak.
 
-The complete transport transaction suite runs in four disjoint CI partitions,
-each with its own fresh systemd runner. All groups are required; collection
-regressions verify their union equals the complete native transaction suite.
-The partitions use the measured `recovery-durations.json` profile.
-This keeps ECH compensation and the earlier upgrade/failure cases within the
-per-runner budget. Salamander upgrade cases exercise real firewall-owned hops
-and an unaffected UDP control before/after adoption and compensation.
+The complete transport transaction suite runs in four disjoint CI partitions, each with its own fresh systemd runner. All groups are required; collection regressions verify their union equals the complete native transaction suite. The partitions use the measured `recovery-durations.json` profile. This keeps ECH compensation and the earlier upgrade/failure cases within the per-runner budget. Salamander upgrade cases exercise real firewall-owned hops and an unaffected UDP control before/after adoption and compensation.
 
 ### AWG dual-stack forwarding and configuration
 
-`make test-awg-dualstack-runtime` selects the complete six-case native lane:
-single/multiple effective interfaces plus fresh/prior-config systemd activation
-failure and retained configuration state. It requires an explicitly isolated Linux root/systemd/TUN host and exact
-pinned AWG sources. Selected skips fail. Canonical nftables, authenticated
-IPv4/IPv6 TCP/UDP/DNS, constrained MTU, NAT counters, spoofing/cross-instance
-refusal, revocation and fallback lockdown are exercised directly. The actual
-Ansible configuration transaction restores complete prior config bytes, MTU,
-addresses and active/boot state after an injected real systemd activation failure.
+`make test-awg-dualstack-runtime` selects the complete six-case native lane: single/multiple effective interfaces plus fresh/prior-config systemd activation failure and retained configuration state. It requires an explicitly isolated Linux root/systemd/TUN host and exact pinned AWG sources. Selected skips fail. Canonical nftables, authenticated IPv4/IPv6 TCP/UDP/DNS, constrained MTU, NAT counters, spoofing/cross-instance refusal, revocation and fallback lockdown are exercised directly. The actual Ansible configuration transaction restores complete prior config bytes, MTU, addresses and active/boot state after an injected real systemd activation failure.
 
-Android emulator/native-core evidence is generated by the qualified RIPDPI
-consumer and verified through `make verify-awg-dualstack-client-evidence`;
-[the operator procedure](awg-cohorts.md#android-baseline-procedure) names its
-invocation bindings and the separate physical Android VPN requirements.
+Android emulator/native-core evidence is generated by the qualified RIPDPI consumer and verified through `make verify-awg-dualstack-client-evidence`; [the operator procedure](awg-cohorts.md#android-baseline-procedure) names its invocation bindings and the separate physical Android VPN requirements.
 
 ## Local AWG source candidate
 
-`build-gate -- make test-awg-source-candidate` builds real baseline and candidate
-Go/tools pairs using checksum-pinned Go with two jobs. The runner requires a
-local Docker Unix socket and uses a pinned Ubuntu image with a fixed signed
-Ubuntu archive snapshot. A checksum-pinned CA package bootstraps snapshot HTTPS
-without relaxing TLS or repository signatures. Package/source retrieval
-happens during image construction; runtime acceptance uses `--network=none`.
-Only explicit public inputs enter the build context, and the uniquely named owned
-container is removed on success or failure. After uncertain startup, the runner
-polls its preallocated name for 30 seconds and removes the container once
-visible; deadline exhaustion explicitly reports unconfirmed cleanup and the
-owned name rather than treating absence as success. The image remains in the build cache. Public sources use existing GitHub SSH access
-on port 22 and immutable local Git bundles; every invocation checks the current
-upstream tags, including peeled annotated tags, before using a warm bundle.
-The build receives no credentials.
-Both BuildKit and runtime calls bind the admitted local Docker engine context.
+`build-gate -- make test-awg-source-candidate` builds real baseline and candidate Go/tools pairs using checksum-pinned Go with two jobs. The runner requires a local Docker Unix socket and uses a pinned Ubuntu image with a fixed signed Ubuntu archive snapshot. A checksum-pinned CA package bootstraps snapshot HTTPS without relaxing TLS or repository signatures. Package/source retrieval happens during image construction; runtime acceptance uses `--network=none`. Only explicit public inputs enter the build context, and the uniquely named owned container is removed on success or failure. After uncertain startup, the runner polls its preallocated name for 30 seconds and removes the container once visible; deadline exhaustion explicitly reports unconfirmed cleanup and the owned name rather than treating absence as success. The image remains in the build cache. Public sources use existing GitHub SSH access on port 22 and immutable local Git bundles; every invocation checks the current upstream tags, including peeled annotated tags, before using a warm bundle. The build receives no credentials. Both BuildKit and runtime calls bind the admitted local Docker engine context.
 
-The complete lab exercises both scalar-header shapes across all three mixed/new
-source pairings, real bidirectional sustained TCP/UDP/DNS and three reconnects,
-captured H1/H2/H4 header bytes/offsets, two warm owned daemons, complete
-pair receipt publication, build/readiness failure compensation, sandbox adoption,
-unchanged PIDs and an unrelated third tunnel. Missing prerequisites fail instead
-of skipping cases. Portable launcher/contract tests are
-`tests/unit/test_awg_source_candidate.py`; they do not substitute for that lab.
+The complete lab exercises both scalar-header shapes across all three mixed/new source pairings, real bidirectional sustained TCP/UDP/DNS and three reconnects, captured H1/H2/H4 header bytes/offsets, two warm owned daemons, complete pair receipt publication, build/readiness failure compensation, sandbox adoption, unchanged PIDs and an unrelated third tunnel. Missing prerequisites fail instead of skipping cases. Portable launcher/contract tests are `tests/unit/test_awg_source_candidate.py`; they do not substitute for that lab.
 
-This is local Linux evidence, including Linux arm64 when run natively on that
-architecture. It is neither physical Android evidence nor a production pin
-promotion, production-role readiness transaction or external staging soak.
+This is local Linux evidence, including Linux arm64 when run natively on that architecture. It is neither physical Android evidence nor a production pin promotion, production-role readiness transaction or external staging soak.
 
 ### Local four-protocol roadmap acceptance
 
-`transport-native-acceptance` runs complete destination isolation, endpoint,
-AWG binding/dual-stack, ECH/resource, topology and XHTTP delivery suites in an
-owned Linux root/systemd/TUN environment. On macOS, prepare an owned Linux kernel
-VM for Hysteria resource cases: the ceiling fixture changes and restores
-`net.core.rmem_max` and `net.core.wmem_max` from its initial network namespace.
-Use that owned VM's host network when running container roots; a bridge-network
-container does not expose these kernel settings. Keep main and consumer roots
-fresh and run them serially. Run the complete consumer transaction
-suite in a separate fresh systemd root; its refusal of pre-existing global
-consumer authority remains mandatory. Run the source-candidate AWG lab with
-`build-gate -- make test-awg-source-candidate` for real warm pin/unit adoption.
-All selected cases require `--fail-on-skip`; credentials and authorities are
-synthetic and isolated. No inventory or operator secret inputs are consumed.
+`transport-native-acceptance` runs complete destination isolation, endpoint, AWG binding/dual-stack, ECH/resource, topology and XHTTP delivery suites in an owned Linux root/systemd/TUN environment. On macOS, prepare an owned Linux kernel VM for Hysteria resource cases: the ceiling fixture changes and restores `net.core.rmem_max` and `net.core.wmem_max` from its initial network namespace. Use that owned VM's host network when running container roots; a bridge-network container does not expose these kernel settings. Keep main and consumer roots fresh and run them serially. Run the complete consumer transaction suite in a separate fresh systemd root; its refusal of pre-existing global consumer authority remains mandatory. Run the source-candidate AWG lab with `build-gate -- make test-awg-source-candidate` for real warm pin/unit adoption. All selected cases require `--fail-on-skip`; credentials and authorities are synthetic and isolated. No inventory or operator secret inputs are consumed.
 
-The native runtime CI job has a 60-minute total budget for setup, the complete
-suite, delivery matrix and cleanup. Per-test deadlines and selected-skip refusal
-remain mandatory.
+The native runtime CI job has a 60-minute total budget for setup, the complete suite, delivery matrix and cleanup. Per-test deadlines and selected-skip refusal remain mandatory.
 
-`test-xhttp-delivery-matrix` executes every admitted native profile: the three
-baseline modes and qualified `stream-up` bounded-pool tuning, on primary and
-distinct-name alternate TLS endpoints. It retains
-wrong-auth and wrong-SAN failures, independent primary-outage observations,
-authenticated recovery after rejected publication and ordinary-log privacy.
-Each endpoint completes two full both-family guarded TCP/UDP/DNS matrices with
-an idle interval; their observed durations are reported and bounded at 85 seconds.
-These are local correctness/resource bounds, not a throughput improvement claim.
+`test-xhttp-delivery-matrix` executes every admitted native profile: the three baseline modes and qualified `stream-up` bounded-pool tuning, on primary and distinct-name alternate TLS endpoints. It retains wrong-auth and wrong-SAN failures, independent primary-outage observations, authenticated recovery after rejected publication and ordinary-log privacy. Each endpoint completes two full both-family guarded TCP/UDP/DNS matrices with an idle interval; their observed durations are reported and bounded at 85 seconds. These are local correctness/resource bounds, not a throughput improvement claim.
 
-The owner removed staging soak and external/device client acceptance from the
-roadmap on 2026-10-16. Local engine processes remain necessary for positive
-protocol proof. Source completion grants no production promotion authority.
+The owner removed staging soak and external/device client acceptance from the roadmap on 2026-10-16. Local engine processes remain necessary for positive protocol proof. Source completion grants no production promotion authority.
 
 ### Complete isolated four-transport acceptance
 
-`make test-four-transport-native` runs the full named completion, lifecycle,
-firewall hopping and compensation suites in a fresh Linux root with systemd,
-real TUN and nftables. Set `TRANSPORT_NATIVE_ISOLATED=1` only for an owned
-throwaway environment. The selected CI job provisions checksum-verified Xray
-and Hysteria plus both immutable AWG source pairs, then removes its exact
-labelled container. Core-1 (completion), core-2 (DHCPv6 preflight, lifecycle and
-hopping) and recovery-1 to recovery-4 run in independent containers; the four
-recovery groups partition the complete real collection without overlap.
-Each phase retains a 40-minute bound. The local default runs their entire union.
-All six CI plans are selected with the native consumer group and required by
-the aggregate check. The separate `transport-native-acceptance` roadmap target
-retains its complete local acceptance scope.
+`make test-four-transport-native` runs the full named completion, lifecycle, firewall hopping and compensation suites in a fresh Linux root with systemd, real TUN and nftables. Set `TRANSPORT_NATIVE_ISOLATED=1` only for an owned throwaway environment. The selected CI job provisions checksum-verified Xray and Hysteria plus both immutable AWG source pairs, then removes its exact labelled container. Core-1 (completion), core-2 (DHCPv6 preflight, lifecycle and hopping) and recovery-1 to recovery-4 run in independent containers; the four recovery groups partition the complete real collection without overlap. Each phase retains a 40-minute bound. The local default runs their entire union. All six CI plans are selected with the native consumer group and required by the aggregate check. The separate `transport-native-acceptance` roadmap target retains its complete local acceptance scope.
 
-The runner refuses workstation execution, pytest selection overrides, dirty
-tracked source, missing engines, empty results, selected skips and resource
-cleanup differences. `TRANSPORT_NATIVE_EVIDENCE` names a new private JSON file
-(default `/var/tmp/transport-native-evidence.json`) containing the exact source
-SHA, engine digests and case outcomes. Raw diagnostics remain private inside
-the disposable runner; only redacted JSON is uploaded. This establishes isolated
-native source/client behavior, with no provider, physical-device or live-fleet
-acceptance claim.
+The runner refuses workstation execution, pytest selection overrides, dirty tracked source, missing engines, empty results, selected skips and resource cleanup differences. `TRANSPORT_NATIVE_EVIDENCE` names a new private JSON file (default `/var/tmp/transport-native-evidence.json`) containing the exact source SHA, engine digests and case outcomes. Raw diagnostics remain private inside the disposable runner; only redacted JSON is uploaded. This establishes isolated native source/client behavior, with no provider, physical-device or live-fleet acceptance claim.
 
-Use installed SOPS and age binaries on `PATH` for source checks. Crypto fixtures
-replace `HOME`, so tool shims that read their activation configuration there
-may refuse before encryption.
+Use installed SOPS and age binaries on `PATH` for source checks. Crypto fixtures replace `HOME`, so tool shims that read their activation configuration there may refuse before encryption.
 
 ### Protocol audit compatibility
 
-The required native runtime job runs `make test-mtg-native-compatibility` with
-the official checksum-pinned archive, the native FakeTLS parser and rejected
-publication checks. It makes no Telegram requests. Real P0 recipient and
-Finalmask traffic runs in `tests/unit/test_p0_client_compatibility_native.py`.
-Naive native checks cover authenticated CONNECT and failed/reset request-log
-privacy. These checks use synthetic local identities and do not prove deployed
-versions, production reachability or physical-client behavior.
+The required native runtime job runs `make test-mtg-native-compatibility` with the official checksum-pinned archive, the native FakeTLS parser and rejected publication checks. It makes no Telegram requests. Real P0 recipient and Finalmask traffic runs in `tests/unit/test_p0_client_compatibility_native.py`. Naive native checks cover authenticated CONNECT and failed/reset request-log privacy. These checks use synthetic local identities and do not prove deployed versions, production reachability or physical-client behavior.
 
 ## Computed-zero AWG UDP checksum
 
-`test_awg_source_correction.py` checks exact source and asset admission without
-claiming native traffic. `test_awg_corrected_native_build.py` checks the native
-build receipt and alias. Each native AWG builder runs the actual pinned Go
-completion and segmentation functions with the reviewed test overlay before
-compilation. The complete native core-1 plan also runs
-`tests/native/transport_acceptance/test_awg_udp_checksum.py`. It requires the
-zero-producing IPv6 UDP tuple and an adjacent control to deliver six real DNS
-replies, with complete pre-NAT checksums and no checksum errors. Keep offloads,
-authentication and packet guards active in this lane.
+`test_awg_source_correction.py` checks exact source and asset admission without claiming native traffic. `test_awg_corrected_native_build.py` checks the native build receipt and alias. Each native AWG builder runs the actual pinned Go completion and segmentation functions with the reviewed test overlay before compilation. The complete native core-1 plan also runs `tests/native/transport_acceptance/test_awg_udp_checksum.py`. It requires the zero-producing IPv6 UDP tuple and an adjacent control to deliver six real DNS replies, with complete pre-NAT checksums and no checksum errors. Keep offloads, authentication and packet guards active in this lane.
 
 ## Repository policy checks
 
-The branch-required contexts are `required checks`, `codeql (python)`,
-`codeql (actions)`, and `PR title`, each bound to GitHub Actions. The first context
-includes every selected CI job; child contexts are not duplicate branch
-requirements. PR edits trigger only `pr-title.yml`, so the title is checked again
-without a restart of the complete CI plan. The same job validates every commit
-subject in the PR range because `main` is rebase-merged.
-`test_branch_protection_contract.py` exercises the configuration command through
-its GitHub API boundary, including migration order, identity refusal, remote
-failures, readback, and idempotence. The existing aggregate tests retain failure,
-cancellation, missing-job, and planned-skip coverage.
+The branch-required contexts are `required checks`, `codeql (python)`, `codeql (actions)`, and `PR title`, each bound to GitHub Actions. The first context includes every selected CI job; child contexts are not duplicate branch requirements. PR edits trigger only `pr-title.yml`, so the title is checked again without a restart of the complete CI plan. The same job validates every commit subject in the PR range because `main` is rebase-merged. `test_branch_protection_contract.py` exercises the configuration command through its GitHub API boundary, including migration order, identity refusal, remote failures, readback, and idempotence. The existing aggregate tests retain failure, cancellation, missing-job, and planned-skip coverage.
 
-Dependabot covers Actions, all four provider roots, root and vpnd Python,
-tasking npm, and the Go helper. Routine updates are grouped weekly after the
-seven-day cooldown. Galaxy collection updates retain their separate drift check.
+Dependabot covers Actions, all four provider roots, root and vpnd Python, tasking npm, and the Go helper. Routine updates are grouped weekly after the seven-day cooldown. Galaxy collection updates retain their separate drift check.

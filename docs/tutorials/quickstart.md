@@ -2,27 +2,13 @@
 
 > **Status:** Current · **Type:** tutorial · **Tier:** CORE · **Reviewed:** 2026-11-03
 
-This walks through deploying the full P0+P1+P2 stack to a single UpCloud VPS.
-All commands run from your operator workstation; you should never SSH the
-target VPS by hand for routine setup. This tutorial is a single-node learning
-path, not the four-host service layout in the
-[deployment snapshot](../reference/deployment-status.md). Console admission,
-MFA, issuance and acceptance can take longer than the deployment commands.
+This walks through deploying the full P0+P1+P2 stack to a single UpCloud VPS. All commands run from your operator workstation; you should never SSH the target VPS by hand for routine setup. This tutorial is a single-node learning path, not the four-host service layout in the [deployment snapshot](../reference/deployment-status.md). Console admission, MFA, issuance and acceptance can take longer than the deployment commands.
 
 ## 0. Prerequisites
 
-Complete the canonical [first-time workstation setup](../../CONTRIBUTING.md#first-time-setup)
-before following this deployment guide. It installs the exact pins from
-`mise.toml`, the hash-pinned Python toolchain, task tools and local hooks,
-then checks operator prerequisites. Run the Make commands below in the pinned
-Bash session activated by that setup. In a new shell, restore its explicit tool
-selection first; a bare `mise exec --` can select different global tool versions.
+Complete the canonical [first-time workstation setup](../../CONTRIBUTING.md#first-time-setup) before following this deployment guide. It installs the exact pins from `mise.toml`, the hash-pinned Python toolchain, task tools and local hooks, then checks operator prerequisites. Run the Make commands below in the pinned Bash session activated by that setup. In a new shell, restore its explicit tool selection first; a bare `mise exec --` can select different global tool versions.
 
-Deployment additionally needs a domain you control with DNS for nginx-XHTTP
-and Hysteria TLS, and a public certificate for it (not bundled).
-The UpCloud CLI `upctl` is optional. Provider credentials and deployment
-material are configured in the following steps; they are not needed for the
-credential-free local checks described in the setup guide.
+Deployment additionally needs a domain you control with DNS for nginx-XHTTP and Hysteria TLS, and a public certificate for it (not bundled). The UpCloud CLI `upctl` is optional. Provider credentials and deployment material are configured in the following steps; they are not needed for the credential-free local checks described in the setup guide.
 
 ## 1. Provider credentials
 
@@ -33,11 +19,7 @@ export UPCLOUD_USERNAME='vpn-deploy'
 export UPCLOUD_PASSWORD='…'
 ```
 
-Load these variables from the approved encrypted operator authority for the
-selected command. Do not store durable plaintext credentials in shell login
-files or paste them into shell history. They must not appear in `*.tfvars`,
-Terraform inputs or Git. Protect provider-generated state secrets separately;
-see [the local operator kit](../how-to/local-operator-kit.md).
+Load these variables from the approved encrypted operator authority for the selected command. Do not store durable plaintext credentials in shell login files or paste them into shell history. They must not appear in `*.tfvars`, Terraform inputs or Git. Protect provider-generated state secrets separately; see [the local operator kit](../how-to/local-operator-kit.md).
 
 ## 2. Generate keys
 
@@ -57,8 +39,7 @@ export ANSIBLE_SSH_PRIVATE_KEY_FILE=~/.ssh/vpn_deploy
 xray x25519  # Use the reviewed, checksum-verified pinned binary in a private terminal.
 ```
 
-Record the REALITY private key for the secrets file (next step) and the
-public key for client URIs.
+Record the REALITY private key for the secrets file (next step) and the public key for client URIs.
 
 ## 3. Fill out the Terraform vars
 
@@ -69,13 +50,7 @@ cp terraform/providers/upcloud/environments/prod.tfvars.example \
 $EDITOR terraform/providers/upcloud/environments/prod.tfvars
 ```
 
-Required: `zone`, `plan`, `storage_template`, `admin_ssh_public_key`
-(paste content of `~/.ssh/vpn_deploy.pub`), `allowed_ssh_cidrs` (your
-operator IP, **never** `0.0.0.0/0`). `ssh_port` defaults to `22`; changing it
-updates cloud-init, the provider firewall, rendered `ansible_port`, wait logic,
-and the on-host nftables allowlist together. It is a creation-time setting:
-changing it on an existing node requests replacement and `prevent_destroy`
-blocks an accidental in-place migration. Use blue-green recreation.
+Required: `zone`, `plan`, `storage_template`, `admin_ssh_public_key` (paste content of `~/.ssh/vpn_deploy.pub`), `allowed_ssh_cidrs` (your operator IP, **never** `0.0.0.0/0`). `ssh_port` defaults to `22`; changing it updates cloud-init, the provider firewall, rendered `ansible_port`, wait logic, and the on-host nftables allowlist together. It is a creation-time setting: changing it on an existing node requests replacement and `prevent_destroy` blocks an accidental in-place migration. Use blue-green recreation.
 
 The default full-stack port layout is:
 
@@ -85,9 +60,7 @@ The default full-stack port layout is:
 | P1 nginx-xhttp | TCP/8443 |
 | P2 Hysteria2 | UDP/443 |
 
-Keep `nginx_xhttp_public_port` at its default `8443` for single-host full-stack
-deploys. Direct-only hosts with `vpn.enable_xray_reality: false` may override
-both the Terraform variable and Ansible `nginx_xhttp_public_port` to `443`.
+Keep `nginx_xhttp_public_port` at its default `8443` for single-host full-stack deploys. Direct-only hosts with `vpn.enable_xray_reality: false` may override both the Terraform variable and Ansible `nginx_xhttp_public_port` to `443`.
 
 Find a current Debian 13 / Ubuntu 24.04 template UUID:
 
@@ -104,9 +77,7 @@ $EDITOR ~/.config/vpn-provision/prod.secrets.yaml
 
 ### 4a. Pick a REALITY target
 
-There is no safe default for `xray.target` — see the inline criteria in
-the secrets schema and `docs/decisions/0001-cdn-not-filtered-path-baseline.md`. Two helpers narrow the
-search:
+There is no safe default for `xray.target` — see the inline criteria in the secrets schema and `docs/decisions/0001-cdn-not-filtered-path-baseline.md`. Two helpers narrow the search:
 
 ```bash
 # Discover candidates inside a CIDR or by crawling a public mirror list.
@@ -118,21 +89,9 @@ TARGET=mirror.example.com:443 SERVER_NAMES=mirror.example.com \
   ./scripts/validate-reality-target.sh
 ```
 
-`scan-targets` is a wrapper around [XTLS/RealiTLScanner](https://github.com/XTLS/RealiTLScanner)
-pinned at v0.2.1 with a sha256 check. It runs **on your workstation,
-never on the VPS** (the upstream README is explicit that running the
-scanner in the cloud may flag the VPS). The wrapper drops over-template
-domains and demotes candidates in the "Avoid" ASN tier
-(`docs/reference/provider-notes.md`); export `VPS_ASN=<int>` to additionally
-demote any candidate whose ASN does not match the VPS.
+`scan-targets` is a wrapper around [XTLS/RealiTLScanner](https://github.com/XTLS/RealiTLScanner) pinned at v0.2.1 with a sha256 check. It runs **on your workstation, never on the VPS** (the upstream README is explicit that running the scanner in the cloud may flag the VPS). The wrapper drops over-template domains and demotes candidates in the "Avoid" ASN tier (`docs/reference/provider-notes.md`); export `VPS_ASN=<int>` to additionally demote any candidate whose ASN does not match the VPS.
 
-Fill: Xray version + sha256 (from the GitHub release page), REALITY keypair
-from step 2c, target+server_names (validate with `make validate-target`),
-nginx_xhttp cert/key (your public CA cert for `vpn.example.com`), Hysteria
-version + sha256, geodata release URLs + sha256 values, AmneziaWG source
-tag+commit pins (`amneziawg_go_version` + `amneziawg_go_commit`,
-`amneziawg_tools_version` + `amneziawg_tools_commit`), AmneziaWG H1–H4
-obfuscation params, restic password.
+Fill: Xray version + sha256 (from the GitHub release page), REALITY keypair from step 2c, target+server_names (validate with `make validate-target`), nginx_xhttp cert/key (your public CA cert for `vpn.example.com`), Hysteria version + sha256, geodata release URLs + sha256 values, AmneziaWG source tag+commit pins (`amneziawg_go_version` + `amneziawg_go_commit`, `amneziawg_tools_version` + `amneziawg_tools_commit`), AmneziaWG H1–H4 obfuscation params, restic password.
 
 For a P0 host with an owned domain, the optional tactical self-steal mode replaces the external REALITY target with a loopback-only nginx TLS site. Assign the host to the `p0-self-steal` cohort, set `xray.target` to `127.0.0.1:8443`, set the only `xray.server_names` value and `reality_self_steal.server_name` to the same certificate hostname, and provide its public certificate chain and private key in `reality_self_steal.cert_pem` and `reality_self_steal.key_pem`. The role validates SAN, remaining lifetime, key match, listener collisions, and nginx syntax; disabling it removes its files and private listener. It never opens TCP/80 and does not change the public listener contract. DNS publication, production certificate issuance, and the live P0 switch remain explicit operator steps; use [the verified target research](../research/reality-target-selection-2026-07.md) as the promotion checklist.
 
@@ -148,32 +107,20 @@ shred -u ~/.config/vpn-provision/prod.secrets.yaml
 
 From now on edit only the encrypted file: `sops ~/.config/vpn-provision/prod.secrets.sops.yaml`.
 
-Add the first device only after encryption; `new-client.sh` edits a SOPS file
-and generates a distinct UUID, shortId, and peer key for that device:
+Add the first device only after encryption; `new-client.sh` edits a SOPS file and generates a distinct UUID, shortId, and peer key for that device:
 
 ```bash
 SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml \
 ./scripts/new-client.sh phone
 ```
 
-The external directory above is the default. Operators who deliberately keep
-all deployment material next to the checkout may instead use the ignored
-`secrets/local/config/`, `secrets/local/runtime/`, and
-`secrets/local/clients/` directories and point `SOPS_FILE` and
-`SECRETS_FILE` at them from the ignored `.fleet.mk`. Git must never track
-anything below `secrets/local/`.
+The external directory above is the default. Operators who deliberately keep all deployment material next to the checkout may instead use the ignored `secrets/local/config/`, `secrets/local/runtime/`, and `secrets/local/clients/` directories and point `SOPS_FILE` and `SECRETS_FILE` at them from the ignored `.fleet.mk`. Git must never track anything below `secrets/local/`.
 
 ## 6. Deploy
 
-This section walks a first node from plan to smoke test. Re-deploys,
-tag-scoped runs, adding a device and the acceptance checklist live in
-[the deploy guide](../how-to/deploy.md); do not maintain a second copy here.
+This section walks a first node from plan to smoke test. Re-deploys, tag-scoped runs, adding a device and the acceptance checklist live in [the deploy guide](../how-to/deploy.md); do not maintain a second copy here.
 
-Before changing an existing fleet, read [the deployment snapshot](../reference/deployment-status.md).
-It records the last verified snapshot, named environments,
-management-path invariant, live validation boundary, and observed operator
-limitations without publishing endpoints or secrets. It does not establish
-today's fleet or deployed revision.
+Before changing an existing fleet, read [the deployment snapshot](../reference/deployment-status.md). It records the last verified snapshot, named environments, management-path invariant, live validation boundary, and observed operator limitations without publishing endpoints or secrets. It does not establish today's fleet or deployed revision.
 
 ```bash
 (
@@ -187,41 +134,17 @@ today's fleet or deployed revision.
 )
 ```
 
-Review that plan against the authorized environment, resource identities and
-cost limits. Stop on unexpected updates or replacement of an existing server.
-Apply only the reviewed plan, then create the staging cleanup manifest when
-applicable and generate inventory:
+Review that plan against the authorized environment, resource identities and cost limits. Stop on unexpected updates or replacement of an existing server. Apply only the reviewed plan, then create the staging cleanup manifest when applicable and generate inventory:
 
 ```bash
 make apply
 ```
 
-For disposable `ci-staging-*` nodes, create the UUID-bound cleanup manifest
-from the private exact state immediately after `apply`, before any guest
-installer or bootstrap write. Follow
-[the staging sequence](../how-to/ci-real-deploy.md#uuid-bound-operator-staging-cleanup).
-Use `make inventory` after that manifest step; for a permanent node, generate
-inventory after the reviewed apply.
-When recovery behavior is in the agreed acceptance scope, exercise the fixed
-[controller-loss and reboot recovery verbs](../how-to/tailnet-management.md#disposable-staging-recovery-exercises)
-with separate one-use enrollment keys after SSH recovery installation and
-before positive bootstrap. A normal bootstrap interruption is not equivalent.
-These fault-injection exercises are not prerequisites for every protocol run.
+For disposable `ci-staging-*` nodes, create the UUID-bound cleanup manifest from the private exact state immediately after `apply`, before any guest installer or bootstrap write. Follow [the staging sequence](../how-to/ci-real-deploy.md#uuid-bound-operator-staging-cleanup). Use `make inventory` after that manifest step; for a permanent node, generate inventory after the reviewed apply. When recovery behavior is in the agreed acceptance scope, exercise the fixed [controller-loss and reboot recovery verbs](../how-to/tailnet-management.md#disposable-staging-recovery-exercises) with separate one-use enrollment keys after SSH recovery installation and before positive bootstrap. A normal bootstrap interruption is not equivalent. These fault-injection exercises are not prerequisites for every protocol run.
 
-Independently verify the exact node's SSH fingerprint before accepting or replacing
-its pin, then use `make wait` to check cloud-init. Complete the
-[exact-node prerequisites](../how-to/deploy.md#re-deploy-after-a-config-or-secrets-edit):
-install SSH recovery, perform the explicit [Tailnet bootstrap](../how-to/tailnet-management.md#bootstrap-one-node),
-render inventory again with its confirmed `TAILNET_HANDOFFS`, and perform the
-documented SSH ownership migration when required. Ordinary deploy cannot enroll
-a fresh node or migrate its ownership and rejects enrollment keys.
+Independently verify the exact node's SSH fingerprint before accepting or replacing its pin, then use `make wait` to check cloud-init. Complete the [exact-node prerequisites](../how-to/deploy.md#re-deploy-after-a-config-or-secrets-edit): install SSH recovery, perform the explicit [Tailnet bootstrap](../how-to/tailnet-management.md#bootstrap-one-node), render inventory again with its confirmed `TAILNET_HANDOFFS`, and perform the documented SSH ownership migration when required. Ordinary deploy cannot enroll a fresh node or migrate its ownership and rejects enrollment keys.
 
-Prepare the observed `DEPLOY_SSH_CONTEXTS_FILE`, promotion mapping and fresh
-`DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE` sinks before the following block.
-First disposable staging deployment uses the
-[staging intent](../reference/protocol-liveness.md#first-onboarding-during-a-disposable-staging-deployment);
-that path is restricted to its staging provider/cohort and does not bootstrap a
-permanent fleet implicitly.
+Prepare the observed `DEPLOY_SSH_CONTEXTS_FILE`, promotion mapping and fresh `DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE` sinks before the following block. First disposable staging deployment uses the [staging intent](../reference/protocol-liveness.md#first-onboarding-during-a-disposable-staging-deployment); that path is restricted to its staging provider/cohort and does not bootstrap a permanent fleet implicitly.
 
 ```bash
 (
@@ -232,11 +155,7 @@ permanent fleet implicitly.
 )
 ```
 
-If `dry-run` shows changes you didn't expect, stop and investigate. Don't
-proceed to `deploy`.
-Run the following block only after a successful reviewed dry-run and all
-prerequisites pass. Cleanup runs on exit even after failure; a cleanup failure
-also leaves the block unsuccessful:
+If `dry-run` shows changes you didn't expect, stop and investigate. Don't proceed to `deploy`. Run the following block only after a successful reviewed dry-run and all prerequisites pass. Cleanup runs on exit even after failure; a cleanup failure also leaves the block unsuccessful:
 
 ```bash
 (
@@ -250,15 +169,11 @@ also leaves the block unsuccessful:
 )
 ```
 
-Diagnose `dry-run` errors against current source and exact node state. A
-historical failure does not authorize bypassing a failed prerequisite. The
-[deployment snapshot](../reference/deployment-status.md#evidence-and-refresh-boundary)
-keeps current runtime evidence separate from source and local tool failures.
+Diagnose `dry-run` errors against current source and exact node state. A historical failure does not authorize bypassing a failed prerequisite. The [deployment snapshot](../reference/deployment-status.md#evidence-and-refresh-boundary) keeps current runtime evidence separate from source and local tool failures.
 
 ## 7. Generate a client config
 
-For an official sing-box JSON with selector + urltest covering the supported
-P0 REALITY and P2 Hysteria2 profiles:
+For an official sing-box JSON with selector + urltest covering the supported P0 REALITY and P2 Hysteria2 profiles:
 
 ```bash
 (
@@ -272,19 +187,11 @@ P0 REALITY and P2 Hysteria2 profiles:
 )
 ```
 
-The emitted document holds the device's live credentials. The destination is
-inside the ignored `secrets/local/` kit, `noclobber` refuses to overwrite an
-earlier artifact, and the `umask` keeps other local users out; never redirect
-it into the repository root or a shared folder.
+The emitted document holds the device's live credentials. The destination is inside the ignored `secrets/local/` kit, `noclobber` refuses to overwrite an earlier artifact, and the `umask` keeps other local users out; never redirect it into the repository root or a shared folder.
 
-The emitter reads the same private runtime file as `vpnd share`; it does not
-decrypt again. Do not combine that shared document with per-host `SOPS_FILES`.
-For independent per-host encrypted inputs, invoke `scripts/emit-singbox.sh`
-directly without `VPN_SECRETS_FILE`.
+The emitter reads the same private runtime file as `vpnd share`; it does not decrypt again. Do not combine that shared document with per-host `SOPS_FILES`. For independent per-host encrypted inputs, invoke `scripts/emit-singbox.sh` directly without `VPN_SECRETS_FILE`.
 
-The standard artifact intentionally excludes P1 XHTTP because official
-sing-box does not implement that transport. Use the RIPDPI-specific artifact
-when one client must receive P0, P1, and P2 together:
+The standard artifact intentionally excludes P1 XHTTP because official sing-box does not implement that transport. Use the RIPDPI-specific artifact when one client must receive P0, P1, and P2 together:
 
 ```bash
 (
@@ -295,12 +202,9 @@ when one client must receive P0, P1, and P2 together:
 )
 ```
 
-The bundle carries the same live credentials as the sing-box document and goes
-to the same private directory; it reads the encrypted file directly, so no
-`make decrypt` or `make clean` is needed around it.
+The bundle carries the same live credentials as the sing-box document and goes to the same private directory; it reads the encrypted file directly, so no `make decrypt` or `make clean` is needed around it.
 
-Do not import the RIPDPI artifact into a plain sing-box client: it contains
-both the non-standard `ripdpi` object and an XHTTP outbound.
+Do not import the RIPDPI artifact into a plain sing-box client: it contains both the non-standard `ripdpi` object and an XHTTP outbound.
 
 For just URI strings (v2rayN and simpler clients):
 
@@ -311,12 +215,7 @@ SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml \
 ./scripts/new-client.sh --emit-uri laptop
 ```
 
-URI templates are written only to the new private recipient file; stdout
-contains metadata. AmneziaWG recovery keys remain in the encrypted registry.
-Deliver the selected device material through a secure channel.
-For P1 XHTTP client profiles, use the nginx public port
-`nginx_xhttp_public_port` (`8443` by default), not the localhost Xray inbound
-port `nginx_xhttp_port`.
+URI templates are written only to the new private recipient file; stdout contains metadata. AmneziaWG recovery keys remain in the encrypted registry. Deliver the selected device material through a secure channel. For P1 XHTTP client profiles, use the nginx public port `nginx_xhttp_public_port` (`8443` by default), not the localhost Xray inbound port `nginx_xhttp_port`.
 
 ## 8. External health check
 
@@ -328,8 +227,7 @@ curl -fsS --resolve "vpn.example.com:8443:${IP}" \
   "https://vpn.example.com:8443/"
 ```
 
-Then connect with the real client and run a real-life traffic test (curl
-through the tunnel; speedtest if useful).
+Then connect with the real client and run a real-life traffic test (curl through the tunnel; speedtest if useful).
 
 ## 9. Recurring operator-side automation
 
@@ -346,10 +244,7 @@ Add to your operator's cron / launchd:
 47 3 * * *   cd ~/GitRep/ripdpi-vpn-deploy && make backup-state >> /tmp/vpn-tfstate-backup.log 2>&1
 ```
 
-The VPS itself runs a local watchdog every 5 minutes (the `watchdog`
-Ansible role) that pushes alerts to ntfy.sh / Pushover when probes fail.
-Set `watchdog_secrets.ntfy_topic` in your secrets file before deploy.
-The local watchdog covers process, listener, and configuration state only. Configure at least two client-path sentinels per `docs/reference/protocol-liveness.md` before treating liveness as an infrastructure-rotation signal.
+The VPS itself runs a local watchdog every 5 minutes (the `watchdog` Ansible role) that pushes alerts to ntfy.sh / Pushover when probes fail. Set `watchdog_secrets.ntfy_topic` in your secrets file before deploy. The local watchdog covers process, listener, and configuration state only. Configure at least two client-path sentinels per `docs/reference/protocol-liveness.md` before treating liveness as an infrastructure-rotation signal.
 
 On a filtered probe host, install daily active-target ASN/path monitoring with `make install-operator-crons REALITY_TARGET_VANTAGE=filtered-cohort-a`. The label must describe a technical cohort, not a carrier, operator, or geography. See `docs/reference/reality-target-monitoring.md` for the two-strike alert and acknowledgement flow.
 
@@ -359,8 +254,7 @@ On a filtered probe host, install daily active-target ASN/path monitoring with `
 ./scripts/age-recovery-split.sh 2 3
 ```
 
-Distributes 2-of-3 Shamir shares; any 2 shares can reconstruct the age
-private key. See `docs/how-to/age-recovery.md` for storage discipline.
+Distributes 2-of-3 Shamir shares; any 2 shares can reconstruct the age private key. See `docs/how-to/age-recovery.md` for storage discipline.
 
 ## What's next
 
