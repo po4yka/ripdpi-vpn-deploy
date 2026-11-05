@@ -29,7 +29,8 @@
 #                                      (only when REALITY_TARGET_VANTAGE is set)
 #   daily   renew-self-steal-cert     reissue the P0 self-steal pair when due
 #                                      (only when SELF_STEAL_SOPS_FILE and
-#                                      SELF_STEAL_DNS_SOPS_FILE are set)
+#                                      SELF_STEAL_DNS_ENV_FILE are set; the latter
+#                                      holds only VULTR_API_KEY for sops exec-env)
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -39,7 +40,7 @@ WARM_SPARE_ENV="${WARM_SPARE_ENV:-}"
 PAYLOAD_THROTTLE_HOST="${PAYLOAD_THROTTLE_HOST:-}"
 REALITY_TARGET_VANTAGE="${REALITY_TARGET_VANTAGE:-}"
 SELF_STEAL_SOPS_FILE="${SELF_STEAL_SOPS_FILE:-}"
-SELF_STEAL_DNS_SOPS_FILE="${SELF_STEAL_DNS_SOPS_FILE:-}"
+SELF_STEAL_DNS_ENV_FILE="${SELF_STEAL_DNS_ENV_FILE:-}"
 LIVENESS_CONFIG="${LIVENESS_CONFIG:-}"
 SOPS_FILE="${SOPS_FILE:-}"
 SOPS_AGE_KEY_FILE="${SOPS_AGE_KEY_FILE:-}"
@@ -173,25 +174,27 @@ EOF
   else
     echo "REALITY target monitor skipped: set REALITY_TARGET_VANTAGE to a filtered technical label" >&2
   fi
-  if [[ -n "$SELF_STEAL_SOPS_FILE" || -n "$SELF_STEAL_DNS_SOPS_FILE" ]]; then
-    local steal_q steal_dns_q
-    [[ -f "$SELF_STEAL_SOPS_FILE" && -f "$SELF_STEAL_DNS_SOPS_FILE" ]] || {
-      echo "SELF_STEAL_SOPS_FILE and SELF_STEAL_DNS_SOPS_FILE must both name existing files" >&2
+  if [[ -n "$SELF_STEAL_SOPS_FILE" || -n "$SELF_STEAL_DNS_ENV_FILE" ]]; then
+    local steal_q steal_dns_q renewal_q
+    [[ -f "$SELF_STEAL_SOPS_FILE" && -f "$SELF_STEAL_DNS_ENV_FILE" ]] || {
+      echo "SELF_STEAL_SOPS_FILE and SELF_STEAL_DNS_ENV_FILE must both name existing files" >&2
       return 1
     }
     # cron runs from the repository and turns % into a newline.
-    [[ "$SELF_STEAL_SOPS_FILE" == /* && "$SELF_STEAL_DNS_SOPS_FILE" == /* &&
-       "$SELF_STEAL_SOPS_FILE$SELF_STEAL_DNS_SOPS_FILE" != *%* ]] || {
-      echo "SELF_STEAL_SOPS_FILE and SELF_STEAL_DNS_SOPS_FILE must be absolute paths without %" >&2
+    [[ "$SELF_STEAL_SOPS_FILE" == /* && "$SELF_STEAL_DNS_ENV_FILE" == /* &&
+       "$SELF_STEAL_SOPS_FILE$SELF_STEAL_DNS_ENV_FILE" != *%* ]] || {
+      echo "SELF_STEAL_SOPS_FILE and SELF_STEAL_DNS_ENV_FILE must be absolute paths without %" >&2
       return 1
     }
     printf -v steal_q '%q' "$SELF_STEAL_SOPS_FILE"
-    printf -v steal_dns_q '%q' "$SELF_STEAL_DNS_SOPS_FILE"
+    printf -v steal_dns_q '%q' "$SELF_STEAL_DNS_ENV_FILE"
+    # The DNS key exists only in the exec-env child; the command string is quoted twice.
+    printf -v renewal_q '%q' "make renew-self-steal-cert SELF_STEAL_SOPS_FILE=${steal_q}"
     cat <<EOF
-27 4 * * *     cd ${repo_q} && SOPS_AGE_KEY_FILE=${age_key_q} make renew-self-steal-cert SELF_STEAL_SOPS_FILE=${steal_q} SELF_STEAL_DNS_SOPS_FILE=${steal_dns_q}  2>&1 | logger -t vpn-self-steal-renewal
+27 4 * * *     cd ${repo_q} && SOPS_AGE_KEY_FILE=${age_key_q} sops exec-env ${steal_dns_q} ${renewal_q}  2>&1 | logger -t vpn-self-steal-renewal
 EOF
   else
-    echo "self-steal renewal skipped: set SELF_STEAL_SOPS_FILE and SELF_STEAL_DNS_SOPS_FILE" >&2
+    echo "self-steal renewal skipped: set SELF_STEAL_SOPS_FILE and SELF_STEAL_DNS_ENV_FILE" >&2
   fi
   echo "${MARKER_END}"
 }

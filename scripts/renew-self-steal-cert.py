@@ -3,19 +3,24 @@
 
 The P0 node has no public HTTP listener, so the pair is issued here with an
 ACME DNS-01 challenge on the Vultr zone and written into a new SOPS document
-beside the source. The source document is never changed, and deployment stays
-a reviewed step. No secret value is printed; the DNS API key reaches lego only
-through its environment, and the issued key leaves the disk once it is in SOPS.
+beside the source. Current values come only from the `make decrypt` output in
+VPN_SECRETS_FILE, and the DNS API key only from VULTR_API_KEY in the process
+environment. The source document is never changed, deployment stays a reviewed
+step, and the issued key leaves the disk once it is in SOPS.
 """
 import argparse
 import datetime
+import fcntl
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+import yaml
 
 LEGO_VERSION = '5.6.0'
 RENEW_BEFORE = datetime.timedelta(days=30)
@@ -39,13 +44,18 @@ def run(argv, *, env=None, data=None, timeout=120):
     return result.stdout
 
 
-def extract(sops_file, path, env, *, optional=False):
-    try:
-        return run(['sops', '--decrypt', '--extract', path, str(sops_file)], env=env).decode()
-    except RenewalError:
-        if optional:
-            return ''
-        raise
+def materialized_secrets():
+    """Read only the canonical `make decrypt` output (the SOPS gate)."""
+    path = os.environ.get('VPN_SECRETS_FILE', '')
+    if not path or not Path(path).is_file():
+        raise RenewalError('decrypted-secrets-required')
+    with open(path) as handle:
+        document = yaml.safe_load(handle)
+    pair = document.get('reality_self_steal') if isinstance(document, dict) else None
+    if not isinstance(pair, dict) or not all(isinstance(pair.get(k), str) for k in ('server_name', 'cert_pem')):
+        raise RenewalError('self-steal-secrets-missing')
+    nginx = document.get('nginx_xhttp') or {}
+    return pair['server_name'].strip(), pair['cert_pem'], str(nginx.get('server_name', '') if isinstance(nginx, dict) else '')
 
 
 def not_after(cert_pem):
@@ -74,22 +84,23 @@ def check_pair(cert_pem, key_pem, server_name, now):
 
 
 def renewed_documents(sops_file):
-    stem = sops_file.name.split('.', 1)[0]
-    return sorted(sops_file.parent.glob(stem + RENEWED + '*'))
+    stem, suffix = sops_file.name.split('.', 1)
+    pattern = re.compile(re.escape(stem + RENEWED) + r'\d{8}\.' + re.escape(suffix) + '$')
+    return sorted(p for p in sops_file.parent.iterdir() if pattern.fullmatch(p.name))
 
 
-def renew(sops_file, dns_sops_file, lego_path, *, now=None):
+def renew(sops_file, lego_path, *, now=None):
     now = now or datetime.datetime.now(datetime.timezone.utc)
     env = dict(os.environ)
-    server_name = extract(sops_file, SELF_STEAL + '["server_name"]', env).strip()
-    expiry = not_after(extract(sops_file, SELF_STEAL + '["cert_pem"]', env))
+    server_name, current_cert, nginx_name = materialized_secrets()
+    expiry = not_after(current_cert)
     if expiry - now > RENEW_BEFORE:
         return {'state': 'not-due', 'days_remaining': (expiry - now).days}
     # A renewed document that is not deployed yet already holds the next pair.
     pending = renewed_documents(sops_file)
     if pending:
         return {'state': 'awaiting-deploy', 'output': str(pending[-1]), 'days_remaining': (expiry - now).days}
-    if extract(sops_file, '["nginx_xhttp"]["server_name"]', env, optional=True).strip().lower() == server_name.lower():
+    if nginx_name.strip().lower() == server_name.lower():
         raise RenewalError('shared-hostname-needs-both-certificates')
     stem, suffix = sops_file.name.split('.', 1)
     output = sops_file.with_name(stem + RENEWED + now.strftime('%Y%m%d') + '.' + suffix)
@@ -98,7 +109,9 @@ def renew(sops_file, dns_sops_file, lego_path, *, now=None):
         raise RenewalError('lego-version-mismatch')
     lego_path.mkdir(mode=0o700, parents=True, exist_ok=True)
     lego_path.chmod(0o700)
-    lego_env = {**env, 'VULTR_API_KEY': extract(dns_sops_file, '["api_key"]', env).strip(),
+    if not env.get('VULTR_API_KEY'):
+        raise RenewalError('dns-credential-required')
+    lego_env = {**env,
                 # Vultr publishes records slowly; the default 60s wait fails.
                 'VULTR_PROPAGATION_TIMEOUT': '600', 'VULTR_POLLING_INTERVAL': '10'}
     issued = lego_path / 'certificates'
@@ -137,12 +150,18 @@ def notify(message):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--sops-file', type=Path, required=True)
-    parser.add_argument('--dns-sops-file', type=Path, required=True)
     parser.add_argument('--lego-path', type=Path, required=True)
     args = parser.parse_args()
     try:
-        result = renew(args.sops_file.resolve(), args.dns_sops_file, args.lego_path)
-    except (RenewalError, OSError, ValueError) as error:
+        args.lego_path.mkdir(mode=0o700, parents=True, exist_ok=True)
+        # One renewal at a time: the pending check, issuance and cleanup share lego state.
+        with open(args.lego_path / 'renewal.lock', 'a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            result = renew(args.sops_file.resolve(), args.lego_path)
+    except BlockingIOError:
+        print('self-steal-renewal-refused: renewal-in-progress', file=sys.stderr)
+        return 1
+    except (RenewalError, OSError, ValueError, yaml.YAMLError) as error:
         category = str(error) if isinstance(error, RenewalError) else type(error).__name__
         print('self-steal-renewal-refused: ' + category, file=sys.stderr)
         notify('Self-steal certificate renewal failed: ' + category)
