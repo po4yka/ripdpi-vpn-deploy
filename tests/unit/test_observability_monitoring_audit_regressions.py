@@ -679,12 +679,14 @@ def test_collector_adapter_absence_uses_reviewed_enablement_and_recovers(
         {"exp_labels": rule["labels"], "exp_annotations": rule["annotations"]}
         for rule in rules
     ]
+    # The ingress relay replaces any payload node with the collector's
+    # certificate-bound identity, so the adapter's own node label never arrives.
     series = [
         {
-            "series": f'vpn_observability_evidence_timestamp_seconds{{node="{node}",role="{role}"}}',
+            "series": f'vpn_observability_evidence_timestamp_seconds{{node="vpn-p0",role="{role}"}}',
             "values": "_x9 600+60x6",
         }
-        for node, role in clocks
+        for _node, role in clocks
     ]
     _run_rule_cases(
         tmp_path,
