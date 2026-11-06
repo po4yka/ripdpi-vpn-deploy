@@ -319,6 +319,52 @@ def test_promtool_rules_require_matching_family_and_resolve_when_evidence_arrive
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_collector_adapter_state_alerts_match_relabeled_ingest_node(tmp_path: Path) -> None:
+    import yaml
+
+    rules = render_template(
+        ROLE / "templates/observability-expected-target-rules.yml.j2",
+        {
+            "observability_control_plane": {
+                "alerting": {"silence_gateway": {"environment": "staging"}},
+                "expected_targets": {"inventory": _inventory(), "expected_source_revision": "c" * 40},
+            }
+        },
+    )
+    (tmp_path / "rules.yml").write_text(rules, encoding="utf-8")
+    # The ingress relay replaces the adapter's node label with the collector's
+    # certificate-bound identity before Prometheus stores the sample.
+    states = [("source-revision", "mismatch"), ("tsdb-capacity", "stale")]
+    series = [
+        {"series": f'vpn_observability_evidence_state{{node="vpn-p0",role="{role}",state="{state}"}}', "values": "1x6"}
+        for role, state in states
+    ]
+    cases = [
+        {"eval_time": "4m", "alertname": alertname,
+         "exp_alerts": [{"exp_labels": {"severity": "warning", "component": "expected-target", "environment": "staging",
+                                        "node": "vpn-p0", "role": role, "state": state},
+                         "exp_annotations": annotations}]}
+        for alertname, role, state, annotations in [
+            ("ObservabilitySourceIdentityMismatch", "source-revision", "mismatch",
+             {"incident_family": "source-identity", "evidence_class": "identity-mismatch", "source_generation": "c" * 40,
+              "summary": "Node source or deployable identity differs from the expected candidate.",
+              "runbook": "docs/how-to/incident.md"}),
+            ("ObservabilityControlPlaneResourceOrPipelineUnhealthy", "tsdb-capacity", "stale",
+             {"incident_family": "control-plane-health", "evidence_class": "resource-or-pipeline-unhealthy",
+              "source_generation": "c" * 40,
+              "summary": "Control-plane capacity or expected-target pipeline is unhealthy.",
+              "runbook": "docs/how-to/incident.md"}),
+        ]
+    ]
+    (tmp_path / "rules.test.yml").write_text(yaml.safe_dump({
+        "rule_files": ["rules.yml"], "evaluation_interval": "1m",
+        "tests": [{"interval": "1m", "input_series": series, "alert_rule_test": cases}],
+    }), encoding="utf-8")
+    result = subprocess.run([shutil.which("promtool"), "test", "rules", "rules.test.yml"], cwd=tmp_path,
+                            capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_promtool_parser_pin_is_canonical_across_local_and_hosted_gates() -> None:
     mise = tomllib.loads((ROOT / "mise.toml").read_text(encoding="utf-8"))
     assert mise["tools"]["aqua:prometheus/prometheus"] == PROMTOOL_VERSION
