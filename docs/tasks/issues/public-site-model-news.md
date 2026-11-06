@@ -2,7 +2,7 @@
 id: ANS-1793776705651907
 title: Publish a refreshed open-model news page on the public site
 kind: feature
-status: backlog
+status: review
 area: ansible
 priority: medium
 risk: standard
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: ans-1793776705651907-public-site-model-news
 created: 2026-11-04
-updated: 2026-11-04
+updated: 2026-11-07
 related_tasks: []
 ---
 

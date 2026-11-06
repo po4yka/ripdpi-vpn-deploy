@@ -12,7 +12,7 @@ The bundled public site serves a refreshed `/news.html` from pinned public sourc
 
 - [x] ANS-1793777317745592 Add the model news refresh script, hardened units, nginx location, toggle and removal path with unit tests #feature @item:ANS-1793776705651907
 - [x] ANS-1793778072080811 Add notes on open-weight Chinese models, the topic archive, glossary and primary-source model tracker #feature @item:ANS-1793776705651907
-- [ ] ANS-1793779686673516 Record the publication in updates, feed, sitemap and home page, refresh snapshots and pass the role gates #feature @item:ANS-1793776705651907
+- [x] ANS-1793779686673516 Record the publication in updates, feed, sitemap and home page, refresh snapshots and pass the role gates #feature @item:ANS-1793776705651907
 
 ## Verification
 
