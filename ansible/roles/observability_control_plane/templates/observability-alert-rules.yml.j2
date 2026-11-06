@@ -21,7 +21,8 @@ groups:
           runbook: docs/how-to/incident.md
 {% for kind in ['node', 'pipeline', 'delivery'] %}
 {% for node in (observability_push.expected_nodes if kind == 'node' else [observability_push.node_id]) %}
-{% set selector = 'environment="' ~ observability_control_plane.alerting.silence_gateway.environment ~ '",node="' ~ node ~ '",kind="' ~ kind ~ '"' %}
+{# Senders label their own environment; node and kind alone identify the push scope. -#}
+{% set selector = 'node="' ~ node ~ '",kind="' ~ kind ~ '"' %}
       - alert: ObservabilityExternalCoverageUnavailable
         expr: >-
           max((observability_push_success{ {{ selector }} } == 0)

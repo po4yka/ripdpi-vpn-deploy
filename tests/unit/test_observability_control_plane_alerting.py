@@ -761,8 +761,11 @@ def test_missing_expected_push_scopes_fire_relay_accepted_alerts(tmp_path, missi
         if rule in absent:
             continue
         labels = rule["labels"]
+        # Each sender labels its own environment, unlike the fleet-wide alert label.
         selector = (
-            'environment="staging",node="'
+            'environment="env-'
+            + labels["node"]
+            + '",node="'
             + labels["node"]
             + '",kind="'
             + labels["kind"]

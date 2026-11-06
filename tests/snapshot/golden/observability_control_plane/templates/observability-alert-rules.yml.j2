@@ -23,10 +23,10 @@ groups:
 
       - alert: ObservabilityExternalCoverageUnavailable
         expr: >-
-          max((observability_push_success{ environment="staging",node="node-01",kind="node" } == 0)
-          or (time() - observability_push_last_success_timestamp_seconds{ environment="staging",node="node-01",kind="node" } > 180)
-          or absent(observability_push_success{ environment="staging",node="node-01",kind="node" })
-          or absent(observability_push_last_success_timestamp_seconds{ environment="staging",node="node-01",kind="node" }))
+          max((observability_push_success{ node="node-01",kind="node" } == 0)
+          or (time() - observability_push_last_success_timestamp_seconds{ node="node-01",kind="node" } > 180)
+          or absent(observability_push_success{ node="node-01",kind="node" })
+          or absent(observability_push_last_success_timestamp_seconds{ node="node-01",kind="node" }))
         for: 1m
         keep_firing_for: 3m
         labels:
@@ -45,10 +45,10 @@ groups:
 
       - alert: ObservabilityExternalCoverageUnavailable
         expr: >-
-          max((observability_push_success{ environment="staging",node="node-02",kind="node" } == 0)
-          or (time() - observability_push_last_success_timestamp_seconds{ environment="staging",node="node-02",kind="node" } > 180)
-          or absent(observability_push_success{ environment="staging",node="node-02",kind="node" })
-          or absent(observability_push_last_success_timestamp_seconds{ environment="staging",node="node-02",kind="node" }))
+          max((observability_push_success{ node="node-02",kind="node" } == 0)
+          or (time() - observability_push_last_success_timestamp_seconds{ node="node-02",kind="node" } > 180)
+          or absent(observability_push_success{ node="node-02",kind="node" })
+          or absent(observability_push_last_success_timestamp_seconds{ node="node-02",kind="node" }))
         for: 1m
         keep_firing_for: 3m
         labels:
@@ -69,10 +69,10 @@ groups:
 
       - alert: ObservabilityExternalCoverageUnavailable
         expr: >-
-          max((observability_push_success{ environment="staging",node="node-01",kind="pipeline" } == 0)
-          or (time() - observability_push_last_success_timestamp_seconds{ environment="staging",node="node-01",kind="pipeline" } > 180)
-          or absent(observability_push_success{ environment="staging",node="node-01",kind="pipeline" })
-          or absent(observability_push_last_success_timestamp_seconds{ environment="staging",node="node-01",kind="pipeline" }))
+          max((observability_push_success{ node="node-01",kind="pipeline" } == 0)
+          or (time() - observability_push_last_success_timestamp_seconds{ node="node-01",kind="pipeline" } > 180)
+          or absent(observability_push_success{ node="node-01",kind="pipeline" })
+          or absent(observability_push_last_success_timestamp_seconds{ node="node-01",kind="pipeline" }))
         for: 1m
         keep_firing_for: 3m
         labels:
@@ -93,10 +93,10 @@ groups:
 
       - alert: ObservabilityExternalCoverageUnavailable
         expr: >-
-          max((observability_push_success{ environment="staging",node="node-01",kind="delivery" } == 0)
-          or (time() - observability_push_last_success_timestamp_seconds{ environment="staging",node="node-01",kind="delivery" } > 660)
-          or absent(observability_push_success{ environment="staging",node="node-01",kind="delivery" })
-          or absent(observability_push_last_success_timestamp_seconds{ environment="staging",node="node-01",kind="delivery" }))
+          max((observability_push_success{ node="node-01",kind="delivery" } == 0)
+          or (time() - observability_push_last_success_timestamp_seconds{ node="node-01",kind="delivery" } > 660)
+          or absent(observability_push_success{ node="node-01",kind="delivery" })
+          or absent(observability_push_last_success_timestamp_seconds{ node="node-01",kind="delivery" }))
         for: 1m
         keep_firing_for: 3m
         labels:
