@@ -718,13 +718,15 @@ def test_alert_rules_with_adapters_parse_under_ansible_trim_blocks(tmp_path):
     import jinja2
     import yaml
 
+    from scripts.template_render import template_environment
     from tests.unit.test_observability_control_plane_alerting import _alert_policy
 
     # Ansible renders templates with trim_blocks; a Jinja comment or block tag
     # can then join two YAML lines that the plain test renderer keeps apart.
     path = ROOT / "ansible/roles/observability_control_plane/templates/observability-alert-rules.yml.j2"
-    environment = jinja2.Environment(trim_blocks=True, keep_trailing_newline=True, undefined=jinja2.StrictUndefined)
-    rendered = environment.from_string(path.read_text()).render(
+    environment = template_environment(jinja2.FileSystemLoader(str(path.parent)))
+    environment.trim_blocks = True
+    rendered = environment.get_template(path.name).render(
         observability_alert_policy=_alert_policy(),
         observability_push={"node_id": "vpn-p0", "expected_nodes": ["vpn-p0"]},
         observability_control_plane={
