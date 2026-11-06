@@ -6,6 +6,14 @@
     "sessionUrl": false
   },
   "permissions": {
+    "allow": [
+      "Edit(/README.md)",
+      "Edit(/docs/explanation/**/*.md)",
+      "Edit(/docs/how-to/**/*.md)",
+      "Edit(/tests/unit/**/*.py)",
+      "Edit(/vpnd/src/**/*.py)",
+      "Edit(/vpnd/tests/**/*.py)"
+    ],
     "deny": [
       "Read(./secrets/local/*/*/**)",
       "Read(./secrets/local/README.md)",
