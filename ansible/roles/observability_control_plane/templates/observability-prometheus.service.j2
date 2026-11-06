@@ -14,7 +14,7 @@ Environment=OBSERVABILITY_NOTIFICATION_MODE={{ 'telegram' if (observability_cont
 {% if (observability_control_plane.alerting | default({'enabled': false}, true)).enabled | default(false) %}
 LoadCredential=silence-sender-token:/etc/observability-control-plane/credentials/silence-sender-token
 {% endif %}
-ExecStart={{ observability_control_plane.binary_link }} --config.file={{ observability_control_plane.config_root }}/current.yml --web.listen-address={{ observability_control_plane.prometheus_listen }} --web.enable-remote-write-receiver --storage.tsdb.path={{ observability_control_plane.data_dir }} --storage.tsdb.retention.time={{ observability_control_plane.tsdb_retention_time }} --storage.tsdb.retention.size={{ observability_control_plane.tsdb_retention_size }}
+ExecStart={{ observability_control_plane.binary_link }} --config.file={{ observability_control_plane.config_root }}/current.yml --web.listen-address={{ observability_control_plane.prometheus_listen }} --web.enable-remote-write-receiver --rules.alert.resend-delay=15s --storage.tsdb.path={{ observability_control_plane.data_dir }} --storage.tsdb.retention.time={{ observability_control_plane.tsdb_retention_time }} --storage.tsdb.retention.size={{ observability_control_plane.tsdb_retention_size }}
 Restart=on-failure
 RestartSec=5s
 TimeoutStartSec=30s

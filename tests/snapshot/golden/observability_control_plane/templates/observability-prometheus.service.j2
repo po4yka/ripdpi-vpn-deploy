@@ -12,7 +12,7 @@ User=observability-prometheus
 Group=observability-prometheus
 Environment=OBSERVABILITY_NOTIFICATION_MODE=panel-only
 
-ExecStart=/usr/local/libexec/observability-prometheus --config.file=/etc/observability-control-plane/current.yml --web.listen-address=127.0.0.1:9090 --web.enable-remote-write-receiver --storage.tsdb.path=/var/lib/observability-prometheus --storage.tsdb.retention.time=7d --storage.tsdb.retention.size=1GB
+ExecStart=/usr/local/libexec/observability-prometheus --config.file=/etc/observability-control-plane/current.yml --web.listen-address=127.0.0.1:9090 --web.enable-remote-write-receiver --rules.alert.resend-delay=15s --storage.tsdb.path=/var/lib/observability-prometheus --storage.tsdb.retention.time=7d --storage.tsdb.retention.size=1GB
 Restart=on-failure
 RestartSec=5s
 TimeoutStartSec=30s

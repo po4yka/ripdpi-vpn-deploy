@@ -9,6 +9,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 from pathlib import Path
 import socket
 import subprocess
@@ -426,8 +427,8 @@ def test_alertmanager_routes_to_authenticated_bounded_webhooks() -> None:
             "receiver": "telegram-canary",
             "matchers": ['alertname="ObservabilityPipelineCanary"'],
             "group_wait": "0s",
-            "group_interval": "1m",
-            "repeat_interval": "1m",
+            "group_interval": "15s",
+            "repeat_interval": "15s",
             "continue": False,
         },
         {
@@ -465,6 +466,46 @@ def test_alertmanager_routes_to_authenticated_bounded_webhooks() -> None:
         }
     assert "telegram_configs" not in rendered
     assert "telegram-bot-token" not in rendered
+
+
+def _seconds(value: str) -> int:
+    match = re.fullmatch(r"([0-9]+)(s|m)", value)
+    assert match, value
+    return int(match[1]) * (60 if match[2] == "m" else 1)
+
+
+def test_pipeline_canary_refreshes_faster_than_its_consumer() -> None:
+    # The relay accepts each canary evaluation once and the pipeline producer
+    # consumes each receipt once, so a new receipt must reach the relay between
+    # any two producer runs or the Kuma pipeline monitor misses heartbeats.
+    contract = complete_contract()
+    rules = yaml.safe_load(
+        render_alert_rules(
+            ROLE / "templates/observability-alert-rules.yml.j2",
+            {"observability_control_plane": contract, "observability_alert_policy": _alert_policy()},
+        )
+    )
+    [group] = [g for g in rules["groups"] if g["name"] == "observability_pipeline_canary"]
+    defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())
+    unit = render_template(ROLE / "templates/observability-prometheus.service.j2", defaults)
+    resend = re.search(r"--rules\.alert\.resend-delay=([0-9]+[sm])\b", unit)
+    assert resend, "Prometheus must pin its alert resend delay"
+    route = yaml.safe_load(
+        render_template(ROLE / "templates/observability-alertmanager.yml.j2", {"observability_control_plane": contract})
+    )["route"]["routes"][0]
+    assert route["receiver"] == "telegram-canary"
+    timer = render_template(
+        ROOT / "ansible/roles/observability_kuma/templates/observability-push.timer.j2", {"item": "pipeline"}
+    )
+    producer = int(re.search(r"OnUnitActiveSec=([0-9]+)s", timer)[1])
+
+    # Worst case: Prometheus forwards a new evaluation after max(eval, resend),
+    # then Alertmanager delivers it at its next repeat tick.
+    refresh = max(_seconds(group["interval"]), _seconds(resend[1])) + _seconds(route["repeat_interval"])
+    assert _seconds(route["group_interval"]) <= _seconds(route["repeat_interval"])
+    assert 2 * refresh <= producer
+    # The producer also requires a receipt at most 150 seconds old.
+    assert refresh + _seconds(group["interval"]) < 150
 
 
 @pytest.mark.parametrize("status", ["firing", "resolved"])
