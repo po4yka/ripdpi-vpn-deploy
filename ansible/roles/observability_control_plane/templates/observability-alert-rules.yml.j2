@@ -1,7 +1,7 @@
 {% set policy = observability_alert_policy -%}
 groups:
   - name: observability_pipeline_canary
-    interval: 30s
+    interval: 15s
     rules:
       - alert: ObservabilityPipelineCanary
         expr: vector(time())
