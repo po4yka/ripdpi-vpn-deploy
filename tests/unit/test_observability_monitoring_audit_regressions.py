@@ -712,6 +712,36 @@ def test_collector_adapter_absence_uses_reviewed_enablement_and_recovers(
     )
 
 
+def test_alert_rules_with_adapters_parse_under_ansible_trim_blocks(tmp_path):
+    import shutil
+
+    import jinja2
+    import yaml
+
+    from tests.unit.test_observability_control_plane_alerting import _alert_policy
+
+    # Ansible renders templates with trim_blocks; a Jinja comment or block tag
+    # can then join two YAML lines that the plain test renderer keeps apart.
+    path = ROOT / "ansible/roles/observability_control_plane/templates/observability-alert-rules.yml.j2"
+    environment = jinja2.Environment(trim_blocks=True, keep_trailing_newline=True, undefined=jinja2.StrictUndefined)
+    rendered = environment.from_string(path.read_text()).render(
+        observability_alert_policy=_alert_policy(),
+        observability_push={"node_id": "vpn-p0", "expected_nodes": ["vpn-p0"]},
+        observability_control_plane={
+            "expected_targets": {"enabled": True},
+            "protocol_liveness": {"enabled": True},
+            "alerting": {"source_generation": "c" * 40, "recovery_stability": "3m",
+                         "silence_gateway": {"environment": "staging"}},
+        },
+    )
+    rules = [rule for group in yaml.safe_load(rendered)["groups"] for rule in group["rules"]]
+    assert all(set(rule) >= {"alert", "expr"} for rule in rules)
+    (tmp_path / "rules.yml").write_text(rendered)
+    result = subprocess.run([shutil.which("promtool"), "check", "rules", str(tmp_path / "rules.yml")],
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_alert_rule_template_uses_coverage_recognized_local_bindings():
     from tests.unit.test_secrets_coverage import checker
 

@@ -254,7 +254,7 @@ groups:
 {% endfor %}
 {% for adapter in [{'node': 'observability-control-plane', 'role': 'control-plane-adapter', 'enabled': (observability_control_plane.expected_targets | default({})).enabled | default(false)}, {'node': 'protocol-liveness', 'role': 'liveness-published-evidence', 'enabled': (observability_control_plane.protocol_liveness | default({})).enabled | default(false)}] if adapter.enabled %}
       - alert: ObservabilityOptionalAdapterCompletionMissing
-        {#- The ingress relay sets node to the collector identity, so only the role names an adapter. #}
+        # The ingress relay sets node to the collector identity, so only the role names an adapter.
         expr: absent(vpn_observability_evidence_timestamp_seconds{role="{{ adapter.role }}"})
         for: 3m
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
