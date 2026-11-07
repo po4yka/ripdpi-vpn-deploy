@@ -99,6 +99,8 @@ def known_dependencies(node, inputs, trees):
 
 
 def prepare(config_path, plan_path):
+    if not os.path.lexists(ROOT / 'ansible/inventory/generated.ini'):
+        raise MaintenanceError('generated-inventory-missing: run make inventory PROVIDER=<provider> ENV=<env>')
     value = document(config_path)
     try:
         if (set(value) != FIELDS or value['schema_version'] != 1
