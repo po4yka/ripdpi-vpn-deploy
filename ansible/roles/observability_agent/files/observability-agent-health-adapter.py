@@ -753,17 +753,7 @@ def main(argv: list[str] | None = None) -> int:
         *_render_restore(args.node_id, restore),
         *_render_certificate(args.node_id, "observability-sender", certificate_expiry),
         *(
-            [
-                _sample(
-                    "vpn_observability_capability",
-                    1,
-                    node=args.node_id,
-                    role="reality-self-steal",
-                ),
-                *_render_certificate(
-                    args.node_id, "reality-self-steal", self_steal_expiry
-                ),
-            ]
+            _render_certificate(args.node_id, "reality-self-steal", self_steal_expiry)
             if args.reality_self_steal_certificate is not None
             else []
         ),

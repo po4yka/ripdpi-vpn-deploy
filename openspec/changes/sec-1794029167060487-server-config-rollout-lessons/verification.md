@@ -24,6 +24,6 @@ artifact_evidence: No release artifact changes.
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-SEC-RH-SELF-STEAL-SERIES | SEC-1794030485989065 | Render tests driven by the stat result, follow on symlinked leaf; promtool missing-series cases | required |
+| REQ-SEC-RH-SELF-STEAL-SERIES | SEC-1794030485989065 | Render tests driven by the stat result, follow on a symlinked leaf; adapter reports collection failure for an unreadable chain | required |
 | REQ-SEC-RH-OBSERVER-EGRESS | SEC-1794031569118515 | Foundation render and validation tests; rendered rules equal the live observer rules | required |
 | REQ-SEC-RH-OPERATOR-REFUSALS | SEC-1794032178100678 | Operator failed-task, ignored-failure, node-lock-busy and missing-inventory tests | passed |

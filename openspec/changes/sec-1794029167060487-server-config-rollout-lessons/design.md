@@ -2,7 +2,7 @@
 
 ## Self-steal certificate series
 
-The agent role checks the installed self-steal leaf certificate on the host (`stat`, read-only, also in check mode). It loads the credential only when that certificate exists, so the profile no longer carries a hand-set flag. A capability gauge exported with the series lets the control plane alert when self-steal is installed but no expiry series arrives.
+The agent role checks the installed self-steal leaf certificate on the host (`stat`, read-only, also in check mode). It loads the credential only when that certificate exists, so the profile no longer carries a hand-set flag. An unreadable chain reports `vpn_certificate_collection_success` 0 for that role, so the existing `ObservabilityCertificateCollectionFailed` alert covers it; a separate capability metric would duplicate that alert and change the vendored metric contract.
 
 ## Observer firewall ownership
 
