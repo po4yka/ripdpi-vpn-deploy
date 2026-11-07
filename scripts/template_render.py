@@ -288,6 +288,8 @@ def template_environment(loader) -> Environment:
     env = Environment(
         loader=loader,
         undefined=StrictUndefined,
+        # Ansible's template module and lookup render with trim_blocks.
+        trim_blocks=True,
         keep_trailing_newline=True,
         autoescape=select_autoescape(
             enabled_extensions=("html", "htm", "xml", "html.j2", "htm.j2", "xml.j2"),

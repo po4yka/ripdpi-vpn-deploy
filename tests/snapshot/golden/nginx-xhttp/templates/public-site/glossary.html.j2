@@ -9,7 +9,6 @@
   <link rel="canonical" href="https://vpn.example.com:8443/glossary.html">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="alternate" type="application/atom+xml" title="LLM Model Notes updates" href="https://vpn.example.com:8443/feed.xml">
-
   <link rel="stylesheet" href="/assets/site.css">
   <meta property="og:site_name" content="LLM Model Notes">
   <meta property="og:title" content="Glossary · LLM Model Notes">
@@ -25,9 +24,7 @@
   <nav aria-label="Primary">
     <a href="/notes/">Notes</a>
     <a href="/models.html">Models</a>
-
     <a href="/news.html">News</a>
-
     <a aria-current="page" href="/glossary.html">Glossary</a>
     <a href="/about.html">About</a>
   </nav>
@@ -36,40 +33,23 @@
     <p class="eyebrow">Glossary</p>
     <h1>Terms used in the notes</h1>
     <p>Short definitions with a link to the note that uses each term in context.</p>
-    <dl class="glossary">
-      <dt id="active-parameters">Active parameters</dt>
-      <dd>The parameters that run for one token in a mixture-of-experts model: the shared layers plus the experts the router selects. Close to the per-token compute cost. <a href="/notes/serving-mixture-of-experts-models.html">Read more</a></dd>
-      <dt id="chat-template">Chat template</dt>
-      <dd>The rule that turns a list of messages into one token sequence, with role markers and special tokens. A changed template can change behavior on the same input. <a href="/notes/reading-an-open-weight-model-card.html">Read more</a></dd>
-      <dt id="contamination">Contamination</dt>
-      <dd>Overlap between evaluation items and training data, including near copies and memorized solutions. It can raise a score without a matching gain in capability. <a href="/notes/reading-benchmark-results.html">Read more</a></dd>
-      <dt id="context-length">Context length</dt>
-      <dd>The maximum number of tokens a model accepts in one request. Cards often give a native length and a longer extended length that needs runtime support. <a href="/notes/reading-an-open-weight-model-card.html">Read more</a></dd>
-      <dt id="dense-model">Dense model</dt>
-      <dd>A model in which every parameter takes part in every token. Its total and active parameter counts are the same. <a href="/notes/serving-mixture-of-experts-models.html">Read more</a></dd>
-      <dt id="end-to-end-latency">End-to-end latency</dt>
-      <dd>Time from sending a request until the complete response arrives. It depends strongly on output length. <a href="/notes/latency-throughput-context.html">Read more</a></dd>
-      <dt id="inter-token-latency">Inter-token latency</dt>
-      <dd>Time between consecutive generated tokens after generation starts. Its inverse is the per-request generation rate. <a href="/notes/latency-throughput-context.html">Read more</a></dd>
-      <dt id="key-value-cache">Key-value cache</dt>
-      <dd>Stored attention keys and values for the tokens a request has processed. It grows with context length and concurrency and often limits capacity. <a href="/notes/serving-mixture-of-experts-models.html">Read more</a></dd>
-      <dt id="mixture-of-experts">Mixture of experts</dt>
-      <dd>An architecture with many expert blocks per layer and a router that selects a few of them for each token. Memory follows the total size; compute follows the active size. <a href="/notes/serving-mixture-of-experts-models.html">Read more</a></dd>
-      <dt id="model-revision">Model revision</dt>
-      <dd>The exact commit of a model repository. A repository name is a moving label; a revision identifies fixed files. <a href="/notes/repeatable-model-comparisons.html">Read more</a></dd>
-      <dt id="open-weights">Open weights</dt>
-      <dd>Model parameters published for download under a stated license. Open weights do not imply open training data or an open-source license. <a href="/notes/reading-an-open-weight-model-card.html">Read more</a></dd>
-      <dt id="paired-comparison">Paired comparison</dt>
-      <dd>Scoring every candidate on the same cases and analysing per-case differences instead of comparing two unrelated averages. <a href="/notes/repeatable-model-comparisons.html">Read more</a></dd>
-      <dt id="prefix-caching">Prefix caching</dt>
-      <dd>Reusing the processed state of a repeated prompt prefix across requests. It reduces prompt work and must be disclosed in a benchmark. <a href="/notes/latency-throughput-context.html">Read more</a></dd>
-      <dt id="quantization">Quantization</dt>
-      <dd>Storing weights or activations with fewer bits per value to reduce memory and speed up serving. It can change output quality and needs its own check. <a href="/notes/serving-mixture-of-experts-models.html">Read more</a></dd>
-      <dt id="time-to-first-token">Time to first token</dt>
-      <dd>Delay from sending a complete request until the first generated token arrives. It includes queueing and prompt processing. <a href="/notes/latency-throughput-context.html">Read more</a></dd>
-      <dt id="tokenizer">Tokenizer</dt>
-      <dd>The component that splits text into the tokens a model reads. Prices, limits and speeds are stated in its units, which differ between models. <a href="/notes/tokenizer-efficiency-for-chinese-text.html">Read more</a></dd>
-    </dl>
+    <dl class="glossary">      <dt id="active-parameters">Active parameters</dt>
+      <dd>The parameters that run for one token in a mixture-of-experts model: the shared layers plus the experts the router selects. Close to the per-token compute cost. <a href="/notes/serving-mixture-of-experts-models.html">Read more</a></dd>      <dt id="chat-template">Chat template</dt>
+      <dd>The rule that turns a list of messages into one token sequence, with role markers and special tokens. A changed template can change behavior on the same input. <a href="/notes/reading-an-open-weight-model-card.html">Read more</a></dd>      <dt id="contamination">Contamination</dt>
+      <dd>Overlap between evaluation items and training data, including near copies and memorized solutions. It can raise a score without a matching gain in capability. <a href="/notes/reading-benchmark-results.html">Read more</a></dd>      <dt id="context-length">Context length</dt>
+      <dd>The maximum number of tokens a model accepts in one request. Cards often give a native length and a longer extended length that needs runtime support. <a href="/notes/reading-an-open-weight-model-card.html">Read more</a></dd>      <dt id="dense-model">Dense model</dt>
+      <dd>A model in which every parameter takes part in every token. Its total and active parameter counts are the same. <a href="/notes/serving-mixture-of-experts-models.html">Read more</a></dd>      <dt id="end-to-end-latency">End-to-end latency</dt>
+      <dd>Time from sending a request until the complete response arrives. It depends strongly on output length. <a href="/notes/latency-throughput-context.html">Read more</a></dd>      <dt id="inter-token-latency">Inter-token latency</dt>
+      <dd>Time between consecutive generated tokens after generation starts. Its inverse is the per-request generation rate. <a href="/notes/latency-throughput-context.html">Read more</a></dd>      <dt id="key-value-cache">Key-value cache</dt>
+      <dd>Stored attention keys and values for the tokens a request has processed. It grows with context length and concurrency and often limits capacity. <a href="/notes/serving-mixture-of-experts-models.html">Read more</a></dd>      <dt id="mixture-of-experts">Mixture of experts</dt>
+      <dd>An architecture with many expert blocks per layer and a router that selects a few of them for each token. Memory follows the total size; compute follows the active size. <a href="/notes/serving-mixture-of-experts-models.html">Read more</a></dd>      <dt id="model-revision">Model revision</dt>
+      <dd>The exact commit of a model repository. A repository name is a moving label; a revision identifies fixed files. <a href="/notes/repeatable-model-comparisons.html">Read more</a></dd>      <dt id="open-weights">Open weights</dt>
+      <dd>Model parameters published for download under a stated license. Open weights do not imply open training data or an open-source license. <a href="/notes/reading-an-open-weight-model-card.html">Read more</a></dd>      <dt id="paired-comparison">Paired comparison</dt>
+      <dd>Scoring every candidate on the same cases and analysing per-case differences instead of comparing two unrelated averages. <a href="/notes/repeatable-model-comparisons.html">Read more</a></dd>      <dt id="prefix-caching">Prefix caching</dt>
+      <dd>Reusing the processed state of a repeated prompt prefix across requests. It reduces prompt work and must be disclosed in a benchmark. <a href="/notes/latency-throughput-context.html">Read more</a></dd>      <dt id="quantization">Quantization</dt>
+      <dd>Storing weights or activations with fewer bits per value to reduce memory and speed up serving. It can change output quality and needs its own check. <a href="/notes/serving-mixture-of-experts-models.html">Read more</a></dd>      <dt id="time-to-first-token">Time to first token</dt>
+      <dd>Delay from sending a complete request until the first generated token arrives. It includes queueing and prompt processing. <a href="/notes/latency-throughput-context.html">Read more</a></dd>      <dt id="tokenizer">Tokenizer</dt>
+      <dd>The component that splits text into the tokens a model reads. Prices, limits and speeds are stated in its units, which differ between models. <a href="/notes/tokenizer-efficiency-for-chinese-text.html">Read more</a></dd>    </dl>
   </main>
   <footer>
   <div><strong>LLM Model Notes</strong><p>Independent notes on practical evaluation.</p></div>

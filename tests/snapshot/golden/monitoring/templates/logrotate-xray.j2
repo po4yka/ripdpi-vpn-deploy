@@ -8,10 +8,7 @@
     sharedscripts
     postrotate
         if systemctl is-active --quiet xray.service; then
-
-
             python3 -Es /usr/local/libexec/ripdpi-transport-egress/generation.py recover --config /etc/ripdpi/transport-egress/generation.json --normalizer-config /etc/ripdpi/transport-egress/normalizer.json --unit xray.service
-
         fi
     endscript
 }

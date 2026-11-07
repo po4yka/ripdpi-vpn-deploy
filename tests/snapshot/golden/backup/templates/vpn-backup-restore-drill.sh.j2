@@ -7,10 +7,8 @@ umask 077
 : "${STATE_DIRECTORY:?systemd must provide STATE_DIRECTORY}"
 
 export RESTIC_PASSWORD_FILE=/etc/restic/password
-
 REPO="/var/backups/vpn-restic"
 REPOSITORY_SOURCE="local"
-
 
 restore_target="${RUNTIME_DIRECTORY}/restore"
 snapshot_metadata=""
@@ -163,58 +161,20 @@ require_file "etc/nftables.conf"
 require_file "etc/ssh/sshd_config.d/20-ansible-hardening.conf"
 require_file "etc/sysctl.d/90-vpn.conf"
 require_nonempty_directory "etc/systemd/system"
-
 require_file "etc/xray/config.json"
 validate_json "etc/xray/config.json"
-
-
 require_file "etc/nginx/sites-available/vpn-xhttp.conf"
 require_file "etc/nginx/tls/vpn.example.com.fullchain.pem"
 require_file "etc/nginx/tls/vpn.example.com.key"
-
-
-
-
 require_file "etc/hysteria/config.yaml"
-
 require_file "etc/hysteria/server.fullchain.pem"
 require_file "etc/hysteria/server.key"
-
-
-
-
-
 require_file "etc/amnezia/amneziawg/awg0.conf"
 
-
-
-
-
 require_nonempty_directory "etc/nginx"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 require_file "etc/vpn-watchdog.env"
 require_file "etc/vpn-watchdog-notifications.json"
-
 require_file "etc/vpn-watchdog-reality.json"
-
-
 
 # Restored files contain live credentials. Remove and verify cleanup before
 # publishing any success signal.

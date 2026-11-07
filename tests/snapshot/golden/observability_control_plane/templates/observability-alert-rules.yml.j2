@@ -18,9 +18,6 @@ groups:
           summary: Synthetic rule-to-relay freshness receipt.
           evidence_class: synthetic-pipeline
           runbook: docs/how-to/incident.md
-
-
-
       - alert: ObservabilityExternalCoverageUnavailable
         expr: >-
           max((observability_push_success{ node="node-01",kind="node" } == 0)
@@ -41,8 +38,6 @@ groups:
           incident_family: observability-external-coverage
           evidence_class: external-coverage-unavailable
           runbook: docs/how-to/incident.md
-
-
       - alert: ObservabilityExternalCoverageUnavailable
         expr: >-
           max((observability_push_success{ node="node-02",kind="node" } == 0)
@@ -63,10 +58,6 @@ groups:
           incident_family: observability-external-coverage
           evidence_class: external-coverage-unavailable
           runbook: docs/how-to/incident.md
-
-
-
-
       - alert: ObservabilityExternalCoverageUnavailable
         expr: >-
           max((observability_push_success{ node="node-01",kind="pipeline" } == 0)
@@ -87,10 +78,6 @@ groups:
           incident_family: observability-external-coverage
           evidence_class: external-coverage-unavailable
           runbook: docs/how-to/incident.md
-
-
-
-
       - alert: ObservabilityExternalCoverageUnavailable
         expr: >-
           max((observability_push_success{ node="node-01",kind="delivery" } == 0)
@@ -111,8 +98,6 @@ groups:
           incident_family: observability-external-coverage
           evidence_class: external-coverage-unavailable
           runbook: docs/how-to/incident.md
-
-
   - name: observability_agent_delivery
     rules:
       - alert: ObservabilityAgentDeliveryLoss
@@ -310,7 +295,6 @@ groups:
         annotations: {incident_family: detector-events, evidence_class: event-threshold, source_generation: "", summary: A security or reachability detector crossed its event threshold., runbook: docs/how-to/incident.md}
   - name: observability_producer_deadlines
     rules:
-
       - alert: ObservabilityAdapterCompletionMissing
         expr: >-
           max by (node) (absent(vpn_observability_evidence_timestamp_seconds{node="node-01",role="health-adapter"})
@@ -319,7 +303,6 @@ groups:
         keep_firing_for: 3m
         labels: {severity: warning, component: producer-evidence, node: "node-01", environment: "staging"}
         annotations: {incident_family: producer-evidence, evidence_class: required-adapter-never-published, source_generation: "", summary: A required node adapter has no completion clock; monitoring health is unknown., runbook: docs/how-to/incident.md}
-
       - alert: ObservabilityAdapterCompletionMissing
         expr: >-
           max by (node) (absent(vpn_observability_evidence_timestamp_seconds{node="node-02",role="health-adapter"})
@@ -328,8 +311,6 @@ groups:
         keep_firing_for: 3m
         labels: {severity: warning, component: producer-evidence, node: "node-02", environment: "staging"}
         annotations: {incident_family: producer-evidence, evidence_class: required-adapter-never-published, source_generation: "", summary: A required node adapter has no completion clock; monitoring health is unknown., runbook: docs/how-to/incident.md}
-
-
       - alert: ObservabilityProducerEvidenceUnavailable
         expr: >-
           (time() - vpn_observability_evidence_timestamp_seconds > on (environment, node, role) vpn_observability_evidence_max_age_seconds)

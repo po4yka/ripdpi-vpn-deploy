@@ -2,87 +2,58 @@ rule_files:
   - alerts.yml
 evaluation_interval: 1m
 tests:
-
   - interval: 1m
     input_series:
-
       - series: 'vmagent_remotewrite_packets_dropped_total{environment="staging",node="vpn-p0",job="observability-agent"}'
         values: '0x12'
-
       - series: 'vmagent_remotewrite_samples_dropped_total{environment="staging",node="vpn-p0",job="observability-agent"}'
         values: '0x12'
-
       - series: 'vm_persistentqueue_bytes_dropped_total{environment="staging",node="vpn-p0",job="observability-agent"}'
         values: '0x12'
-
       - series: 'vm_persistentqueue_blocks_dropped_total{environment="staging",node="vpn-p0",job="observability-agent"}'
         values: '0x12'
-
       - series: 'vm_rows_ignored_total{environment="staging",node="vpn-p0",job="observability-agent"}'
         values: '0x12'
-
     alert_rule_test:
       - eval_time: 1m
         alertname: ObservabilityAgentDeliveryLoss
-
         exp_alerts: []
-
-
   - interval: 1m
     input_series:
-
       - series: 'vmagent_remotewrite_packets_dropped_total{environment="staging",node="vpn-p0",job="observability-agent"}'
         values: '0x12'
-
       - series: 'vmagent_remotewrite_samples_dropped_total{environment="staging",node="vpn-p0",job="observability-agent"}'
         values: '0x12'
-
       - series: 'vm_persistentqueue_bytes_dropped_total{environment="staging",node="vpn-p0",job="observability-agent"}'
         values: '0 1 1x10'
-
       - series: 'vm_persistentqueue_blocks_dropped_total{environment="staging",node="vpn-p0",job="observability-agent"}'
         values: '0x12'
-
       - series: 'vm_rows_ignored_total{environment="staging",node="vpn-p0",job="observability-agent"}'
         values: '0x12'
-
     alert_rule_test:
       - eval_time: 1m
         alertname: ObservabilityAgentDeliveryLoss
-
         exp_alerts:
           - exp_labels: {component: observability-agent, environment: staging, node: vpn-p0, severity: warning}
             exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/incident.md}
-
-
   - interval: 1m
     input_series:
-
       - series: 'vmagent_remotewrite_packets_dropped_total{environment="staging",node="vpn-p0",job="observability-agent"}'
         values: '0 1 1x10'
-
       - series: 'vmagent_remotewrite_samples_dropped_total{environment="staging",node="vpn-p0",job="observability-agent"}'
         values: '0 1 1x10'
-
       - series: 'vm_persistentqueue_bytes_dropped_total{environment="staging",node="vpn-p0",job="observability-agent"}'
         values: '0 1 1x10'
-
       - series: 'vm_persistentqueue_blocks_dropped_total{environment="staging",node="vpn-p0",job="observability-agent"}'
         values: '0 1 1x10'
-
       - series: 'vm_rows_ignored_total{environment="staging",node="vpn-p0",job="observability-agent"}'
         values: '0 1 1x10'
-
     alert_rule_test:
       - eval_time: 1m
         alertname: ObservabilityAgentDeliveryLoss
-
         exp_alerts:
           - exp_labels: {component: observability-agent, environment: staging, node: vpn-p0, severity: warning}
             exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/incident.md}
-
-
-
   - interval: 1m
     input_series:
       - series: 'vmagent_remotewrite_packets_dropped_total{ environment="staging",node="vpn-p0"}'
@@ -99,7 +70,6 @@ tests:
       - eval_time: 10m
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts: []
-
   - interval: 1m
     input_series:
       - series: 'vmagent_remotewrite_samples_dropped_total{ environment="staging",node="vpn-p0"}'
@@ -116,7 +86,6 @@ tests:
       - eval_time: 10m
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts: []
-
   - interval: 1m
     input_series:
       - series: 'vm_persistentqueue_bytes_dropped_total{ environment="staging",node="vpn-p0"}'
@@ -133,7 +102,6 @@ tests:
       - eval_time: 10m
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts: []
-
   - interval: 1m
     input_series:
       - series: 'vm_persistentqueue_blocks_dropped_total{ environment="staging",node="vpn-p0"}'
@@ -150,7 +118,6 @@ tests:
       - eval_time: 10m
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts: []
-
   - interval: 1m
     input_series:
       - series: 'vm_rows_ignored_total{ reason="too_many_labels",environment="staging",node="vpn-p0"}'
@@ -167,7 +134,6 @@ tests:
       - eval_time: 10m
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts: []
-
   - interval: 1m
     input_series:
       - series: 'vm_rows_ignored_total{ reason="too_long_label_name",environment="staging",node="vpn-p0"}'
@@ -184,7 +150,6 @@ tests:
       - eval_time: 10m
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts: []
-
   - interval: 1m
     input_series:
       - series: 'vm_rows_ignored_total{ reason="too_long_label_value",environment="staging",node="vpn-p0"}'
@@ -201,7 +166,6 @@ tests:
       - eval_time: 10m
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts: []
-
   - interval: 1m
     input_series:
       - series: 'vpn_watchdog_collection_success{node="vpn-p0",role="watchdog"}'
@@ -374,7 +338,6 @@ tests:
         exp_alerts:
           - exp_labels: {component: certificate, environment: staging, node: vpn-p0, role: reality-self-steal, severity: critical}
             exp_annotations: {incident_family: certificate-expiry, evidence_class: certificate-expiry-critical, source_generation: "", summary: A managed certificate crossed the configured expiry critical threshold., runbook: docs/how-to/incident.md}
-
   - interval: 1m
     input_series:
       - series: 'vmagent_remotewrite_packets_dropped_total{job="observability-relay"}'
@@ -394,7 +357,6 @@ tests:
       - eval_time: 10m
         alertname: ObservabilityCollectorRelayDeliveryLoss
         exp_alerts: []
-
   - interval: 1m
     input_series:
       - series: 'vmagent_remotewrite_samples_dropped_total{job="observability-relay"}'

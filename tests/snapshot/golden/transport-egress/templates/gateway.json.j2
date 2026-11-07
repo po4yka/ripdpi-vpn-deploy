@@ -24,5 +24,4 @@
   }],
   "outbounds": [{"protocol": "freedom", "settings": {"domainStrategy": "ForceIP", "finalRules": [{"action": "allow"}]}},
     {"tag": "dns-out", "protocol": "dns", "settings": {"nonIPQuery": "reject"}}],
-  "routing": {"rules": [{"type": "field", "inboundTag": ["dns-in"], "outboundTag": "dns-out"}]}
-}
+  "routing": {"rules": [{"type": "field", "inboundTag": ["dns-in"], "outboundTag": "dns-out"}]}}

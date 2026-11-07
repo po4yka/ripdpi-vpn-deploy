@@ -11,9 +11,7 @@ Slice=observability-agent.slice
 LoadCredential=config:/etc/observability-push/server-control.json
 LoadCredential=push-token:/etc/observability-push/server-control.token
 LoadCredential=observer-ca:/etc/observability-push/observer-ca.crt
-
 LoadCredential=relay-auth-token:/etc/observability-control-plane/credentials/telegram-relay-auth-token
-
 ExecStart=/usr/bin/python3 /usr/local/libexec/observability-push.py server-control
 StateDirectory=observability-push
 StateDirectoryMode=0700

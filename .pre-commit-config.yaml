@@ -37,8 +37,11 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
+      # Goldens are exact render output; snapshot-check owns their bytes.
       - id: trailing-whitespace
+        exclude: ^tests/snapshot/golden/
       - id: end-of-file-fixer
+        exclude: ^tests/snapshot/golden/
       - id: check-yaml
         args: ['--allow-multiple-documents']
       - id: check-merge-conflict

@@ -1,30 +1,21 @@
 listen: ":443"
 
-
 tls:
   cert: "/etc/hysteria/server.fullchain.pem"
   key:  "/etc/hysteria/server.key"
 
 
-
-
 auth:
   type: userpass
   userpass:
-
     "phone": "REPLACE_WITH_PER_DEVICE_PASSWORD"
-
     "runtime-acceptance-hysteria": "REPLACE_WITH_DEDICATED_ACCEPTANCE_PASSWORD"
-
     "watchdog": "REPLACE_WITH_DEDICATED_HYSTERIA_WATCHDOG_PASSWORD"
-
 
 # Salamander obfuscation: disabled by default. Enable only if vanilla
 # Hysteria is being classified on the target network — turning it on
 # trades a vanilla-H2 fingerprint for a high-entropy UDP fingerprint,
 # which can itself be a signal.
-
-
 
 bandwidth:
   up:   "100 mbps"
@@ -32,11 +23,9 @@ bandwidth:
 
 masquerade:
   type: "proxy"
-
   proxy:
     url: "https://vpn.example.com:8443"
     rewriteHost: true
-
 
 quic:
   initStreamReceiveWindow: 8388608

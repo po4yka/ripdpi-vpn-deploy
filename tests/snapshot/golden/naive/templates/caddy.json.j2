@@ -19,19 +19,15 @@
           "routes": [{"handle": [
             {"handler": "encode", "encodings": {"gzip": {}, "zstd": {}}, "prefer": ["zstd", "gzip"]},
             {"handler": "subroute", "routes": [{"handle": [
-
               {
                 "handler": "forward_proxy",
                 "auth_credentials": [
-
                   "Y0dodmJtVTZVa1ZRVEVGRFJWOVhTVlJJWDFCRlVsOUVSVlpKUTBWZlRrRkpWa1ZmVUVGVFUxZFBVa1E9"
-
                 ],
                 "hide_ip": true,
                 "hide_via": true,
                 "probe_resistance": {"domain": "REPLACE_WITH_LONG_RANDOM"}
               },
-
               {"handler": "file_server", "root": "/var/www/naive-decoy", "hide": ["/etc/naive/caddy.json", "/etc/naive/server.key", "/etc/naive/server.fullchain.pem"]}
             ]}]}
           ]}]

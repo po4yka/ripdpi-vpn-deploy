@@ -6,7 +6,6 @@ limit_conn_zone $server_addr zone=observability_remote_write_total:1m;
 
 map $ssl_client_s_dn $observability_remote_write_node {
     default "";
-
 }
 
 server {
