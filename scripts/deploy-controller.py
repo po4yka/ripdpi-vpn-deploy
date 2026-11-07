@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import shlex
 import stat
+import subprocess
 import sys
 import tempfile
 import unicodedata
@@ -500,6 +501,30 @@ def portable_ssh_arguments(command):
     return shlex.join(result)
 
 
+MULTIPLEX_OPTIONS = ("ControlPath=none", "ControlMaster=no", "ControlPersist=no")
+
+
+def multiplexed(command, sockets):
+    """Share one run-owned master per host across Ansible tasks.
+
+    Readiness, recovery and every lockout proof keep the fresh strict command.
+    """
+    if not all(option in command for option in MULTIPLEX_OPTIONS):
+        raise DeployError("unsupported SSH option")
+    replaced = dict(zip(MULTIPLEX_OPTIONS, ("ControlPath=" + str(sockets / "%C"), "ControlMaster=auto",
+                                            "ControlPersist=60")))
+    return [replaced.get(value, value) for value in command]
+
+
+def close_master(command):
+    # Called while another error may propagate: never raise, never check cancellation.
+    try:
+        subprocess.run(["/usr/bin/ssh", *command[1:-2], "-O", "exit", command[-2]], stdin=subprocess.DEVNULL,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def transport_variables(host, command):
     return {"ansible_host": host["transport"], "ansible_port": host["port"],
             "ansible_user": host["user"], "ansible_ssh_private_key_file": host["key"],
@@ -512,7 +537,7 @@ def transport_variables(host, command):
 
 
 def prepare_host_playbooks(root, directory, index, host, memberships, metadata, secrets, overrides,
-                           command, inventory, known_hosts, transaction):
+                           command, sockets, inventory, known_hosts, transaction):
     paths = []
     for group in ("all", "vpn", *memberships[host["name"]]):
         if not re.fullmatch(r"all|vpn|vpn-[a-z0-9][a-z0-9-]*", group):
@@ -527,7 +552,8 @@ def prepare_host_playbooks(root, directory, index, host, memberships, metadata, 
         paths.append(str(overrides))
     certificate_variables = list(paths)
     paths.append(str(private_file(directory / f"{index}-transport.json",
-                                  json.dumps(transport_variables(host, command)).encode())))
+                                  json.dumps(dict(transport_variables(host, multiplexed(command, sockets)),
+                                                  deploy_fresh_ssh_argv=command)).encode())))
     transaction_vars = dict(transaction, ssh_transaction_inventory_path=str(inventory),
                             ssh_transaction_known_hosts_path=str(known_hosts))
     paths.append(str(private_file(directory / f"{index}-ssh-transaction.json",
@@ -691,8 +717,10 @@ def controller(mode):
     if mode not in ("deploy", "dry-run"):
         raise DeployError("unsupported deployment mode")
     root = Path(__file__).resolve().parents[1]
-    with tempfile.TemporaryDirectory(prefix="vpn-deploy-") as temporary:
-        directory = Path(temporary).resolve()
+    # Control sockets live under a short 0700 /tmp path: macOS limits socket paths to 104 bytes.
+    with tempfile.TemporaryDirectory(prefix="vpn-deploy-") as temporary, \
+            tempfile.TemporaryDirectory(prefix="vd-ssh-", dir="/tmp") as control:
+        directory, sockets = Path(temporary).resolve(), Path(control).resolve()
         environment = execution_environment(root, directory)
         identity = source_identity(root, environment, require_clean=mode == "deploy")
         environment.update(identity)
@@ -783,7 +811,7 @@ def controller(mode):
             inventory = single_inventory(directory, index, host, memberships)
             playbooks = prepare_host_playbooks(
                 root, directory, index, host, memberships, metadata, secrets, overrides,
-                command, inventory, known_hosts, transactions[host["name"]])
+                command, sockets, inventory, known_hosts, transactions[host["name"]])
             arguments = ["-i", str(inventory)]
             if overrides:
                 arguments += ["--extra-vars", "@" + str(overrides)]
@@ -817,39 +845,43 @@ def controller(mode):
                     transaction["ssh_transaction_failure_receipt_path"],
                     transaction["ssh_transaction_failure_receipt_parent_identity"],
                 )
-        for host, command, playbooks, arguments in prepared:
-            wait_for_bootstrap(command[:-1], environment=environment)
-            require_recovery_foundation(
-                command, transactions[host["name"]]["ssh_transaction_bundle_generation"], environment)
-            current = source_identity(root, environment, require_clean=mode == "deploy")
-            if current != identity:
-                raise DeployError("source changed during readiness")
-            validate_discovery_paths(root)
-            site = ["ansible-playbook", str(playbooks["site"]), *arguments]
-            if mode == "dry-run":
-                site += ["--check", "--diff"]
-            elif os.environ.get("DEPLOY_TAGS"):
-                site += ["--tags", os.environ["DEPLOY_TAGS"]]
-            # The complete first-convergence graph can exceed one hour on small nodes.
-            checked(site, environment=site_environment, cwd=directory, timeout=7200, stream=True)
-            if mode == "deploy":
-                checked(["ansible-playbook", str(playbooks["source-drift"]), *arguments],
-                        environment=environment, cwd=directory, timeout=300, stream=True)
-                audit_environment = {**environment, "ENV": os.environ.get("DEPLOY_ENV", "prod"),
-                                     "PROVIDER": os.environ.get("DEPLOY_PROVIDER", "upcloud")}
-                audit_environment.update({key: os.environ[key]
-                                          for key in ("AGE_KEY", "AUDIT_LOG_FILE", "AUDIT_ACTOR")
-                                          if key in os.environ})
-                try:
-                    status, _output = run_command(
-                        [str(root / "scripts/audit-log.sh"), "append-best-effort",
-                         "--action", "site-deploy", "--note",
-                         "playbook=site.yml node=" + host["name"] + " warp_outbound_role=conditional"],
-                        environment=audit_environment, cwd=root, timeout=30)
-                except ReadinessError:
-                    status = 1
-                if status:
-                    print("warning: deployment audit unavailable", file=sys.stderr)
+        try:
+            for host, command, playbooks, arguments in prepared:
+                wait_for_bootstrap(command[:-1], environment=environment)
+                require_recovery_foundation(
+                    command, transactions[host["name"]]["ssh_transaction_bundle_generation"], environment)
+                current = source_identity(root, environment, require_clean=mode == "deploy")
+                if current != identity:
+                    raise DeployError("source changed during readiness")
+                validate_discovery_paths(root)
+                site = ["ansible-playbook", str(playbooks["site"]), *arguments]
+                if mode == "dry-run":
+                    site += ["--check", "--diff"]
+                elif os.environ.get("DEPLOY_TAGS"):
+                    site += ["--tags", os.environ["DEPLOY_TAGS"]]
+                # The complete first-convergence graph can exceed one hour on small nodes.
+                checked(site, environment=site_environment, cwd=directory, timeout=7200, stream=True)
+                if mode == "deploy":
+                    checked(["ansible-playbook", str(playbooks["source-drift"]), *arguments],
+                            environment=environment, cwd=directory, timeout=300, stream=True)
+                    audit_environment = {**environment, "ENV": os.environ.get("DEPLOY_ENV", "prod"),
+                                         "PROVIDER": os.environ.get("DEPLOY_PROVIDER", "upcloud")}
+                    audit_environment.update({key: os.environ[key]
+                                              for key in ("AGE_KEY", "AUDIT_LOG_FILE", "AUDIT_ACTOR")
+                                              if key in os.environ})
+                    try:
+                        status, _output = run_command(
+                            [str(root / "scripts/audit-log.sh"), "append-best-effort",
+                             "--action", "site-deploy", "--note",
+                             "playbook=site.yml node=" + host["name"] + " warp_outbound_role=conditional"],
+                            environment=audit_environment, cwd=root, timeout=30)
+                    except ReadinessError:
+                        status = 1
+                    if status:
+                        print("warning: deployment audit unavailable", file=sys.stderr)
+        finally:
+            for _host, command, _playbooks, _arguments in prepared:
+                close_master(multiplexed(command, sockets))
 
 
 def main():
