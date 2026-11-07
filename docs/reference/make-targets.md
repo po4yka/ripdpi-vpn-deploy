@@ -170,6 +170,7 @@ Variables (override on command line):
   test-probe-matrix-mtproto   Run the compiled Go helper tests
   snapshot-check             Diff every Jinja render against tests/snapshot/golden/
   snapshot-update            Refresh the goldens (run after intentional change)
+  public-site-render         Render the bundled site into a new operator-owned tree (PUBLIC_SITE_URL, PUBLIC_SITE_DIR)
   validate-secrets           jsonschema check (strict if SECRETS_FILE is set)
   validate-bundle            jsonschema + fingerprint check of a ripdpi bundle (BUNDLE=… or example)
   actionlint-check           Validate every GitHub Actions workflow

@@ -914,6 +914,7 @@ SITE_TASK_NAMES = (
     "Pre-flight — production hosts serve an operator-owned public site",
     "Enumerate the operator-owned public site tree on the controller",
     "Enumerate the operator-owned public site directories on the controller",
+    "Load the bundled public site layout",
     "Resolve the published public site layout",
     "Require the operator-owned tree to carry the ordinary error page",
     "Resolve the public asset parent directories to prepare",
@@ -1007,3 +1008,52 @@ def test_every_public_nginx_server_block_hides_the_version() -> None:
     blocks = rendered.split("server {")[1:]
     assert any("listen 80;" in block for block in blocks)
     assert all("server_tokens off;" in block for block in blocks)
+
+
+OWNED_SITE_FILES = {
+    "404.html", "about.html", "assets/site.css", "favicon.svg", "feed.xml", "glossary.html", "index.html",
+    "logo.svg", "methodology.html", "models.html", "notes/index.html", "notes/latency-throughput-context.html",
+    "notes/reading-an-open-weight-model-card.html", "notes/reading-benchmark-results.html",
+    "notes/repeatable-model-comparisons.html", "notes/serving-mixture-of-experts-models.html",
+    "notes/tokenizer-efficiency-for-chinese-text.html", "robots.txt", "sitemap.xml", "updates.html",
+}
+
+
+def render_owned_site(url: str, directory: str) -> subprocess.CompletedProcess[str]:
+    environment = {key: value for key, value in os.environ.items()
+                   if key not in {"MAKEFILES", "MAKEFLAGS", "GNUMAKEFLAGS", "MFLAGS", "MAKELEVEL"}}
+    environment.update(PUBLIC_SITE_URL=url, PUBLIC_SITE_DIR=directory)
+    return subprocess.run(["make", "--no-print-directory", "public-site-render"], cwd=REPO_ROOT, env=environment,
+                          capture_output=True, text=True, timeout=300, check=False)
+
+
+def test_owned_site_render_publishes_the_bundled_pages_without_the_news_page(tmp_path: Path) -> None:
+    output = tmp_path / "owned-site"
+    result = render_owned_site("https://notes.example.org", str(output))
+    assert result.returncode == 0, result.stdout[-2000:] + result.stderr[-2000:]
+    assert {str(path.relative_to(output)) for path in output.rglob("*") if path.is_file()} == OWNED_SITE_FILES
+    assert 'rel="canonical" href="https://notes.example.org/"' in (output / "index.html").read_text()
+    assert not [path for path in output.rglob("*") if path.is_file() and b"news.html" in path.read_bytes()]
+
+
+@pytest.mark.parametrize(("url", "target"), [
+    ("http://notes.example.org", "new"),
+    ("https://notes.example.org:443", "new"),
+    ("https://notes.example.org", "relative"),
+    ("https://notes.example.org", "parent"),
+    ("https://notes.example.org", "existing"),
+    ("https://notes.example.org", "dangling-link"),
+])
+def test_owned_site_render_refuses_unsafe_inputs_without_writing(tmp_path: Path, url: str, target: str) -> None:
+    existing = tmp_path / "existing"
+    existing.mkdir()
+    (existing / "index.html").write_text("operator page\n")
+    (tmp_path / "dangling-link").symlink_to(tmp_path / "missing")
+    directory = {"new": str(tmp_path / "new"), "relative": "owned-site", "parent": f"{tmp_path}/x/../new",
+                 "existing": str(existing), "dangling-link": str(tmp_path / "dangling-link")}[target]
+    result = render_owned_site(url, directory)
+    assert result.returncode != 0
+    assert "Set PUBLIC_SITE_URL to an https origin" in result.stdout
+    assert not (tmp_path / "new").exists() and not (tmp_path / "missing").exists()
+    assert [path.name for path in existing.iterdir()] == ["index.html"]
+    assert (existing / "index.html").read_text() == "operator page\n"

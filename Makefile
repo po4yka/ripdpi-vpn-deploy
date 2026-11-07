@@ -798,7 +798,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         observability-remove observability-silence-create observability-silence-delete observability-staging-prepare observability-staging-materialize observability-staging-acceptance \
         observability-staging-cleanup-preflight observability-staging-cleanup-snapshot observability-staging-cleanup-seal observability-staging-cleanup-validate observability-staging-cleanup \
         awg-evidence-provision \
-        native-naive-build test-native-runtime test-probe-matrix-mtproto test-unit test-unit-profile test-unit-shard snapshot-check snapshot-update validate-secrets \
+        native-naive-build test-native-runtime test-probe-matrix-mtproto test-unit test-unit-profile test-unit-shard snapshot-check snapshot-update public-site-render validate-secrets \
         actionlint-check zizmor-check zizmor-test cloud-init-schema tf-test yamllint-check shellcheck \
         ci-fast bats-test vpnd-test vpnd-lint vpnd-dependency-check vpnd-package-check vpnd-parity-check vpnd-mutants tf-policy-verify \
         task-tools task-check task-list task-ready task-graph task-federation \
@@ -965,6 +965,7 @@ help:
 	@echo "  test-probe-matrix-mtproto   Run the compiled Go helper tests"
 	@echo "  snapshot-check             Diff every Jinja render against tests/snapshot/golden/"
 	@echo "  snapshot-update            Refresh the goldens (run after intentional change)"
+	@echo "  public-site-render         Render the bundled site into a new operator-owned tree (PUBLIC_SITE_URL, PUBLIC_SITE_DIR)"
 	@echo "  validate-secrets           jsonschema check (strict if SECRETS_FILE is set)"
 	@echo "  validate-bundle            jsonschema + fingerprint check of a ripdpi bundle (BUNDLE=… or example)"
 	@echo "  actionlint-check           Validate every GitHub Actions workflow"
@@ -1548,6 +1549,12 @@ snapshot-check:
 
 snapshot-update:
 	python3 scripts/render-snapshots.py --update
+
+# Values reach the playbook through the environment, never the recipe's shell text.
+public-site-render: export PUBLIC_SITE_URL := $(PUBLIC_SITE_URL)
+public-site-render: export PUBLIC_SITE_DIR := $(PUBLIC_SITE_DIR)
+public-site-render:
+	cd $(ANSIBLE_DIR) && ansible-playbook -i 'localhost,' playbooks/render-public-site.yml
 
 validate-secrets:
 	@if [ -f "$(SECRETS_FILE)" ]; then \

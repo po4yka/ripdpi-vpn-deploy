@@ -1,0 +1,21 @@
+---
+# The bundled public site, shared by enable.yml and playbooks/render-public-site.yml
+# so an operator-owned tree can be rendered from the same pages.
+nginx_xhttp_bundled_site_assets: [favicon.svg, logo.svg, 404.html, assets/site.css]
+nginx_xhttp_bundled_site_pages:
+  - {src: index.html.j2, dest: index.html}
+  - {src: about.html.j2, dest: about.html}
+  - {src: methodology.html.j2, dest: methodology.html}
+  - {src: updates.html.j2, dest: updates.html}
+  - {src: reading-benchmark-results.html.j2, dest: notes/reading-benchmark-results.html}
+  - {src: latency-throughput-context.html.j2, dest: notes/latency-throughput-context.html}
+  - {src: repeatable-model-comparisons.html.j2, dest: notes/repeatable-model-comparisons.html}
+  - {src: reading-an-open-weight-model-card.html.j2, dest: notes/reading-an-open-weight-model-card.html}
+  - {src: serving-mixture-of-experts-models.html.j2, dest: notes/serving-mixture-of-experts-models.html}
+  - {src: tokenizer-efficiency-for-chinese-text.html.j2, dest: notes/tokenizer-efficiency-for-chinese-text.html}
+  - {src: notes-index.html.j2, dest: notes/index.html}
+  - {src: models.html.j2, dest: models.html}
+  - {src: glossary.html.j2, dest: glossary.html}
+  - {src: feed.xml.j2, dest: feed.xml}
+  - {src: robots.txt.j2, dest: robots.txt}
+  - {src: sitemap.xml.j2, dest: sitemap.xml}
