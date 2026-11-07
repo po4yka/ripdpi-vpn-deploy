@@ -490,6 +490,24 @@ def test_detached_maintenance_requires_review_and_accepts_nodes_in_order(mainten
     assert all(b'synthetic-credential' not in p.read_bytes() for p in state.iterdir())
 
 
+@pytest.mark.parametrize('held', ['node-b', 'inventory'])
+def test_contended_resource_lock_refuses_with_named_holder(maintenance, held):
+    root, kit, _, command, _ = maintenance
+    resources = json.loads((kit / 'plan.json').read_text())['resources']
+    inventory = str(root / 'ansible/inventory/generated.ini')
+    resource = inventory if held == 'inventory' else next(r for r in resources if r != inventory and r.endswith('.2'))
+    locks = root / '.git/maintenance-locks'
+    locks.mkdir(mode=0o700, exist_ok=True)
+    path = write(locks / (hashlib.sha256(resource.encode()).hexdigest() + '.lock'), b'', 0o600)
+    with path.open('r+b') as contender:
+        fcntl.flock(contender, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        result = command('preview')
+    expected = ('resource=inventory held-as=shared-inventory' if held == 'inventory'
+                else 'alias=node-b held-as=target')
+    assert result.returncode == 1
+    assert f'operation refused (node-lock-busy: {expected})' in result.stderr
+
+
 def test_failed_mutation_preserves_intent_cleans_and_resumes_exact_boundary(maintenance):
     _, kit, state, command, finish = maintenance
     approval = preview(maintenance)
