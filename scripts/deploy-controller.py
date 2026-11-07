@@ -187,6 +187,9 @@ def validate_yaml(data, *, empty=False):
         raise DeployError("YAML input must be a mapping")
 
 
+INVENTORY_MISSING = "generated-inventory-missing: run make inventory PROVIDER=<provider> ENV=<env>"
+
+
 def read_input(path, *, private=False, exact_mode=None, limit=fleet_inspection.LIMIT, allow_empty=False):
     """Allow trusted macOS directory aliases, but never follow the final file."""
     if type(allow_empty) is not bool:
@@ -399,6 +402,8 @@ def source_identity(root, environment, *, require_clean):
 
 
 def inventory_selection(inventory, limit, directory):
+    if not os.path.lexists(inventory):
+        raise DeployError(INVENTORY_MISSING)
     raw = read_input(inventory)
     snapshot = private_file(directory / "source.ini", raw)
     # This pass resolves only canonical membership and retains original lines.

@@ -475,6 +475,16 @@ def test_selection_outside_env_refuses_before_secrets_and_transport(workspace, t
 
 
 @pytest.mark.parametrize("target", ["deploy", "dry-run"])
+def test_missing_generated_inventory_refuses_with_render_command(workspace, target):
+    workspace["inventory"].unlink()
+    result = invoke(workspace, target)
+    assert result.returncode != 0
+    assert "generated-inventory-missing: run make inventory PROVIDER=<provider> ENV=<env>" in result.stderr
+    assert not any(entry["program"] in ("ssh", "ansible-playbook", "validate-secrets.py")
+                   for entry in calls(workspace))
+
+
+@pytest.mark.parametrize("target", ["deploy", "dry-run"])
 def test_make_debug_refusal_precedes_git_and_ansible(workspace, target):
     binary = Path(workspace["env"]["PATH"].split(os.pathsep)[0])
     git_marker = workspace["root"].parent / "git-called"
