@@ -41,6 +41,7 @@ PATH_ENV = {'sops_file': 'SOPS_FILE', 'extra_vars': 'ANSIBLE_EXTRA_VARS_FILE',
 STAGES = ('dry-run', 'deploy', 'verify', 'security-verify', 'smoke-test')
 ATTEMPT_INPUTS = {'approved-inputs.json', 'approved.sops.yaml', 'approved-age.key'}
 SAFE = re.compile(r'[A-Za-z0-9_./:+-]+\Z')
+LOCK_BUSY = re.compile(rb'node-lock-busy: (?:alias=[a-z0-9-]{1,64} held-as=target|resource=inventory held-as=shared-inventory)')
 
 
 def literal(value):
@@ -189,7 +190,23 @@ def locks(plan, stack):
     private_directory(parent)
     for name in plan['resources']:
         path = parent / (hashlib.sha256(name.encode()).hexdigest() + '.lock')
-        stack.enter_context(resource_lock(path))
+        try:
+            stack.enter_context(resource_lock(path))
+        except BlockingIOError:
+            raise MaintenanceError('node-lock-busy: ' + lock_holder(plan, name)) from None
+
+
+def lock_holder(plan, resource):
+    """Name the contended resource; every run holds node addresses as targets."""
+    inventory = ROOT / 'ansible/inventory/generated.ini'
+    if resource == str(inventory):
+        return 'resource=inventory held-as=shared-inventory'
+    try:
+        hosts = fleet_inspection.select_hosts(inventory, [node['host'] for node in plan['nodes']])
+    except (OSError, ValueError, fleet_inspection.InspectionError):
+        hosts = []
+    aliases = [host['name'] for host in hosts if host['address'] == resource]
+    return f"alias={aliases[0] if aliases else 'unresolved'} held-as=target"
 
 
 def node_environment(plan, node, secret):
@@ -434,7 +451,10 @@ def launch(plan_path, action, approval):
                                  start_new_session=True, pass_fds=(write_fd,), env=command_environment())
         os.close(write_fd);write_fd = None
         ready, _, _ = select.select([read_fd], [], [], 15)
-        if not ready or os.read(read_fd, 16) != b'ready':
+        reply = os.read(read_fd, 128) if ready else b''
+        if LOCK_BUSY.fullmatch(reply):
+            raise MaintenanceError(reply.decode('ascii'))
+        if reply != b'ready':
             raise MaintenanceError('worker-start-refused')
         return {'phase': 'started', 'pid': child.pid, 'action': action}
     finally:
@@ -466,6 +486,12 @@ def main():
                 result = launch(args.plan, args.action, args.approval)
             print(json.dumps(result, sort_keys=True))
         return 0
+    except MaintenanceError as error:
+        if args.action == '_worker' and args.ready_fd is not None and str(error).startswith('node-lock-busy: '):
+            os.write(args.ready_fd, str(error).encode('ascii'))
+        print(f'maintenance: operation refused ({error}); inspect private journal and encrypted diagnostics',
+              file=sys.stderr)
+        return 1
     except (OSError, ValueError, KeyError, ReadinessError, RecoveryError, RotationError,
             yaml.YAMLError, fleet_inspection.InspectionError):
         print('maintenance: operation refused; inspect private journal and encrypted diagnostics', file=sys.stderr)
