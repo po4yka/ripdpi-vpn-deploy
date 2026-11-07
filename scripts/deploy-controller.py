@@ -612,11 +612,14 @@ def transaction_inputs(mode, hosts, identity, directory, root, environment, *,
                     from disposable_promotion import OnboardingError, prepare_intent
                 if len(hosts) != 1 or memberships is None or deployed_secrets is None:
                     raise DeployError("onboarding requires one exact host")
+                from install_liveness_sentinel import InstallError, require_runtime_pins
                 try:
                     config = prepare_intent(config, host, memberships[alias], directory,
                                             deployed_secrets, environment)
-                except OnboardingError:
-                    raise DeployError("onboarding capability refused") from None
+                    # The post-convergence probe install needs these engines; refuse before site writes.
+                    require_runtime_pins(config["liveness"], environment)
+                except (OnboardingError, InstallError) as error:
+                    raise DeployError("onboarding capability refused: " + str(error)) from None
             promotion = private_file(directory / (alias + "-promotion-config.json"),
                                      json.dumps(config, sort_keys=True).encode())
             promotion_paths.append(promotion)
