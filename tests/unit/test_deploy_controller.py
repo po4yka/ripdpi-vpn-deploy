@@ -1358,7 +1358,9 @@ assert all(options[index] in ('-F', '-o') for index in range(0, len(options), 2)
 result = subprocess.run(['/usr/bin/ssh', '-G', *options, transport['ansible_host']],
                         text=True, capture_output=True, check=True, timeout=5)
 config = dict(line.split(' ', 1) for line in result.stdout.splitlines())
-pathlib.Path({str(record)!r}).write_text(json.dumps({{'config': config, 'transport': transport}}))
+sockets = pathlib.Path(config['controlpath']).parent
+mode = sockets.stat().st_mode & 0o777
+pathlib.Path({str(record)!r}).write_text(json.dumps({{'config': config, 'transport': transport, 'mode': mode}}))
 """, 0o700)
     context = {"user": "deploy", "host": "node-one", "addr": "198.51.100.44",
                "laddr": "192.0.2.1", "lport": 2022}
@@ -1374,10 +1376,20 @@ pathlib.Path({str(record)!r}).write_text(json.dumps({{'config': config, 'transpo
     assert config["hostkeyalias"] == "[192.0.2.1]:2022"
     assert config["stricthostkeychecking"] == "true" and config["batchmode"] == "yes"
     assert config["identityfile"] == transport["ansible_ssh_private_key_file"]
-    assert config["controlmaster"] == "false" and config["identityagent"] == "none"
+    assert config["identityagent"] == "none"
+    # Ansible shares one run-owned master; readiness keeps a fresh connection.
+    assert config["controlmaster"] == "auto" and config["controlpersist"] == "60"
+    sockets = Path(config["controlpath"]).parent
+    assert observed["mode"] == 0o700 and not sockets.exists()
+    # ssh binds ControlPath plus a 17-byte random suffix; macOS limits socket paths to 104 bytes.
+    assert len(config["controlpath"]) + 17 < 104
+    proof = transport["deploy_fresh_ssh_argv"]
+    assert {"ControlPath=none", "ControlMaster=no", "ControlPersist=no"} <= set(proof)
+    assert proof[-1] == "sudo -n /usr/bin/python3 -I -B -S -"
     assert transport["ansible_ssh_common_args"] == transport["ansible_ssh_extra_args"] == ""
     ssh = next(entry["args"] for entry in calls(workspace) if entry["program"] == "ssh")
     assert ssh[-2] == config["hostname"] and ssh[ssh.index("-p") + 1] == config["port"]
+    assert {"ControlPath=none", "ControlMaster=no", "ControlPersist=no"} <= set(ssh)
     assert "HostKeyAlias=" + config["hostkeyalias"] in ssh
     assert "UserKnownHostsFile=" + config["userknownhostsfile"] in ssh
 

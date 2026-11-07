@@ -98,7 +98,12 @@ def test_site_closes_complete_protected_block_before_unrelated_roles():
     assert block['block'][0]['ansible.builtin.import_tasks'] == 'tasks/transport-ingress-begin.yml'
     assert block['block'][1]['vars']['firewall_site_transaction'] is True
     assert 'always' in block['block'][1]['tags']
-    assert block['block'][-6]['ansible.builtin.import_tasks'] == 'tasks/transport-egress-activate.yml'
+    assert block['block'][-7]['ansible.builtin.import_tasks'] == 'tasks/transport-egress-activate.yml'
+    # A fresh login, not the run's shared SSH master, must follow publication and precede the commit.
+    proofs = [index for index, value in enumerate(block['block'])
+              if value.get('ansible.builtin.import_tasks') == 'tasks/fresh-ssh-proof.yml']
+    assert proofs == [2, len(block['block']) - 6]
+    assert all('always' in block['block'][index]['tags'] for index in proofs)
     assert block['block'][-5]['ansible.builtin.import_tasks'] == 'tasks/transport-ingress-commit.yml'
     # Deferred news retirement and convergence run only once the protected commit has succeeded.
     assert block['block'][-4]['ansible.builtin.import_role']['tasks_from'] == 'model-news-absent'
@@ -296,6 +301,7 @@ print('{"open": %s}' % ('true' if (root / 'outer-open').exists() else 'false'))
     recovery = yaml.safe_load((ROOT / 'ansible/playbooks/tasks/transport-ingress-recover-commit.yml').read_text())
     recovery[0]['ansible.builtin.command'] = invoke('recover-commit')['ansible.builtin.command']
     _write(root / 'tasks/transport-ingress-recover-commit.yml', recovery)
+    (root / 'tasks/fresh-ssh-proof.yml').write_text((ROOT / 'ansible/playbooks/tasks/fresh-ssh-proof.yml').read_text())
     _write(root / 'tasks/transport-ingress-restore.yml', [{**invoke('restore'), 'when': 'transport_site_transaction_active | default(false) | bool'}])
     _write(root / 'tasks/transport-ingress-commit.yml', [invoke('commit'), {'ansible.builtin.set_fact': {
         'transport_site_transaction_active': False, '_transport_egress_transaction_started': False,
@@ -918,3 +924,20 @@ def test_next_deploy_finishes_recorded_commit_before_staging(tmp_path):
     assert events.index('ingress-begin') < events.index('stage')
     assert all(Path(owner['paths'][0]).read_bytes() == (b'accepted ingress' if owner['owner'] == 'public-tls' else b'changed ingress') for owner in context['owners'])
     assert not journal.exists() and not (root / 'outer-open').exists()
+
+
+@pytest.mark.parametrize(('argv', 'outcome'), [
+    (None, 'skipped'),
+    ([sys.executable, '-c', 'import sys; sys.exit(sys.stdin.read().strip() != "pass")'], 'ok'),
+    ([sys.executable, '-c', 'import sys; sys.exit(255)'], 'failed'),
+], ids=['no-controller-command', 'fresh-login-admitted', 'fresh-login-refused'])
+def test_fresh_ssh_proof_runs_the_controller_command_and_fails_closed(tmp_path, argv, outcome):
+    task = {'ansible.builtin.import_tasks': str(ROOT / 'ansible/playbooks/tasks/fresh-ssh-proof.yml')}
+    play = {'hosts': 'localhost', 'connection': 'local', 'gather_facts': False, 'tasks': [task]}
+    if argv:
+        play['vars'] = {'deploy_fresh_ssh_argv': argv}
+    _write(tmp_path / 'play.yml', [play])
+    result = _run(tmp_path)
+    assert (result.returncode == 0) == (outcome != 'failed'), result.stdout
+    assert {'skipped': 'skipping: [localhost]', 'ok': 'ok: [localhost]',
+            'failed': 'fatal: [localhost]'}[outcome] in result.stdout
