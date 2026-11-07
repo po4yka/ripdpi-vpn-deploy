@@ -989,7 +989,7 @@ def test_foundation_renders_observer_telegram_egress_only_in_telegram_mode(contr
     assert _chain(telegram, "forward").splitlines() == [
         " type filter hook forward priority 0; policy drop;",
         '    iifname "docker0" oifname != "docker0" ip daddr { 203.0.113.53, 198.51.100.53 }'
-        ' meta l4proto { tcp, udp } th dport 53 accept',
+        + ' meta l4proto { tcp, udp } th dport 53 accept',
         "    # shortcut: pinned Telegram API network, widen if api.telegram.org moves.",
         '    iifname "docker0" oifname != "docker0" ip daddr 149.154.160.0/20 tcp dport 443 accept',
         '    oifname "docker0" ct state established,related accept',

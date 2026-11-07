@@ -575,7 +575,7 @@ def run(inputs, auth_key, *, pending_hook=None):
     try:
         try:
             pending = _capability(inputs, _rpc(inputs, "enroll", binding=binding, auth_key=auth_key, policy_approval=inputs.config["policy_approval"],
-                                                 observer_firewall=inputs.config["observer_firewall"]))
+                                                 observer_firewall=inputs.config.get("observer_firewall")))
         except BootstrapError:
             pending = _capability(inputs, _rpc(inputs, "status", binding=binding))
         if pending_hook is not None:
