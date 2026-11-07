@@ -8,7 +8,7 @@ Type=oneshot
 User=root
 Group={{ monitoring.node_exporter_textfile_group | default('node_exporter_textfile') }}
 LoadCredential=client.crt:{{ observability_agent.credential_dir }}/generations/{{ _observability_agent_service_generation }}/client.crt
-{% if (vpn | default({})).enable_reality_self_steal | default(false) | bool %}# systemd copies only the public chain; the adapter never sees the self-steal key.
+{% if ((_observability_agent_self_steal_certificate | default({})).stat | default({})).isreg | default(false) %}# systemd copies only the public chain; the adapter never sees the self-steal key.
 LoadCredential=reality-self-steal.crt:{{ reality_self_steal_tls_dir | default('/etc/nginx/reality-self-steal') }}/current/fullchain.pem
 {% endif %}ExecStart=/usr/local/libexec/observability-agent-health-adapter.py \
   --node-id {{ observability_agent.node_id }} \
@@ -38,7 +38,7 @@ LoadCredential=reality-self-steal.crt:{{ reality_self_steal_tls_dir | default('/
 } -%}
 {% for service, enabled in services | dictsort if enabled and service in observability_alert_policy.required_systemd_units %}  --required-service {{ service | replace('.service', '') }} \
 {% endfor %}  --certificate %d/client.crt \
-{% if (vpn | default({})).enable_reality_self_steal | default(false) | bool %}  --reality-self-steal-certificate %d/reality-self-steal.crt \
+{% if ((_observability_agent_self_steal_certificate | default({})).stat | default({})).isreg | default(false) %}  --reality-self-steal-certificate %d/reality-self-steal.crt \
 {% endif %}  --output {{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/observability-health.prom
 UMask=0027
 NoNewPrivileges=true
