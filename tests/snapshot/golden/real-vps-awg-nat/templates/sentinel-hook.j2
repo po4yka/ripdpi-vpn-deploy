@@ -15,6 +15,5 @@ ssh_command=(
   -o ConnectTimeout=15
   'ripdpi-awg-evidence@192.0.2.30'
 )
-
 [[ $# -eq 1 && "$1" =~ ^(status|restart|reload)$ ]] || exit 64
 exec "${ssh_command[@]}" "$1"

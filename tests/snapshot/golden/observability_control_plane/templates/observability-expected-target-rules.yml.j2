@@ -1,14 +1,11 @@
 groups:
   - name: observability_expected_targets
     rules:
-
       - alert: ObservabilityExpectedTargetMissing
         expr: >-
           vpn_observability_expected_target
           unless on (node, role)
           (
-
-
           vector(0)
           )
         for: 3m

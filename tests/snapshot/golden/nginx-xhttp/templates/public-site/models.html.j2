@@ -9,7 +9,6 @@
   <link rel="canonical" href="https://vpn.example.com:8443/models.html">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="alternate" type="application/atom+xml" title="LLM Model Notes updates" href="https://vpn.example.com:8443/feed.xml">
-
   <link rel="stylesheet" href="/assets/site.css">
   <meta property="og:site_name" content="LLM Model Notes">
   <meta property="og:title" content="Model tracker · LLM Model Notes">
@@ -25,9 +24,7 @@
   <nav aria-label="Primary">
     <a href="/notes/">Notes</a>
     <a aria-current="page" href="/models.html">Models</a>
-
     <a href="/news.html">News</a>
-
     <a href="/glossary.html">Glossary</a>
     <a href="/about.html">About</a>
   </nav>
@@ -41,33 +38,13 @@
     <table>
       <caption>Open-weight releases and their stated facts</caption>
       <thead><tr><th>Lab</th><th>Model</th><th>Repository created</th><th>Architecture as stated</th><th>License</th></tr></thead>
-      <tbody>
-        <tr><td>DeepSeek</td><td><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash">DeepSeek-V4.1-Flash</a></td><td><time datetime="2026-09">2026-09</time></td><td>Multimodal MoE, context up to 1M</td><td>MIT</td></tr>
-        <tr><td>DeepSeek</td><td><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro">DeepSeek-V4-Pro</a></td><td><time datetime="2026-04">2026-04</time></td><td>MoE, 1.6T total / 49B active</td><td>MIT</td></tr>
-        <tr><td>DeepSeek</td><td><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash">DeepSeek-V4-Flash</a></td><td><time datetime="2026-04">2026-04</time></td><td>MoE, 284B total / 13B active</td><td>MIT</td></tr>
-        <tr><td>Alibaba Qwen</td><td><a href="https://huggingface.co/Qwen/Qwen3.8-2.4T-A95B">Qwen3.8-2.4T-A95B</a></td><td><time datetime="2026-08">2026-08</time></td><td>MoE, 2.4T total / 95B active, 262K native</td><td>Qwen3.8-Max License</td></tr>
-        <tr><td>Alibaba Qwen</td><td><a href="https://huggingface.co/Qwen/Qwen3.8-27B">Qwen3.8-27B</a></td><td><time datetime="2026-08">2026-08</time></td><td>27B, 262K native</td><td>Apache-2.0</td></tr>
-        <tr><td>Alibaba Qwen</td><td><a href="https://huggingface.co/Qwen/Qwen3.6-35B-A3B">Qwen3.6-35B-A3B</a></td><td><time datetime="2026-04">2026-04</time></td><td>MoE, 35B total / 3B active</td><td>Apache-2.0</td></tr>
-        <tr><td>Moonshot AI</td><td><a href="https://huggingface.co/moonshotai/Kimi-K3">Kimi K3</a></td><td><time datetime="2026-06">2026-06</time></td><td>MoE, 2.8T total / 104B active, 1M context</td><td>Kimi K3 License</td></tr>
-        <tr><td>Moonshot AI</td><td><a href="https://huggingface.co/moonshotai/Kimi-K2.6">Kimi-K2.6</a></td><td><time datetime="2026-04">2026-04</time></td><td>MoE, 1T total / 32B active</td><td>Modified MIT</td></tr>
-        <tr><td>Z.ai</td><td><a href="https://huggingface.co/zai-org/GLM-5.3">GLM-5.3</a></td><td><time datetime="2026-08">2026-08</time></td><td>MoE, 1M context</td><td>GLM-5.3 License</td></tr>
-        <tr><td>Z.ai</td><td><a href="https://huggingface.co/zai-org/GLM-5.2">GLM-5.2</a></td><td><time datetime="2026-06">2026-06</time></td><td>MoE, 1M context</td><td>MIT</td></tr>
-        <tr><td>MiniMax</td><td><a href="https://huggingface.co/MiniMaxAI/MiniMax-M3.1-Flash">MiniMax-M3.1-Flash</a></td><td><time datetime="2026-10">2026-10</time></td><td>Multimodal MoE, about 428B total / 23B active</td><td>MiniMax Community License</td></tr>
-        <tr><td>MiniMax</td><td><a href="https://huggingface.co/MiniMaxAI/MiniMax-M2">MiniMax-M2</a></td><td><time datetime="2025-10">2025-10</time></td><td>MoE, 230B total / 10B active</td><td>Modified MIT</td></tr>
-        <tr><td>Tencent</td><td><a href="https://huggingface.co/tencent/Hy3">Hy3</a></td><td><time datetime="2026-07">2026-07</time></td><td>MoE, 295B total / 21B active</td><td>Apache-2.0</td></tr>
-        <tr><td>StepFun</td><td><a href="https://huggingface.co/stepfun-ai/Step-5-Preview">Step 5 Preview</a></td><td><time datetime="2026-09">2026-09</time></td><td>Sparse MoE, 600B total / 27B active</td><td>StepFun Model License 1.0</td></tr>
-        <tr><td>Xiaomi MiMo</td><td><a href="https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Pro-RL">MiMo-V2.6-Pro-RL</a></td><td><time datetime="2026-09">2026-09</time></td><td>Sparse MoE, 1.02T total / 42B active</td><td>MIT</td></tr>
-        <tr><td>ByteDance Seed</td><td><a href="https://huggingface.co/ByteDance-Seed/Seed-OSS-36B-Instruct">Seed-OSS-36B-Instruct</a></td><td><time datetime="2025-08">2025-08</time></td><td>36B, 512K context</td><td>Apache-2.0</td></tr>
-        <tr><td>Baidu</td><td><a href="https://huggingface.co/baidu/ERNIE-4.5-300B-A47B-PT">ERNIE-4.5-300B-A47B-PT</a></td><td><time datetime="2025-06">2025-06</time></td><td>MoE, 300B total / 47B active</td><td>Apache-2.0</td></tr>
-      </tbody>
+      <tbody>        <tr><td>DeepSeek</td><td><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash">DeepSeek-V4.1-Flash</a></td><td><time datetime="2026-09">2026-09</time></td><td>Multimodal MoE, context up to 1M</td><td>MIT</td></tr>        <tr><td>DeepSeek</td><td><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro">DeepSeek-V4-Pro</a></td><td><time datetime="2026-04">2026-04</time></td><td>MoE, 1.6T total / 49B active</td><td>MIT</td></tr>        <tr><td>DeepSeek</td><td><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash">DeepSeek-V4-Flash</a></td><td><time datetime="2026-04">2026-04</time></td><td>MoE, 284B total / 13B active</td><td>MIT</td></tr>        <tr><td>Alibaba Qwen</td><td><a href="https://huggingface.co/Qwen/Qwen3.8-2.4T-A95B">Qwen3.8-2.4T-A95B</a></td><td><time datetime="2026-08">2026-08</time></td><td>MoE, 2.4T total / 95B active, 262K native</td><td>Qwen3.8-Max License</td></tr>        <tr><td>Alibaba Qwen</td><td><a href="https://huggingface.co/Qwen/Qwen3.8-27B">Qwen3.8-27B</a></td><td><time datetime="2026-08">2026-08</time></td><td>27B, 262K native</td><td>Apache-2.0</td></tr>        <tr><td>Alibaba Qwen</td><td><a href="https://huggingface.co/Qwen/Qwen3.6-35B-A3B">Qwen3.6-35B-A3B</a></td><td><time datetime="2026-04">2026-04</time></td><td>MoE, 35B total / 3B active</td><td>Apache-2.0</td></tr>        <tr><td>Moonshot AI</td><td><a href="https://huggingface.co/moonshotai/Kimi-K3">Kimi K3</a></td><td><time datetime="2026-06">2026-06</time></td><td>MoE, 2.8T total / 104B active, 1M context</td><td>Kimi K3 License</td></tr>        <tr><td>Moonshot AI</td><td><a href="https://huggingface.co/moonshotai/Kimi-K2.6">Kimi-K2.6</a></td><td><time datetime="2026-04">2026-04</time></td><td>MoE, 1T total / 32B active</td><td>Modified MIT</td></tr>        <tr><td>Z.ai</td><td><a href="https://huggingface.co/zai-org/GLM-5.3">GLM-5.3</a></td><td><time datetime="2026-08">2026-08</time></td><td>MoE, 1M context</td><td>GLM-5.3 License</td></tr>        <tr><td>Z.ai</td><td><a href="https://huggingface.co/zai-org/GLM-5.2">GLM-5.2</a></td><td><time datetime="2026-06">2026-06</time></td><td>MoE, 1M context</td><td>MIT</td></tr>        <tr><td>MiniMax</td><td><a href="https://huggingface.co/MiniMaxAI/MiniMax-M3.1-Flash">MiniMax-M3.1-Flash</a></td><td><time datetime="2026-10">2026-10</time></td><td>Multimodal MoE, about 428B total / 23B active</td><td>MiniMax Community License</td></tr>        <tr><td>MiniMax</td><td><a href="https://huggingface.co/MiniMaxAI/MiniMax-M2">MiniMax-M2</a></td><td><time datetime="2025-10">2025-10</time></td><td>MoE, 230B total / 10B active</td><td>Modified MIT</td></tr>        <tr><td>Tencent</td><td><a href="https://huggingface.co/tencent/Hy3">Hy3</a></td><td><time datetime="2026-07">2026-07</time></td><td>MoE, 295B total / 21B active</td><td>Apache-2.0</td></tr>        <tr><td>StepFun</td><td><a href="https://huggingface.co/stepfun-ai/Step-5-Preview">Step 5 Preview</a></td><td><time datetime="2026-09">2026-09</time></td><td>Sparse MoE, 600B total / 27B active</td><td>StepFun Model License 1.0</td></tr>        <tr><td>Xiaomi MiMo</td><td><a href="https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Pro-RL">MiMo-V2.6-Pro-RL</a></td><td><time datetime="2026-09">2026-09</time></td><td>Sparse MoE, 1.02T total / 42B active</td><td>MIT</td></tr>        <tr><td>ByteDance Seed</td><td><a href="https://huggingface.co/ByteDance-Seed/Seed-OSS-36B-Instruct">Seed-OSS-36B-Instruct</a></td><td><time datetime="2025-08">2025-08</time></td><td>36B, 512K context</td><td>Apache-2.0</td></tr>        <tr><td>Baidu</td><td><a href="https://huggingface.co/baidu/ERNIE-4.5-300B-A47B-PT">ERNIE-4.5-300B-A47B-PT</a></td><td><time datetime="2025-06">2025-06</time></td><td>MoE, 300B total / 47B active</td><td>Apache-2.0</td></tr>      </tbody>
     </table>
 
     <h2>How rows are chosen</h2>
     <p>The tracker lists general-purpose language models with public weights. It leaves out hosted-only products, image and speech models, and quantized copies. A row is added only after its facts are read on the repository; announcements and third-party summaries are not used as sources.</p>
     <p>Licenses differ inside one model family, so each row names the license of that repository. A custom license name means the terms are specific to the release and need to be read in full.</p>
-
     <p>For releases that are not yet checked here, see the automatically refreshed <a href="/news.html">news page</a>.</p>
-
   </main>
   <footer>
   <div><strong>LLM Model Notes</strong><p>Independent notes on practical evaluation.</p></div>

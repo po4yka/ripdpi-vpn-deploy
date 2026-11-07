@@ -1,11 +1,5 @@
 # Managed by Ansible role `nginx-xhttp`. Direct (no CDN) baseline.
 # CDN-fronted variant lives in docs/decisions/0001-cdn-not-filtered-path-baseline.md as opt-in.
-
-
-
-
-
-
 # Combined field layout without the client address, referer or user agent, so
 # status-column tooling (awk '$9') keeps working on these logs.
 log_format vpn_public '- - - [$time_local] "$request" $status $body_bytes_sent "-" "-"';
@@ -36,7 +30,6 @@ server {
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
     add_header Referrer-Policy "no-referrer" always;
     add_header X-Content-Type-Options "nosniff" always;
-
 
 
     # XHTTP path → Xray localhost inbound
@@ -78,14 +71,12 @@ server {
         try_files $uri =404;
     }
 
-
     # Refreshed by model-news.timer outside the published site tree; the page
     # uses the bundled identity, so an operator-owned site never serves it.
     location = /news.html {
         root /var/lib/model-news;
         try_files $uri =404;
     }
-
 
     # Public site for ordinary browser and scanner requests.
     location / {
@@ -95,8 +86,6 @@ server {
     access_log /var/log/nginx/vpn-xhttp.access.log vpn_public;
     error_log  /var/log/nginx/vpn-xhttp.error.log warn;
 }
-
-
 
 # HTTP → HTTPS redirect (so the host looks like a normal website)
 server {

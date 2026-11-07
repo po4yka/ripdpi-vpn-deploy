@@ -18,7 +18,6 @@ server {
     add_header Strict-Transport-Security "max-age=31536000" always;
 
 
-
     # XHTTP upstream — proxy_pass to the Xray localhost inbound. nginx
     # rewrites X-Forwarded-For from CF-Connecting-IP via the real-IP
     # restoration above, so Xray sees the visitor IP, not the CF egress.

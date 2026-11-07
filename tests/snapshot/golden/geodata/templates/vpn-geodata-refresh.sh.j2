@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # Stage pinned assets; protected consumers select them only through native acceptance.
 set -euo pipefail
-
-
 publication="$(/usr/local/sbin/vpn-geodata-publish <<'JSON'
 {"install_dir": "/usr/local/share/xray", "stage_only": true, "sources": {"geosite.dat": {"url": "REPLACE_WITH_PINNED_GEOSITE_RELEASE_URL", "sha256": "REPLACE_WITH_RELEASE_SHA256"}, "geoip.dat": {"url": "REPLACE_WITH_PINNED_GEOIP_RELEASE_URL", "sha256": "REPLACE_WITH_RELEASE_SHA256"}}}
 JSON
