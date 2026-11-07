@@ -25,6 +25,7 @@ artifact_evidence: null
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
 | REQ-MAINT-RESUME | OPS-1793686512392634 | Required behavior and scoped acceptance checks | Pending |
+| REQ-MAINT-RESUME-CONVERGED | OPS-1794070939441144 | Required behavior and scoped acceptance checks | Pending |
 | REQ-MAINT-RELEASE | OPS-1793686512392634 | Required behavior and scoped acceptance checks | Pending |
 | REQ-MAINT-KIT | OPS-1793686512392634 | Required behavior and scoped acceptance checks | Pending |
 | REQ-MAINT-SERIAL | OPS-1793686512392634 | Required behavior and scoped acceptance checks | Pending |

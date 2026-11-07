@@ -6,7 +6,7 @@ journal. The new surface connects these facilities; it does not replace them.
 
 ## Goals / Non-Goals
 
-- Deliver all nine requirements, starting with resume, release inputs and kit recovery.
+- Deliver all ten requirements, starting with resume, release inputs and kit recovery.
 - Keep operator authority and private values outside Git and remote logs.
 - Do not provision servers, add a remote command daemon, bypass preview gates or
   automatically repair drift.
@@ -43,6 +43,10 @@ documentation and CI. Existing Ansible role changes stay in their owning roles.
 Shared Make and CI edits are serialized. Independent review is read-only.
 Terraform state and provisioned resources remain unchanged unless a reviewed
 address-only plan is necessary and within current authorization.
+
+### Resume after convergence
+
+The deploy stage is the costly part of a node attempt. A completed deploy records `converged` with the host and the plan source in the journal. On resume, the controller skips dry-run and deploy for that host only after `protocol_gate`'s own fresh read-only manifest probe returns the plan revision and digest. It never skips decrypt or an acceptance stage, because acceptance must be fresh evidence. Any mismatch or probe failure runs the full sequence, so a node changed between attempts is converged again. A preview never skips a stage. A complete sequence on start or resume first clears `converged`: the node manifest is written inside the site playbook, so a deploy that fails later can leave a matching live manifest, and only the journal record proves the stage finished. A skip records `resumed_at_acceptance`. Only a failed observation (transport error or source mismatch) falls back to a full sequence; local input errors fail the node, because a second deploy cannot repair them. The probe runs after its own `recheck(plan)`.
 
 ## Risks / Trade-offs
 
