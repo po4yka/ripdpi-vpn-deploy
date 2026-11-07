@@ -867,6 +867,7 @@
         - name: Inspect installed REALITY self-steal certificate chain
           ansible.builtin.stat:
             path: "{{ reality_self_steal_tls_dir | default('/etc/nginx/reality-self-steal') }}/current/fullchain.pem"
+            follow: true
             get_checksum: false
             get_mime: false
             get_attributes: false

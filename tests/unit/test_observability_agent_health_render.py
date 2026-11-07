@@ -192,6 +192,8 @@ def test_self_steal_chain_is_inspected_read_only_before_unit_render() -> None:
         "/current/fullchain.pem"
     )
     assert inspect["check_mode"] is False
+    # A symlinked leaf must still count as an installed chain.
+    assert inspect["ansible.builtin.stat"]["follow"] is True
     assert inspect["register"] == "_observability_agent_self_steal_certificate"
     assert names.index(inspect["name"]) < names.index(
         "Install observability agent adapter units after sender acceptance"

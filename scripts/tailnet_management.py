@@ -590,13 +590,15 @@ def validate_observer_firewall(value) -> dict:
                 or len(set(map(str, resolvers))) != len(resolvers)):
             raise ValueError
         for raw in resolvers:
-            if _observer_ipv4(raw) in TAILNET_V4:
+            resolver = _observer_ipv4(raw)
+            if resolver in TAILNET_V4 or resolver.is_link_local:
                 raise ValueError
         network = notification["telegram_network"]
         if not isinstance(network, str):
             raise ValueError
         parsed = ipaddress.IPv4Network(network, strict=True)
-        if str(parsed) != network or parsed.prefixlen < 8 or not parsed.is_global:
+        # Container HTTPS egress: one provider network, never a broad range.
+        if str(parsed) != network or parsed.prefixlen < 16 or not parsed.is_global:
             raise ValueError
     except (Refusal, ValueError, TypeError):
         raise Refusal("observer-firewall-invalid") from None
