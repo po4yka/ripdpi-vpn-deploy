@@ -101,6 +101,7 @@ def test_metric_manifest_declares_every_health_adapter_family() -> None:
         "vpn_backup_restore_source",
         "vpn_certificate_collection_success",
         "vpn_certificate_not_after_timestamp_seconds",
+        "vpn_observability_capability",
     }
     assert expected <= families.keys()
     for name in expected:
@@ -143,10 +144,21 @@ def test_rendered_watchdog_input_follows_the_effective_profile(enabled: bool) ->
     assert "--certificate " in service
 
 
-@pytest.mark.parametrize("enabled", [True, False])
-def test_rendered_self_steal_certificate_follows_the_profile(enabled: bool) -> None:
+@pytest.mark.parametrize(
+    ("stat_result", "enabled"),
+    [
+        ({"exists": True, "isreg": True}, True),
+        ({"exists": True, "isreg": False, "isdir": True}, False),
+        ({"exists": False}, False),
+    ],
+)
+def test_rendered_self_steal_certificate_follows_the_installed_chain(
+    stat_result: dict[str, bool], enabled: bool
+) -> None:
     values = merge_render_vars()
-    values["vpn"]["enable_reality_self_steal"] = enabled
+    # The profile flag no longer decides; only the host stat result does.
+    values["vpn"]["enable_reality_self_steal"] = not enabled
+    values["_observability_agent_self_steal_certificate"] = {"stat": stat_result}
     service = render_template(
         ROLE / "templates/observability-agent-health-adapter.service.j2", values
     )
@@ -159,3 +171,28 @@ def test_rendered_self_steal_certificate_follows_the_profile(enabled: bool) -> N
         "--reality-self-steal-certificate %d/reality-self-steal.crt \\\n" in service
     ) is enabled
     assert "privkey" not in service
+
+
+def test_self_steal_chain_is_inspected_read_only_before_unit_render() -> None:
+    def walk(tasks: list[dict]) -> list[dict]:
+        found = []
+        for task in tasks:
+            found.append(task)
+            for key in ("block", "rescue", "always"):
+                found.extend(walk(task.get(key, [])))
+        return found
+
+    tasks = walk(yaml.safe_load((ROLE / "tasks/main.yml").read_text()))
+    names = [task.get("name") for task in tasks]
+    inspect = tasks[
+        names.index("Inspect installed REALITY self-steal certificate chain")
+    ]
+    assert inspect["ansible.builtin.stat"]["path"] == (
+        "{{ reality_self_steal_tls_dir | default('/etc/nginx/reality-self-steal') }}"
+        "/current/fullchain.pem"
+    )
+    assert inspect["check_mode"] is False
+    assert inspect["register"] == "_observability_agent_self_steal_certificate"
+    assert names.index(inspect["name"]) < names.index(
+        "Install observability agent adapter units after sender acceptance"
+    )

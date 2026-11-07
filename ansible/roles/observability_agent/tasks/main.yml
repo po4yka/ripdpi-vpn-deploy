@@ -863,6 +863,16 @@
             mode: "0755"
           notify: Restart observability agent health adapter timer
 
+        # Derive self-steal evidence from the installed chain, not a profile flag.
+        - name: Inspect installed REALITY self-steal certificate chain
+          ansible.builtin.stat:
+            path: "{{ reality_self_steal_tls_dir | default('/etc/nginx/reality-self-steal') }}/current/fullchain.pem"
+            get_checksum: false
+            get_mime: false
+            get_attributes: false
+          check_mode: false
+          register: _observability_agent_self_steal_certificate
+
         - name: Install observability agent adapter units after sender acceptance
           ansible.builtin.template:
             src: "{{ item }}"

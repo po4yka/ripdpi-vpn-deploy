@@ -26,7 +26,7 @@ Before changing the sender runtime contract, inspect its [cross-role and operato
 
 **The adapter consumes schema-2 node manifests only** — it exports a bounded, redacted manifest summary to node_exporter's existing loopback textfile path. It does not run watchdog, backup, or protocol probes.
 
-**Producer health adaptation is a separate root oneshot** — root access is used only to read the watchdog and backup roles' fixed private state files. The adapter emits bounded one-hot state and timestamps into the protected textfile group; it never invokes or edits a producer. With self-steal enabled, systemd also loads only the public self-steal `fullchain.pem` as a credential (never `privkey.pem`); its first certificate is reported with `role="reality-self-steal"` beside the sender client certificate.
+**Producer health adaptation is a separate root oneshot** — root access is used only to read the watchdog and backup roles' fixed private state files. The adapter emits bounded one-hot state and timestamps into the protected textfile group; it never invokes or edits a producer. When a read-only `stat` before unit render finds the installed self-steal `current/fullchain.pem` as a regular file (no profile flag decides this), systemd also loads only that public chain as a credential (never `privkey.pem`); its first certificate is reported with `role="reality-self-steal"` beside the sender client certificate, together with `vpn_observability_capability{role="reality-self-steal"} 1` so the collector alerts when the expiry series is missing.
 
 **Producer deadlines belong to central evaluation** — health adaptation publishes
 bounded producer timestamps and their configured maximum ages, including restore
@@ -65,7 +65,7 @@ The staged selection includes its previous-runtime link when supplied by runtime
 
 ## Pitfalls
 
-- **Re-run the agent lifecycle after toggling self-steal** — the health adapter unit loads the self-steal `fullchain.pem` only when the toggle was on at render time. A site deploy that disables self-steal removes that file, so the adapter fails, and its health evidence goes stale, until the agent lifecycle renders the unit again.
+- **Re-run the agent lifecycle after toggling self-steal** — the health adapter unit loads the self-steal `fullchain.pem` only when that file existed at render time. A site deploy that disables self-steal removes that file, so the adapter fails, and its health evidence goes stale, until the agent lifecycle renders the unit again; a chain installed after the last agent render is not reported (and no capability is exported) until that re-run.
 
 - Pinned atomic queue writes can leave `metainfo.json.tmp.<uint64>` (at most 16 KiB) or an empty `0000000000000000.tmp.<uint64>` initial chunk. Preserve these exact private native forms through compensation under the existing count/copy budget. Readiness retries only a live inode-change race within its deadline; quiescent snapshots and foreign-authority refusals remain strict.
 

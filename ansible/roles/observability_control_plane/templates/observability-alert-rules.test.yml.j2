@@ -238,4 +238,34 @@ tests:
       - eval_time: 10m
         alertname: ObservabilityCollectorRelayDeliveryLoss
         exp_alerts: []
+{% endfor %}
+{% for capability, certificate_role in [(true, ''), (true, 'reality-self-steal'), (true, 'other-node'), (false, '')] %}
+  - interval: 1m
+    input_series:
+      - series: 'vpn_certificate_not_after_timestamp_seconds{environment="staging",node="vpn-p0",role="observability-sender"}'
+        values: '4102444800x10'
+{% if capability %}
+      - series: 'vpn_observability_capability{environment="staging",node="vpn-p0",role="reality-self-steal"}'
+        values: '1x10'
+{% endif %}
+{% if certificate_role == 'reality-self-steal' %}
+      - series: 'vpn_certificate_not_after_timestamp_seconds{environment="staging",node="vpn-p0",role="reality-self-steal"}'
+        values: '4102444800x10'
+{% elif certificate_role %}
+      - series: 'vpn_certificate_not_after_timestamp_seconds{environment="staging",node="vpn-p1",role="reality-self-steal"}'
+        values: '4102444800x10'
+{% endif %}
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: ObservabilitySelfStealCertificateMissing
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: ObservabilitySelfStealCertificateMissing
+{% if capability and certificate_role != 'reality-self-steal' %}
+        exp_alerts:
+          - exp_labels: {component: certificate, environment: staging, node: vpn-p0, role: reality-self-steal, severity: warning}
+            exp_annotations: {incident_family: certificate-health, evidence_class: evidence-missing, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Self-steal certificate expiry evidence is missing., runbook: docs/how-to/incident.md}
+{% else %}
+        exp_alerts: []
+{% endif -%}
 {% endfor -%}
