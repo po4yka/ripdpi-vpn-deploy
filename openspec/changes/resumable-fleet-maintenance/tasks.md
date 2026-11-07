@@ -2,7 +2,7 @@
 
 ## Objective
 
-Deliver all nine fleet-maintenance requirements through canonical operations.
+Deliver all ten fleet-maintenance requirements through canonical operations.
 
 ## Ownership
 
@@ -13,6 +13,7 @@ Independent review is read-only.
 ## Execution
 
 - [ ] OPS-1793686512392634 Deliver and verify resumable fleet maintenance and encrypted recovery #feature !high @item:OPS-1793686022000048
+- [ ] OPS-1794070939441144 Resume a converged node at acceptance without a second deploy #feature !high @item:OPS-1793686022000048
 
 ## Verification
 

@@ -25,7 +25,7 @@ routine credential separation to those commands.
 
 ## Acceptance criteria
 
-- All nine requirements in the linked change have observed behavior tests.
+- All ten requirements in the linked change have observed behavior tests.
 - Required local and exact-revision hosted checks pass, with environment limits
   recorded separately from actual source failures.
 - Source changes are reviewed and merged; required existing-host changes pass
