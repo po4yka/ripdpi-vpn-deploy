@@ -42,6 +42,23 @@ def isolated_synthetic_git_config(monkeypatch):
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
 
 
+@pytest.fixture
+def pinned_engines(tmp_path):
+    """Return a PATH whose sing-box and xray stubs report the given runtime pins."""
+    def environment(expected):
+        directory = tmp_path / "pinned-engines"
+        directory.mkdir(exist_ok=True)
+        for engine, key, banner in (("sing-box", "sing_box", "sing-box version {}"),
+                                    ("xray", "xray", "Xray {} (Xray, Penetrates Everything.)")):
+            if key in expected:
+                stub = directory / engine
+                stub.write_text(f"#!/bin/sh\n[ \"$1\" = version ] && echo '{banner.format(expected[key])}'\n")
+                stub.chmod(0o755)
+        # Only the stubs: a real engine elsewhere on the host must not satisfy a pin.
+        return {"PATH": str(directory)}
+    return environment
+
+
 def pytest_addoption(parser):
     parser.addoption("--fail-on-skip", action="store_true",
                      help="Fail a required lane if any selected test is skipped")

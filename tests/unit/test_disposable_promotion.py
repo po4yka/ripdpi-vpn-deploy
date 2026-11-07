@@ -737,8 +737,9 @@ def test_finalizer_reuse_never_overwrites_foreign_or_unproven_generation(
     }
 
 
+@pytest.mark.parametrize("engine_drift", [False, True])
 def test_deploy_controller_prepares_intent_before_any_checked_command(
-    capabilities, monkeypatch
+    capabilities, monkeypatch, pinned_engines, engine_drift
 ):
     helper = module()
     monkeypatch.setitem(sys.modules, "disposable_promotion", helper)
@@ -791,20 +792,26 @@ def test_deploy_controller_prepares_intent_before_any_checked_command(
 
     monkeypatch.setattr(helper, "_decrypt", decrypt)
     monkeypatch.setattr(controller, "checked", checked)
-    result = controller.transaction_inputs(
+    runtime = dict(capabilities["intent"]["liveness"]["expected_runtime"])
+    assert {"sing_box", "xray"} & runtime.keys()
+    if engine_drift:
+        runtime = {key: "0.0.0" for key in ("sing_box", "xray") if key in runtime}
+    arguments = (
         "deploy",
         [host],
-        {
-            "DEPLOYABLE_SOURCE_DIGEST": capabilities["intent"]["target_identity"][
-                "deployable_digest"
-            ]
-        },
+        {"DEPLOYABLE_SOURCE_DIGEST": capabilities["intent"]["target_identity"]["deployable_digest"]},
         directory,
         ROOT,
-        {},
-        memberships={host["name"]: capabilities["memberships"]},
-        deployed_secrets=capabilities["deployed_secrets"],
+        pinned_engines(runtime),
     )
+    options = dict(memberships={host["name"]: capabilities["memberships"]},
+                   deployed_secrets=capabilities["deployed_secrets"])
+    if engine_drift:
+        with pytest.raises(controller.DeployError, match="onboarding capability refused: local-runtime-pin-mismatch"):
+            controller.transaction_inputs(*arguments, **options)
+        assert calls == ["decrypt"]
+        return
+    result = controller.transaction_inputs(*arguments, **options)
     assert calls == ["decrypt", "validate"]
     assert result[host["name"]]["ssh_transaction_promotion_config_path"]
     assert result[host["name"]]["ssh_transaction_failure_receipt_path"] == str(

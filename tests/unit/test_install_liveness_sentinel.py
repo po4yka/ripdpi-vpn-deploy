@@ -660,6 +660,33 @@ def test_local_runtime_version_pin_is_checked_before_parser_or_ssh(setup):
     assert not any(c[0][0] == "ssh" for c in s["calls"])
 
 
+@pytest.mark.parametrize(("profiles", "expected", "refusal"), [
+    (["p1-xhttp"], {"sing_box": "1.14.3", "xray": "26.10.31"}, None),
+    # The p1 probe never runs sing-box, so a stale sing-box pin cannot refuse it.
+    (["p1-xhttp"], {"sing_box": "1.13.16", "xray": "26.10.31"}, None),
+    (["p0-reality", "p2-hysteria2"], {"sing_box": "1.14.3", "xray": "26.10.31"}, None),
+    (["p1-xhttp"], {"sing_box": "1.14.3", "xray": "26.3.27"}, "local-runtime-pin-mismatch"),
+    (["p2-hysteria2"], {"sing_box": "1.13.16", "xray": "26.10.31"}, "local-runtime-pin-mismatch"),
+    (["p2-hysteria2"], {"xray": "26.10.31"}, "local-runtime-pin-mismatch"),
+])
+def test_runtime_pin_preflight_checks_the_engines_the_policy_needs(pinned_engines, profiles, expected, refusal):
+    fresh = load(ROOT / "scripts/install_liveness_sentinel.py", "pin_preflight_installer")
+    config = {"policies": [{"required_profiles": profiles}], "expected_runtime": expected}
+    environment = pinned_engines({"sing_box": "1.14.3", "xray": "26.10.31"})
+    if refusal:
+        with pytest.raises(fresh.InstallError, match=refusal):
+            fresh.require_runtime_pins(config, environment)
+    else:
+        fresh.require_runtime_pins(config, environment)
+
+
+def test_runtime_pin_preflight_names_a_missing_engine(pinned_engines):
+    fresh = load(ROOT / "scripts/install_liveness_sentinel.py", "pin_preflight_missing")
+    config = {"policies": [{"required_profiles": ["p1-xhttp"]}], "expected_runtime": {"xray": "26.10.31"}}
+    with pytest.raises(fresh.InstallError, match="local-runtime-engine-unavailable"):
+        fresh.require_runtime_pins(config, pinned_engines({}))
+
+
 def test_real_source_identity_rejects_dirty_git_before_reading_runner(setup, monkeypatch):
     fresh = load(ROOT / "scripts/install_liveness_sentinel.py", "source_installer")
     calls = []

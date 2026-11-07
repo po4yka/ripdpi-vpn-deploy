@@ -373,7 +373,7 @@ def test_scope_binds_real_journal_state_manifest_and_clean_source(cloud, manifes
 
 
 @pytest.mark.parametrize('intent', ['recovery', 'cloud'], indirect=True)
-def test_deploy_prepares_recovery_before_validation_or_remote_write(prepared, monkeypatch):
+def test_deploy_prepares_recovery_before_validation_or_remote_write(prepared, monkeypatch, pinned_engines):
     value, _, directory, host, plaintext = prepared
     original = promotion._original(value)
     directory = directory / 'fresh'
@@ -408,6 +408,7 @@ def test_deploy_prepares_recovery_before_validation_or_remote_write(prepared, mo
     monkeypatch.setattr(controller, 'checked', checked)
     result = controller.transaction_inputs('deploy', [host],
         {'DEPLOYABLE_SOURCE_DIGEST': original['target_identity']['deployable_digest']}, directory,
-        promotion.ROOT, {}, memberships={host['name']: ['vpn-p0-minimal']}, deployed_secrets=plaintext)
+        promotion.ROOT, pinned_engines(original['liveness']['expected_runtime']),
+        memberships={host['name']: ['vpn-p0-minimal']}, deployed_secrets=plaintext)
     assert calls == ['prepare', 'validate']
     assert result[host['name']]['ssh_transaction_promotion_config_path']

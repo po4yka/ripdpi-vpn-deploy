@@ -375,17 +375,35 @@ def _derive(private, environment):
     return _run([tool, "pubkey"], environment=environment, input_bytes=(private + "\n").encode()).decode().strip()
 
 
+ENGINE_VERSIONS = {"sing-box": ("sing_box", r"^sing-box version ([^\s]+)"), "xray": ("xray", r"^Xray ([^\s]+)")}
+
+
+def _require_engine_pin(engine, expected, environment):
+    key, pattern = ENGINE_VERSIONS[engine]
+    if not shutil.which(engine, path=environment.get("PATH")):
+        raise InstallError("local-runtime-engine-unavailable")
+    match = re.match(pattern, _run([engine, "version"], environment=environment).decode())
+    if not match or match[1] != expected.get(key):
+        raise InstallError("local-runtime-pin-mismatch")
+
+
+def require_runtime_pins(config, environment):
+    """Refuse before any host write when an engine the installer will need differs from its pin."""
+    names = _evaluator().required_runtime(config["policies"][0])
+    expected = config.get("expected_runtime", {})
+    for engine, (key, _pattern) in ENGINE_VERSIONS.items():
+        if key in names:
+            _require_engine_pin(engine, expected, environment)
+
+
 def _parsers(directory, profiles, expected, environment):
-    for engine, filename, version_pattern, arguments in (
-        ("sing-box", "sing-box.json", r"^sing-box version ([^\s]+)", ["check", "-c"]),
-        ("xray", "xray.json", r"^Xray ([^\s]+)", ["run", "-test", "-config"]),
+    for engine, filename, arguments in (
+        ("sing-box", "sing-box.json", ["check", "-c"]),
+        ("xray", "xray.json", ["run", "-test", "-config"]),
     ):
         if filename not in profiles:
             continue
-        version = _run([engine, "version"], environment=environment).decode()
-        match = re.match(version_pattern, version)
-        if not match or match[1] != expected["sing_box" if engine == "sing-box" else engine]:
-            raise InstallError("local-runtime-pin-mismatch")
+        _require_engine_pin(engine, expected, environment)
         _run([engine, *arguments, str(directory / filename)], environment=environment, timeout=30)
 
 
