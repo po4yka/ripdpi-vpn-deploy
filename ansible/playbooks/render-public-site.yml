@@ -1,0 +1,59 @@
+---
+# Render the bundled public site into an operator-owned tree for
+# nginx_xhttp_public_site_dir. Operator trees never serve the model news page.
+- name: Render the bundled public site into an operator-owned tree
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: false
+
+  vars:
+    public_site_canonical_url: "{{ lookup('ansible.builtin.env', 'PUBLIC_SITE_URL') }}"
+    public_site_render_dir: "{{ lookup('ansible.builtin.env', 'PUBLIC_SITE_DIR') }}"
+    role_dir: '{{ playbook_dir }}/../roles/nginx-xhttp'
+    nginx_xhttp_model_news_enabled: false
+    nginx_xhttp_public_site_dir: '{{ public_site_render_dir }}'
+
+  tasks:
+    - name: Inspect the requested output path without following a link
+      ansible.builtin.stat:
+        path: '{{ public_site_render_dir }}'
+        follow: false
+      register: _public_site_render_target
+
+    # The role publishes canonical URLs without :443, so the origin must omit it too.
+    - name: Require an absolute canonical HTTPS origin and a new output directory
+      ansible.builtin.assert:
+        that:
+          - public_site_canonical_url is regex('\Ahttps://[a-z0-9.-]+(:[0-9]+)?\Z')
+          - public_site_canonical_url is not regex(':443\Z')
+          - public_site_render_dir is regex('\A/')
+          - public_site_render_dir is not regex('(\A|/)\.\.(/|\Z)')
+          - not _public_site_render_target.stat.exists
+        fail_msg: Set PUBLIC_SITE_URL to an https origin without :443 and PUBLIC_SITE_DIR to a new absolute path.
+
+    - name: Load the bundled public site layout
+      ansible.builtin.include_vars: '{{ role_dir }}/vars/public-site.yml'
+
+    - name: Create the private output directories
+      ansible.builtin.file:
+        path: '{{ public_site_render_dir }}/{{ item }}'
+        state: directory
+        mode: '0700'
+      loop: >-
+        {{ ([''] + (nginx_xhttp_bundled_site_assets + nginx_xhttp_bundled_site_pages | map(attribute='dest') | list)
+            | map('dirname') | list) | unique | sort }}
+
+    - name: Render the hostname-bound pages
+      ansible.builtin.template:
+        src: '{{ role_dir }}/templates/public-site/{{ item.src }}'
+        dest: '{{ public_site_render_dir }}/{{ item.dest }}'
+        mode: '0600'
+      loop: '{{ nginx_xhttp_bundled_site_pages }}'
+
+    - name: Copy the static assets
+      ansible.builtin.copy:
+        src: '{{ role_dir }}/files/public-site/{{ item }}'
+        dest: '{{ public_site_render_dir }}/{{ item }}'
+        mode: '0600'
+      loop: '{{ nginx_xhttp_bundled_site_assets }}'

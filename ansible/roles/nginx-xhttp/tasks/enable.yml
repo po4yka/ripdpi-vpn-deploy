@@ -127,30 +127,15 @@
   become: false
   when: nginx_xhttp_public_site_dir | default('') | length > 0
 
+- name: Load the bundled public site layout
+  ansible.builtin.include_vars: '{{ role_path }}/vars/public-site.yml'
+
 - name: Resolve the published public site layout
   ansible.builtin.set_fact:
     _nginx_operator_site_paths: >-
       {{ (_nginx_operator_site_tree.files | default([]))
          | map(attribute='path') | map('relpath', nginx_xhttp_public_site_dir | default('/')) | list
          if (nginx_xhttp_public_site_dir | default('') | length > 0) else [] }}
-    _nginx_bundled_site_assets: [favicon.svg, logo.svg, 404.html, assets/site.css]
-    _nginx_bundled_site_pages:
-      - {src: index.html.j2, dest: index.html}
-      - {src: about.html.j2, dest: about.html}
-      - {src: methodology.html.j2, dest: methodology.html}
-      - {src: updates.html.j2, dest: updates.html}
-      - {src: reading-benchmark-results.html.j2, dest: notes/reading-benchmark-results.html}
-      - {src: latency-throughput-context.html.j2, dest: notes/latency-throughput-context.html}
-      - {src: repeatable-model-comparisons.html.j2, dest: notes/repeatable-model-comparisons.html}
-      - {src: reading-an-open-weight-model-card.html.j2, dest: notes/reading-an-open-weight-model-card.html}
-      - {src: serving-mixture-of-experts-models.html.j2, dest: notes/serving-mixture-of-experts-models.html}
-      - {src: tokenizer-efficiency-for-chinese-text.html.j2, dest: notes/tokenizer-efficiency-for-chinese-text.html}
-      - {src: notes-index.html.j2, dest: notes/index.html}
-      - {src: models.html.j2, dest: models.html}
-      - {src: glossary.html.j2, dest: glossary.html}
-      - {src: feed.xml.j2, dest: feed.xml}
-      - {src: robots.txt.j2, dest: robots.txt}
-      - {src: sitemap.xml.j2, dest: sitemap.xml}
 
 - name: Require the operator-owned tree to carry the ordinary error page
   ansible.builtin.assert:
@@ -270,7 +255,7 @@
       {{ nginx_transaction_files + [{'path': '/var/www/public-site/' ~ item,
           'kind': 'file', 'content_b64': lookup('ansible.builtin.file', role_path ~ '/files/public-site/' ~ item, rstrip=false) | b64encode,
           'mode': '0644', 'uid': 0, 'gid': 0}] }}
-  loop: '{{ _nginx_bundled_site_assets }}'
+  loop: '{{ nginx_xhttp_bundled_site_assets }}'
   when: _nginx_operator_site_paths | length == 0
   no_log: true
   diff: false
@@ -281,7 +266,7 @@
       {{ nginx_transaction_files + [{'path': '/var/www/public-site/' ~ item.dest,
           'kind': 'file', 'content_b64': lookup('ansible.builtin.template', 'public-site/' ~ item.src) | b64encode,
           'mode': '0644', 'uid': 0, 'gid': 0}] }}
-  loop: '{{ _nginx_bundled_site_pages }}'
+  loop: '{{ nginx_xhttp_bundled_site_pages }}'
   when: _nginx_operator_site_paths | length == 0
   no_log: true
   diff: false
@@ -302,7 +287,7 @@
     nginx_transaction_files: >-
       {{ nginx_transaction_files + [{'path': '/var/www/public-site/' ~ item, 'kind': 'absent'}] }}
   loop: >-
-    {{ (_nginx_bundled_site_assets + (_nginx_bundled_site_pages | map(attribute='dest') | list))
+    {{ (nginx_xhttp_bundled_site_assets + (nginx_xhttp_bundled_site_pages | map(attribute='dest') | list))
        | difference(_nginx_operator_site_paths) if (_nginx_operator_site_paths | length > 0) else [] }}
   no_log: true
   diff: false
