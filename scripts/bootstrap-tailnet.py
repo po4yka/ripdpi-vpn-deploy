@@ -235,6 +235,14 @@ def load_inputs(environment, directory):
                 or variables.get("env") != config["environment"]
                 or json.loads(variables.get("vpn_build_environment", "")) != build_environment):
             raise BootstrapError("inventory-target-mismatch")
+        # Observer-only guest firewall additions; absent keeps the plain foundation.
+        observer = variables.get("observability_kuma_guest_firewall")
+        if observer is not None:
+            if config["inventory_section"] != "observability-kuma" or not isinstance(observer, str):
+                raise BootstrapError("observer-firewall-invalid")
+            observer = tailnet.validate_observer_firewall(
+                tailnet._bounded_json(observer, reason="observer-firewall-invalid", limit=4096))
+        config["observer_firewall"] = observer
         host["transport"] = host["address"]
         key, key_fence = deploy.read_fenced_input(host["key"], private=True, exact_mode=0o600)
         host["key"] = str(deploy.private_file(directory / "identity", key))
@@ -566,7 +574,8 @@ def run(inputs, auth_key, *, pending_hook=None):
     pending = None
     try:
         try:
-            pending = _capability(inputs, _rpc(inputs, "enroll", binding=binding, auth_key=auth_key, policy_approval=inputs.config["policy_approval"]))
+            pending = _capability(inputs, _rpc(inputs, "enroll", binding=binding, auth_key=auth_key, policy_approval=inputs.config["policy_approval"],
+                                                 observer_firewall=inputs.config["observer_firewall"]))
         except BootstrapError:
             pending = _capability(inputs, _rpc(inputs, "status", binding=binding))
         if pending_hook is not None:
