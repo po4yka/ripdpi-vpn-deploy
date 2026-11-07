@@ -537,6 +537,61 @@ def test_failed_mutation_preserves_intent_cleans_and_resumes_exact_boundary(main
     assert (kit / 'calls').read_text().count('node-a:deploy') == 1
 
 
+@pytest.mark.parametrize('live', ['plan-source', 'changed-source'])
+def test_resume_after_completed_deploy_reruns_acceptance_only_when_live_source_matches(maintenance, live):
+    _, kit, state, command, finish = maintenance
+    approval = preview(maintenance)
+    write(kit / 'fail', 'node-b:verify')
+    assert command('start', '--approval', approval).returncode == 0
+    failed = finish()
+    journal = json.loads((state / 'journal.json').read_text())
+    (kit / 'fail').unlink()
+    if live == 'changed-source':
+        write(kit / 'wrong-source', 'wrong-source')
+    assert command('resume', '--approval', approval).returncode == 0
+    resumed = finish()
+    calls = (kit / 'calls').read_text().splitlines()
+    assert failed['status'] == 'failed' and journal['intent']['name'] == 'verify'
+    plan_source = json.loads((kit / 'plan.json').read_text())['source']
+    assert journal['observed']['converged'] == {'host': 'node-b', 'source': plan_source}
+    if live == 'plan-source':
+        # One preview dry-run plus one start dry-run; resume goes straight to acceptance.
+        assert resumed['status'] == 'complete'
+        assert calls.count('node-b:dry-run') == 2 and calls.count('node-b:deploy') == 1
+        assert calls.count('node-b:decrypt') == 3 and calls.count('node-b:verify') == 2
+        last_decrypt = len(calls) - 1 - calls[::-1].index('node-b:decrypt')
+        assert calls[last_decrypt + 1:last_decrypt + 4] == ['node-b:verify', 'node-b:security-verify',
+                                                            'node-b:smoke-test']
+    else:
+        # No live proof: the node converges again, and the protocol gate still refuses the wrong source.
+        assert resumed['status'] == 'failed'
+        assert calls.count('node-b:dry-run') == 3 and calls.count('node-b:deploy') == 2
+    assert not list((kit / 'runtime').iterdir())
+
+
+def test_failed_redeploy_clears_convergence_so_a_later_resume_deploys_again(maintenance):
+    _, kit, state, command, finish = maintenance
+    approval = preview(maintenance)
+    write(kit / 'fail', 'node-b:verify')
+    assert command('start', '--approval', approval).returncode == 0
+    finish()
+    # The probe sees another source, so resume converges again, and that deploy fails.
+    write(kit / 'wrong-source', 'wrong-source')
+    write(kit / 'fail', 'node-b:deploy')
+    assert command('resume', '--approval', approval).returncode == 0
+    second = finish()
+    cleared = json.loads((state / 'journal.json').read_text())['observed']['converged']
+    # The live manifest still reports the plan source from the first deploy.
+    (kit / 'wrong-source').unlink()
+    (kit / 'fail').unlink()
+    assert command('resume', '--approval', approval).returncode == 0
+    third = finish()
+    calls = (kit / 'calls').read_text().splitlines()
+    assert second['status'] == 'failed' and cleared is None
+    assert third['status'] == 'complete'
+    assert calls.count('node-b:deploy') == 3
+
+
 def test_protocol_failure_stops_before_next_node_and_keeps_cleanup(maintenance):
     _, kit, state, command, finish = maintenance
     approval = preview(maintenance)
