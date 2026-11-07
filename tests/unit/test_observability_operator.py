@@ -118,6 +118,9 @@ if entry['program'] == 'ansible-playbook' and '--extra-vars' in entry['argv']:
         print('fatal: [node-a]: FAILED! => {{"censored":"hidden"}}')
         raise SystemExit(2)
     if 'simulate_other_failure: true' in variables:
+        print('TASK [observability_control_plane : Probe an optional unit] ********')
+        print('fatal: [node-a]: FAILED! => {{"changed":false}}')
+        print('...ignoring')
         print('TASK [observability_control_plane : Create dedicated control-plane account] ********')
         print('fatal: [node-a]: FAILED! => {{"changed":false}}')
         raise SystemExit(2)

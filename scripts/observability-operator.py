@@ -630,6 +630,9 @@ def _failed_task_command(
                     task = "unnamed-task"
                 elif failed and task is not None:
                     failures.append((task, failed[1].decode("ascii")))
+                elif chunk.startswith(b"...ignoring") and failures:
+                    # ignore_errors: the preceding failure did not fail the run.
+                    failures.pop()
             line_start = chunk.endswith(b"\n")
         returncode = process.wait()
     except BaseException:
