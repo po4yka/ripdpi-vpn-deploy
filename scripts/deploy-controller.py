@@ -522,6 +522,7 @@ def close_master(command):
         subprocess.run(["/usr/bin/ssh", *command[1:-2], "-O", "exit", command[-2]], stdin=subprocess.DEVNULL,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10, check=False)
     except (OSError, subprocess.SubprocessError):
+        # Best effort: ControlPersist still ends an unclosed master, and the run removes its socket.
         pass
 
 
