@@ -6,6 +6,7 @@ contacting hosts. Separate parity cases use the installed Ansible locally.
 
 import ast
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -1378,7 +1379,7 @@ pathlib.Path({str(record)!r}).write_text(json.dumps({{'config': config, 'transpo
     assert config["identityfile"] == transport["ansible_ssh_private_key_file"]
     assert config["identityagent"] == "none"
     # Ansible shares one run-owned master; readiness keeps a fresh connection.
-    assert config["controlmaster"] == "auto" and config["controlpersist"] == "60"
+    assert config["controlmaster"] == "auto" and config["controlpersist"] == "300"
     sockets = Path(config["controlpath"]).parent
     assert observed["mode"] == 0o700 and not sockets.exists()
     # ssh binds ControlPath plus a 17-byte random suffix; macOS limits socket paths to 104 bytes.
@@ -1652,3 +1653,22 @@ pathlib.Path({str(record)!r}).write_text(json.dumps(transaction))
     else:
         assert result.returncode == 0, result.stderr
         assert json.loads(record.read_text())['tailnet_management'] == {'approved_sources': ['100.64.0.44']}
+
+
+def test_controller_environment_reports_task_durations(tmp_path):
+    spec = importlib.util.spec_from_file_location("deploy_controller_timing", ROOT / "scripts/deploy-controller.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, str(ROOT / "scripts"))
+    spec.loader.exec_module(module)
+    environment = module.execution_environment(ROOT, tmp_path)
+    play = tmp_path / "play.yml"
+    play.write_text("- hosts: localhost\n  connection: local\n  gather_facts: false\n  become: false\n"
+                    "  tasks:\n    - name: Timed task\n      ansible.builtin.command: 'true'\n"
+                    "      changed_when: false\n")
+    inventory = tmp_path / "inventory.ini"
+    inventory.write_text(f"localhost ansible_connection=local ansible_python_interpreter={sys.executable}\n")
+    result = subprocess.run(["ansible-playbook", "-i", str(inventory), str(play)], env=environment, cwd=tmp_path,
+                            capture_output=True, text=True, timeout=120)
+    assert result.returncode == 0, result.stdout + result.stderr
+    # profile_tasks closes the run with one duration line per task.
+    assert re.search(r"^Timed task -+ \d+\.\d+s$", result.stdout, re.MULTILINE), result.stdout
