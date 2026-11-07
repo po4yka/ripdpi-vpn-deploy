@@ -553,6 +553,56 @@ def validate_sources(sources) -> list[str]:
     return result
 
 
+def _observer_ipv4(raw) -> ipaddress.IPv4Address:
+    if not isinstance(raw, str):
+        raise ValueError
+    address = ipaddress.IPv4Address(raw)
+    if (str(address) != raw or address.is_unspecified or address.is_loopback
+            or address.is_multicast or address.is_reserved):
+        raise ValueError
+    return address
+
+
+def validate_observer_firewall(value) -> dict:
+    """Admit the observer guest firewall additions rendered by the bootstrap foundation.
+
+    `ingress` is the Kuma private push listener on TCP/9444 over the Tailnet.
+    `notification` is `{"mode": "none"}` or Telegram mode with the provider
+    resolvers and the Telegram API network the Kuma container may reach.
+    """
+    try:
+        if not isinstance(value, dict) or set(value) != {"ingress", "notification"}:
+            raise ValueError
+        ingress, notification = value["ingress"], value["notification"]
+        if not isinstance(ingress, dict) or set(ingress) != {"address", "sources"}:
+            raise ValueError
+        for raw in [ingress["address"], *validate_sources(ingress["sources"])]:
+            if _observer_ipv4(raw) not in TAILNET_V4:
+                raise ValueError
+        if notification == {"mode": "none"}:
+            return value
+        if (not isinstance(notification, dict)
+                or set(notification) != {"mode", "resolvers", "telegram_network"}
+                or notification["mode"] != "telegram"):
+            raise ValueError
+        resolvers = notification["resolvers"]
+        if (not isinstance(resolvers, list) or not 1 <= len(resolvers) <= 4
+                or len(set(map(str, resolvers))) != len(resolvers)):
+            raise ValueError
+        for raw in resolvers:
+            if _observer_ipv4(raw) in TAILNET_V4:
+                raise ValueError
+        network = notification["telegram_network"]
+        if not isinstance(network, str):
+            raise ValueError
+        parsed = ipaddress.IPv4Network(network, strict=True)
+        if str(parsed) != network or parsed.prefixlen < 8 or not parsed.is_global:
+            raise ValueError
+    except (Refusal, ValueError, TypeError):
+        raise Refusal("observer-firewall-invalid") from None
+    return value
+
+
 def canonical_sources_fragment(sources: list[str]) -> str:
     """Render validated host addresses in the transaction fragment grammar."""
     canonical = validate_sources(sources)
@@ -1099,7 +1149,8 @@ def recover_firewall(*, paths: CommandPaths, firewall):
 
 
 def enroll(*, paths: CommandPaths, firewall, binding: dict, auth_key: str,
-           policy_approval=None, runner: Runner = _run, clock=_lease_clock):
+           policy_approval=None, observer_firewall=None, runner: Runner = _run,
+           clock=_lease_clock):
     """Arm access, enroll, and return an unconfirmed capability for external proof."""
     validate_binding(binding)
     _require_recovery_ready(paths, runner)
@@ -1123,7 +1174,8 @@ def enroll(*, paths: CommandPaths, firewall, binding: dict, auth_key: str,
         if (paths.state_directory / CONFIRMED_NAME).exists():
             raise Refusal("tailnet-confirmed-identity-missing")
         _validate_auth_key(auth_key)
-        firewall_snapshot = firewall.snapshot(binding, policy_approval=policy_approval)
+        firewall_snapshot = firewall.snapshot(
+            binding, policy_approval=policy_approval, observer=observer_firewall)
         firewall.validate_snapshot(firewall_snapshot)
         auth_name = f"{AUTH_FILE_PREFIX}{secrets.token_hex(16)}"
         try:
