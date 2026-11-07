@@ -43,13 +43,38 @@ INCLUDE = 'include "/etc/nftables.d/vpn-tailnet-ssh-sets.nft"'
 HEADER = "# Managed by Ansible role `firewall`."
 
 
-def foundation(binding):
+def _observer_rules(observer):
+    """Render the observer host-class input and forward additions."""
+    if observer is None:
+        return "", ""
+    domain.validate_observer_firewall(observer)
+    ingress = observer["ingress"]
+    input_rules = (
+        f'\n    iifname "tailscale0" ip daddr {ingress["address"]} '
+        f'ip saddr {{ {", ".join(ingress["sources"])} }} tcp dport 9444 accept'
+    )
+    notification = observer["notification"]
+    if notification["mode"] != "telegram":
+        return input_rules, ""
+    resolvers = ", ".join(notification["resolvers"])
+    # Kuma runs on the default Docker bridge; replies need the return-path rule
+    # because this chain has no generic established,related accept.
+    return input_rules, f"""
+    iifname "docker0" oifname != "docker0" ip daddr {{ {resolvers} }} meta l4proto {{ tcp, udp }} th dport 53 accept
+    # shortcut: pinned Telegram API network, widen if api.telegram.org moves.
+    iifname "docker0" oifname != "docker0" ip daddr {notification["telegram_network"]} tcp dport 443 accept
+    oifname "docker0" ct state established,related accept
+ """
+
+
+def foundation(binding, observer=None):
     domain.validate_binding(binding)
     port = binding["ssh_port"]
     public = "\n".join(
         f'    {"ip6" if ":" in address else "ip"} saddr {address} tcp dport {port} accept'
         for address in binding["public_sources"]
     )
+    observer_input, observer_forward = _observer_rules(observer)
     return f"""#!/usr/sbin/nft -f
 {HEADER} Bootstrap access foundation; ordinary deploy replaces it.
 add table inet filter
@@ -71,9 +96,9 @@ table inet filter {{
     ip protocol icmp accept
     meta l4proto ipv6-icmp accept
     udp sport 67 udp dport 68 accept
-    udp sport 547 udp dport 546 accept
+    udp sport 547 udp dport 546 accept{observer_input}
   }}
-  chain forward {{ type filter hook forward priority 0; policy drop; }}
+  chain forward {{ type filter hook forward priority 0; policy drop;{observer_forward} }}
   chain output {{ type filter hook output priority 0; policy accept; }}
 }}
 """.encode()
@@ -204,11 +229,15 @@ class Firewall:
             if path.exists() and any(path.iterdir()):
                 raise domain.Refusal("bootstrap-network-state-present")
 
-    def snapshot(self, binding, policy_approval=None):
+    def snapshot(self, binding, policy_approval=None, observer=None):
         with self._errors():
             domain.validate_binding(binding)
+            if observer is not None:
+                domain.validate_observer_firewall(observer)
             self._preflight()
             if policy_approval is not None:
+                if observer is not None:
+                    raise domain.Refusal("observer-firewall-legacy-unsupported")
                 return self._legacy_snapshot(binding, policy_approval)
             main, fragment = self._read(self.main), self._read(self.fragment)
             if main is None:
@@ -242,7 +271,7 @@ class Firewall:
                     != {"ActiveState": "inactive", "UnitFileState": "disabled"}
                 ):
                     raise domain.Refusal("bootstrap-empty-firewall-unowned")
-                candidate_main = _record(foundation(binding))
+                candidate_main = _record(foundation(binding, observer))
             else:
                 try:
                     validate_owned_rules(original)

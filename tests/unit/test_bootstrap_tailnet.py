@@ -897,3 +897,115 @@ def test_console_renderer_publishes_only_bound_public_capability(controller, inp
     assert len(bound['nonce']) == 32
     assert Path(selected.host['key']).read_bytes() not in package
     assert len(output.read_bytes()) < 65536
+
+
+OBSERVER_INGRESS = {"address": "100.64.1.9", "sources": ["100.64.0.10", "100.64.0.11"]}
+TELEGRAM = {"mode": "telegram", "resolvers": ["203.0.113.53", "198.51.100.53"],
+            "telegram_network": "149.154.160.0/20"}
+
+
+def observer_inventory(inputs, value):
+    inventory = inputs[1]
+    encoded = json.dumps(value, separators=(",", ":"))
+    inventory.write_text(inventory.read_text().replace("[vpn]", "[observability-kuma]").replace(
+        "vpn_build_environment", f"observability_kuma_guest_firewall='{encoded}' vpn_build_environment"))
+
+
+def test_observer_guest_firewall_input_is_admitted_from_inventory(controller, inputs, monkeypatch):
+    value = {"ingress": OBSERVER_INGRESS, "notification": TELEGRAM}
+    observer_inventory(inputs, value)
+    selected = load(controller, inputs, monkeypatch, inventory_section="observability-kuma")
+    assert selected.config["observer_firewall"] == value
+
+
+def test_enroll_sends_observer_guest_firewall(controller, inputs, monkeypatch):
+    selected, pending, contexts = execution_fixture(controller, inputs, monkeypatch)
+    assert selected.config["observer_firewall"] is None
+    value = {"ingress": OBSERVER_INGRESS, "notification": TELEGRAM}
+    selected.config["observer_firewall"] = value
+    sent = {}
+    def rpc(_inputs, action, **values):
+        sent[action] = values
+        if action == "status": return {"status": "idle"}
+        if action == "enroll": return pending
+        return capability(controller, selected, status="configured")
+    monkeypatch.setattr(controller, "_rpc", rpc)
+    controller.run(selected, "tskey-auth-fixture_key")
+    assert sent["enroll"]["observer_firewall"] == value
+
+
+def test_vpn_section_refuses_observer_guest_firewall(controller, inputs, monkeypatch):
+    observer_inventory(inputs, {"ingress": OBSERVER_INGRESS, "notification": {"mode": "none"}})
+    inputs[1].write_text(inputs[1].read_text().replace("[observability-kuma]", "[vpn]"))
+    with pytest.raises(controller.BootstrapError):
+        load(controller, inputs, monkeypatch)
+
+
+@pytest.mark.parametrize("notification", [
+    {"mode": "telegram", "resolvers": [], "telegram_network": "149.154.160.0/20"},
+    {"mode": "telegram", "resolvers": ["0.0.0.0"], "telegram_network": "149.154.160.0/20"},
+    {"mode": "telegram", "resolvers": ["2001:db8::53"], "telegram_network": "149.154.160.0/20"},
+    {"mode": "telegram", "resolvers": ["203.0.113.53"], "telegram_network": "0.0.0.0/0"},
+    {"mode": "telegram", "resolvers": ["203.0.113.53"], "telegram_network": ""},
+    {"mode": "telegram", "resolvers": ["203.0.113.53"], "telegram_network": "149.154.160.1/20"},
+    {"mode": "telegram", "resolvers": ["203.0.113.53"]},
+    {"mode": "telegram"},
+    {"mode": "email"},
+])
+def test_observer_guest_firewall_refuses_invalid_telegram_inputs(controller, inputs, monkeypatch, notification):
+    observer_inventory(inputs, {"ingress": OBSERVER_INGRESS, "notification": notification})
+    with pytest.raises(controller.BootstrapError):
+        load(controller, inputs, monkeypatch, inventory_section="observability-kuma")
+
+
+FOUNDATION_BINDING = {
+    "inventory_alias": "node-one", "public_address": "192.0.2.10", "ssh_port": 2222,
+    "public_sources": ["198.51.100.10"], "approved_sources": ["100.64.0.10"],
+    "host_key_sha256": "c" * 64, "source_revision": "a" * 40, "deployable_digest": "b" * 64,
+}
+
+
+def _chain(ruleset, name):
+    return ruleset.split(f"  chain {name} {{", 1)[1].split("\n  chain ", 1)[0]
+
+
+def test_foundation_renders_observer_telegram_egress_only_in_telegram_mode(controller):
+    import tailnet_firewall as firewall
+
+    plain = firewall.foundation(FOUNDATION_BINDING).decode()
+    none = firewall.foundation(
+        FOUNDATION_BINDING, {"ingress": OBSERVER_INGRESS, "notification": {"mode": "none"}}).decode()
+    telegram = firewall.foundation(
+        FOUNDATION_BINDING, {"ingress": OBSERVER_INGRESS, "notification": TELEGRAM}).decode()
+    ingress = ('    iifname "tailscale0" ip daddr 100.64.1.9 ip saddr { 100.64.0.10, 100.64.0.11 }'
+               ' tcp dport 9444 accept')
+    one_line = "  chain forward { type filter hook forward priority 0; policy drop; }"
+    assert "9444" not in plain and "docker0" not in plain and one_line in plain
+    assert ingress in _chain(none, "input").splitlines() and one_line in none and "docker0" not in none
+    assert ingress in _chain(telegram, "input").splitlines()
+    assert _chain(telegram, "forward").splitlines() == [
+        " type filter hook forward priority 0; policy drop;",
+        '    iifname "docker0" oifname != "docker0" ip daddr { 203.0.113.53, 198.51.100.53 }'
+        ' meta l4proto { tcp, udp } th dport 53 accept',
+        "    # shortcut: pinned Telegram API network, widen if api.telegram.org moves.",
+        '    iifname "docker0" oifname != "docker0" ip daddr 149.154.160.0/20 tcp dport 443 accept',
+        '    oifname "docker0" ct state established,related accept',
+        "  }",
+    ]
+    assert plain.replace(one_line, "") == none.replace(ingress + "\n", "").replace(one_line, "")
+
+
+@pytest.mark.parametrize("observer", [
+    {"ingress": OBSERVER_INGRESS, "notification": {"mode": "telegram", "resolvers": ["0.0.0.0"],
+                                                   "telegram_network": "149.154.160.0/20"}},
+    {"ingress": OBSERVER_INGRESS, "notification": {**TELEGRAM, "telegram_network": "0.0.0.0/0"}},
+    {"ingress": {"address": "192.0.2.10", "sources": ["100.64.0.10"]}, "notification": {"mode": "none"}},
+    {"ingress": {**OBSERVER_INGRESS, "sources": []}, "notification": {"mode": "none"}},
+    {"ingress": OBSERVER_INGRESS},
+])
+def test_foundation_refuses_invalid_observer_firewall(controller, observer):
+    import tailnet_firewall as firewall
+    import tailnet_management as domain
+
+    with pytest.raises(domain.Refusal, match="observer-firewall-invalid"):
+        firewall.foundation(FOUNDATION_BINDING, observer)
