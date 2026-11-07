@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+import collections
 import hashlib
 import importlib.util
 import json
@@ -95,6 +96,10 @@ ROLE_GUARD_TASKS = {
 }
 ROLE_GUARD_OUTPUT_LIMIT = 64 * 1024
 ROLE_GUARD_TIMEOUT_SECONDS = 900
+# Bounded, fixed-charset task names; templated or unusual names report as unnamed-task.
+FAILED_TASK_HEADER = re.compile(rb"(?:TASK|RUNNING HANDLER) \[(?:([A-Za-z0-9_ .:/+-]{1,120})|[^\r\n]*)\] \*+\r?\n?\Z")
+FAILED_TASK_LINE = re.compile(rb"(?:fatal|failed): \[([a-z0-9][a-z0-9-]{0,63})(?: -> [^\]\r\n]*)?\]")
+FAILED_TASK_LIMIT = 4
 TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 AUTOLOAD_DIRS = (
     "action_plugins",
@@ -595,6 +600,47 @@ def _bounded_role_guard_command(
         process.stdout.close()
 
 
+def _failed_task_command(
+    command: list[str], *, cwd: Path, environment: dict[str, str]
+) -> tuple[int, list[tuple[str, str]]]:
+    """Keep only failing task headers and host aliases; discard all task output."""
+    failures: collections.deque[tuple[str, str]] = collections.deque(
+        maxlen=FAILED_TASK_LIMIT
+    )
+    task: str | None = None
+    process = subprocess.Popen(
+        command,
+        cwd=cwd,
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    assert process.stdout is not None
+    try:
+        line_start = True
+        # Bounded reads keep a long module-result line from being buffered whole.
+        while chunk := process.stdout.readline(4096):
+            if line_start:
+                header = FAILED_TASK_HEADER.match(chunk)
+                failed = FAILED_TASK_LINE.match(chunk)
+                if header and header[1]:
+                    task = header[1].decode("ascii")
+                elif header or chunk.startswith((b"TASK [", b"RUNNING HANDLER [")):
+                    task = "unnamed-task"
+                elif failed and task is not None:
+                    failures.append((task, failed[1].decode("ascii")))
+            line_start = chunk.endswith(b"\n")
+        returncode = process.wait()
+    except BaseException:
+        process.kill()
+        process.wait()
+        raise
+    finally:
+        process.stdout.close()
+    return returncode, list(failures)
+
+
 def _run_playbook(
     args: argparse.Namespace,
     *,
@@ -676,16 +722,9 @@ def _run_playbook(
                     environment=environment,
                 )
             else:
-                result = subprocess.run(
-                    command,
-                    cwd=ROOT,
-                    env=environment,
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    check=False,
+                returncode, failures = _failed_task_command(
+                    command, cwd=ROOT, environment=environment
                 )
-                returncode = result.returncode
         except OSError:
             raise OperatorError("ansible unavailable") from None
         if expect_role_guard_refusal:
@@ -705,7 +744,10 @@ def _run_playbook(
                 raise OperatorError("ansible command failed")
             return True
         if returncode:
-            raise OperatorError("ansible command failed")
+            raise OperatorError(
+                "ansible command failed"
+                + "".join(f"; failed-task={task} host={alias}" for task, alias in failures)
+            )
         return False
 
 

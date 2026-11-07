@@ -600,6 +600,22 @@ def test_rotate_can_return_only_exact_typed_pre_mutation_role_guard_refusal(
         "--secrets",
         str(operator["secrets"]),
         "--vars",
+        str(unrelated),
+        "--confirm",
+    )
+    # Only the failing task header and host alias; never task output or secrets.
+    assert result.returncode == 2
+    assert result.stderr == (
+        "observability-operator: ansible command failed; failed-task="
+        "observability_control_plane : Create dedicated control-plane account host=node-a\n"
+    )
+
+    result = _run(
+        operator,
+        "rotate",
+        "--secrets",
+        str(operator["secrets"]),
+        "--vars",
         str(operator["vars"]),
         "--confirm",
         "--expect-role-guard-refusal",
