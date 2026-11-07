@@ -300,6 +300,8 @@ def execution_environment(root, directory):
                        ANSIBLE_INVENTORY_ENABLED="ini", ANSIBLE_VARS_ENABLED="",
                        ANSIBLE_LOG_PATH=os.devnull, ANSIBLE_STDOUT_CALLBACK="default",
                        ANSIBLE_LOAD_CALLBACK_PLUGINS="false", ANSIBLE_DISPLAY_ARGS_TO_STDOUT="false",
+                       # Task names and durations only; the pinned collection prints the slowest tasks.
+                       ANSIBLE_CALLBACKS_ENABLED="ansible.posix.profile_tasks",
                        ANSIBLE_COLLECTIONS_PATH=str(root / ".ansible/collections"),
                        ANSIBLE_COLLECTIONS_SCAN_SYS_PATH="false", ANSIBLE_ROLES_PATH=str(root / "ansible/roles"))
     for kind in ("VARS", "CALLBACK", "ACTION", "CONNECTION", "LOOKUP", "FILTER", "TEST",
@@ -512,7 +514,7 @@ def multiplexed(command, sockets):
     if not all(option in command for option in MULTIPLEX_OPTIONS):
         raise DeployError("unsupported SSH option")
     replaced = dict(zip(MULTIPLEX_OPTIONS, ("ControlPath=" + str(sockets / "%C"), "ControlMaster=auto",
-                                            "ControlPersist=60")))
+                                            "ControlPersist=300")))
     return [replaced.get(value, value) for value in command]
 
 
