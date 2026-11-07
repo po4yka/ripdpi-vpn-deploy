@@ -508,6 +508,17 @@ def test_contended_resource_lock_refuses_with_named_holder(maintenance, held):
     assert f'operation refused (node-lock-busy: {expected})' in result.stderr
 
 
+def test_prepare_refuses_missing_generated_inventory_with_render_command(maintenance):
+    root, kit, _, command, _ = maintenance
+    (root / 'ansible/inventory/generated.ini').unlink()
+    (kit / 'plan.json').unlink()
+    result = command('prepare')
+    assert result.returncode == 1
+    assert ('operation refused (generated-inventory-missing: run make inventory '
+            'PROVIDER=<provider> ENV=<env>)') in result.stderr
+    assert not (kit / 'plan.json').exists()
+
+
 def test_failed_mutation_preserves_intent_cleans_and_resumes_exact_boundary(maintenance):
     _, kit, state, command, finish = maintenance
     approval = preview(maintenance)
