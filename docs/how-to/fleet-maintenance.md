@@ -46,6 +46,8 @@ The worker runs canonical decrypt, full dry-run, full deploy, verify, security-v
 
 The worker inherits your `PATH`. The probe installation after convergence parses profiles with the local `sing-box` and `xray`, so each engine that the policy's required profiles need must report the version that `expected_runtime` pins. The deploy controller checks this before any site write and refuses with `onboarding capability refused: local-runtime-pin-mismatch`, or `local-runtime-engine-unavailable` when the engine is not on `PATH`. Put the pinned engines first on `PATH` before `preview` and `start`.
 
+Each run locks every target node address and the generated inventory before its worker reports ready. When another run holds one of these locks, `preview`, `start` and `resume` refuse with `node-lock-busy: alias=<alias> held-as=target` or `node-lock-busy: resource=inventory held-as=shared-inventory`. Every maintenance run holds the shared inventory lock, so this refusal means that another maintenance run is active. Wait until `ACTION=status` of that run reports `worker_active: false`, then retry. Other refusals print their category as `operation refused (<category>)`.
+
 ## Resume after failure
 
 Inspect status and the encrypted diagnostics. Resolve the reported connection failure without changing frozen inputs, then use the same reviewed plan:
