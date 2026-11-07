@@ -81,6 +81,8 @@ Before collector installation, converge `firewall_tailnet_collector_ingress` thr
 
 The controller binds capabilities, provider/environment and source revision to the canonical topology. It isolates one literal host and disables ambient Ansible discovery, SSH configuration/proxies/multiplexing, debug and diff. It never runs `site.yml` or prints secret values or rendered secret content.
 
+A failed Ansible run prints `ansible command failed` followed by at most four `; failed-task=<role : task> host=<alias>` fields. The controller reads Ansible stdout only to find the `TASK [...]` or `RUNNING HANDLER [...]` header before each `fatal:`/`failed:` line. It discards all task output, module arguments and messages, and does not store the stream. A task name longer than 120 characters or outside `A-Z a-z 0-9 space _ . : / + -` (for example a templated name) is reported as `unnamed-task`.
+
 ## Command effects
 
 Full VPN deployment preserves independently managed monitoring components. Use the exact-host component commands below to install, rotate or remove an agent. Do not pass role mappings through ordinary deployment overrides.
