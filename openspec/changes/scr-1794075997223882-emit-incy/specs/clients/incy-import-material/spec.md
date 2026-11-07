@@ -27,7 +27,7 @@ The implementation MUST emit exactly one share link for every enabled P0 REALITY
 
 ### Requirement: REQ-INCY-LINKS-REFUSE — Refuse fields the links cannot carry
 
-The implementation MUST fail without writing output when the payload contains a field that the INCY link formats cannot carry: an XHTTP mode other than `auto`, XHTTP pool tuning (`xmux`), Hysteria2 ECH, or a Hysteria2 BBR resource profile. It MUST NOT omit such a field silently.
+The implementation MUST fail without writing output when the payload contains a field that the INCY link formats cannot carry: an XHTTP mode other than `auto`, XHTTP pool tuning (`xmux`), Hysteria2 ECH, a Hysteria2 BBR resource profile, a P3 Snell outbound, any other outbound type or field, or a per-app or expiry option. It MUST NOT omit such a field silently.
 
 #### Scenario: XHTTP stream-up profile
 

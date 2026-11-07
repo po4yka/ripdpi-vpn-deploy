@@ -781,7 +781,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
 .PHONY: help init validate plan apply inventory wait decrypt require-inventory require-exact-node require-clean-source validate-ansible-extra-vars dry-run deploy tailnet-network-promote backup-configure deploy-canary os-maintenance verify source-drift security-verify security-audit clean \
         pre-deploy-check network-exposure-review \
         rollback-xray rollback-config rotate-credentials rotate-credentials-check check-prereqs \
-        destroy backup-state burn-check diff-secrets emit-singbox emit-xray emit-awg emit-bundle install-hooks \
+        destroy backup-state burn-check diff-secrets emit-singbox emit-incy emit-xray emit-awg emit-bundle install-hooks \
         molecule-test smoke-test validate-target monitor-reality-target renew-self-steal-cert probe-sni-survival scan-targets blue-green \
         spot-check-secrets bootstrap-secrets probe-asn probe-matrix-control probe-matrix-cell probe-matrix-tools emit-probe-matrix-profile emit-qr check-certs \
         audit-permissions asn-drift check-ip-reputation issue-bootstrap naive-issue naive-revoke naive-readout \
@@ -902,6 +902,7 @@ help:
 	@echo "── CLIENT / DELIVERY ──────────────────────────────────────────────────"
 	@echo "  emit-xray CLIENT=…         Native Xray P1 JSON (one loopback SOCKS listener per endpoint)"
 	@echo "  emit-singbox CLIENT=…      Official sing-box P0/P2 JSON (multi-host + cohort aware)"
+	@echo "  emit-incy CLIENT=… OUTPUT=…  INCY P0/P1/Hysteria2 share links in a new owner-only file"
 	@echo "  emit-awg CLIENT=…          AmneziaWG wg-quick .conf for a named peer"
 	@echo "  emit-bundle CLIENT=…       RIPDPI P0/P1/P2 JSON with ripdpi extension"
 	@echo "  emit-qr CLIENT=…           PNG QR for the client (TYPE=singbox|uri, OUT=path)"
@@ -1378,6 +1379,18 @@ emit-singbox:
 	@HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" SOPS_FILE="$(SOPS_FILE)" SOPS_FILES="$(SOPS_FILES)" \
 	  VPN_SECRETS_FILE="$(SECRETS_FILE)" \
 	  ./scripts/emit-singbox.sh "$${CLIENT}"
+
+ifneq ($(filter emit-incy,$(MAKECMDGOALS)),)
+override INCY_CLIENT_LITERAL := $(value CLIENT)
+override INCY_OUTPUT_LITERAL := $(value OUTPUT)
+export INCY_CLIENT_LITERAL INCY_OUTPUT_LITERAL
+endif
+
+emit-incy:
+	@test -n "$${INCY_CLIENT_LITERAL}" && test -n "$${INCY_OUTPUT_LITERAL}" || { echo "usage: make emit-incy CLIENT=<name> OUTPUT=<new file in a 0700 directory>"; exit 1; }
+	@HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" SOPS_FILE="$(SOPS_FILE)" SOPS_FILES="$(SOPS_FILES)" \
+	  VPN_SECRETS_FILE="$(SECRETS_FILE)" \
+	  ./scripts/emit-singbox.sh "$${INCY_CLIENT_LITERAL}" --incy-links "$${INCY_OUTPUT_LITERAL}"
 
 emit-awg:
 	@test -n "$${CLIENT:-}" || { echo "CLIENT=<name> required"; exit 1; }

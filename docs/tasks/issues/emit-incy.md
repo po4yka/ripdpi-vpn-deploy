@@ -2,7 +2,7 @@
 id: SCR-1794075997223882
 title: Emit INCY import material from an issued device artifact
 kind: feature
-status: backlog
+status: doing
 area: scripts
 priority: medium
 risk: high

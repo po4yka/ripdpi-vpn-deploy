@@ -108,6 +108,7 @@ Variables (override on command line):
 ── CLIENT / DELIVERY ──────────────────────────────────────────────────
   emit-xray CLIENT=…         Native Xray P1 JSON (one loopback SOCKS listener per endpoint)
   emit-singbox CLIENT=…      Official sing-box P0/P2 JSON (multi-host + cohort aware)
+  emit-incy CLIENT=… OUTPUT=…  INCY P0/P1/Hysteria2 share links in a new owner-only file
   emit-awg CLIENT=…          AmneziaWG wg-quick .conf for a named peer
   emit-bundle CLIENT=…       RIPDPI P0/P1/P2 JSON with ripdpi extension
   emit-qr CLIENT=…           PNG QR for the client (TYPE=singbox|uri, OUT=path)
