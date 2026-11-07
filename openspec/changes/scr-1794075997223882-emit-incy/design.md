@@ -14,9 +14,9 @@
 ## Decisions
 
 - Render links in a new `incy_links(payload)` beside `share_uri()` in `scripts/client_payload.py`, over the `ripdpi` payload. Rejected: a separate script with its own SOPS reading, which would duplicate materialization and drift.
-- P0 links reuse the `share_uri()` field mapping for every REALITY outbound, not only one. P1 links use `security=tls`, `type=xhttp`, `sni`, `fp`, `host`, `path`, `mode=auto`. Hysteria2 links carry `<device>:<password>` in userinfo, `sni`, `insecure=0`, `obfs=salamander` and `obfs-password` when present, and `mport=<low>-<high>` with `mportHopInt=<whole seconds>` when hopping is set; the initial port stays in the authority part.
+- P0 links reuse the `share_uri()` field mapping for every REALITY outbound, not only one. P1 links use `security=tls`, `type=xhttp`, `sni`, `fp`, `host`, `path`, `mode=auto`. Hysteria2 links carry `<device>:<password>` in userinfo, `sni`, `insecure=0`, `up`/`down`, `obfs=salamander` and `obfs-password` when present, and `mport=<low>-<high>` with `mportHopInt=<whole seconds>` when hopping is set; the initial port stays in the authority part.
 - Refuse instead of omit: XHTTP mode `stream-up` or any `xmux`, Hysteria2 ECH, BBR. These have no INCY link field or have unconfirmed semantics in Ferrum.
-- Hysteria2 bandwidth hints (`up_mbps`, `down_mbps`) are omitted. They are client send-rate hints; the server keeps the exact negotiated rates (`hysteria_client_bandwidth`). This is the only intentional omission, and the design records it so device acceptance can check throughput.
+- Hysteria2 bandwidth hints (`up_mbps`, `down_mbps`) map to the INCY `up` and `down` link parameters, so no payload field is omitted. A field allowlist per outbound kind refuses any other field.
 - Entry point: `emit-singbox.sh <device> --incy-links` feeds `make emit-incy CLIENT=… OUTPUT=…`, which writes through the existing owner-only private-file helper and refuses an existing path. Stdout reports only the path and per-protocol counts.
 - Link fragment (name) uses the payload tag, which carries protocol and endpoint labels only.
 

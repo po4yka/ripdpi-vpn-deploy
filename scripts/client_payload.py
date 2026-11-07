@@ -389,18 +389,107 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
     return payload, bindings
 
 
-def share_uri(payload):
-    """Return the one VLESS+REALITY share URI of a sing-box client payload."""
+def _link(scheme, user, v, query):
     from urllib.parse import quote, urlencode
-    reality = [v for v in payload['outbounds'] if v['type'] == 'vless' and v['tls'].get('reality', {}).get('enabled')]
-    if len(reality) != 1:
-        raise ValueError('share URI requires exactly one REALITY endpoint; select it with HOSTS and COHORTS')
-    v = reality[0]
     host = '[' + v['server'] + ']' if ':' in v['server'] else v['server']
+    return f"{scheme}://{user}@{host}:{v['server_port']}?{urlencode(query, quote_via=quote)}#{quote(v['tag'])}"
+
+
+def _reality_uri(v):
     query = dict(encryption='none', security='reality', type='tcp', sni=v['tls']['server_name'],
                  fp=v['tls']['utls']['fingerprint'], pbk=v['tls']['reality']['public_key'],
                  sid=v['tls']['reality']['short_id'], **({'flow': v['flow']} if v.get('flow') else {}))
-    return f"vless://{v['uuid']}@{host}:{v['server_port']}?{urlencode(query, quote_via=quote)}#{quote(v['tag'])}"
+    return _link('vless', v['uuid'], v, query)
+
+
+def share_uri(payload):
+    """Return the one VLESS+REALITY share URI of a sing-box client payload."""
+    reality = [v for v in payload['outbounds'] if v['type'] == 'vless' and v['tls'].get('reality', {}).get('enabled')]
+    if len(reality) != 1:
+        raise ValueError('share URI requires exactly one REALITY endpoint; select it with HOSTS and COHORTS')
+    return _reality_uri(reality[0])
+
+
+# Every field INCY links carry; any other field refuses instead of disappearing.
+_INCY_FIELDS = {
+    'reality': {'': {'type', 'tag', 'server', 'server_port', 'uuid', 'tls', 'flow'},
+                'tls': {'enabled', 'server_name', 'utls', 'reality'}, 'utls': {'enabled', 'fingerprint'},
+                'reality': {'enabled', 'public_key', 'short_id'}},
+    'xhttp': {'': {'type', 'tag', 'server', 'server_port', 'uuid', 'tls', 'transport'},
+              'tls': {'enabled', 'server_name', 'utls'}, 'utls': {'enabled', 'fingerprint'},
+              'transport': {'type', 'host', 'path', 'mode'}},
+    'hysteria2': {'': {'type', 'tag', 'server', 'server_port', 'password', 'tls', 'up_mbps', 'down_mbps',
+                       'obfs', 'server_ports', 'hop_interval'},
+                  'tls': {'enabled', 'server_name'}, 'obfs': {'type', 'password'}},
+}
+_INCY_IGNORED = {'selector', 'urltest', 'direct', 'block', 'dns'}
+
+
+def _incy_fields(kind, v):
+    allowed = _INCY_FIELDS[kind]
+    nested = {'': v, 'tls': v.get('tls', {}), 'utls': v.get('tls', {}).get('utls', {}),
+              'reality': v.get('tls', {}).get('reality', {}), 'transport': v.get('transport', {}),
+              'obfs': v.get('obfs', {})}
+    if any(set(nested[name]) - fields for name, fields in allowed.items()):
+        raise ValueError('unsupported-incy-field')
+    if any(nested[name] and nested[name].get('enabled') is not True for name in ('tls', 'utls', 'reality')):
+        raise ValueError('unsupported-incy-field')
+
+
+def incy_links(payload):
+    """Return INCY share links for every P0, P1 and Hysteria2 outbound of a RIPDPI payload."""
+    from urllib.parse import quote
+    links = []
+    for v in payload['outbounds']:
+        if v['type'] in _INCY_IGNORED:
+            continue
+        if v['type'] == 'vless' and v['tls'].get('reality', {}).get('enabled'):
+            _incy_fields('reality', v)
+            links.append(_reality_uri(v))
+        elif v['type'] == 'vless' and v.get('transport', {}).get('type') == 'xhttp':
+            _incy_fields('xhttp', v)
+            t = v['transport']
+            if t['mode'] != 'auto':
+                raise ValueError('unsupported-incy-xhttp-mode')
+            links.append(_link('vless', v['uuid'], v, dict(
+                encryption='none', security='tls', type='xhttp', sni=v['tls']['server_name'],
+                fp=v['tls']['utls']['fingerprint'], host=t['host'], path=t['path'], mode='auto')))
+        elif v['type'] == 'hysteria2':
+            _incy_fields('hysteria2', v)
+            device, separator, secret = v['password'].partition(':')
+            if not (device and separator and secret):
+                raise ValueError('unsupported-incy-field')
+            query = dict(sni=v['tls']['server_name'], insecure='0')
+            query.update({k: str(v[f]) for k, f in (('up', 'up_mbps'), ('down', 'down_mbps')) if f in v})
+            if 'obfs' in v:
+                if v['obfs']['type'] != 'salamander':
+                    raise ValueError('unsupported-incy-field')
+                query.update({'obfs': 'salamander', 'obfs-password': v['obfs']['password']})
+            if 'server_ports' in v:
+                # The producer validated one low:high range and an s/m/h interval.
+                (ports,), interval = v['server_ports'], v['hop_interval']
+                query.update(mport=ports.replace(':', '-'),
+                             mportHopInt=str(int(interval[:-1]) * {'s': 1, 'm': 60, 'h': 3600}[interval[-1]]))
+            links.append(_link('hysteria2', quote(device, safe='') + ':' + quote(secret, safe=''), v, query))
+        else:
+            raise ValueError('unsupported-incy-outbound')
+    if not links:
+        raise ValueError('unsupported-incy-outbound')
+    return links
+
+
+def write_incy_links(destination, links):
+    """Publish links to a new owner-only file and return a value-free summary."""
+    from private_client_artifact import publish
+    try:
+        publish(destination, ''.join(link + '\n' for link in links))
+    except FileExistsError:
+        raise ValueError('incy-output-exists') from None
+    except (FileNotFoundError, NotADirectoryError):
+        raise ValueError('unsafe-recipient-output') from None
+    counts = {scheme: sum(link.startswith(scheme + '://') for link in links) for scheme in ('vless', 'hysteria2')}
+    return (f"wrote {len(links)} INCY links ({counts['vless']} vless, {counts['hysteria2']} hysteria2)"
+            f" to {destination}")
 
 
 def main():
@@ -413,19 +502,28 @@ def main():
     parser.add_argument('--per-app-bypass', default='')
     parser.add_argument('--per-app-via-tun', default='')
     parser.add_argument('--share-uri', action='store_true', help='print the one VLESS+REALITY share URI instead of JSON')
+    parser.add_argument('--incy-links', metavar='OUTPUT', help='write INCY share links to a new owner-only file')
     args = parser.parse_args()
     try:
         if args.bundle and args.profile_format == 'xray':
             raise ValueError('bundle requires RIPDPI format')
         if args.share_uri and (args.bundle or args.profile_format != 'sing-box'):
             raise ValueError('share URI requires sing-box format')
-        selected_format = 'ripdpi' if args.bundle else {'sing-box': 'singbox', 'ripdpi': 'ripdpi', 'xray': 'xray'}[args.profile_format]
+        incy = args.incy_links is not None
+        if incy and (not args.incy_links or args.share_uri or args.bundle or args.xhttp_only
+                     or args.profile_format != 'sing-box' or args.per_app_bypass or args.per_app_via_tun
+                     or os.environ.get('BUNDLE_EXPIRES')):
+            raise ValueError('INCY links take no other output option')
+        selected_format = 'ripdpi' if args.bundle or incy else {'sing-box': 'singbox', 'ripdpi': 'ripdpi', 'xray': 'xray'}[args.profile_format]
         o = options(selected_format, expires=os.environ.get('BUNDLE_EXPIRES', ''))
         payload, _ = materialize(args.client, o, per_app_bypass=args.per_app_bypass, per_app_via_tun=args.per_app_via_tun, extended=args.bundle, xhttp_only=args.xhttp_only)
-        print(share_uri(payload) if args.share_uri else json.dumps(payload, indent=2))
+        if incy:
+            print(write_incy_links(args.incy_links, incy_links(payload)))
+        else:
+            print(share_uri(payload) if args.share_uri else json.dumps(payload, indent=2))
         return 0
     except (OSError, ValueError, KeyError, TypeError, AttributeError, RecursionError, StopIteration, subprocess.SubprocessError, yaml.YAMLError) as error:
-        safe = {'--xhttp-only requires --profile-format ripdpi', 'ECH requires the verified official sing-box engine; RIPDPI export is unsupported', 'BBR resource profiles require the verified official sing-box engine; RIPDPI export is unsupported', 'invalid-hysteria-hopping', 'P0 REALITY finalmask requires an Xray client', 'P0 REALITY Mux.Cool requires an Xray client; sing-mux is incompatible', 'conflicting vpn.hysteria_realm values across HOSTS', 'ambiguous-device-binding', 'missing-device-binding', 'plaintext secrets cannot be combined with SOPS_FILES', 'missing-snell-variant', 'share URI requires sing-box format', 'share URI requires exactly one REALITY endpoint; select it with HOSTS and COHORTS'}
+        safe = {'--xhttp-only requires --profile-format ripdpi', 'ECH requires the verified official sing-box engine; RIPDPI export is unsupported', 'BBR resource profiles require the verified official sing-box engine; RIPDPI export is unsupported', 'invalid-hysteria-hopping', 'P0 REALITY finalmask requires an Xray client', 'P0 REALITY Mux.Cool requires an Xray client; sing-mux is incompatible', 'conflicting vpn.hysteria_realm values across HOSTS', 'ambiguous-device-binding', 'missing-device-binding', 'plaintext secrets cannot be combined with SOPS_FILES', 'missing-snell-variant', 'share URI requires sing-box format', 'share URI requires exactly one REALITY endpoint; select it with HOSTS and COHORTS', 'INCY links take no other output option', 'unsupported-incy-field', 'unsupported-incy-xhttp-mode', 'unsupported-incy-outbound', 'unsafe-recipient-output', 'incy-output-exists', 'recipient-output-changed'}
         detail = str(error) if isinstance(error, ValueError) and str(error) in safe else ('plaintext secrets unavailable' if 'VPN_SECRETS_FILE' in os.environ else 'materialization refused')
         print('client-payload: ' + detail, file=__import__('sys').stderr)
         return 2

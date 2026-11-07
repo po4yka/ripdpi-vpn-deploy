@@ -10,9 +10,9 @@ Single serialized lane. `scripts/client_payload.py`, `scripts/emit-singbox.sh`, 
 
 ## Execution
 
-- [ ] SCR-1794076666760854 Render INCY P0, P1 and Hysteria2 links from the ripdpi payload with refusals in client_payload.py, with literal-link unit tests #feature !high @item:SCR-1794075997223882
-- [ ] SCR-1794077170024733 Add emit-singbox --incy-links and make emit-incy with owner-only output and overwrite refusal, with tests #feature !high @item:SCR-1794075997223882
-- [ ] SCR-1794077673855163 Document INCY delivery in the client reference, regenerate make-targets and run make check #feature !high @item:SCR-1794075997223882
+- [x] SCR-1794076666760854 Render INCY P0, P1 and Hysteria2 links from the ripdpi payload with refusals in client_payload.py, with literal-link unit tests #feature !high @item:SCR-1794075997223882
+- [x] SCR-1794077170024733 Add emit-singbox --incy-links and make emit-incy with owner-only output and overwrite refusal, with tests #feature !high @item:SCR-1794075997223882
+- [x] SCR-1794077673855163 Document INCY delivery in the client reference, regenerate make-targets and run make check #feature !high @item:SCR-1794075997223882
 
 ## Verification
 
