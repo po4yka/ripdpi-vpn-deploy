@@ -22,7 +22,7 @@ Rollouts reproduce from source: the self-steal expiry series follows the install
 
 ## Acceptance criteria
 
-- The agent unit loads the self-steal certificate only when it is installed, and promtool shows the missing-series alert.
+- The agent unit loads the self-steal certificate only when it is installed, and an unreadable chain reports collection failure for its role.
 - The foundation renders the observer ingress and Telegram egress rules from validated inputs.
 - The operator records the failing task name, refuses a busy lock and a missing generated inventory with typed categories.
 - `AGENTS.md` matches the restored kit read deny.

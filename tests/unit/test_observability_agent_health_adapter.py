@@ -276,7 +276,7 @@ def test_self_steal_certificate_is_reported_under_its_own_role(
 ) -> None:
     result, baseline, paths = _run(tmp_path)
     assert result.returncode == 0
-    assert "vpn_observability_capability" not in baseline
+    assert 'role="reality-self-steal"' not in baseline
     chain = tmp_path / "credentials" / "reality-self-steal.crt"
     chain.write_text(TEST_CERTIFICATE * 2 if valid else "not-a-certificate")
     chain.chmod(0o440)
@@ -291,12 +291,6 @@ def test_self_steal_certificate_is_reported_under_its_own_role(
     metrics = paths[3].read_text()
 
     assert rerun.returncode == (0 if valid else 2), rerun.stderr
-    # The capability stays visible when the chain is unreadable, so a central
-    # rule can detect the missing expiry series.
-    assert (
-        'vpn_observability_capability{node="edge-prod",role="reality-self-steal"} 1\n'
-        in metrics
-    )
     assert (
         'vpn_certificate_collection_success{node="edge-prod",role="observability-sender"} 1'
         in metrics

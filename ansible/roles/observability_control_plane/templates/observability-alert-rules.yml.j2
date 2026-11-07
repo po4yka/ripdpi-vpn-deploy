@@ -166,12 +166,6 @@ groups:
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.warning_severity }}", component: certificate}
         annotations: {incident_family: certificate-health, evidence_class: collection-failed, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Managed certificate expiry collection failed., runbook: docs/how-to/incident.md}
-      - alert: ObservabilitySelfStealCertificateMissing
-        expr: max by (environment, node) (vpn_observability_capability{role="reality-self-steal"}) unless on (environment, node) max by (environment, node) (vpn_certificate_not_after_timestamp_seconds{role="reality-self-steal"})
-        for: {{ policy.detector_hold }}
-        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
-        labels: {severity: "{{ policy.warning_severity }}", component: certificate, role: reality-self-steal}
-        annotations: {incident_family: certificate-health, evidence_class: evidence-missing, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Self-steal certificate expiry evidence is missing., runbook: docs/how-to/incident.md}
       - alert: ObservabilityCertificateExpiresCritical
         expr: min by (environment, node, role) (vpn_certificate_not_after_timestamp_seconds - time()) < {{ policy.certificate_critical_seconds }}
         for: {{ policy.critical_hold }}

@@ -596,20 +596,6 @@
       "cadence_seconds": 60,
       "stale_after_seconds": 180,
       "alert_use": true
-    },
-    {
-      "name": "vpn_observability_capability",
-      "owner": "observability_agent",
-      "type": "gauge",
-      "unit": "ratio",
-      "labels": [
-        "node",
-        "role"
-      ],
-      "max_series": 256,
-      "cadence_seconds": 60,
-      "stale_after_seconds": 180,
-      "alert_use": true
     }
   ]
 }

@@ -101,7 +101,6 @@ def test_metric_manifest_declares_every_health_adapter_family() -> None:
         "vpn_backup_restore_source",
         "vpn_certificate_collection_success",
         "vpn_certificate_not_after_timestamp_seconds",
-        "vpn_observability_capability",
     }
     assert expected <= families.keys()
     for name in expected:

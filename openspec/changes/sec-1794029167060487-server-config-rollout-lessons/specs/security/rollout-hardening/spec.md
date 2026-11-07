@@ -6,7 +6,7 @@ Production rollouts reproduce from source without hand-set monitoring flags or o
 
 ### Requirement: REQ-SEC-RH-SELF-STEAL-SERIES — Derive self-steal certificate monitoring from the host
 
-The agent MUST export the self-steal certificate expiry series whenever the self-steal certificate is installed on the node, without a separate profile flag. The control plane MUST alert when a node reports the self-steal capability but no expiry series.
+The agent MUST export the self-steal certificate expiry series whenever the self-steal certificate is installed on the node, without a separate profile flag. When the installed chain cannot be read, the agent MUST report certificate collection failure for that role.
 
 #### Scenario: Installed certificate without profile flag
 
