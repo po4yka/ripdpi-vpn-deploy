@@ -47,7 +47,11 @@ def test_ci_curl_downloads_retry_each_bounded_attempt() -> None:
         if re.match(r"\s*curl -", line)
     ]
     assert commands
-    bad = [f"{rel}: {line}" for rel, line in commands if CURL_POLICY not in line or "--max-time" not in line]
+    bad = [
+        f"{rel}: {line}"
+        for rel, line in commands
+        if CURL_POLICY not in line or "--max-time" not in line or re.search(r"\s(-o|--output)\s+-", line)
+    ]
     assert not bad, "\n".join(bad)
 
 
