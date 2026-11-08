@@ -36,7 +36,7 @@ SOURCE_ID = re.compile(r"[a-f0-9]{40,64}\Z")
 FINGERPRINT = re.compile(r"[a-f0-9]{16,64}\Z")
 ALIAS = re.compile(r"[A-Za-z0-9_.:/ -]{1,160}\Z")
 ROLE = re.compile(r"[a-z][a-z0-9_-]{0,63}\Z")
-RUNBOOK = re.compile(r"docs/[a-z0-9/_-]+\.md(?:#[a-z0-9-]+)?\Z")
+RUNBOOK = re.compile(r"docs/[a-z0-9/_-]{1,150}\.md(?:#[a-z0-9-]{1,150})?\Z")
 RUNBOOK_BASE = "https://github.com/po4yka/ripdpi-vpn-deploy/blob/main/"
 SERVICE_ALERTS = {
     "ObservabilityRequiredServiceNotActive",
