@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from email.message import Message
+from html.parser import HTMLParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import io
@@ -231,6 +232,32 @@ def test_authority_rotation_requires_new_send_and_invalidates_old_receipts(tmp_p
     assert relay.Receipts(path, "b" * 64).snapshot() == rotated.snapshot()
 
 
+def _telegram_html(message: str) -> str:
+    """Return the visible text; fail on tags Telegram would reject."""
+
+    class Checker(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__(convert_charrefs=True)
+            self.open: list[str] = []
+            self.text: list[str] = []
+
+        def handle_starttag(self, tag, attrs) -> None:
+            assert tag in {"a", "b", "code"}, tag
+            self.open.append(tag)
+
+        def handle_endtag(self, tag) -> None:
+            assert self.open.pop() == tag
+
+        def handle_data(self, data) -> None:
+            self.text.append(data)
+
+    checker = Checker()
+    checker.feed(message)
+    checker.close()
+    assert not checker.open
+    return "".join(checker.text)
+
+
 def _alert(status: str, suffix: str = "") -> dict[str, object]:
     return {
         "status": status,
@@ -242,7 +269,8 @@ def _alert(status: str, suffix: str = "") -> dict[str, object]:
         "annotations": {
             "summary": "summary <unsafe>" + suffix,
             "evidence_class": "fixture&" + suffix,
-            "runbook": "docs/runbook>" + suffix,
+            "runbook": "docs/how-to/fixture.md#family",
+            "action": "action <unsafe>" + suffix,
             "description": "must never be rendered",
         },
         "startsAt": "2026-09-05T00:00:00Z",
@@ -518,8 +546,9 @@ def test_relay_renders_escaped_capped_firing_and_resolved_messages(status: str) 
     payload["truncatedAlerts"] = 2
     message = relay.render_message(payload, max_alerts=5)
 
-    assert message.startswith("FIRING" if status == "firing" else "RESOLVED")
-    assert message.count("\n- ") == 5
+    assert message.startswith("<b>FIRING</b>" if status == "firing" else "<b>RESOLVED</b>")
+    assert message.count("\n\u2022 ") == 5
+    assert _telegram_html(message)
     assert "... omitted 2 alerts" in message
     assert "&lt;unsafe&gt;" in message
     assert "Alert&lt;&amp;" in message
@@ -563,10 +592,11 @@ def test_relay_distinguishes_grouped_service_roles(status: str, alertname: str) 
         alert["labels"] = {**common, "role": role}
         alert["annotations"] = dict(rule["annotations"])
     message = relay.render_message(relay.parse_payload(json.dumps(payload).encode()))
-    assert "stage/node/service/xray:" in message
-    assert "stage/node/service/nginx:" in message
-    assert message.count(rule["annotations"]["summary"]) == 2
-    assert message.count("- recovered" if status == "resolved" else "\n- ") == 2
+    assert "<code>stage/node</code>" in message
+    assert "\u2022 <code>xray</code>" in message
+    assert "\u2022 <code>nginx</code>" in message
+    assert message.count(rule["annotations"]["summary"]) == 1
+    assert message.count("recovered " if status == "resolved" else "since ") == 2
 
 
 @pytest.mark.parametrize(
@@ -607,19 +637,82 @@ def test_relay_role_boundary_preserves_message_omission_and_redaction() -> None:
     role = "a_" + "b" * 62
     for alert in payload["alerts"]:
         alert["labels"]["role"] = role
-        for key in ("summary", "evidence_class", "runbook"):
+        for key in ("summary", "evidence_class", "action", "value"):
             alert["annotations"][key] = "<" * 160
     message = relay.render_message(relay.parse_payload(json.dumps(payload).encode()))
-    rendered = message.count("\n- ")
+    rendered = message.count("\n\u2022 ")
     assert 0 < rendered < 5
-    assert message.count("/" + role + ":") == rendered
-    assert message.endswith(f"... omitted {7 - rendered} alerts")
+    assert message.count("<code>" + role + "</code>") == rendered
+    assert f"\n... omitted {7 - rendered} alerts\n" in message
     assert len(message) <= 4096
     assert "must never be rendered" not in message
-    assert "<" not in message
-    # Alerts without this optional label retain their existing identity format.
+    assert "<" * 160 in _telegram_html(message)
+    # Alerts without this optional label show only the node identity.
     unrelated = relay.render_message(relay.parse_payload(json.dumps(_payload()).encode()))
-    assert "stage0/node0/control0: summary" in unrelated
+    assert "<code>stage0/node0</code> \u00b7 control0" in unrelated
+
+
+def test_relay_renders_readable_times_value_and_links() -> None:
+    relay = _relay()
+    payload = _payload()
+    alert = payload["alerts"][0]
+    alert["startsAt"] = "2026-11-07T10:59:53.51Z"
+    alert["annotations"]["value"] = "12% free"
+    firing = _telegram_html(relay.render_message(relay.parse_payload(json.dumps(payload).encode())))
+    assert "\u2022 12% free since 07 Nov 10:59 UTC" in firing
+    assert "Do: action <unsafe>0" in firing
+    assert firing.endswith(f"source {'a' * 8}")
+
+    payload["status"] = alert["status"] = "resolved"
+    alert["endsAt"] = "2026-11-07T17:03:53.512345678Z"
+    resolved = _telegram_html(relay.render_message(relay.parse_payload(json.dumps(payload).encode())))
+    assert "recovered 07 Nov 17:03 UTC after 6h 04m" in resolved
+    assert "12% free" not in resolved
+    assert "Recovered. No action needed." in resolved
+    assert "action <unsafe>" not in resolved
+
+    for unusable in ("not-a-time", "0001-01-01T00:00:00+01:00"):
+        alert["endsAt"] = unusable
+        message = relay.render_message(relay.parse_payload(json.dumps(payload).encode()))
+        assert f"recovered {unusable} after unknown" in message
+
+
+def test_relay_links_the_exact_runbook_section() -> None:
+    relay = _relay()
+    message = relay.render_message(relay.parse_payload(json.dumps(_payload()).encode()))
+    assert (
+        '<a href="https://github.com/po4yka/ripdpi-vpn-deploy/blob/main/'
+        'docs/how-to/fixture.md#family">Runbook</a>'
+    ) in message
+
+
+@pytest.mark.parametrize(
+    "runbook",
+    [
+        "https://example.invalid/x.md",
+        'docs/a.md"><b>',
+        "docs/../secret.md",
+        "docs/a.md#Section",
+        "docs/a.txt",
+        "",
+    ],
+)
+def test_relay_refuses_runbooks_outside_the_repository_docs(runbook: str) -> None:
+    relay = _relay()
+    payload = _payload()
+    payload["alerts"][0]["annotations"]["runbook"] = runbook
+    with pytest.raises(relay.Refusal, match="^payload-contract$"):
+        relay.parse_payload(json.dumps(payload).encode())
+
+
+def test_relay_delivers_alerts_from_older_rules_without_an_action() -> None:
+    relay = _relay()
+    payload = _payload()
+    del payload["alerts"][0]["annotations"]["action"]
+    payload["alerts"][0]["annotations"]["runbook"] = "docs/how-to/incident.md"
+    message = relay.render_message(relay.parse_payload(json.dumps(payload).encode()))
+    assert "summary &lt;unsafe&gt;0" in message
+    assert "Do:" not in message
 
 
 def test_relay_requires_authenticated_loopback_webhook_before_delivery() -> None:
@@ -678,7 +771,7 @@ def test_relay_requires_authenticated_loopback_webhook_before_delivery() -> None
         server.server_close()
         thread.join(timeout=2)
     assert len(delivered) == 1
-    assert delivered[0].startswith("FIRING: Alert")
+    assert delivered[0].startswith("<b>FIRING</b>")
 
 
 def test_relay_rejects_oversize_or_unbounded_payloads() -> None:

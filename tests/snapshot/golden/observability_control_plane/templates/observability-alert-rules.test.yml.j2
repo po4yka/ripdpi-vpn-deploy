@@ -35,7 +35,7 @@ tests:
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts:
           - exp_labels: {component: observability-agent, environment: staging, node: vpn-p0, severity: warning}
-            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/monitoring-alerts.md#observability-delivery-loss, action: "Run make observability-status. Check the sender queue and collector disk. History has a gap for this period."}
   - interval: 1m
     input_series:
       - series: 'vmagent_remotewrite_packets_dropped_total{environment="staging",node="vpn-p0",job="observability-agent"}'
@@ -53,7 +53,7 @@ tests:
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts:
           - exp_labels: {component: observability-agent, environment: staging, node: vpn-p0, severity: warning}
-            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/monitoring-alerts.md#observability-delivery-loss, action: "Run make observability-status. Check the sender queue and collector disk. History has a gap for this period."}
   - interval: 1m
     input_series:
       - series: 'vmagent_remotewrite_packets_dropped_total{ environment="staging",node="vpn-p0"}'
@@ -66,7 +66,7 @@ tests:
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts:
           - exp_labels: {component: observability-agent, environment: staging, node: vpn-p0, severity: warning}
-            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/monitoring-alerts.md#observability-delivery-loss, action: "Run make observability-status. Check the sender queue and collector disk. History has a gap for this period."}
       - eval_time: 10m
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts: []
@@ -82,7 +82,7 @@ tests:
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts:
           - exp_labels: {component: observability-agent, environment: staging, node: vpn-p0, severity: warning}
-            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/monitoring-alerts.md#observability-delivery-loss, action: "Run make observability-status. Check the sender queue and collector disk. History has a gap for this period."}
       - eval_time: 10m
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts: []
@@ -98,7 +98,7 @@ tests:
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts:
           - exp_labels: {component: observability-agent, environment: staging, node: vpn-p0, severity: warning}
-            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/monitoring-alerts.md#observability-delivery-loss, action: "Run make observability-status. Check the sender queue and collector disk. History has a gap for this period."}
       - eval_time: 10m
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts: []
@@ -114,7 +114,7 @@ tests:
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts:
           - exp_labels: {component: observability-agent, environment: staging, node: vpn-p0, severity: warning}
-            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/monitoring-alerts.md#observability-delivery-loss, action: "Run make observability-status. Check the sender queue and collector disk. History has a gap for this period."}
       - eval_time: 10m
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts: []
@@ -130,7 +130,7 @@ tests:
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts:
           - exp_labels: {component: observability-agent, environment: staging, node: vpn-p0, severity: warning}
-            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/monitoring-alerts.md#observability-delivery-loss, action: "Run make observability-status. Check the sender queue and collector disk. History has a gap for this period."}
       - eval_time: 10m
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts: []
@@ -146,7 +146,7 @@ tests:
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts:
           - exp_labels: {component: observability-agent, environment: staging, node: vpn-p0, severity: warning}
-            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/monitoring-alerts.md#observability-delivery-loss, action: "Run make observability-status. Check the sender queue and collector disk. History has a gap for this period."}
       - eval_time: 10m
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts: []
@@ -162,7 +162,7 @@ tests:
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts:
           - exp_labels: {component: observability-agent, environment: staging, node: vpn-p0, severity: warning}
-            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/monitoring-alerts.md#observability-delivery-loss, action: "Run make observability-status. Check the sender queue and collector disk. History has a gap for this period."}
       - eval_time: 10m
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts: []
@@ -187,7 +187,8 @@ tests:
             exp_annotations:
               evidence_class: stale-or-unknown
               incident_family: watchdog-evidence
-              runbook: docs/how-to/incident.md
+              runbook: docs/how-to/monitoring-alerts.md#watchdog-evidence
+              action: "Check the watchdog timer and journal on the node."
               source_generation: ""
               summary: Watchdog evidence is missing or stale.
       - eval_time: 9m
@@ -210,9 +211,10 @@ tests:
             exp_annotations:
               evidence_class: stale-restore-proof
               incident_family: restore-readiness
-              runbook: docs/how-to/restore.md
+              runbook: docs/how-to/monitoring-alerts.md#restore-readiness
+              action: "Check the restore drill timer and journal on the node."
               source_generation: ""
-              summary: Approved isolated restore evidence is stale.
+              summary: The restore drill result is stale.
   - interval: 1m
     alert_rule_test:
       - eval_time: 5m
@@ -231,12 +233,12 @@ tests:
         alertname: ObservabilityNodeDiskSpaceCritical
         exp_alerts:
           - exp_labels: {component: node-filesystem, environment: staging, node: vpn-p0, severity: critical}
-            exp_annotations: {incident_family: node-disk, evidence_class: disk-available-critical, source_generation: "", summary: Root filesystem available space crossed the configured critical threshold., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: node-disk, evidence_class: disk-available-critical, source_generation: "", summary: Root filesystem free space is critically low., runbook: docs/how-to/monitoring-alerts.md#node-disk, action: "Free space on the root filesystem. Check the journal, the metrics queue and old releases.", value: "4% free"}
       - eval_time: 6m
         alertname: ObservabilityNodeDiskSpaceLow
         exp_alerts:
           - exp_labels: {component: node-filesystem, environment: staging, node: vpn-p0, severity: warning}
-            exp_annotations: {incident_family: node-disk, evidence_class: disk-available-low, source_generation: "", summary: Root filesystem available space crossed the configured warning threshold., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: node-disk, evidence_class: disk-available-low, source_generation: "", summary: Root filesystem free space is low., runbook: docs/how-to/monitoring-alerts.md#node-disk, action: "Free space on the root filesystem. Check the journal, the metrics queue and old releases.", value: "4% free"}
   - interval: 1m
     input_series:
       - series: 'vpn_observability_required_service{environment="staging",node="vpn-p0",role="nginx"}'
@@ -250,7 +252,7 @@ tests:
         alertname: ObservabilityRequiredServiceNotActive
         exp_alerts:
           - exp_labels: {component: service, environment: staging, node: vpn-p0, role: nginx, severity: critical}
-            exp_annotations: {incident_family: required-service, evidence_class: observed-service-not-active, source_generation: "", summary: Fresh node telemetry reports a required systemd service is not active., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: required-service, evidence_class: observed-service-not-active, source_generation: "", summary: Fresh node telemetry reports a required systemd service is not active., runbook: docs/how-to/monitoring-alerts.md#required-service, action: "Read systemctl status and the journal for the named service. If the fault stays, redeploy or replace the node."}
   - interval: 1m
     alert_rule_test:
       - eval_time: 5m
@@ -271,17 +273,17 @@ tests:
         alertname: ObservabilityDetectorInputStalled
         exp_alerts:
           - exp_labels: {component: detector, environment: staging, node: vpn-p1, severity: warning}
-            exp_annotations: {incident_family: detector-input, evidence_class: input-contract-stalled, source_generation: "", summary: Detector input advanced without any recognized policy event., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: detector-input, evidence_class: input-contract-stalled, source_generation: "", summary: Detector input matches no known policy event., runbook: docs/how-to/monitoring-alerts.md#detector-input, action: "Read the policy-ratelimit journal on the node and check for a log format change after a release."}
       - eval_time: 4m
         alertname: ObservabilityDetectorEventThreshold
         exp_alerts:
           - exp_labels: {component: detector, environment: staging, node: vpn-p1, severity: warning}
-            exp_annotations: {incident_family: detector-events, evidence_class: event-threshold, source_generation: "", summary: A security or reachability detector crossed its event threshold., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: detector-events, evidence_class: event-threshold, source_generation: "", summary: A security or reachability detector crossed its event threshold., runbook: docs/how-to/monitoring-alerts.md#detector-events, action: "For probing events run make probing-summary with IP of this node. For burn failures run make burn-check. Then use the incident matrix."}
       - eval_time: 7m
         alertname: ObservabilityDetectorEvidenceStale
         exp_alerts:
           - exp_labels: {component: detector, environment: staging, node: vpn-p1, severity: warning}
-            exp_annotations: {incident_family: detector-health, evidence_class: evidence-stale, source_generation: "", summary: A detector success timestamp exceeded its bounded cadence., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: detector-health, evidence_class: evidence-stale, source_generation: "", summary: A security detector stopped updating its results., runbook: docs/how-to/monitoring-alerts.md#detector-health, action: "Find which detector metric failed, then read the journal of that unit on the node."}
   - interval: 1m
     input_series:
       - series: 'vpn_honeypot_input_errors_total{environment="staging",node="vpn-p1"}'
@@ -293,12 +295,12 @@ tests:
         alertname: ObservabilityDetectorError
         exp_alerts:
           - exp_labels: {component: detector, environment: staging, node: vpn-p1, severity: warning}
-            exp_annotations: {incident_family: detector-error, evidence_class: bounded-producer-error, source_generation: "", summary: A detector reports a bounded producer error., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: detector-error, evidence_class: bounded-producer-error, source_generation: "", summary: A security detector reports input errors., runbook: docs/how-to/monitoring-alerts.md#detector-error, action: "Find which detector metric reports errors, then read the journal of that unit on the node."}
       - eval_time: 5m
         alertname: ObservabilityDetectorError
         exp_alerts:
           - exp_labels: {component: detector, environment: staging, node: vpn-p1, severity: warning}
-            exp_annotations: {incident_family: detector-error, evidence_class: bounded-producer-error, source_generation: "", summary: A detector reports a bounded producer error., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: detector-error, evidence_class: bounded-producer-error, source_generation: "", summary: A security detector reports input errors., runbook: docs/how-to/monitoring-alerts.md#detector-error, action: "Find which detector metric reports errors, then read the journal of that unit on the node."}
       - eval_time: 8m
         alertname: ObservabilityDetectorError
         exp_alerts: []
@@ -311,7 +313,7 @@ tests:
         alertname: ObservabilityCertificateCollectionFailed
         exp_alerts:
           - exp_labels: {component: certificate, environment: staging, node: vpn-p0, role: observability-sender, severity: warning}
-            exp_annotations: {incident_family: certificate-health, evidence_class: collection-failed, source_generation: "", summary: Managed certificate expiry collection failed., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: certificate-health, evidence_class: collection-failed, source_generation: "", summary: Managed certificate expiry collection failed., runbook: docs/how-to/monitoring-alerts.md#certificate-health, action: "Expiry data is missing. Read the journal of observability-agent-health-adapter.service on this node."}
   - interval: 1m
     input_series:
       - series: 'vpn_certificate_collection_success{environment="staging",node="vpn-p0",role="observability-sender"}'
@@ -327,17 +329,17 @@ tests:
         alertname: ObservabilityCertificateCollectionFailed
         exp_alerts:
           - exp_labels: {component: certificate, environment: staging, node: vpn-p0, role: reality-self-steal, severity: warning}
-            exp_annotations: {incident_family: certificate-health, evidence_class: collection-failed, source_generation: "", summary: Managed certificate expiry collection failed., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: certificate-health, evidence_class: collection-failed, source_generation: "", summary: Managed certificate expiry collection failed., runbook: docs/how-to/monitoring-alerts.md#certificate-health, action: "Expiry data is missing. Read the journal of observability-agent-health-adapter.service on this node."}
       - eval_time: 4m
         alertname: ObservabilityCertificateExpiresSoon
         exp_alerts:
           - exp_labels: {component: certificate, environment: staging, node: vpn-p0, role: reality-self-steal, severity: warning}
-            exp_annotations: {incident_family: certificate-expiry, evidence_class: certificate-expiry-warning, source_generation: "", summary: A managed certificate crossed the configured expiry warning threshold., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: certificate-expiry, evidence_class: certificate-expiry-warning, source_generation: "", summary: A managed certificate expires soon., runbook: docs/how-to/monitoring-alerts.md#certificate-expiry, action: "Renew the certificate named by role. Use make check-certs for transport certificates and make observability-rotate for observability-sender.", value: "23h 56m 0s to expiry"}
       - eval_time: 4m
         alertname: ObservabilityCertificateExpiresCritical
         exp_alerts:
           - exp_labels: {component: certificate, environment: staging, node: vpn-p0, role: reality-self-steal, severity: critical}
-            exp_annotations: {incident_family: certificate-expiry, evidence_class: certificate-expiry-critical, source_generation: "", summary: A managed certificate crossed the configured expiry critical threshold., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: certificate-expiry, evidence_class: certificate-expiry-critical, source_generation: "", summary: A managed certificate is close to expiry., runbook: docs/how-to/monitoring-alerts.md#certificate-expiry, action: "Renew the certificate named by role. Use make check-certs for transport certificates and make observability-rotate for observability-sender.", value: "23h 56m 0s to expiry"}
   - interval: 1m
     input_series:
       - series: 'vmagent_remotewrite_packets_dropped_total{job="observability-relay"}'
@@ -353,7 +355,7 @@ tests:
         alertname: ObservabilityCollectorRelayDeliveryLoss
         exp_alerts:
           - exp_labels: {component: observability-relay, environment: "staging", node: collector, severity: warning}
-            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: relay-accepted-samples-discarded, source_generation: "", summary: The collector relay discarded accepted telemetry; monitoring history is incomplete., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: relay-accepted-samples-discarded, source_generation: "", summary: The collector relay discarded accepted telemetry; monitoring history is incomplete., runbook: docs/how-to/monitoring-alerts.md#observability-delivery-loss, action: "Run make observability-status. Check the sender queue and collector disk. History has a gap for this period."}
       - eval_time: 10m
         alertname: ObservabilityCollectorRelayDeliveryLoss
         exp_alerts: []
@@ -372,7 +374,7 @@ tests:
         alertname: ObservabilityCollectorRelayDeliveryLoss
         exp_alerts:
           - exp_labels: {component: observability-relay, environment: "staging", node: collector, severity: warning}
-            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: relay-accepted-samples-discarded, source_generation: "", summary: The collector relay discarded accepted telemetry; monitoring history is incomplete., runbook: docs/how-to/incident.md}
+            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: relay-accepted-samples-discarded, source_generation: "", summary: The collector relay discarded accepted telemetry; monitoring history is incomplete., runbook: docs/how-to/monitoring-alerts.md#observability-delivery-loss, action: "Run make observability-status. Check the sender queue and collector disk. History has a gap for this period."}
       - eval_time: 10m
         alertname: ObservabilityCollectorRelayDeliveryLoss
         exp_alerts: []

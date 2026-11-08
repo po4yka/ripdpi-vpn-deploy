@@ -56,6 +56,8 @@ Explicit panel-only mode has N+1 node/pipeline monitors and no Telegram authorit
   Disable upside-down and maintenance for these monitors. Select the native
   Telegram integration using the distinct secondary credential for every
   monitor. Set repeat notifications to three failed checks (not three seconds).
+  Use the HTML message template and monitor descriptions in
+  `docs/reference/observability-operations.md`.
   Missing-signal timing and repeats must be observed on the pinned runtime;
   configuration alone cannot establish the 180/600-second acceptance bounds.
 - Producers include `tasks/producers.yml` on enrolled hosts and consume

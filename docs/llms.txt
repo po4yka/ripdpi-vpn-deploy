@@ -29,6 +29,7 @@
 - [Runbook: idle-cycle access-attempt measurement spike](/md/how-to/idle-cycle-measurement.md)
 - [Runbook — incidents](/md/how-to/incident.md)
 - [Local operator kit](/md/how-to/local-operator-kit.md)
+- [Runbook — monitoring alerts](/md/how-to/monitoring-alerts.md)
 - [Multi-cohort host](/md/how-to/multi-cohort.md)
 - [Multi-operator RBAC](/md/how-to/multi-operator.md)
 - [Operator maintenance](/md/how-to/operator-maintenance.md)

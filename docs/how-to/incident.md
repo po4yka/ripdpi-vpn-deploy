@@ -33,6 +33,7 @@ Every target below that uses cloud credentials, inventory, SSH or decrypted secr
 | watchdog alerts with `class=policy_reject_spike` | Spike of policy-blackholed or VLESS-rejected events from authenticated clients | `make probing-summary` for the rollup; review routing rules for unexpected blackhole hits; consider tightening `policy_ratelimit` thresholds if abuse is confirmed |
 | watchdog alerts with `class=tcp_listen_wedge` | Xray hung | `systemctl restart xray`; if recurring, check `vpn.xray_flow_mode` cohort match |
 | watchdog alerts with `class=nginx_403_spike` | Probe/scrape wave | usually benign; if rate climbs, `make check-ip-reputation` to see if IP appeared on a public blocklist |
+| Primary Telegram monitoring alert | Monitoring-rule finding | Open the `Runbook` link in the message, or find its family in [monitoring alerts](monitoring-alerts.md) |
 | `make asn-drift` alert | Provider IP reassignment | check `docs/reference/provider-notes.md` — if new ASN is in Avoid tier, blue-green now |
 | REALITY target ASN/path signal | The active target failed filtered-path TLS/H2/SAN/HTTPS checks or its ASN/prefix set changed twice | confirm from a second filtered vantage; acknowledge healthy DNS movement with `ACCEPT_BASELINE=1`, otherwise evaluate a replacement through the normal scan/validate/deploy workflow; never auto-switch |
 | `make check-ip-reputation` alert | IP on Spamhaus / optional FireHOL netset | blue-green or wait out the listing depending on which list and severity score |

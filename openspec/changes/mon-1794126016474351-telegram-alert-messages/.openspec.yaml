@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-11-08
+goal: MON-1794126016474351 Make Telegram alert messages readable and actionable

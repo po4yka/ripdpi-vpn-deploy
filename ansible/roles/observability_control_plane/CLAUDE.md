@@ -35,7 +35,13 @@ so another active service cannot hide missing evidence.
 inside the bounded webhook body and never enter messages or requests. Telegram
 Message responses have a separate finite byte ceiling from message characters;
 large valid success replies are not delivery failures.
-Each alert line includes its role when present, using the producer's lowercase
+Messages are Telegram HTML: one head and action per Alertmanager group, one
+bullet per alert. Rule authors own `summary`, `action` (at most 160 characters,
+required by the rule tests) and an optional measured `value`. The relay itself
+accepts an absent `action`, because a failed Prometheus activation can leave it
+serving older rules. `runbook` must match the relay's `docs/...md` pattern
+because it becomes a link. Each bullet includes its
+role when present, using the producer's lowercase
 technical alias contract (at most 64 characters). Required-service failure and
 missing-evidence alerts require that unit identity. Roles distinguish units
 within existing Alertmanager groups without increasing notification frequency.
