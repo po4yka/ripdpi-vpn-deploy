@@ -28,7 +28,7 @@ jobs:
         # Conftest 0.57.0 — pinned SHA256 verified against upstream release
         # https://github.com/open-policy-agent/conftest/releases/tag/v0.57.0
         run: |
-          curl -sSL \
+          curl -sSL --retry 4 --retry-delay 10 --retry-max-time 480 --connect-timeout 10 --max-time 120 \
             https://github.com/open-policy-agent/conftest/releases/download/v0.57.0/conftest_0.57.0_Linux_x86_64.tar.gz \
             -o conftest.tar.gz
           echo "db1018a7e301cada4d4bd8a70880a13314daae27b3f4d409c7ffba1847718392  conftest.tar.gz" | sha256sum -c -

@@ -54,6 +54,11 @@
             checksum: "sha256:{{ backup_rclone_packages[_backup_rclone_arch.stdout].sha256 }}"
             dest: "{{ _backup_rclone_staging.path }}/rclone.deb"
             mode: "0600"
+            timeout: 60
+          register: _backup_rclone_download
+          retries: 5
+          delay: 10
+          until: _backup_rclone_download is succeeded
 
         - name: Read the verified package control fields
           ansible.builtin.command:

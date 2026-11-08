@@ -132,7 +132,7 @@ def test_installer_never_executes_or_installs_unverified_bytes(tmp_path, case):
         assert len(attempts) == 2
     elif case == "timeout-exhausted":
         assert result.returncode == 28
-        assert len(attempts) == 4
+        assert len(attempts) == 5
     elif case == "download-error":
         assert result.returncode == 22
         assert len(attempts) == 1

@@ -102,8 +102,9 @@ def artifacts(directory):
             if not path.exists():
                 url = ('https://github.com/XTLS/Xray-core/releases/download/' + version + '/Xray-linux-' + ('arm64-v8a' if ARCH == 'arm64' else '64') + '.zip'
                        if name == 'xray' else ('https://github.com/po4yka/ripdpi-vpn-deploy/releases/download/runtime-go1.27.3-20261102/' if version == 'v2.13.0' else 'https://github.com/apernet/hysteria/releases/download/app/' + version + '/') + 'hysteria-linux-' + ARCH)
-                command(['curl', '--fail', '--silent', '--show-error', '--location', '--connect-timeout', '10',
-                         '--max-time', '120', url, '--output', str(path)], timeout=125)
+                command(['curl', '--fail', '--silent', '--show-error', '--location', '--retry', '4', '--retry-delay', '10',
+                         '--retry-max-time', '480', '--connect-timeout', '10', '--max-time', '120', url,
+                         '--output', str(path)], timeout=610)
             if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
                 raise RuntimeError('owned-runtime-fixture-pin-mismatch')
             path.chmod(0o755 if name == 'hysteria' else 0o644)

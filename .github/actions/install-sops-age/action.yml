@@ -17,11 +17,11 @@ runs:
         test "$RUNNER_ARCH" = X64
         install_dir="$(mktemp -d "$RUNNER_TEMP/sops-age.XXXXXXXX")"
         trap 'rm -rf "$install_dir"' EXIT
-        curl --fail --location --retry 3 --connect-timeout 10 --max-time 120 \
+        curl --fail --location --retry 4 --retry-delay 10 --retry-max-time 480 --connect-timeout 10 --max-time 120 \
           "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.amd64" \
           --output "$install_dir/sops"
         printf '%s  %s\n' "$SOPS_SHA256" "$install_dir/sops" | sha256sum --check --strict
-        curl --fail --location --retry 3 --connect-timeout 10 --max-time 120 \
+        curl --fail --location --retry 4 --retry-delay 10 --retry-max-time 480 --connect-timeout 10 --max-time 120 \
           "https://github.com/FiloSottile/age/releases/download/v${AGE_VERSION}/age-v${AGE_VERSION}-linux-amd64.tar.gz" \
           --output "$install_dir/age.tar.gz"
         printf '%s  %s\n' "$AGE_SHA256" "$install_dir/age.tar.gz" | sha256sum --check --strict
