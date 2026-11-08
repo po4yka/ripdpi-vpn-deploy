@@ -230,7 +230,8 @@ class Runtime:
             if any(not re.fullmatch(r"[A-Za-z0-9+/]{43}=", peer) for peer in peers):
                 raise ProbeError("runtime-authority-invalid")
             present = identity in peers
-            token = hashlib.sha256(output).hexdigest()
+            # amneziawg-go lists peers in random order; compare the set.
+            token = hashlib.sha256(b"\n".join(sorted(output.splitlines()))).hexdigest()
         else:
             filename = profile["witness"]["config_path"]
             path = Path(filename)

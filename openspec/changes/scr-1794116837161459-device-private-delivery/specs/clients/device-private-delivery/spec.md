@@ -27,3 +27,14 @@ The implementation MUST refuse a manifest that requests an expiry for delivery w
 
 - **WHEN** a manifest has `publishers: []` and a non-empty `delivery.expires`
 - **THEN** manifest loading refuses before any encrypted intent is written
+
+### Requirement: REQ-DEVICE-OPERATOR-INPUTS — Adopt a device with the node's operator inputs
+The implementation MUST pass a node's declared operator overrides to the runtime adoption and to its certificate check, and MUST compare AWG peers as a set.
+
+#### Scenario: Operator overrides reach the adoption
+- **WHEN** a manifest node declares an owner-only `overrides` file
+- **THEN** every runtime goal for that node receives those variables, with revocation variables taking precedence
+
+#### Scenario: Peer listing order changes
+- **WHEN** the AWG tool lists the same peers in a different order before and after a probe
+- **THEN** the probe treats the peer set as unchanged

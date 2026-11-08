@@ -53,6 +53,24 @@ def test_private_manifest_complete_inventory_and_publisher_admission(manifest):
         admitted.revalidate()
 
 
+@pytest.mark.parametrize(('document', 'refusal'), [
+    ('[]\n', 'invalid-device-overrides'),
+    ('unknown_setting: 1\n', 'invalid-device-overrides'),
+    ('public_site_canonical_url: https://a.example\npublic_site_canonical_url: https://b.example\n', 'invalid-device-overrides'),
+    ('ansible_port: 2222\n', 'reserved-device-override'),
+    ('vpn_device_retained_publisher: true\n', 'invalid-device-overrides'),
+])
+def test_manifest_refuses_unsafe_node_overrides_before_any_write(manifest, document, refusal):
+    value, path = manifest
+    private = Path(value['nodes'][0]['secrets_file']).with_name('overrides.yml')
+    private.write_text(document)
+    private.chmod(0o600)
+    value['nodes'][0]['overrides'] = str(private)
+    path.write_text(json.dumps(value))
+    with pytest.raises(ValueError, match=f'^{refusal}$'):
+        io.load_manifest(path)
+
+
 @pytest.mark.parametrize('action', ['issue', 'refresh'])
 def test_publisher_less_manifest_is_private_and_refuses_expiry(manifest, action):
     value, path = manifest
@@ -106,7 +124,15 @@ def test_operation_lock_excludes_other_writers_and_foreign_symlinks(manifest):
 
 def test_runtime_uses_exact_private_inventory_and_removes_plaintext_after_failure(manifest, monkeypatch):
     value, path = manifest
+    node = next(row for row in value['nodes'] if row['host'] == 'upcloud:green')
+    private = Path(node['secrets_file']).with_name('overrides.yml')
+    private.write_text(yaml.safe_dump({'public_site_canonical_url': 'https://site.example'}))
+    private.chmod(0o600)
+    node['overrides'] = str(private)
+    path.write_text(json.dumps(value))
+    value = io.load_manifest(path)
     admitted = io.LocalIO(value, path)
+    admitted.hosts['upcloud:green']['variables']['vpn_subscription_only'] = 'True'
     monkeypatch.setenv('MAKEFLAGS', '--eval=unsafe')
     monkeypatch.setenv('ANSIBLE_SKIP_TAGS', 'all')
     calls, outputs = [], []
@@ -118,7 +144,12 @@ def test_runtime_uses_exact_private_inventory_and_removes_plaintext_after_failur
         assert 'MAKEFLAGS' not in env and 'ANSIBLE_SKIP_TAGS' not in env
         secret = Path(next(arg.split('=',1)[1] for arg in argv if arg.startswith('SECRETS_FILE=')))
         extra = Path(next(arg.split('=',1)[1] for arg in argv if arg.startswith('ANSIBLE_EXTRA_VARS_FILE=')))
-        assert yaml.safe_load(extra.read_text()) == {'vpn_device_revocation': revocation}
+        assert yaml.safe_load(extra.read_text()) == {'public_site_canonical_url': 'https://site.example', 'vpn_device_revocation': revocation}
+        layers = json.loads(env['VPN_CERT_VARS_FILES'])
+        assert [Path(item).name for item in layers[:3]] == ['all.yml', 'vpn.yml', f'vpn-{node["cohort"]}.yml']
+        assert layers[-2:] == [str(secret), str(extra)]
+        metadata = json.loads(Path(layers[3]).read_text())
+        assert metadata['vpn_subscription_only'] is True
         assert extra.stat().st_mode & 0o777 == 0o600
         outputs.extend([secret, extra])
         assert secret.stat().st_mode & 0o777 == 0o600

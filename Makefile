@@ -1377,7 +1377,7 @@ diff-secrets:
 emit-singbox:
 	@test -n "$${CLIENT:-}" || { echo "CLIENT=<name> required"; exit 1; }
 	@HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" SOPS_FILE="$(SOPS_FILE)" SOPS_FILES="$(SOPS_FILES)" \
-	  VPN_SECRETS_FILE="$(SECRETS_FILE)" \
+	  $(if $(and $(SOPS_FILES),$(filter file default undefined,$(origin SECRETS_FILE))),,VPN_SECRETS_FILE="$(SECRETS_FILE)") \
 	  ./scripts/emit-singbox.sh "$${CLIENT}"
 
 ifneq ($(filter emit-incy,$(MAKECMDGOALS)),)
@@ -1389,7 +1389,7 @@ endif
 emit-incy:
 	@test -n "$${INCY_CLIENT_LITERAL}" && test -n "$${INCY_OUTPUT_LITERAL}" || { echo "usage: make emit-incy CLIENT=<name> OUTPUT=<new file in a 0700 directory>"; exit 1; }
 	@HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" SOPS_FILE="$(SOPS_FILE)" SOPS_FILES="$(SOPS_FILES)" \
-	  VPN_SECRETS_FILE="$(SECRETS_FILE)" \
+	  $(if $(and $(SOPS_FILES),$(filter file default undefined,$(origin SECRETS_FILE))),,VPN_SECRETS_FILE="$(SECRETS_FILE)") \
 	  ./scripts/emit-singbox.sh "$${INCY_CLIENT_LITERAL}" --incy-links "$${INCY_OUTPUT_LITERAL}"
 
 emit-awg:

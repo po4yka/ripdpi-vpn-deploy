@@ -471,3 +471,27 @@ def test_hysteria_retirement_requires_complete_stable_timeout_evidence(case):
     assert row["state"] == ("denied" if case == "retired" else "unknown"), row
     if case == "retired":
         assert row["reason"] == "retired-runtime-access-failed"
+
+
+def test_awg_witness_compares_the_peer_set_and_not_its_listing_order():
+    first, second, third = ("A" * 43 + "=", "B" * 43 + "=", "C" * 43 + "=")
+
+    class Awg(worker.Runtime):
+        def __init__(self, listing):
+            self.listing = listing
+
+        def binary(self, name):
+            return name
+
+        def command(self, args, *, data=None, timeout=5):
+            if args[0] == "systemctl":
+                return 0, b"ActiveState=active\nSubState=exited\nMainPID=0\nLoadState=loaded\n"
+            if args[0] == "ip":
+                return 0, json.dumps([{"flags": ["UP"]}]).encode()
+            return 0, {"peers": self.listing, "listen-port": b"51820\n", "public-key": b"server\n"}[args[-1]]
+
+    profile = {"engine": "awg", "config": {"text": "Endpoint = 198.51.100.1:51820\nPublicKey = server\n"},
+               "witness": {"credential": second, "unit": "awg-quick@awg0", "instance": "awg0", "config_path": "/unused"}}
+    witness = lambda *peers: Awg("".join(peer + "\n" for peer in peers).encode()).witness(profile)
+    assert witness(first, second, third) == witness(third, first, second)
+    assert witness(first, second, third) != witness(first, second)
