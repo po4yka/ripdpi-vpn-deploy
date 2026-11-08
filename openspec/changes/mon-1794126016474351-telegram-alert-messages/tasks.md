@@ -16,3 +16,4 @@ One writer owns the `observability_control_plane` relay and rule templates, thei
 ## Verification
 
 Local: focused pytest, promtool rule cases, snapshot check, documentation check, role Molecule scenario and `make check`. Remote CI runs on the pull request. Dry-run, staging and live delivery need separate deployment authorization.
+- [x] MON-1794135984867252 Tolerate one missed Kuma producer run without a notification #feature @item:MON-1794126016474351

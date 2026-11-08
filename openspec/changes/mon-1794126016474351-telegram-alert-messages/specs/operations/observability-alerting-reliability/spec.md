@@ -49,3 +49,17 @@ The repository MUST document a Kuma Telegram HTML template and a description for
 
 - **WHEN** an operator presses the Kuma test button with the documented template
 - **THEN** the template renders a TEST message without a monitor or heartbeat
+
+### Requirement: REQ-KUMA-TRANSIENT — Tolerate one missed heartbeat
+
+The documented node and pipeline monitor settings MUST NOT send a notification when one 60-second producer run is missed and the next run succeeds. They MUST report `Down` within 180 seconds after the last accepted push when the pushes stop.
+
+#### Scenario: One missed producer run
+
+- **WHEN** a monitor receives no push for one producer period and the next push arrives inside the retry window
+- **THEN** the monitor is pending, returns to up and reaches no `Down` state
+
+#### Scenario: Pushes stop
+
+- **WHEN** a monitor receives no further push after an accepted push
+- **THEN** the monitor reaches `Down` no later than 180 seconds after that push

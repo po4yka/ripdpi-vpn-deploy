@@ -5,7 +5,7 @@ The relay receives bounded Alertmanager webhooks and already sends `parse_mode: 
 ## Goals / Non-Goals
 
 - Goal: an operator can act from the message without opening a dashboard.
-- Non-goal: changing alert expressions, routing, repeat intervals or Kuma heartbeat timing.
+- Non-goal: changing alert expressions, routing or repeat intervals.
 - Non-goal: automated Kuma provisioning.
 
 ## Decisions
@@ -16,6 +16,7 @@ The relay receives bounded Alertmanager webhooks and already sends `parse_mode: 
 - Firing messages show only the start time, so that rendering needs no clock input.
 - Links target `main` of the public repository. Rejected: pinning to the source revision, because a deployed revision may not exist on the remote.
 - Kuma uses its native Liquid template. Rejected: patching the image.
+- Node and pipeline monitors use retries 1 and a 30-second retry interval. With retries 0, one missed 60-second run gives a gap of about 120 seconds against the 121-second window of Kuma 2.5.9, and a late push then sends `Up`. Pending to `Up` does not notify. `Down` arrives about 151 seconds after the last push, inside the 180-second bound. Rejected: a 30-second producer period, which doubles load and leaves a false `Down` after a longer private-path fault; a producer retry, which does not cover a failed qualification. Delivery stays at retries 0 because one missed 300-second run already reaches its 600-second bound.
 
 ## Contracts and ownership
 

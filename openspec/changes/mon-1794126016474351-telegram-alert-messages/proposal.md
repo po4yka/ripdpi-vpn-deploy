@@ -12,6 +12,7 @@ Primary alerts use Telegram HTML mode but carry no markup. They show internal ru
 - Every alert rule gains an `action` annotation and an anchored `runbook`. Rules whose expression value is the measured quantity gain a `value` annotation.
 - A new runbook page describes each incident family.
 - The repository documents a Kuma Liquid template and monitor descriptions for the secondary channel. An operator applies them in the Kuma UI.
+- Node and pipeline Kuma monitors tolerate one missed producer run, so a transient failure no longer sends a `Down` and `Up` pair.
 
 ## Capabilities
 
