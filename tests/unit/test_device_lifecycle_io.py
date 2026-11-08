@@ -53,6 +53,18 @@ def test_private_manifest_complete_inventory_and_publisher_admission(manifest):
         admitted.revalidate()
 
 
+@pytest.mark.parametrize('action', ['issue', 'refresh'])
+def test_publisher_less_manifest_is_private_and_refuses_expiry(manifest, action):
+    value, path = manifest
+    value.update(action=action, publishers=[])
+    path.write_text(json.dumps(value))
+    assert io.load_manifest(path)['delivery']['output'] == str(path.parent.resolve() / 'recipient.json')
+    value['delivery']['expires'] = '2030-01-01'
+    path.write_text(json.dumps(value))
+    with pytest.raises(ValueError, match='^private-delivery-does-not-enforce-expiry$'):
+        io.load_manifest(path)
+
+
 @pytest.mark.parametrize('fault', ['mode','symlink','unknown','duplicate','source-alias','origin','output-path','probe'])
 def test_manifest_refuses_unsafe_inputs(manifest, fault):
     value, path = manifest

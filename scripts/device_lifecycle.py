@@ -46,7 +46,8 @@ class Lifecycle:
         self.now = now or (lambda: datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ'))
         self.manifest_digest = sha(encoded(manifest))
         self.name, self.action = manifest['device'], manifest['action']
-        self.native = manifest['delivery'] is not None and manifest['delivery']['format'] == 'native'
+        # Private delivery: one recipient artifact and no subscription grant.
+        self.private = manifest['delivery'] is not None and (manifest['delivery']['format'] == 'native' or not manifest['publishers'])
 
     def documents(self):
         self.io.revalidate()
@@ -63,7 +64,7 @@ class Lifecycle:
     def inspect(self):
         self.io.verify_publisher_scope()
         source = self.io.source_identity()
-        if self.action == 'issue' or self.native:
+        if self.action == 'issue' or self.private:
             self.io.admit_output(self.manifest['delivery']['output'])
         documents, snapshots = self.documents(), self.snapshots()
         found = {host: discover(doc, self.name) for host, doc in documents.items()}
@@ -76,9 +77,9 @@ class Lifecycle:
             raise ValueError('device-not-found-in-fleet')
         if any(snapshot['bootstrap'] for snapshot in snapshots.values()):
             raise ValueError('drain-active-bootstrap-grants-before-device-operation')
-        if self.action == 'refresh' and not self.native and not any(not row['revoked'] and not row['expired'] for rows in grants.values() for row in rows.values()):
+        if self.action == 'refresh' and not self.private and not any(not row['revoked'] and not row['expired'] for rows in grants.values() for row in rows.values()):
             raise ValueError('device-has-no-active-grant-to-refresh')
-        if (self.action == 'issue' or self.native) and any(grants.values()):
+        if (self.action == 'issue' or self.private) and any(grants.values()):
             raise ValueError('device-has-existing-published-grants')
         if self.action in ('issue', 'refresh'):
             for host in self.manifest['delivery']['hosts']:
@@ -155,22 +156,24 @@ class Lifecycle:
                                                            self.io.endpoint(host), include_disabled=True)
             elif self.action != 'revoke' and host in self.manifest['delivery']['hosts']:
                 journal['profiles'][host] = render_profiles(after[host], self.nodes[host]['cohort'], self.name, host, self.io.endpoint(host))
-        if self.native:
+        if self.private and self.manifest['delivery']['format'] == 'native':
             payload = self._render(after, 'native', '')
             journal['artifact'] = b64(encoded({'schema_version': 1, 'device': self.name,
                 'subscription_url': None, 'profile': None, **payload['native']}))
-        elif self.action == 'issue':
-            token = secrets.token_urlsafe(32)
-            token_hash = sha(token.encode())
-            host = self.manifest['publishers'][0]['host']
-            payload = self._render(after, self.manifest['delivery']['format'], self.manifest['delivery']['expires'])
-            document = encoded({'schema_version': 1, 'client': self.name, 'expires': self.manifest['delivery']['expires'], 'payload_b64': b64(encoded(payload))})
-            journal['grants'][host] = {token_hash: {'before': None, 'after': b64(document)}}
-            artifact = {'schema_version': 1, 'device': self.name, 'subscription_url': self.manifest['publishers'][0]['origin'] + '/sub/' + token,
+        elif self.action == 'issue' or self.private:
+            expires = '' if self.private else self.manifest['delivery']['expires']
+            payload = self._render(after, self.manifest['delivery']['format'], expires)
+            artifact = {'schema_version': 1, 'device': self.name, 'subscription_url': None,
                         'profile': payload, 'amneziawg_configs': {}, 'naive_uris': {}}
+            if not self.private:
+                token = secrets.token_urlsafe(32)
+                token_hash = sha(token.encode())
+                host = self.manifest['publishers'][0]['host']
+                document = encoded({'schema_version': 1, 'client': self.name, 'expires': expires, 'payload_b64': b64(encoded(payload))})
+                journal['grants'][host] = {token_hash: {'before': None, 'after': b64(document)}}
+                artifact['subscription_url'] = self.manifest['publishers'][0]['origin'] + '/sub/' + token
             for selected in self.manifest['delivery']['hosts']:
-                entry = after[selected]['client_registry'][self.name]
-                entry['token_hash_prefix'] = token_hash[:8]
+                after[selected]['client_registry'][self.name]['token_hash_prefix'] = '' if self.private else token_hash[:8]
                 native, _ = native_delivery(after[selected], profile(self.nodes[selected]['cohort']), self.name,
                                             selected, self.io.endpoint(selected))
                 for key in native:
@@ -232,7 +235,7 @@ class Lifecycle:
                 or not set(journal['profiles']) <= hosts or not set(journal['grants']) <= {p['host'] for p in self.manifest['publishers']}
                 or not set(journal['written']) <= hosts or not set(journal['adopted']) <= set(journal['written'])
                 or not set(journal['published']) <= grant_ids or journal['action'] != self.action or journal['device'] != self.name
-                or (journal['artifact'] is not None) != (self.action == 'issue' or self.native)
+                or (journal['artifact'] is not None) != (self.action == 'issue' or self.private)
                 or set(journal['canaries']) != ({pub['host'] for pub in self.manifest['publishers']} if self.action == 'revoke' else set())):
             raise ValueError('invalid-device-operation-journal')
         affected = self._runtime_hosts(journal)

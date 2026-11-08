@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-08
+goal: SCR-1794116837161459 Issue a device privately when the fleet has no
+  subscription publisher
