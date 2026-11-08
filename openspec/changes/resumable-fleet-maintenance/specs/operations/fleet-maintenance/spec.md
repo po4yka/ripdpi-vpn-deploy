@@ -19,6 +19,30 @@ from fresh live verification. Resume MUST use canonical recovery admission.
 - **THEN** the operation retains its uncertain stage and encrypted diagnostics
   and cannot skip acceptance or blindly repeat an external action.
 
+### Requirement: REQ-MAINT-RESUME-CONVERGED — Resume a converged node at acceptance
+
+Resume MUST skip dry-run and deploy for a node only when the journal records its completed deploy for the plan source and a fresh live manifest probe reports that source. Decrypt and every acceptance stage MUST run again. A complete sequence MUST first discard the recorded convergence. The journal MUST record each skip.
+
+#### Scenario: Acceptance fails after a completed deploy
+
+- **WHEN** an operation fails in verify after its deploy stage completed, and the live node still reports the plan source
+- **THEN** resume runs decrypt and every acceptance stage for that node, without a second dry-run or deploy.
+
+#### Scenario: The node cannot be observed
+
+- **WHEN** the manifest probe fails with a transport error
+- **THEN** resume runs the complete stage sequence; a local input error fails the node instead.
+
+#### Scenario: A repeated deploy fails after the manifest is written
+
+- **WHEN** a resume runs the complete sequence for a node with recorded convergence, and its deploy fails
+- **THEN** the recorded convergence is gone, and the next resume runs dry-run and deploy again.
+
+#### Scenario: Live node differs from the recorded convergence
+
+- **WHEN** the recorded convergence matches the plan, but the live node manifest reports another revision or digest
+- **THEN** resume runs the complete stage sequence, starting with dry-run.
+
 ### Requirement: REQ-MAINT-RELEASE — Verify complete release inputs
 
 Release preparation MUST bind component version, architecture, HTTPS artifact,

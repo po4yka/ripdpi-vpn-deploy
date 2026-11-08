@@ -287,26 +287,50 @@ def cleanup_retained(plan, journal):
     journal.observe('runtime', None)
 
 
+def require_deployed_source(plan, node):
+    """Fresh read-only proof that the live node manifest reports the plan source."""
+    hosts = fleet_inspection.select_hosts(ROOT / 'ansible/inventory/generated.ini', [node['host']])
+    module('validate-ansible-extra-vars').validate(Path(node['extra_vars']))
+    values = yaml.load(read_bytes(node['extra_vars']), Loader=UniqueLoader)
+    hosts[0]['transport'] = values.get('ansible_host', hosts[0]['transport'])
+    hosts[0]['port'] = values.get('ansible_port', hosts[0]['port'])
+    command = fleet_inspection.ssh_command(hosts[0], Path(node['known_hosts']))
+    raw = fleet_inspection.bounded_command(command, timeout=30,
+                input_bytes=Path(fleet_inspection.__file__).read_bytes(),
+                environment=command_environment())
+    now = datetime.now(timezone.utc)
+    report = fleet_inspection.validate_report(fleet_inspection.decode_json(raw), now)
+    manifest = report['manifest']
+    if (now - fleet_inspection.parse_time(report['observed_at']) > timedelta(seconds=30)
+            or manifest.get('status') != 'observed'
+            or manifest.get('source_revision') != plan['source']['revision']
+            or manifest.get('deployable_digest') != plan['source']['deployable_digest']):
+        raise MaintenanceError('deployed-source-acceptance-failed')
+
+
+def converged_on_resume(plan, journal, node, action):
+    """A resumed node skips dry-run and deploy only after a fresh live source proof."""
+    if action != 'resume' or journal.state['observed'].get('converged') != {
+            'host': node['host'], 'source': plan['source']}:
+        return False
+    recheck(plan)
+    try:
+        require_deployed_source(plan, node)
+    except MaintenanceError as error:
+        if str(error) != 'deployed-source-acceptance-failed':
+            raise
+        return False
+    except (ReadinessError, fleet_inspection.InspectionError):
+        # The node could not be observed: converge again through the complete sequence.
+        # Local input errors propagate, because a second deploy cannot repair them.
+        return False
+    return True
+
+
 def protocol_gate(plan, journal, node):
     recheck(plan)
     with journal.operation('protocol-gate', {'host': node['host'], 'source': plan['source']}):
-        hosts = fleet_inspection.select_hosts(ROOT / 'ansible/inventory/generated.ini', [node['host']])
-        module('validate-ansible-extra-vars').validate(Path(node['extra_vars']))
-        values = yaml.load(read_bytes(node['extra_vars']), Loader=UniqueLoader)
-        hosts[0]['transport'] = values.get('ansible_host', hosts[0]['transport'])
-        hosts[0]['port'] = values.get('ansible_port', hosts[0]['port'])
-        command = fleet_inspection.ssh_command(hosts[0], Path(node['known_hosts']))
-        raw = fleet_inspection.bounded_command(command, timeout=30,
-                    input_bytes=Path(fleet_inspection.__file__).read_bytes(),
-                    environment=command_environment())
-        now = datetime.now(timezone.utc)
-        report = fleet_inspection.validate_report(fleet_inspection.decode_json(raw), now)
-        manifest = report['manifest']
-        if (now - fleet_inspection.parse_time(report['observed_at']) > timedelta(seconds=30)
-                or manifest.get('status') != 'observed'
-                or manifest.get('source_revision') != plan['source']['revision']
-                or manifest.get('deployable_digest') != plan['source']['deployable_digest']):
-            raise MaintenanceError('deployed-source-acceptance-failed')
+        require_deployed_source(plan, node)
         selected = [{'current': node['provider'] + ':' + node['environment'],
                      'inventory_alias': node['host']}]
         if healthy_survivors(plan['liveness_config'], selected) != {node['host']}:
@@ -374,8 +398,17 @@ def execute(plan, action, approval, *, ready_fd=None):
             try:
                 prepare_attempt(plan, node, runtime)
                 logs.append(stage(plan, journal, node, 'decrypt', environment))
-                for goal in (('dry-run',) if action == 'preview' else STAGES):
+                goals = ('dry-run',) if action == 'preview' else STAGES
+                if converged_on_resume(plan, journal, node, action):
+                    goals = STAGES[STAGES.index('deploy') + 1:]
+                    journal.observe('resumed_at_acceptance', {'host': node['host'], 'source': plan['source']})
+                elif action != 'preview':
+                    # A new deploy can stop after the node manifest is written; never trust an older record.
+                    journal.observe('converged', None)
+                for goal in goals:
                     logs.append(stage(plan, journal, node, goal, environment))
+                    if goal == 'deploy':
+                        journal.observe('converged', {'host': node['host'], 'source': plan['source']})
                 if action != 'preview':
                     protocol_gate(plan, journal, node)
             finally:
