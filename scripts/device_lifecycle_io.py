@@ -85,6 +85,8 @@ def load_manifest(path):
         node['secrets_file'] = safe_path(node['secrets_file'])
         if 'overrides' in node:
             node['overrides'] = safe_path(node['overrides'])
+            # The manifest digest carries this into the approval and the journal.
+            node['overrides_sha256'] = sha(private_bytes(node['overrides']))
             validate_overrides(node['overrides'])
         info = os.stat(node['secrets_file'], follow_symlinks=False)
         identity = (info.st_dev, info.st_ino)
@@ -204,8 +206,8 @@ class LocalIO:
             self.hosts[node['host']] = host
             self.commands[node['host']] = ssh_command(host, manifest['known_hosts'])
         self.fences = {path: sha(private_bytes(path)) for path in {self.manifest_path, manifest['inventory'], manifest['known_hosts'],
-                                                                *[host['key'] for host in self.hosts.values()],
-                                                                *[node['overrides'] for node in manifest['nodes'] if 'overrides' in node]}}
+                                                                *[host['key'] for host in self.hosts.values()]}}
+        self.fences |= {node['overrides']: node['overrides_sha256'] for node in manifest['nodes'] if 'overrides' in node}
         self.publications = {pub['host']: pub for pub in manifest['publishers']}
         required = set()
         for host, node in self.nodes.items():

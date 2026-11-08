@@ -11,6 +11,7 @@ from pathlib import Path
 import device_lifecycle_io as io
 import pytest
 import yaml
+from device_lifecycle import Lifecycle
 from test_device_migration_io import plan as plan  # noqa: PLC0414
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -68,6 +69,24 @@ def test_manifest_refuses_unsafe_node_overrides_before_any_write(manifest, docum
     value['nodes'][0]['overrides'] = str(private)
     path.write_text(json.dumps(value))
     with pytest.raises(ValueError, match=f'^{refusal}$'):
+        io.load_manifest(path)
+
+
+def test_override_contents_are_part_of_the_approved_operation(manifest):
+    value, path = manifest
+    private = Path(value['nodes'][0]['secrets_file']).with_name('overrides.yml')
+    private.write_text('public_site_canonical_url: https://a.example\n')
+    private.chmod(0o600)
+    value['nodes'][0]['overrides'] = str(private)
+    path.write_text(json.dumps(value))
+    approved = io.load_manifest(path)
+    private.write_text('public_site_canonical_url: https://b.example\n')
+    assert Lifecycle(approved, None).manifest_digest != Lifecycle(io.load_manifest(path), None).manifest_digest
+    with pytest.raises(ValueError, match='^device-reviewed-input-changed$'):
+        io.LocalIO(approved, path).revalidate()
+    value['nodes'][0]['overrides_sha256'] = '1'*64
+    path.write_text(json.dumps(value))
+    with pytest.raises(ValueError, match='^invalid-device-node$'):
         io.load_manifest(path)
 
 

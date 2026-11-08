@@ -35,6 +35,10 @@ The implementation MUST pass a node's declared operator overrides to the runtime
 - **WHEN** a manifest node declares an owner-only `overrides` file
 - **THEN** every runtime goal for that node receives those variables, with revocation variables taking precedence
 
+#### Scenario: Operator overrides change after approval
+- **WHEN** the content of a declared overrides file differs from the content that the operation was approved or journaled with
+- **THEN** the approval, run and resume refuse before any further adoption
+
 #### Scenario: Peer listing order changes
 - **WHEN** the AWG tool lists the same peers in a different order before and after a probe
 - **THEN** the probe treats the peer set as unchanged
