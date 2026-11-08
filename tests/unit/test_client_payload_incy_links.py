@@ -68,6 +68,19 @@ def test_make_emit_incy_writes_links_from_explicit_plaintext(tmp_path):
     assert "decrypt" not in Path(env["STUB_LOG"]).read_text()
 
 
+@pytest.mark.parametrize("goal", [["emit-singbox"], ["emit-incy", "OUTPUT=/private/links.txt"]])
+def test_make_emit_targets_keep_per_host_sops_files_free_of_plaintext_input(goal):
+    def recipe(*extra):
+        result = subprocess.run(["make", "-n", "--no-print-directory", *goal, "CLIENT=laptop", *extra],
+                                cwd=REPO_ROOT, capture_output=True, text=True, timeout=30)
+        assert result.returncode == 0, result.stderr
+        return result.stdout
+    per_host = "SOPS_FILES=/private/a.sops.yaml,/private/b.sops.yaml"
+    assert "VPN_SECRETS_FILE=" in recipe("SECRETS_FILE=/private/plain.yaml")
+    assert "VPN_SECRETS_FILE=" not in recipe(per_host)
+    assert "VPN_SECRETS_FILE=" in recipe(per_host, "SECRETS_FILE=/private/plain.yaml")
+
+
 def test_make_emit_incy_requires_output():
     result = subprocess.run(["make", "--no-print-directory", "emit-incy", "CLIENT=laptop"],
                             cwd=REPO_ROOT, capture_output=True, text=True, timeout=30)

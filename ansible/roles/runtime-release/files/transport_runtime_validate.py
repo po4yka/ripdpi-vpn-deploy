@@ -19,6 +19,8 @@ from transport_runtime_probe import ProbeRefused, child, private_file, run
 from transport_runtime_transaction import Transaction, Refusal, identity, node, read_private, validate_claim
 
 STATE = Path('/var/lib/ripdpi/transport-runtime')
+# Validation load stalls systemd and netns tools on small, slow-disk hosts.
+SYSTEM_COMMAND_SECONDS = 30
 UNIT_ROOT = Path('/run/systemd/system')
 NAMESPACE_ROOT = Path('/run/netns')
 STAGING_ROOT = Path('/var/lib')
@@ -437,7 +439,7 @@ def inspect_lease(tx):
 
 def unit_state(name):
     raw = run(['/usr/bin/systemctl', 'show', name,
-               '--property=LoadState,FragmentPath,ActiveState,MainPID'], 5).decode()
+               '--property=LoadState,FragmentPath,ActiveState,MainPID'], SYSTEM_COMMAND_SECONDS).decode()
     value = dict(row.split('=', 1) for row in raw.splitlines() if '=' in row)
     if (set(value) != {'LoadState', 'FragmentPath', 'ActiveState', 'MainPID'}
             or value['LoadState'] not in {'loaded', 'not-found'}
@@ -476,7 +478,7 @@ def recover_validation(tx):
     if 'acme.json' in value['files'] and os.path.lexists(Path('/run') / namespace.name):
         raise Refusal('validation-cache-cleanup-unconfirmed')
     if namespace.exists():
-        if run(['/usr/sbin/ip', 'netns', 'pids', namespace.name], 5).strip():
+        if run(['/usr/sbin/ip', 'netns', 'pids', namespace.name], SYSTEM_COMMAND_SECONDS).strip():
             raise Refusal('validation-namespace-not-empty')
     if value['phase'] != 'cleaning':
         value = {**value, 'phase': 'cleaning'}
@@ -488,11 +490,11 @@ def recover_validation(tx):
         fd = tx.parent(UNIT_ROOT)
         os.unlink(unit.name, dir_fd=fd)
         os.fsync(fd)
-        run(['/usr/bin/systemctl', 'daemon-reload'], 5)
+        run(['/usr/bin/systemctl', 'daemon-reload'], SYSTEM_COMMAND_SECONDS)
     if namespace.exists():
         if identity(namespace.lstat()) != value['namespace']['identity']:
             raise Refusal('validation-resource-changed')
-        run(['/usr/sbin/ip', 'netns', 'delete', namespace.name], 5)
+        run(['/usr/sbin/ip', 'netns', 'delete', namespace.name], SYSTEM_COMMAND_SECONDS)
         if namespace.exists():
             raise Refusal('validation-cleanup-unconfirmed')
     if directory.exists():
@@ -604,9 +606,9 @@ def validate_hysteria(binary, raw, certificate, key, unit, timeout, client_name,
             for path in (cert, private, server):
                 os.chown(path, 0, gid)
                 path.chmod(0o640)
-            run(['/usr/sbin/ip', 'netns', 'add', token], 5)
-            run(['/usr/sbin/ip', '-n', token, 'link', 'set', 'lo', 'up'], 5)
-            run(['/usr/sbin/ip', '-n', token, 'addr', 'add', '192.0.2.80/32', 'dev', 'lo'], 5)
+            run(['/usr/sbin/ip', 'netns', 'add', token], SYSTEM_COMMAND_SECONDS)
+            run(['/usr/sbin/ip', '-n', token, 'link', 'set', 'lo', 'up'], SYSTEM_COMMAND_SECONDS)
+            run(['/usr/sbin/ip', '-n', token, 'addr', 'add', '192.0.2.80/32', 'dev', 'lo'], SYSTEM_COMMAND_SECONDS)
             outbound = document['outbounds'][0]['socks5']
             host, port = outbound['addr'].rsplit(':', 1)
             gateway = private_file(directory, 'gateway.json', json.dumps({
@@ -670,12 +672,12 @@ HTTPServer(('192.0.2.80', 18080), Canary).serve_forever()
             os.fsync(tx.parent(UNIT_ROOT))
             tx.record('validation.json', claim)
             claimed = True
-            run(['/usr/bin/systemctl', 'daemon-reload'], 5)
+            run(['/usr/bin/systemctl', 'daemon-reload'], SYSTEM_COMMAND_SECONDS)
             try:
                 run(['/usr/bin/systemctl', 'start', token], timeout)
             except ProbeRefused:
                 raw_state = run(['/usr/bin/systemctl', 'show', unit_path.name,
-                    '--property=Result,ExecMainStatus,LoadState'], 5).decode()
+                    '--property=Result,ExecMainStatus,LoadState'], SYSTEM_COMMAND_SECONDS).decode()
                 state = dict(row.split('=', 1) for row in raw_state.splitlines() if '=' in row)
                 code = state.get('ExecMainStatus', '')
                 if code.isdigit() and len(code) <= 3 and int(code) > 0:

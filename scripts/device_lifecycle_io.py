@@ -1,6 +1,7 @@
 """Private fleet admission and bounded runtime IO for device operations."""
 from __future__ import annotations
 
+import ast
 import base64
 import fcntl
 import importlib.util
@@ -24,6 +25,7 @@ from device_migration_receipt import HEX, UUID, matches, unique_object
 from encrypted_client_document import MAX_BYTES, private_file
 from fleet_inspection import bounded_command, select_hosts, ssh_command
 
+RESERVED_OVERRIDES = {'ansible_host', 'ansible_port', 'vpn_device_revocation', 'vpn_device_retained_publisher'}
 NAME = re.compile(r'[A-Za-z0-9_-]{1,64}\Z')
 ALIAS = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z')
 PATH = re.compile(r'/[A-Za-z0-9_./-]+\Z')
@@ -34,6 +36,27 @@ def safe_path(value):
         raise ValueError('invalid-device-input-path')
     path = Path(value)
     return str(path.parent.resolve(strict=True) / path.name)
+
+
+def typed_inventory_value(value):
+    try:
+        return ast.literal_eval(value)
+    except (ValueError, SyntaxError):
+        return value
+
+
+def validate_overrides(path):
+    spec = importlib.util.spec_from_file_location('device_extra_vars', ROOT / 'scripts/validate-ansible-extra-vars.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    private_bytes(path)
+    try:
+        module.validate(Path(path))
+    except (OSError, UnicodeError, yaml.YAMLError, ValueError):
+        raise ValueError('invalid-device-overrides') from None
+    # The lifecycle owns the frozen transport and the revocation intent.
+    if set(yaml.safe_load(private_bytes(path))) & RESERVED_OVERRIDES:
+        raise ValueError('reserved-device-override')
 
 
 def load_manifest(path):
@@ -51,7 +74,7 @@ def load_manifest(path):
         raise ValueError('invalid-device-fleet')
     identities = set()
     for node in nodes:
-        if (not isinstance(node, dict) or set(node) != {'host', 'alias', 'cohort', 'secrets_file', 'awg_instance', 'xray_cohorts'}
+        if (not isinstance(node, dict) or set(node) - {'overrides'} != {'host', 'alias', 'cohort', 'secrets_file', 'awg_instance', 'xray_cohorts'}
                 or not matches(HOST, node['host']) or not matches(ALIAS, node['alias'])
                 or not matches(re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,62}\Z'), node['cohort'])
                 or node['awg_instance'] is not None and not matches(re.compile(r'[A-Za-z0-9_=+.-]{1,15}\Z'), node['awg_instance'])
@@ -60,6 +83,9 @@ def load_manifest(path):
                 or len(set(node['xray_cohorts'])) != len(node['xray_cohorts'])):
             raise ValueError('invalid-device-node')
         node['secrets_file'] = safe_path(node['secrets_file'])
+        if 'overrides' in node:
+            node['overrides'] = safe_path(node['overrides'])
+            validate_overrides(node['overrides'])
         info = os.stat(node['secrets_file'], follow_symlinks=False)
         identity = (info.st_dev, info.st_ino)
         if identity in identities:
@@ -178,7 +204,8 @@ class LocalIO:
             self.hosts[node['host']] = host
             self.commands[node['host']] = ssh_command(host, manifest['known_hosts'])
         self.fences = {path: sha(private_bytes(path)) for path in {self.manifest_path, manifest['inventory'], manifest['known_hosts'],
-                                                                *[host['key'] for host in self.hosts.values()]}}
+                                                                *[host['key'] for host in self.hosts.values()],
+                                                                *[node['overrides'] for node in manifest['nodes'] if 'overrides' in node]}}
         self.publications = {pub['host']: pub for pub in manifest['publishers']}
         required = set()
         for host, node in self.nodes.items():
@@ -264,16 +291,21 @@ class LocalIO:
             line = node['alias'] + ' ' + ' '.join(key + '=' + shlex.quote(str(value)) for key, value in variables.items())
             inventory = deploy.private_file(directory / 'inventory.ini', (f'[vpn]\n{line}\n[vpn-{node["cohort"]}]\n{node["alias"]}\n').encode())
             secret_file = deploy.private_file(directory / 'secrets.yaml', yaml.safe_dump(document).encode())
-            extra_vars = ''
+            overrides = yaml.safe_load(private_bytes(node['overrides'])) if 'overrides' in node else {}
             if revocation is not None:
-                overrides = {'vpn_device_revocation': revocation}
+                overrides['vpn_device_revocation'] = revocation
                 if host in self.retained_publishers:
                     overrides['vpn_device_retained_publisher'] = True
-                extra_vars = str(deploy.private_file(directory / 'revocation.yaml', yaml.safe_dump(overrides).encode()))
+            extra_vars = str(deploy.private_file(directory / 'extra-vars.yaml', yaml.safe_dump(overrides).encode())) if overrides else ''
+            metadata = deploy.private_file(directory / 'metadata.json', json.dumps(
+                {key: typed_inventory_value(value) for key, value in frozen['variables'].items()}).encode())
             environment = {key: value for key, value in os.environ.items() if key in {
                 'PATH', 'HOME', 'LANG', 'LC_ALL', 'TMPDIR', 'SOPS_AGE_KEY_FILE'}}
             environment.update(ANSIBLE_INVENTORY=str(inventory), VPN_SECRETS_FILE=str(secret_file), ANSIBLE_HOST_KEY_CHECKING='true',
-                               ANSIBLE_SSH_ARGS=transport['ansible_ssh_args'], ANSIBLE_SSH_COMMON_ARGS='', ANSIBLE_SSH_EXTRA_ARGS='')
+                               ANSIBLE_SSH_ARGS=transport['ansible_ssh_args'], ANSIBLE_SSH_COMMON_ARGS='', ANSIBLE_SSH_EXTRA_ARGS='',
+                       # check-certs cannot resolve the frozen inventory's connection options.
+                       VPN_CERT_VARS_FILES=json.dumps([str(ROOT / 'ansible/group_vars' / (group + '.yml')) for group in ('all', 'vpn', 'vpn-' + node['cohort'])]
+                                                      + [str(metadata), str(secret_file)] + ([extra_vars] if extra_vars else [])))
             provider, env = node['host'].split(':')
             goals = ['verify'] if verify_only else ['rotate-credentials-check'] if check else ['rotate-credentials', 'verify']
             for goal in goals:
