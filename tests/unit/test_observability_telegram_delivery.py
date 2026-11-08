@@ -246,7 +246,8 @@ def _telegram_html(message: str) -> str:
             self.open.append(tag)
 
         def handle_endtag(self, tag) -> None:
-            assert self.open.pop() == tag
+            opened = self.open.pop()
+            assert opened == tag
 
         def handle_data(self, data) -> None:
             self.text.append(data)
