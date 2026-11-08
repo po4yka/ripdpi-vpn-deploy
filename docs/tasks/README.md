@@ -36,7 +36,8 @@ is shallow. Do not search unrelated local branches or dirty archive files:
 history_ref=$(git rev-parse --verify 'origin/main^{commit}') || exit 1
 git merge-base --is-ancestor "$history_ref" HEAD || exit 1
 [ "$(git rev-parse --is-shallow-repository)" = false ] || exit 1
-task_id='MON-1788008977760206' # Replace with the exact ID being investigated.
+# Replace with the exact ID being investigated.
+task_id='MON-1788008977760206'
 git log "$history_ref" --format='%H %s' --name-status \
   -G "^id: ${task_id}$" -- docs/tasks/issues/
 git grep -l -F -e "$task_id" "$history_ref" -- openspec/changes/archive

@@ -129,7 +129,8 @@ A fresh node needs recovery, enrollment and SSH admission before runtime deploym
 Start with the [quickstart prerequisites](docs/tutorials/quickstart.md). This block needs prepared private inputs; it is not a full bootstrap recipe.
 
 ```bash
-export PROVIDER=upcloud          # or hetzner, vultr, scaleway
+# or hetzner, vultr, scaleway
+export PROVIDER=upcloud
 (
   set -e
   trap 'make clean || exit $?' EXIT

@@ -91,6 +91,9 @@ def collect(*, docker=False):
         result.append(version_result(name, pins[pin] if pin in pins else package_pins[pin], actual))
     for name in ('sops', 'age', 'jq', 'ssh'):
         result.append({'name': name, 'status': 'ok' if shutil.which(name) else 'missing'})
+    # Operator scripts use associative arrays and negative indexes; macOS ships Bash 3.2.
+    bash = probe(['bash', '-c', '(( BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] >= 403 )) && echo ok'])
+    result.append({'name': 'bash-4.3', 'status': 'ok' if bash and bash.strip() == 'ok' else 'missing-or-too-old'})
     packages = []
     for name, expected in requirements:
         try:

@@ -27,6 +27,12 @@ the documentation rules are in [docs/STYLE.md](docs/STYLE.md). Please read
 
 ## First-time setup
 
+Operator scripts need Bash 4.3 or later as `bash` in `PATH`, and
+`make check-prereqs` checks this. macOS includes Bash 3.2, so install a newer
+Bash there. You can paste documented commands into Bash or zsh. In zsh, run
+`setopt interactive_comments` first: by default, interactive zsh does not
+ignore `#` comment lines.
+
 The complete local-gate reference setup targets a disposable **Ubuntu
 24.04 x86-64 developer VM**, matching the hosted runner OS. Start with
 `mise`, Git and Make available and run from the repository root. System
@@ -101,8 +107,7 @@ export ANSIBLE_COLLECTIONS_PATH="$PWD/.ansible/collections"
 mise exec "${setup_gate_tools[@]}" -- ansible-galaxy collection install \
   -r requirements.yml --collections-path "$ANSIBLE_COLLECTIONS_PATH"
 mise exec "${setup_gate_tools[@]}" -- make task-tools
-IFS=, read -r -a setup_provider_roots <<< "$setup_providers"
-for setup_provider in "${setup_provider_roots[@]}"; do
+for setup_provider in $(printf '%s' "$setup_providers" | tr ',' ' '); do
   mise exec "${setup_gate_tools[@]}" -- terraform \
     -chdir="terraform/providers/$setup_provider" init -backend=false
 done

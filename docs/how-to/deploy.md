@@ -49,7 +49,8 @@ When you've edited a role template, group_vars, or the secrets file, and want to
 For this existing-node workflow, select and export its reviewed private key before any installer or inventory generation. For staging, use that workflow's key selection below instead; reusable blocks preserve the selected key.
 
 ```bash
-export ANSIBLE_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/vpn_deploy" # Replace with this node's reviewed key.
+# Replace with this node's reviewed key.
+export ANSIBLE_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/vpn_deploy"
 ```
 
 | Artifact | Producer | When needed / input or output |
@@ -128,7 +129,8 @@ flowchart LR
 > Both blocks use live SSH and decrypted secrets. `make decrypt` writes plaintext to `SECRETS_FILE`. Run `make clean` yourself after SIGKILL, power loss or an abandoned run.
 
 ```bash
-deploy_alias='vpn-p0-node-a' # Replace with the exact inventory alias.
+# Replace with the exact inventory alias.
+deploy_alias='vpn-p0-node-a'
 : "${ANSIBLE_SSH_PRIVATE_KEY_FILE:?Select and export the reviewed key for this node first}"
 export DEPLOY_SSH_CONTEXTS_FILE="$HOME/.config/vpn-provision/ssh-contexts.json"
 export DEPLOY_PROMOTION_CONFIG_FILE="$HOME/.config/vpn-provision/promotion-configs.json"
@@ -142,8 +144,10 @@ unset TAILSCALE_AUTH_KEY
   trap 'exit 129' HUP
   trap 'exit 131' QUIT
   set -e
-  make decrypt           # writes the configured SECRETS_FILE, mode 0600
-  make validate          # gitleaks + lint must pass
+  # writes the configured SECRETS_FILE, mode 0600
+  make decrypt
+  # gitleaks + lint must pass
+  make validate
   make dry-run ANSIBLE_LIMIT="$deploy_alias" ANSIBLE_TAGS=
 )
 ```
@@ -160,7 +164,8 @@ Continue in the same shell only after the preflight block succeeds and you have 
   set -e
   make deploy ANSIBLE_LIMIT="$deploy_alias" ANSIBLE_TAGS=
   make verify ANSIBLE_LIMIT="$deploy_alias"
-  make source-drift ANSIBLE_LIMIT="$deploy_alias" # Also run by deploy/verify.
+  # Also run by deploy/verify.
+  make source-drift ANSIBLE_LIMIT="$deploy_alias"
 )
 ```
 
@@ -206,14 +211,18 @@ Timeout, DNS child interruption or CA failure uses normal protected ingress/fire
 
 ```bash
 : "${ANSIBLE_SSH_PRIVATE_KEY_FILE:?Select and export the reviewed key for this node first}"
-make init              # initialize/select the chosen PROVIDER + ENV workspace
-make plan              # READ THE PLAN
+# initialize/select the chosen PROVIDER + ENV workspace
+make init
+# READ THE PLAN
+make plan
 # If it shows "destroy and recreate" on the server, STOP — that's
 # infrastructure rollback, not config rollback. See rollback.md
 # § "Level 3 — blue-green VPS replacement".
-make apply             # only if the plan was non-destructive
+# only if the plan was non-destructive
+make apply
 make inventory
-make wait              # cloud-init must finish before either guest installer
+# cloud-init must finish before either guest installer
+make wait
 # Re-establish the current recovery/bootstrap prerequisites above if the node
 # or inventory changed; do not copy management overrides from an old snapshot.
 # Continue with the ordinary re-deploy recipe above, including its private inputs.
@@ -242,7 +251,8 @@ SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml \
   trap 'exit 129' HUP
   trap 'exit 131' QUIT
   make decrypt ENV="$e" || { rc=$?; echo "decrypt failed; nothing rotated" >&2; exit "$rc"; }
-  for node in <alias-1> <alias-2>; do   # every node of the environment
+  # every node of the environment
+  for node in <alias-1> <alias-2>; do
     make rotate-credentials ENV="$e" ANSIBLE_LIMIT="$node" &&
       make verify ENV="$e" ANSIBLE_LIMIT="$node" ||
       { rc=$?; echo "stopped at $node" >&2; exit "$rc"; }
@@ -293,8 +303,10 @@ Export the selections in the shell used for all commands below. Replace the tech
 
 ```bash
 export PROVIDER='upcloud'
-export ENV='ci-staging-<technical-id>' # Replace the technical suffix.
-export ANSIBLE_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/vpn_deploy_staging" # Reviewed key for this node.
+# Replace the technical suffix.
+export ENV='ci-staging-<technical-id>'
+# Reviewed key for this node.
+export ANSIBLE_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/vpn_deploy_staging"
 ```
 
 Keep this environment selected for the node lifetime; the cleanup and recovery guards require the `ci-staging-` prefix. An unexported shell assignment does not reach Make, which otherwise defaults to production. Then:
@@ -306,9 +318,11 @@ Keep this environment selected for the node lifetime; the cleanup and recovery g
 For production, explicitly export the reviewed production selections in the shell that will run the new preflight:
 
 ```bash
-export PROVIDER='upcloud' # Replace with the reviewed production provider.
+# Replace with the reviewed production provider.
+export PROVIDER='upcloud'
 export ENV='prod'
-export ANSIBLE_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/vpn_deploy" # Reviewed production key.
+# Reviewed production key.
+export ANSIBLE_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/vpn_deploy"
 ```
 
 Repeat the applicable Terraform and deployment prerequisites with the production alias, secrets, promotion inputs and fresh failure-receipt sinks. Run and review a new production preflight before its deploy block. `ENV` selects the Terraform environment; it does not narrow Ansible inventory selection. Keep the explicit `ANSIBLE_LIMIT` and matching private mappings from the ordinary recipe for each environment.

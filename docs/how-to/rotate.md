@@ -161,7 +161,8 @@ ssh-copy-id -i ~/.ssh/vpn_deploy_new.pub deploy@<vps>
 
 # Then revoke the old key on the server
 ssh -i ~/.ssh/vpn_deploy_new deploy@<vps>
-$EDITOR ~/.ssh/authorized_keys   # remove the old key line
+# remove the old key line
+$EDITOR ~/.ssh/authorized_keys
 exit
 
 # From now on, use the new key

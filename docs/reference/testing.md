@@ -173,7 +173,8 @@ Use an authenticated `gh` from this repository root. For a merged source revisio
     --commit "$ci_source_sha" --limit 50 \
     --json databaseId,headSha,event,headBranch,status,conclusion,url \
     --jq '.[] | {databaseId,headSha,event,headBranch,status,conclusion,url}' || exit 1
-  read -r -p 'Run ID from this list: ' ci_run_id || exit 1
+  printf 'Run ID from this list: '
+  read -r ci_run_id || exit 1
   case "$ci_run_id" in ''|*[!0-9]*) exit 2 ;; esac
   ci_identity=$(gh run view "$ci_run_id" \
     --json headSha,event,headBranch,workflowName \
@@ -284,7 +285,8 @@ Renovate does not yet support Ansible Galaxy. Once a quarter, run:
 grep -A1 'name:' requirements.yml
 
 # Check upstream for newer versions
-ansible-galaxy collection list  # local cache
+# local cache
+ansible-galaxy collection list
 # or browse https://galaxy.ansible.com/<collection>
 
 # Bump exact pins in requirements.yml; install fresh

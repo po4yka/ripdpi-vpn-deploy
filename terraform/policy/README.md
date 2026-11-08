@@ -30,8 +30,10 @@ Repeat the Terraform test step with `hetzner` and `vultr` as the `-chdir` target
 ## Make targets
 
 ```sh
-make tf-test                          # native mock_provider tests, all four roots
-make PROVIDER=<p> ENV=<e> tf-conftest # plan the environment and evaluate these policies
+# native mock_provider tests, all four roots
+make tf-test
+# plan the environment and evaluate these policies
+make PROVIDER=<p> ENV=<e> tf-conftest
 ```
 
 `tf-conftest` plans through `scripts/terraform-env.sh` (requires the environment tfvars and provider credentials) and runs conftest with `--all-namespaces` against the rendered plan JSON. The shared `scripts/check-tf-plan.sh <plan.json>` gate requires a nonempty evaluation of every policy family. It rejects malformed reports as well as policy violations. Management-port checks include containing port intervals and provider defaults for unrestricted source addresses.

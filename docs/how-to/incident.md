@@ -111,7 +111,8 @@ PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh init
 PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh import upcloud_server.vpn <SERVER_UUID>
 PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh import upcloud_firewall_rules.vpn <SERVER_UUID>
 # Validate state matches reality
-PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh plan       # should show no changes
+# should show no changes
+PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh plan
 ```
 
 Find `<SERVER_UUID>` in the UpCloud console (server details → "ID").
