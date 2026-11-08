@@ -3,7 +3,7 @@ task_id: SCR-1794116837161459
 change: scr-1794116837161459-device-private-delivery
 commit_sha: null
 local: passed
-local_evidence: On task/device-private-delivery over origin/main 79c3a7fe, pytest over tests/unit/test_device_lifecycle*.py and test_device_migration*.py gave 294 passed and 16 errors; all 16 errors are the Linux-only tests in test_device_lifecycle_probe_native.py, which assert sys.platform == 'linux' on macOS. make docs-check passed. mise exec -- make -k -j 4 check failed only in test-unit with 50 failures in test_sshd_ownership, test_sshd_migrate, test_evidence_ssh_admission, test_watchdog_templates and test_workspace_status (11598 passed); a clean origin/main worktree on the same machine fails the same 50, and no device lifecycle or migration test failed. task-check, validate and the other gate checks passed.
+local_evidence: On task/device-private-delivery over origin/main 79c3a7fe, pytest over tests/unit/test_device_lifecycle*.py and test_device_migration*.py gave 294 passed and 16 errors; all 16 errors are the Linux-only tests in test_device_lifecycle_probe_native.py, which assert sys.platform == 'linux' on macOS. make docs-check passed. mise exec -- make -k -j 4 check failed only in test-unit with 50 failures in test_sshd_ownership, test_sshd_migrate, test_evidence_ssh_admission, test_watchdog_templates and test_workspace_status (11598 passed); an earlier clean worktree of cffb65b0 on the same machine failed in the same test files, but this run was not compared with a baseline test by test. No device lifecycle or migration test failed. task-check, validate and the other gate checks passed.
 remote_ci: required
 remote_ci_evidence: null
 dry_run: not_applicable
