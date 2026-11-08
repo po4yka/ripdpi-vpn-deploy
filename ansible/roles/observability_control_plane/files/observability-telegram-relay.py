@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import UTC, datetime
 import hashlib
 import hmac
 import html
@@ -35,6 +36,8 @@ SOURCE_ID = re.compile(r"[a-f0-9]{40,64}\Z")
 FINGERPRINT = re.compile(r"[a-f0-9]{16,64}\Z")
 ALIAS = re.compile(r"[A-Za-z0-9_.:/ -]{1,160}\Z")
 ROLE = re.compile(r"[a-z][a-z0-9_-]{0,63}\Z")
+RUNBOOK = re.compile(r"docs/[a-z0-9/_-]{1,150}\.md(?:#[a-z0-9-]{1,150})?\Z")
+RUNBOOK_BASE = "https://github.com/po4yka/ripdpi-vpn-deploy/blob/main/"
 SERVICE_ALERTS = {
     "ObservabilityRequiredServiceNotActive",
     "ObservabilityRequiredServiceEvidenceMissing",
@@ -178,8 +181,9 @@ def parse_payload(raw: bytes, maximum: int = MAX_PAYLOAD_BYTES) -> dict[str, obj
             or alert["labels"].get("alertname") in SERVICE_ALERTS
         ):
             _bounded_string(alert["labels"].get("role"), pattern=ROLE, maximum=64)
-        for key in ("summary", "evidence_class", "runbook"):
+        for key in ("summary", "evidence_class"):
             _bounded_string(alert["annotations"].get(key))
+        _bounded_string(alert["annotations"].get("runbook"), pattern=RUNBOOK)
         _bounded_string(alert["startsAt"])
         _bounded_string(alert["endsAt"])
         # Prometheus embeds the complete rule expression. The request-wide
@@ -194,47 +198,86 @@ def _escaped(value: object) -> str:
     return html.escape(str(value), quote=False)
 
 
+def _moment(value: object) -> datetime | None:
+    try:
+        return datetime.fromisoformat(str(value)).astimezone(UTC)
+    except (ValueError, OverflowError):
+        return None
+
+
+def _clock(value: object) -> str:
+    moment = _moment(value)
+    # A timestamp format surprise must not cost the alert itself.
+    return moment.strftime("%d %b %H:%M UTC") if moment else _escaped(value)
+
+
+def _duration(starts_at: object, ends_at: object) -> str:
+    start, end = _moment(starts_at), _moment(ends_at)
+    if start is None or end is None:
+        return "unknown"
+    hours, seconds = divmod(max(int((end - start).total_seconds()), 0), 3600)
+    minutes = seconds // 60
+    return f"{hours}h {minutes:02d}m" if hours else f"{minutes}m"
+
+
 def _line(alert: dict[str, object]) -> str:
     labels = alert["labels"]
     annotations = alert["annotations"]
-    prefix = "-" if alert["status"] == "firing" else "- recovered"
-    role = "/" + _escaped(labels["role"]) if "role" in labels else ""
-    timestamp = (
-        "started=" + _escaped(alert["startsAt"])
-        if alert["status"] == "firing"
-        else "recovered=" + _escaped(alert["endsAt"])
-    )
-    return (
-        f"{prefix} {_escaped(labels['environment'])}/{_escaped(labels['node'])}/"
-        f"{_escaped(labels['component'])}{role}: {_escaped(annotations['summary'])} "
-        f"[{_escaped(annotations['evidence_class'])}] "
-        f"{_escaped(annotations['runbook'])} {timestamp}"
-    )
+    subject = [f"<code>{_escaped(labels['role'])}</code>"] if "role" in labels else []
+    if alert["status"] == "firing":
+        if "value" in annotations:
+            subject.append(_escaped(annotations["value"]))
+        subject.append("since " + _clock(alert["startsAt"]))
+    else:
+        subject.append(
+            "recovered " + _clock(alert["endsAt"])
+            + " after " + _duration(alert["startsAt"], alert["endsAt"])
+        )
+    return "\u2022 " + " ".join(subject)
 
 
 def render_message(payload: dict[str, object], *, max_alerts: int = MAX_ALERTS) -> str:
     if max_alerts != MAX_ALERTS:
         raise Refusal("message-bound")
     status = payload["status"]
-    header = (
-        ("FIRING" if status == "firing" else "RESOLVED")
-        + ": "
-        + _escaped(payload["commonLabels"]["alertname"])
-        + " source="
-        + _escaped(payload["commonAnnotations"]["source_generation"])
-    )
+    # Alertmanager group_by holds alertname, environment, node, component and
+    # severity, so the first alert speaks for the whole group.
+    first = payload["alerts"][0]
+    labels = first["labels"]
+    annotations = first["annotations"]
+    severity = f" \u00b7 {_escaped(labels['severity'])}" if "severity" in labels else ""
+    head = [
+        f"<b>{'FIRING' if status == 'firing' else 'RESOLVED'}</b>{severity}",
+        f"<b>{_escaped(annotations['summary'])}</b>",
+        f"<code>{_escaped(labels['environment'])}/{_escaped(labels['node'])}</code>"
+        f" \u00b7 {_escaped(labels['component'])}",
+    ]
+    runbook = html.escape(RUNBOOK_BASE + annotations["runbook"], quote=True)
+    source = _escaped(payload["commonAnnotations"]["source_generation"])[:8]
+    # Prometheus can still serve an older rule generation than this relay;
+    # a missing action must not cost the alert.
+    advice = []
+    if status != "firing":
+        advice = ["Recovered. No action needed."]
+    elif "action" in annotations:
+        advice = [f"<b>Do:</b> {_escaped(annotations['action'])}"]
+    tail = [
+        *advice,
+        f'<a href="{runbook}">Runbook</a>'
+        f" \u00b7 <code>{_escaped(payload['commonLabels']['alertname'])}</code>"
+        f" \u00b7 source <code>{source}</code>",
+    ]
     lines: list[str] = []
     omitted = int(payload["truncatedAlerts"])
     for alert in payload["alerts"]:
         candidate = _line(alert)
-        footer = f"... omitted {omitted} alerts" if omitted else ""
-        projected = "\n".join([header, *lines, candidate, footer]).rstrip()
-        if len(projected) > MAX_MESSAGE_CHARS:
+        note = [f"... omitted {omitted} alerts"] if omitted else []
+        if len("\n".join([*head, *lines, candidate, *note, *tail])) > MAX_MESSAGE_CHARS:
             omitted += 1
             continue
         lines.append(candidate)
-    footer = f"... omitted {omitted} alerts" if omitted else ""
-    message = "\n".join([header, *lines, footer]).rstrip()
+    note = [f"... omitted {omitted} alerts"] if omitted else []
+    message = "\n".join([*head, *lines, *note, *tail])
     if not lines or len(message) > MAX_MESSAGE_CHARS:
         raise Refusal("message-size")
     return message

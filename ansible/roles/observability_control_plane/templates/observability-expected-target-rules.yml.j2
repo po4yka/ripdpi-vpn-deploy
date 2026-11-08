@@ -17,8 +17,9 @@ groups:
           incident_family: expected-target-family
           evidence_class: required-family-absent
           source_generation: "{{ observability_control_plane.expected_targets.expected_source_revision }}"
-          summary: Required bounded evidence family is absent for an expected target.
-          runbook: docs/how-to/incident.md
+          summary: A required metric family is absent for an expected target.
+          runbook: docs/how-to/monitoring-alerts.md#expected-target-family
+          action: "Run make observability-status. Check that the agent on this target publishes the named family."
 {% endfor %}
 {% endfor %}
       - alert: ObservabilityExpectedTargetMissing
@@ -44,8 +45,9 @@ groups:
           incident_family: expected-target-absence
           evidence_class: no-required-family
           source_generation: "{{ observability_control_plane.expected_targets.expected_source_revision }}"
-          summary: Expected observability target has no required producer family.
-          runbook: docs/how-to/incident.md
+          summary: An expected target publishes no required metrics.
+          runbook: docs/how-to/monitoring-alerts.md#expected-target-absence
+          action: "The target sends no data. Check its agent and its private path to the collector."
       - alert: ObservabilityTargetEvidenceStale
         expr: vpn_observability_evidence_state{state="stale"} == 1
         for: 3m
@@ -57,8 +59,9 @@ groups:
           incident_family: target-evidence-freshness
           evidence_class: stale-evidence
           source_generation: "{{ observability_control_plane.expected_targets.expected_source_revision }}"
-          summary: Observability target evidence is stale.
-          runbook: docs/how-to/incident.md
+          summary: Target evidence is stale.
+          runbook: docs/how-to/monitoring-alerts.md#target-evidence-freshness
+          action: "Check the agent and adapter timers on this target."
       - alert: ObservabilitySourceIdentityMismatch
         expr: >-
           (vpn_observability_node_manifest_identity{state="mismatch"} == 1)
@@ -73,8 +76,9 @@ groups:
           incident_family: source-identity
           evidence_class: identity-mismatch
           source_generation: "{{ observability_control_plane.expected_targets.expected_source_revision }}"
-          summary: Node source or deployable identity differs from the expected candidate.
-          runbook: docs/how-to/incident.md
+          summary: Node runs a different source revision or deployable digest than expected.
+          runbook: docs/how-to/monitoring-alerts.md#source-identity
+          action: "Expected during a rollout. If it persists after the deploy, run make verify for this node."
       - alert: ObservabilityControlPlaneResourceOrPipelineUnhealthy
         expr: >-
           vpn_observability_evidence_state{role=~"tsdb-capacity|expected-target-pipeline",state!="fresh"} == 1
@@ -88,4 +92,5 @@ groups:
           evidence_class: resource-or-pipeline-unhealthy
           source_generation: "{{ observability_control_plane.expected_targets.expected_source_revision }}"
           summary: Control-plane capacity or expected-target pipeline is unhealthy.
-          runbook: docs/how-to/incident.md
+          runbook: docs/how-to/monitoring-alerts.md#control-plane-health
+          action: "Run make observability-status. Check collector disk use and the expected-target adapter."

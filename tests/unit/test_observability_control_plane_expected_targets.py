@@ -292,7 +292,7 @@ def test_promtool_rules_require_matching_family_and_resolve_when_evidence_arrive
                 "        alertname: ObservabilityRequiredFamilyMissing_vpn_p0_edge_vpn_watchdog_collection_success",
                 "        exp_alerts:",
                 "          - exp_labels: {severity: warning, component: expected-target, environment: staging, node: vpn-p0, role: edge}",
-                "            exp_annotations: {incident_family: expected-target-family, evidence_class: required-family-absent, source_generation: cccccccccccccccccccccccccccccccccccccccc, summary: Required bounded evidence family is absent for an expected target., runbook: docs/how-to/incident.md}",
+                "            exp_annotations: {incident_family: expected-target-family, evidence_class: required-family-absent, source_generation: cccccccccccccccccccccccccccccccccccccccc, summary: A required metric family is absent for an expected target., runbook: docs/how-to/monitoring-alerts.md#expected-target-family, action: \"Run make observability-status. Check that the agent on this target publishes the named family.\"}",
                 "      - eval_time: 4m",
                 "        alertname: ObservabilityRequiredFamilyMissing_vpn_p2_edge_vpn_watchdog_collection_success",
                 "        exp_alerts: []",
@@ -300,7 +300,7 @@ def test_promtool_rules_require_matching_family_and_resolve_when_evidence_arrive
                 "        alertname: ObservabilityExpectedTargetMissing",
                 "        exp_alerts:",
                 "          - exp_labels: {severity: warning, component: expected-target, environment: staging, node: vpn-p0, role: edge}",
-                "            exp_annotations: {incident_family: expected-target-absence, evidence_class: no-required-family, source_generation: cccccccccccccccccccccccccccccccccccccccc, summary: Expected observability target has no required producer family., runbook: docs/how-to/incident.md}",
+                "            exp_annotations: {incident_family: expected-target-absence, evidence_class: no-required-family, source_generation: cccccccccccccccccccccccccccccccccccccccc, summary: An expected target publishes no required metrics., runbook: docs/how-to/monitoring-alerts.md#expected-target-absence, action: \"The target sends no data. Check its agent and its private path to the collector.\"}",
                 "      - eval_time: 5m",
                 "        alertname: ObservabilityExpectedTargetMissing",
                 "        exp_alerts: []",
@@ -347,13 +347,15 @@ def test_collector_adapter_state_alerts_match_relabeled_ingest_node(tmp_path: Pa
         for alertname, role, state, annotations in [
             ("ObservabilitySourceIdentityMismatch", "source-revision", "mismatch",
              {"incident_family": "source-identity", "evidence_class": "identity-mismatch", "source_generation": "c" * 40,
-              "summary": "Node source or deployable identity differs from the expected candidate.",
-              "runbook": "docs/how-to/incident.md"}),
+              "summary": "Node runs a different source revision or deployable digest than expected.",
+              "runbook": "docs/how-to/monitoring-alerts.md#source-identity",
+              "action": "Expected during a rollout. If it persists after the deploy, run make verify for this node."}),
             ("ObservabilityControlPlaneResourceOrPipelineUnhealthy", "tsdb-capacity", "stale",
              {"incident_family": "control-plane-health", "evidence_class": "resource-or-pipeline-unhealthy",
               "source_generation": "c" * 40,
               "summary": "Control-plane capacity or expected-target pipeline is unhealthy.",
-              "runbook": "docs/how-to/incident.md"}),
+              "runbook": "docs/how-to/monitoring-alerts.md#control-plane-health",
+              "action": "Run make observability-status. Check collector disk use and the expected-target adapter."}),
         ]
     ]
     (tmp_path / "rules.test.yml").write_text(yaml.safe_dump({
@@ -493,7 +495,9 @@ def test_rules_are_prometheus_rule_documents_without_notification_routes() -> No
             assert rule["annotations"]["incident_family"]
             assert rule["annotations"]["evidence_class"]
             assert rule["annotations"]["source_generation"] == "c" * 40
-            assert rule["annotations"]["runbook"] == "docs/how-to/incident.md"
+            assert rule["annotations"]["runbook"] == (
+                "docs/how-to/monitoring-alerts.md#" + rule["annotations"]["incident_family"]
+            )
     template = (
         ROLE / "templates/observability-expected-target-rules.yml.j2"
     ).read_text()
