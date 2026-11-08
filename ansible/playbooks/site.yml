@@ -297,6 +297,9 @@
           tags: [firewall, always]
           vars:
             firewall_site_transaction: true
+        - name: Prove fresh SSH admission after the initial firewall publication
+          ansible.builtin.import_tasks: tasks/fresh-ssh-proof.yml
+          tags: [always]
         - name: Reconcile intrusion_prevention prerequisites
           ansible.builtin.import_role:
             name: intrusion_prevention
@@ -370,6 +373,9 @@
         - name: Admit protected transports after complete frontend staging
           ansible.builtin.import_tasks: tasks/transport-egress-activate.yml
           tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
+        - name: Prove fresh SSH admission before the protected commit
+          ansible.builtin.import_tasks: tasks/fresh-ssh-proof.yml
+          tags: [always]
         - name: Commit the ready protected ingress and egress composition
           ansible.builtin.import_tasks: tasks/transport-ingress-commit.yml
           tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]

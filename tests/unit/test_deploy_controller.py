@@ -6,6 +6,7 @@ contacting hosts. Separate parity cases use the installed Ansible locally.
 
 import ast
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -1358,7 +1359,9 @@ assert all(options[index] in ('-F', '-o') for index in range(0, len(options), 2)
 result = subprocess.run(['/usr/bin/ssh', '-G', *options, transport['ansible_host']],
                         text=True, capture_output=True, check=True, timeout=5)
 config = dict(line.split(' ', 1) for line in result.stdout.splitlines())
-pathlib.Path({str(record)!r}).write_text(json.dumps({{'config': config, 'transport': transport}}))
+sockets = pathlib.Path(config['controlpath']).parent
+mode = sockets.stat().st_mode & 0o777
+pathlib.Path({str(record)!r}).write_text(json.dumps({{'config': config, 'transport': transport, 'mode': mode}}))
 """, 0o700)
     context = {"user": "deploy", "host": "node-one", "addr": "198.51.100.44",
                "laddr": "192.0.2.1", "lport": 2022}
@@ -1374,10 +1377,20 @@ pathlib.Path({str(record)!r}).write_text(json.dumps({{'config': config, 'transpo
     assert config["hostkeyalias"] == "[192.0.2.1]:2022"
     assert config["stricthostkeychecking"] == "true" and config["batchmode"] == "yes"
     assert config["identityfile"] == transport["ansible_ssh_private_key_file"]
-    assert config["controlmaster"] == "false" and config["identityagent"] == "none"
+    assert config["identityagent"] == "none"
+    # Ansible shares one run-owned master; readiness keeps a fresh connection.
+    assert config["controlmaster"] == "auto" and config["controlpersist"] == "300"
+    sockets = Path(config["controlpath"]).parent
+    assert observed["mode"] == 0o700 and not sockets.exists()
+    # ssh binds ControlPath plus a 17-byte random suffix; macOS limits socket paths to 104 bytes.
+    assert len(config["controlpath"]) + 17 < 104
+    proof = transport["deploy_fresh_ssh_argv"]
+    assert {"ControlPath=none", "ControlMaster=no", "ControlPersist=no"} <= set(proof)
+    assert proof[-1] == "sudo -n /usr/bin/python3 -I -B -S -"
     assert transport["ansible_ssh_common_args"] == transport["ansible_ssh_extra_args"] == ""
     ssh = next(entry["args"] for entry in calls(workspace) if entry["program"] == "ssh")
     assert ssh[-2] == config["hostname"] and ssh[ssh.index("-p") + 1] == config["port"]
+    assert {"ControlPath=none", "ControlMaster=no", "ControlPersist=no"} <= set(ssh)
     assert "HostKeyAlias=" + config["hostkeyalias"] in ssh
     assert "UserKnownHostsFile=" + config["userknownhostsfile"] in ssh
 
@@ -1640,3 +1653,27 @@ pathlib.Path({str(record)!r}).write_text(json.dumps(transaction))
     else:
         assert result.returncode == 0, result.stderr
         assert json.loads(record.read_text())['tailnet_management'] == {'approved_sources': ['100.64.0.44']}
+
+
+def test_controller_environment_reports_task_durations(tmp_path):
+    spec = importlib.util.spec_from_file_location("deploy_controller_timing", ROOT / "scripts/deploy-controller.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, str(ROOT / "scripts"))
+    spec.loader.exec_module(module)
+    environment = module.execution_environment(ROOT, tmp_path)
+    play = tmp_path / "play.yml"
+    play.write_text("- hosts: localhost\n  connection: local\n  gather_facts: false\n  become: false\n"
+                    "  tasks:\n    - name: Timed task\n      ansible.builtin.command: 'true'\n"
+                    "      changed_when: false\n")
+    inventory = tmp_path / "inventory.ini"
+    inventory.write_text(f"localhost ansible_connection=local ansible_python_interpreter={sys.executable}\n")
+    result = subprocess.run(["ansible-playbook", "-i", str(inventory), str(play)], env=environment, cwd=tmp_path,
+                            capture_output=True, text=True, timeout=120)
+    assert result.returncode == 0, result.stdout + result.stderr
+    # profile_tasks closes the run with one duration line per task. CI unit jobs do not install the
+    # pinned collections, so there Ansible names the same callback in its load warning instead.
+    timed = re.search(r"^Timed task -+ \d+\.\d+s$", result.stdout, re.MULTILINE)
+    named = "callback plugin 'ansible.posix.profile_tasks'" in result.stderr
+    assert timed or named, result.stdout + result.stderr
+    if (ROOT / ".ansible/collections/ansible_collections/ansible/posix").is_dir():
+        assert timed, result.stdout
