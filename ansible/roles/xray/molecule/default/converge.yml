@@ -63,6 +63,11 @@
         owner: root
         group: root
         mode: '0600'
+        timeout: 60
+      register: _fixture_download
+      retries: 5
+      delay: 10
+      until: _fixture_download is succeeded
     - name: Install jq (needed by molecule verify)
       ansible.builtin.apt:
         name: jq

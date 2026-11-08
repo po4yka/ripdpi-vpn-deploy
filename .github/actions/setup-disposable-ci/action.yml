@@ -73,7 +73,7 @@ runs:
       run: |
         set -euo pipefail
         work="$(mktemp -d "$RUNNER_TEMP/deploy-tools.XXXXXXXX")"
-        curl -fsSL --connect-timeout 10 --max-time 120 \
+        curl -fsSL --retry 4 --retry-delay 10 --retry-max-time 480 --connect-timeout 10 --max-time 120 \
           "https://github.com/SagerNet/sing-box/releases/download/v${SING_BOX_VERSION}/sing-box-${SING_BOX_VERSION}-linux-amd64.tar.gz" \
           -o "$work/sing-box.tar.gz"
         echo "${SING_BOX_SHA256}  $work/sing-box.tar.gz" | sha256sum -c -
@@ -84,20 +84,20 @@ runs:
         trap 'sudo rm -rf -- "$stage"; rm -rf -- "$work"' EXIT
         sudo install -m 0755 "$work/sing-box-${SING_BOX_VERSION}-linux-amd64/sing-box" "$stage/sing-box"
         sudo mv -T "$stage/sing-box" /usr/local/bin/sing-box
-        curl -fsSL --connect-timeout 10 --max-time 120 \
+        curl -fsSL --retry 4 --retry-delay 10 --retry-max-time 480 --connect-timeout 10 --max-time 120 \
           "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_amd64.tgz" -o "$work/tailscale.tgz"
         echo "${TAILSCALE_SHA256}  $work/tailscale.tgz" | sha256sum -c -
         tar -xzf "$work/tailscale.tgz" -C "$work"
         sudo install -m 0755 "$work/tailscale_${TAILSCALE_VERSION}_amd64/tailscale" /usr/local/bin/tailscale
         sudo install -m 0755 "$work/tailscale_${TAILSCALE_VERSION}_amd64/tailscaled" /usr/local/bin/tailscaled
         conftest_url="https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}"
-        curl -fsSL --connect-timeout 10 --max-time 120 \
+        curl -fsSL --retry 4 --retry-delay 10 --retry-max-time 480 --connect-timeout 10 --max-time 120 \
           "$conftest_url/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" \
           -o "$work/conftest.tar.gz"
         echo "${CONFTEST_SHA256}  $work/conftest.tar.gz" | sha256sum -c -
         tar -xzf "$work/conftest.tar.gz" -C "$work" conftest
         sudo install -m 0755 "$work/conftest" /usr/local/bin/conftest
-        curl -fsSL --connect-timeout 10 --max-time 120 \
+        curl -fsSL --retry 4 --retry-delay 10 --retry-max-time 480 --connect-timeout 10 --max-time 120 \
           "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.amd64" -o "$work/sops"
         echo "${SOPS_SHA256}  $work/sops" | sha256sum -c -
         sudo install -m 0755 "$work/sops" /usr/local/bin/sops

@@ -59,6 +59,11 @@
         owner: root
         group: root
         mode: '0755'
+        timeout: 60
+      register: _fixture_download
+      retries: 5
+      delay: 10
+      until: _fixture_download is succeeded
     - name: Fetch verified Hysteria 2.8.2 arm64 fixture
       ansible.builtin.get_url:
         url: https://github.com/HyNetworks/hysteria/releases/download/app/v2.8.2/hysteria-linux-arm64
@@ -67,6 +72,11 @@
         owner: root
         group: root
         mode: '0755'
+        timeout: 60
+      register: _fixture_download
+      retries: 5
+      delay: 10
+      until: _fixture_download is succeeded
     - name: Fetch verified Hysteria 2.13.0 amd64 fixture
       ansible.builtin.get_url:
         url: https://github.com/po4yka/ripdpi-vpn-deploy/releases/download/runtime-go1.27.3-20261102/hysteria-linux-amd64
@@ -75,6 +85,11 @@
         owner: root
         group: root
         mode: '0755'
+        timeout: 60
+      register: _fixture_download
+      retries: 5
+      delay: 10
+      until: _fixture_download is succeeded
     - name: Fetch verified Hysteria 2.13.0 arm64 fixture
       ansible.builtin.get_url:
         url: https://github.com/po4yka/ripdpi-vpn-deploy/releases/download/runtime-go1.27.3-20261102/hysteria-linux-arm64
@@ -83,6 +98,11 @@
         owner: root
         group: root
         mode: '0755'
+        timeout: 60
+      register: _fixture_download
+      retries: 5
+      delay: 10
+      until: _fixture_download is succeeded
   roles:
     - role: hysteria
   vars_files:

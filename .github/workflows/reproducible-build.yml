@@ -61,7 +61,7 @@ jobs:
           trap 'sudo rm -rf -- "$package_root"' EXIT
           mkdir -p "$package_root/var/lib/dpkg"
           touch "$package_root/var/lib/dpkg/status"
-          curl --fail --silent --show-error --location --connect-timeout 10 --max-time 120 \
+          curl --fail --silent --show-error --location --retry 4 --retry-delay 10 --retry-max-time 480 --connect-timeout 10 --max-time 120 \
             https://github.com/rclone/rclone/releases/download/v1.75.2/rclone-v1.75.2-linux-amd64.deb \
             --output "$package_root/previous.deb"
           echo "efbfe852181f7191eb3c9043ed1ab49c9b2d0ba045c61c926a5da111c939ec5c  $package_root/previous.deb" | sha256sum -c -
@@ -215,7 +215,7 @@ jobs:
           set -euo pipefail
           ver="$PIN_VERSION"
           url="https://github.com/po4yka/ripdpi-vpn-deploy/releases/download/runtime-go1.27.3-20261102/hysteria-linux-amd64"
-          curl -fsSL -o hysteria-bin "$url"
+          curl -fsSL -o --retry 4 --retry-delay 10 --retry-max-time 480 --connect-timeout 10 --max-time 120 hysteria-bin "$url"
           asset_sha="$(sha256sum hysteria-bin | awk '{print $1}')"
           echo "release asset sha256: ${asset_sha}"
           echo "schema pin:           $PIN_SHA"
@@ -257,7 +257,7 @@ jobs:
         run: |
           set -euo pipefail
           url="https://github.com/XTLS/RealiTLScanner/releases/download/${PIN_VERSION}/RealiTLScanner-linux-64"
-          curl -fsSL -o reali "$url"
+          curl -fsSL -o --retry 4 --retry-delay 10 --retry-max-time 480 --connect-timeout 10 --max-time 120 reali "$url"
           asset_sha="$(sha256sum reali | awk '{print $1}')"
           echo "release asset sha256: ${asset_sha}"
           echo "script pin:           $PIN_SHA"

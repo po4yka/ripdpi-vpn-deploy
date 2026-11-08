@@ -386,6 +386,11 @@
         owner: "{{ runtime_release_storage_owner }}"
         group: "{{ runtime_release_storage_group }}"
         mode: "{{ '0700' if runtime_release_artifact_type == 'binary' else '0600' }}"
+        timeout: 60
+      register: _runtime_release_download
+      retries: 5
+      delay: 10
+      until: _runtime_release_download is succeeded
       when:
         - _runtime_release_needs_artifact
         - not ansible_check_mode

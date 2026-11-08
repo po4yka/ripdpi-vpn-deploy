@@ -40,3 +40,8 @@
           if ansible_facts['architecture'] == 'x86_64'
           else '562a94dd4cafcb8f179b76cfeafb76da12747c8e230bc76235bf8746cc189644' }}
         mode: "0600"
+        timeout: 60
+      register: _fixture_download
+      retries: 5
+      delay: 10
+      until: _fixture_download is succeeded
