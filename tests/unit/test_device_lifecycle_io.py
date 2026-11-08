@@ -202,6 +202,27 @@ def test_inventory_cannot_override_reviewed_transport_context(manifest, variable
         io.LocalIO(value, path)
 
 
+MONITORING_GROUPS = (
+    '\n[vpn-observability-control]\nnode-b\n[observability:children]\nvpn\nvpn-observability-control\n'
+    '[observability:vars]\nobservability_topology_b64=e30=\n'
+)
+
+
+def test_inventory_with_rendered_monitoring_groups_is_admitted(manifest):
+    value, path = manifest
+    inventory = Path(value['inventory'])
+    inventory.write_text(inventory.read_text() + MONITORING_GROUPS)
+    assert set(io.LocalIO(value, path).hosts) == {node['host'] for node in value['nodes']}
+
+
+def test_monitoring_group_does_not_excuse_a_second_transport_cohort(manifest):
+    value, path = manifest
+    inventory = Path(value['inventory'])
+    inventory.write_text(inventory.read_text() + MONITORING_GROUPS + '[vpn-second]\nnode-b\n')
+    with pytest.raises(ValueError, match='^device-inventory-identity-mismatch$'):
+        io.LocalIO(value, path)
+
+
 def test_overlapping_fleets_serialize_independently_of_journal_host(manifest):
     value, _ = manifest
     first, second = [node['secrets_file'] for node in value['nodes']]

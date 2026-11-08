@@ -162,14 +162,15 @@ class LocalIO:
         self.hosts, self.commands = {}, {}
         for host, node in ((host, node) for host in selected for node in self.nodes.values() if host['name'] == node['alias']):
             expected = select_hosts(manifest['inventory'], [node['host']], selection_kind='provider-env', include_variables=True, include_cohorts=True)[0]
-            if expected != host or host['cohorts'] != [node['cohort']]:
+            # The monitoring control group is a role membership, not a transport cohort.
+            if expected != host or [name for name in host['cohorts'] if name != 'observability-control'] != [node['cohort']]:
                 raise ValueError('device-inventory-identity-mismatch')
             allowed = {'ansible_host', 'ansible_user', 'ansible_port', 'ansible_ssh_private_key_file',
                        'ansible_python_interpreter', 'provider', 'env', 'vpn_service_address',
                        'vpn_build_environment', 'allowed_ssh_cidrs', 'terraform_public_listeners_b64',
                        'terraform_nat_source_port_range', 'server_ipv6', 'honeypot_listen_addr',
                        'observability_node_id', 'observability_capabilities', 'observability_failure_domain',
-                       'observability_topology_manifest_b64', 'real_vps_awg_nat_mode', 'vpn_subscription_only'}
+                       'observability_topology_b64', 'real_vps_awg_nat_mode', 'vpn_subscription_only'}
             if set(host['variables']) - allowed:
                 raise ValueError('unsupported-device-inventory-context-override')
             if host['variables'].get('vpn_subscription_only', 'false') not in ('true', 'false', 'True', 'False', '1', '0'):
