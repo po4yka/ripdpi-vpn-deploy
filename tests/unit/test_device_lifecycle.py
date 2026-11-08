@@ -97,7 +97,8 @@ def operation(service, tmp_path, monkeypatch, tls_server):
 
 def prepare(instance):
     review = instance.inspect()[-1]
-    assert instance.prepare(review['approval'])['phase'] == 'prepared'
+    prepared = instance.prepare(review['approval'])
+    assert prepared['phase'] == 'prepared'
 
 
 def test_issue_produces_real_encrypted_authority_grant_and_usable_private_output(operation):
@@ -355,12 +356,14 @@ def test_publisher_less_ripdpi_issue_and_refresh_deliver_only_a_private_artifact
     manifest['delivery']['output'] = str(Path(manifest['delivery']['output']).with_name('refreshed.json'))
     refresh = Lifecycle(manifest, operation.io)
     prepare(refresh)
-    assert refresh.run()['phase'] == 'complete'
+    refreshed = refresh.run()
+    assert refreshed['phase'] == 'complete'
     assert json.loads(Path(manifest['delivery']['output']).read_bytes()) == artifact
     manifest.update(id='99999999-9999-4999-8999-999999999999', action='revoke', delivery=None)
     revoke = Lifecycle(manifest, operation.io)
     prepare(revoke)
-    assert revoke.run()['phase'] == 'complete'
+    revoked = revoke.run()
+    assert revoked['phase'] == 'complete'
     final = client_payload.read_document(revoke.journal_path)
     assert all(row['name'] != 'new-phone' for item in final['amneziawg_secrets']['instances'] for row in item['peers'])
 
