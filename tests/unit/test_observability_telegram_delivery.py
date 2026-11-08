@@ -388,6 +388,24 @@ def test_drill_receipt_requires_authentication_and_a_successful_send(
     assert _drill_request(origin, authorization)["policy"] == "drill-fixture-b"
 
 
+@pytest.mark.parametrize(
+    ("status", "silent"), [("firing", False), ("resolved", True)]
+)
+def test_relay_sends_only_resolved_groups_without_a_sound(
+    drill_relay, monkeypatch, status, silent
+):
+    relay, origin, authorization = drill_relay
+    sent: list[dict[str, object]] = []
+
+    def telegram(outbound, *, timeout):
+        sent.append(json.loads(outbound.data))
+        return _Response(200, b'{"ok":true}')
+
+    monkeypatch.setattr(relay, "_open_without_redirect", telegram)
+    _drill_request(origin, authorization, _drill_payload(status))
+    assert sent[0].get("disable_notification", False) is silent
+
+
 @pytest.mark.parametrize("invalid", ["node", "policy", "batch"])
 def test_drill_receipt_ignores_unscoped_synthetic_alerts(
     drill_relay, monkeypatch, invalid

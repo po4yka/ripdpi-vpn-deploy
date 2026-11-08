@@ -72,3 +72,6 @@ inhibit_rules:
   - source_matchers: ['alertname="ObservabilityDetectorCollectionFailed"']
     target_matchers: ['alertname="ObservabilityDetectorInputStalled"']
     equal: [environment, node, component]
+  - source_matchers: ['alertname="ObservabilityExpectedTargetMissing"']
+    target_matchers: ['alertname=~"ObservabilityRequiredFamilyMissing_.*"']
+    equal: [environment, node, component, role]

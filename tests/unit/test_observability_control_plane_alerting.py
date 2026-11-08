@@ -693,6 +693,45 @@ def test_alertmanager_inhibits_derivatives_but_not_known_detector_events() -> No
         'alertname="ObservabilityDetectorInputStalled"',
     ) in pairs
     assert all("DetectorEventThreshold" not in target for _source, target in pairs)
+    family = next(
+        item
+        for item in parsed["inhibit_rules"]
+        if item["source_matchers"] == ['alertname="ObservabilityExpectedTargetMissing"']
+    )
+    # Without role, a lost target would hide a partial loss on another role.
+    assert "role" in family["equal"]
+    rules = yaml.safe_load(
+        render_template(
+            ROLE / "templates/observability-expected-target-rules.yml.j2",
+            {
+                "observability_control_plane": {
+                    "alerting": {"silence_gateway": {"environment": "staging"}},
+                    "expected_targets": {
+                        "expected_source_revision": "a" * 40,
+                        "inventory": {
+                            "targets": [
+                                {
+                                    "target": "vpn-p0",
+                                    "role": "edge",
+                                    "lifecycle": "enabled",
+                                    "label_values": {
+                                        "node": ["vpn-p0"],
+                                        "role": ["edge"],
+                                    },
+                                    "required_families": ["vpn_watchdog_collection_success"],
+                                }
+                            ]
+                        },
+                    },
+                }
+            },
+        )
+    )
+    names = [item["alert"] for item in rules["groups"][0]["rules"] if "alert" in item]
+    pattern = family["target_matchers"][0].split('=~"', 1)[1].rstrip('"')
+    assert [name for name in names if re.fullmatch(pattern, name)] == [
+        "ObservabilityRequiredFamilyMissing_vpn_p0_edge_vpn_watchdog_collection_success"
+    ]
 
 
 def test_promtool_rule_cases_cover_firing_stale_recovery_and_absent(

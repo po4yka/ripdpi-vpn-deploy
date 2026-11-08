@@ -176,7 +176,7 @@ Recovery from a backup is in the [restore runbook](restore.md).
 
 ### expected-target-family
 
-A required metric family is absent for an expected target.
+A required metric family is absent for an expected target. This alert notifies only when the target still publishes another required family. When the target publishes none, the expected-target-absence alert replaces it.
 
 First check: Run make observability-status. Check that the agent on this target publishes the named family.
 
