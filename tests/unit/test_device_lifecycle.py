@@ -337,6 +337,34 @@ def test_revoke_rechecks_running_policy_after_final_native_probes(operation, mon
     assert revoke.status()['phase'] != 'complete'
 
 
+def test_publisher_less_ripdpi_issue_and_refresh_deliver_only_a_private_artifact(operation):
+    manifest = copy.deepcopy(operation.manifest)
+    manifest['publishers'] = []
+    issue = Lifecycle(manifest, operation.io)
+    prepare(issue)
+    result = issue.run()
+    assert result['phase'] == 'complete' and result['recipient_artifact'] and result['grants_confirmed'] == 0
+    artifact = json.loads(Path(manifest['delivery']['output']).read_bytes())
+    assert artifact['subscription_url'] is None
+    assert {item['type'] for item in artifact['profile']['outbounds']} >= {'vless', 'selector'}
+    document = client_payload.read_document(issue.journal_path)
+    assert document['client_registry']['new-phone']['awg_private_key'] in artifact['amneziawg_configs']['upcloud:prod']
+    assert document['client_registry']['new-phone']['token_hash_prefix'] == ''
+    manifest = copy.deepcopy(manifest)
+    manifest.update(id='88888888-8888-4888-8888-888888888888', action='refresh')
+    manifest['delivery']['output'] = str(Path(manifest['delivery']['output']).with_name('refreshed.json'))
+    refresh = Lifecycle(manifest, operation.io)
+    prepare(refresh)
+    assert refresh.run()['phase'] == 'complete'
+    assert json.loads(Path(manifest['delivery']['output']).read_bytes()) == artifact
+    manifest.update(id='99999999-9999-4999-8999-999999999999', action='revoke', delivery=None)
+    revoke = Lifecycle(manifest, operation.io)
+    prepare(revoke)
+    assert revoke.run()['phase'] == 'complete'
+    final = client_payload.read_document(revoke.journal_path)
+    assert all(row['name'] != 'new-phone' for item in final['amneziawg_secrets']['instances'] for row in item['peers'])
+
+
 @pytest.mark.parametrize('engine', ['naive', 'amneziawg'])
 def test_native_only_issue_refresh_and_revoke_have_usable_private_artifacts(operation, monkeypatch, engine):
     import device_lifecycle_probe

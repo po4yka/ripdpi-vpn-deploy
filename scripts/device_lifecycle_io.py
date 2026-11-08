@@ -92,15 +92,15 @@ def load_manifest(path):
           or delivery['awg_host'] not in ('', *delivery['hosts']) or delivery['format'] not in ('ripdpi', 'singbox', 'native')
           or not isinstance(delivery['expires'], str)):
         raise ValueError('invalid-device-delivery')
-    elif value['action'] == 'issue' or delivery['format'] == 'native':
+    elif value['action'] == 'issue' or delivery['format'] == 'native' or not publishers:
         delivery['output'] = safe_path(delivery['output'])
     elif delivery['output'] is not None:
         raise ValueError('refresh-preserves-existing-recipient-links')
     if delivery is not None:
         if delivery['format'] == 'native' and delivery['expires']:
             raise ValueError('native-delivery-does-not-enforce-expiry')
-        if delivery['format'] != 'native' and not publishers:
-            raise ValueError('subscription-delivery-needs-publisher')
+        if not publishers and delivery['expires']:
+            raise ValueError('private-delivery-does-not-enforce-expiry')
     probe = value['probe']
     if (not isinstance(probe, dict) or set(probe) != {'url', 'status', 'body_sha256', 'timeout_seconds'}
             or not isinstance(probe['url'], str) or not probe['url'].startswith('https://')
