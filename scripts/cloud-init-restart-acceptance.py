@@ -400,7 +400,7 @@ def seed_archive(user_data: str, instance_id: str) -> bytes:
 _IMAGE_REFERENCES = {
     "debian13": (
         "ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-debian13"
-        "@sha256:7e6751a46ab5027958ebaafe698bc62042200c07ee6e662b390f141a4bfa8410"
+        "@sha256:b4d9e93c00d16f482db3068cde61340113c74e77b725b4e770b3978de0c8215d"
     ),
     "ubuntu2404": (
         "ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-ubuntu2404"

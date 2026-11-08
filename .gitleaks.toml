@@ -82,6 +82,7 @@ paths = [
     '''tests/unit/test_gitleaks_rules\.py''',
     '''tests/unit/test_reality_self_steal\.py''',
     '''tests/unit/test_emit_singbox_roundtrip\.py''',
+    '''tests/unit/test_client_payload_incy_links\.py''',
     '''tests/fixtures/age-test\.key''',
     '''tests/fixtures/secrets-sample\.yml''',
     '''tests/fixtures/age-recovery-shares/.*''',
