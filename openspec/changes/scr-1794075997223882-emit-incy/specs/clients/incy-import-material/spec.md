@@ -25,6 +25,11 @@ The implementation MUST emit exactly one share link for every enabled P0 REALITY
 - **WHEN** an XHTTP path or a Hysteria2 password contains reserved URI characters
 - **THEN** each component is percent-encoded exactly once and decodes back to the original value
 
+### Requirement: REQ-INCY-CONFIG-RECIPIENT — One config for one paste
+The implementation MUST write, from an issued private device artifact, one owner-only file with one line per server in the order REALITY, XHTTP, Hysteria2, AmneziaWG. It MUST name servers by position and transport and MUST NOT expose outbound tags. It MUST refuse an artifact readable by group or others and write nothing when it refuses.
+#### Scenario: Device with four paths
+- **WHEN** the operator runs `make emit-incy-config RECIPIENT=<artifact> OUTPUT=<new path>`
+- **THEN** the file has four lines named `Основной`, `Запасной 1`, `Запасной 2 (UDP)` and `Запасной 3 (AWG)`, and the last line carries the complete AmneziaWG configuration in `amneziawg://` base64url form
 ### Requirement: REQ-INCY-LINKS-REFUSE — Refuse fields the links cannot carry
 
 The implementation MUST fail without writing output when the payload contains a field that the INCY link formats cannot carry: an XHTTP mode other than `auto`, XHTTP pool tuning (`xmux`), Hysteria2 ECH, a Hysteria2 BBR resource profile, a P3 Snell outbound, any other outbound type or field, or a per-app or expiry option. It MUST NOT omit such a field silently.
