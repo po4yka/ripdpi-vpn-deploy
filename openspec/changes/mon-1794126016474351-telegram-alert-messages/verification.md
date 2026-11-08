@@ -29,6 +29,7 @@ artifact_evidence: null
 | REQ-ALERT-OLDER-RULES | MON-1794126893076662 | test_relay_delivers_alerts_from_older_rules_without_an_action | passed locally |
 | REQ-KUMA-MESSAGE | MON-1794127442259762 | Documented template rendered with liquidjs 10.26.0 for down, up and test contexts | passed locally; Kuma UI not applied |
 | REQ-KUMA-TRANSIENT | MON-1794135984867252 | `ansible/roles/observability_kuma/molecule/runtime/run.py` on the pinned arm64 image: one missed run stayed pending, `Down` at 150.8 to 151.0 seconds after the last push, delivery at 541.0 seconds | passed locally; Kuma UI not applied |
+| REQ-ALERT-NOISE | MON-1794154945560253 | tests/unit/test_observability_control_plane_alerting.py, test_relay_sends_only_resolved_groups_without_a_sound, promtool run of the rendered rules with one lost node | passed locally; inhibition not observed on a running Alertmanager |
 
 ## Local run
 

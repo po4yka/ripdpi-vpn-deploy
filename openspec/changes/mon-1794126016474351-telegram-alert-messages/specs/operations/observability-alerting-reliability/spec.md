@@ -63,3 +63,22 @@ The documented node and pipeline monitor settings MUST NOT send a notification w
 
 - **WHEN** a monitor receives no further push after an accepted push
 - **THEN** the monitor reaches `Down` no later than 180 seconds after that push
+
+### Requirement: REQ-ALERT-NOISE — Limit notifications for one fault
+
+While `ObservabilityExpectedTargetMissing` fires for a target, Alertmanager MUST inhibit the required-family alerts with the same environment, node, component and role. A required-family alert MUST still notify when the target publishes another required family. The relay MUST send a group with status `resolved` without a notification sound and MUST send a firing group with sound.
+
+#### Scenario: Target stops publishing
+
+- **WHEN** an expected target publishes none of its required families
+- **THEN** only the target alert notifies for that target and role
+
+#### Scenario: One family is absent
+
+- **WHEN** an expected target stops one required family and keeps another
+- **THEN** the required-family alert notifies
+
+#### Scenario: Group recovers
+
+- **WHEN** Alertmanager sends a group with status `resolved`
+- **THEN** Telegram receives the message with `disable_notification` set

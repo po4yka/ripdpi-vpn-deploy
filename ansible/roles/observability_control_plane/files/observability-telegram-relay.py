@@ -670,6 +670,7 @@ def handler(config: dict[str, object]):  # type: ignore[no-untyped-def]
                     chat_id=str(config["chat_id"]),
                     topic_id=int(config["topic_id"]),
                     message=message,
+                    silent=payload["status"] == "resolved",
                 )
                 drill_receipt.record(payload, int(time.time()))
             except (OSError, Refusal):

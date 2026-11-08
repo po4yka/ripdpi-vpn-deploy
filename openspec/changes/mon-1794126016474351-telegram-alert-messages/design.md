@@ -17,6 +17,8 @@ The relay receives bounded Alertmanager webhooks and already sends `parse_mode: 
 - Links target `main` of the public repository. Rejected: pinning to the source revision, because a deployed revision may not exist on the remote.
 - Kuma uses its native Liquid template. Rejected: patching the image.
 - Node and pipeline monitors use retries 1 and a 30-second retry interval. With retries 0, one missed 60-second run gives a gap of about 120 seconds against the 121-second window of Kuma 2.5.9, and a late push then sends `Up`. Pending to `Up` does not notify. `Down` arrives about 151 seconds after the last push, inside the 180-second bound. Rejected: a 30-second producer period, which doubles load and leaves a false `Down` after a longer private-path fault; a producer retry, which does not cover a failed qualification. Delivery stays at retries 0 because one missed 300-second run already reaches its 600-second bound.
+- `ObservabilityExpectedTargetMissing` inhibits the required-family alerts of the same role. A promtool run of the rendered rules with one lost node gave one message per required family in addition to the target alert. Rejected: cross-component inhibition of `ObservabilityExternalCoverageUnavailable` and `ObservabilityAdapterCompletionMissing`, because those alerts come from independent evidence and the operator needs them to separate a dead node from a broken private path.
+- Resolved groups are silent. A mixed group has status `firing` and keeps its sound.
 
 ## Contracts and ownership
 
