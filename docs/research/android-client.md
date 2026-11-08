@@ -128,9 +128,12 @@ subscription, ticket, screenshot, or tracked file.
 For an existing, converged client, the repository-native outputs are:
 
 ```bash
-make emit-bundle CLIENT=<device>   # RIPDPI only
-make emit-singbox CLIENT=<device>  # standard sing-box P0/P2 document
-make emit-awg CLIENT=<device>      # AWG template; insert the device key locally
+# RIPDPI only
+make emit-bundle CLIENT=<device>
+# standard sing-box P0/P2 document
+make emit-singbox CLIENT=<device>
+# AWG template; insert the device key locally
+make emit-awg CLIENT=<device>
 ```
 
 Use a local ignored file with mode `0600` only for the short transfer window,

@@ -99,7 +99,8 @@ Pick the most recent Debian 13 or Ubuntu 24.04 minimal cloud image.
 ### Provider auth
 
 ```bash
-export UPCLOUD_USERNAME='vpn-deploy'   # sub-account, not master
+# sub-account, not master
+export UPCLOUD_USERNAME='vpn-deploy'
 export UPCLOUD_PASSWORD='…'
 ```
 

@@ -36,7 +36,7 @@ zizmor="1.29.0"
                'terraform': '{"terraform_version":"1.15.9"}', 'conftest': 'Conftest: 0.57.0',
                'gitleaks': '8.30.1', 'promtool': 'promtool, version 3.15.1', 'zizmor': 'zizmor 1.29.0',
                'ansible': 'ansible [core 2.21.5]', 'ansible-playbook': 'ansible-playbook [core 2.21.5]',
-               'ansible-lint': 'ansible-lint 26.10.1', 'docker': 'linux/aarch64', 'docker-sdk': 'ok'}
+               'ansible-lint': 'ansible-lint 26.10.1', 'docker': 'linux/aarch64', 'docker-sdk': 'ok', 'bash': 'ok'}
     calls = []
     def execute(argv, **options):
         calls.append((argv, options))
@@ -46,7 +46,7 @@ zizmor="1.29.0"
     return module, outputs, calls
 
 
-@pytest.mark.parametrize('fault', [None, 'python', 'child-environment', 'go', 'terraform', 'missing', 'package', 'invalid-output'])
+@pytest.mark.parametrize('fault', [None, 'python', 'child-environment', 'go', 'terraform', 'missing', 'package', 'invalid-output', 'old-bash'])
 def test_diagnostics_separate_toolchain_failures_without_raw_output(doctor, monkeypatch, fault):
     module, outputs, calls = doctor
     monkeypatch.setenv('VULTR_API_KEY', 'synthetic-administrative-value')
@@ -59,6 +59,7 @@ def test_diagnostics_separate_toolchain_failures_without_raw_output(doctor, monk
     if fault == 'missing': monkeypatch.setattr(module.shutil, 'which', lambda _: None)
     if fault == 'package': monkeypatch.setattr(module.importlib.metadata, 'version', lambda _: '1.0.0')
     if fault == 'invalid-output': outputs['terraform'] = '{"terraform_version":"synthetic-private-output"}'
+    if fault == 'old-bash': del outputs['bash']
     result = module.collect()
     assert result['verdict'] == ('ready' if fault is None else 'not-ready')
     assert result['packages_checked'] == 3

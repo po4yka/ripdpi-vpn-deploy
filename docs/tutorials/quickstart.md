@@ -36,7 +36,8 @@ ssh-keygen -t ed25519 -f ~/.ssh/vpn_deploy -N '' -C 'vpn-deploy operator'
 export ANSIBLE_SSH_PRIVATE_KEY_FILE=~/.ssh/vpn_deploy
 
 # 2c. REALITY keypair (one-time per server)
-xray x25519  # Use the reviewed, checksum-verified pinned binary in a private terminal.
+# Use the reviewed, checksum-verified pinned binary in a private terminal.
+xray x25519
 ```
 
 Record the REALITY private key for the secrets file (next step) and the public key for client URIs.
@@ -130,9 +131,12 @@ Before changing an existing fleet, read [the deployment snapshot](../reference/d
   set -e
   trap 'make clean || exit $?' EXIT
   make init
-  make validate          # must pass before continuing
-  make decrypt           # configured SECRETS_FILE, mode 0600
-  make validate-target   # pre-deploy REALITY target probe
+  # must pass before continuing
+  make validate
+  # configured SECRETS_FILE, mode 0600
+  make decrypt
+  # pre-deploy REALITY target probe
+  make validate-target
   make plan
 )
 ```
@@ -154,7 +158,8 @@ Prepare the observed `DEPLOY_SSH_CONTEXTS_FILE`, promotion mapping and fresh `DE
   set -e
   trap 'make clean || exit $?' EXIT
   make decrypt
-  make dry-run ANSIBLE_TAGS= # full --check --diff; review changes
+  # full --check --diff; review changes
+  make dry-run ANSIBLE_TAGS=
 )
 ```
 
@@ -165,10 +170,14 @@ If `dry-run` shows changes you didn't expect, stop and investigate. Don't procee
   set -e
   trap 'make clean || exit $?' EXIT
   make decrypt
-  make deploy ANSIBLE_TAGS= # full real run after review
-  make verify            # post-deploy gates
-  make security-verify   # host-hardening checks
-  make smoke-test        # real-traffic test through each profile
+  # full real run after review
+  make deploy ANSIBLE_TAGS=
+  # post-deploy gates
+  make verify
+  # host-hardening checks
+  make security-verify
+  # real-traffic test through each profile
+  make smoke-test
 )
 ```
 
@@ -182,8 +191,10 @@ For an official sing-box JSON with selector + urltest covering the supported P0 
 (
   set -e -o noclobber
   trap 'make clean || exit $?' EXIT
-  umask 077                                   # directory 0700, file 0600
-  out=secrets/local/clients/laptop            # ignored operator-kit tree
+  # directory 0700, file 0600
+  umask 077
+  # ignored operator-kit tree
+  out=secrets/local/clients/laptop
   mkdir -p "$out"
   make decrypt
   make emit-singbox CLIENT=laptop > "$out/laptop.singbox.json"

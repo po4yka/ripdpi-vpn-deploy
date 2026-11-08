@@ -53,7 +53,8 @@ Run each dependent Make goal separately. An inherited parallel Make setting must
 
 ```bash
 export PROVIDER=upcloud ENV=prod
-export ANSIBLE_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/vpn_deploy" # Reviewed node key.
+# Reviewed node key.
+export ANSIBLE_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/vpn_deploy"
 make init
 make plan
 # Review the saved plan and obtain authorization for its exact resource changes.

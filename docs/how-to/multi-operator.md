@@ -58,8 +58,10 @@ The transport-host file carries everything else. The Ansible play loads the righ
 4. Verify each operator can decrypt only what they should:
    ```bash
    # As subscription-operator with no prod recipient:
-   sops --decrypt prod.secrets.sops.yaml          # MUST fail
-   sops --decrypt subscription.secrets.sops.yaml  # MUST succeed
+   # MUST fail
+   sops --decrypt prod.secrets.sops.yaml
+   # MUST succeed
+   sops --decrypt subscription.secrets.sops.yaml
    ```
 
 ## Role scoping at deploy time

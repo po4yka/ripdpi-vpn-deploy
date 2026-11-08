@@ -46,6 +46,14 @@ FORBIDDEN_LABEL_TOKENS = ("ru-", "-ru", "russia", "tspu", "rkn", "roskomnadzor")
 REDIRECT_STUBS = {"OBSERVABILITY-OPERATIONS.md", "RIPDPI-BUNDLE.md"}
 
 
+SHELL_FENCE = re.compile(r"^\s*```(\S*)\s*$")
+HEREDOC = re.compile(r"(?<!<)<<(?!<)-?\s*['\"]?(\w+)")
+QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"")
+TRAILING_COMMENT = re.compile(r"\s#\s")
+# zsh gives read -p and read -a other meanings: coprocess input and a missing option.
+BASH_ONLY_READ = re.compile(r"\bread(?:\s+-\w+)*?\s+-\w*[pa]\b")
+
+
 def _tracked() -> set[str]:
     out = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True).stdout
     return {p for p in out.decode().split("\0") if p}
@@ -167,6 +175,52 @@ def test_file_names_headings_tables_and_diagrams_carry_no_forbidden_labels() -> 
             if (heading or table_or_diagram) and LABEL_WORDS.search(line):
                 offenders.append(f"{rel}:{number}: {'heading' if heading else 'table cell or diagram label'}")
     assert not offenders, "forbidden labels:\n" + "\n".join(offenders)
+
+
+def _zsh_breakers(text: str) -> list[str]:
+    """Return the lines of Bash fences that change meaning when pasted into interactive zsh."""
+    found, language, terminator = [], None, None
+    for number, line in enumerate(text.splitlines(), 1):
+        fence = SHELL_FENCE.match(line)
+        if fence and terminator is None:
+            language = None if language is not None else fence[1]
+        elif language in {"bash", "sh", "shell"}:
+            if terminator is not None:
+                terminator = None if line.strip() == terminator else terminator
+                continue
+            heredoc = HEREDOC.search(line)
+            terminator = heredoc[1] if heredoc else None
+            code = QUOTED.sub("''", line).strip()
+            if not code.startswith("#") and (TRAILING_COMMENT.search(code) or BASH_ONLY_READ.search(code)):
+                found.append(f"{number}: {line.strip()}")
+    return found
+
+
+def test_shell_block_scan_reports_only_lines_that_break_in_zsh() -> None:
+    page = """```bash
+# full-line comment
+make plan  # becomes make goals
+IFS=, read -r -a parts <<< "$value"
+read -rp 'prompt: ' answer
+grep ' # ' file
+tee conf <<'EOF'
+listen 443; # literal heredoc text
+EOF
+read -r answer
+```
+
+```yaml
+key: value # not shell
+```
+"""
+    assert [entry.split(":")[0] for entry in _zsh_breakers(page)] == ["3", "4", "5"]
+
+
+def test_shell_blocks_can_be_pasted_into_zsh() -> None:
+    # plans/ keeps finished implementation plans; their blocks show file content.
+    pages = [rel for rel in _tracked() if rel.endswith(".md") and not rel.startswith("plans/")]
+    bad = [f"{rel}:{entry}" for rel in sorted(pages) for entry in _zsh_breakers((ROOT / rel).read_text())]
+    assert not bad, "move the comment to its own line or avoid the Bash-only read option:\n" + "\n".join(bad)
 
 
 def test_runbooks_carry_the_standard_sections_in_order() -> None:
