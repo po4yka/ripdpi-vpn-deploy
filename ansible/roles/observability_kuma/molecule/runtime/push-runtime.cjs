@@ -23,10 +23,10 @@ async function main() {
   await call('login', {username: 'runtime-test', password, token: ''});
   const monitors = [];
   const definitions = Array.from({length: 9}, (_, index) => ['node-' + index, 120, true]);
-  definitions.push(['pipeline', 120, true], ['never-started', 120, false], ['delivery', 540, true]);
+  definitions.push(['pipeline', 120, true], ['never-started', 120, false], ['delivery', 540, true], ['transient', 120, true]);
   for (const [name, interval, push] of definitions) {
     const token = crypto.randomBytes(24).toString('hex');
-    const answer = await call('add', {type: 'push', name, interval, retryInterval: interval, maxretries: 0, resendInterval: 3, active: true, upsideDown: false, pushToken: token, notificationIDList: {}, accepted_statuscodes: ['200-299'], conditions: [], kafkaProducerBrokers: [], kafkaProducerSaslOptions: {}, rabbitmqNodes: []});
+    const answer = await call('add', {type: 'push', name, interval, retryInterval: interval === 120 ? 30 : interval, maxretries: interval === 120 ? 1 : 0, resendInterval: 3, active: true, upsideDown: false, pushToken: token, notificationIDList: {}, accepted_statuscodes: ['200-299'], conditions: [], kafkaProducerBrokers: [], kafkaProducerSaslOptions: {}, rabbitmqNodes: []});
     monitors.push({name, interval, push, token, id: answer.monitorID, created: Date.now()});
   }
   // Phase the pipeline close to its first scheduler tick; node is early phase.
@@ -44,6 +44,15 @@ async function main() {
   assert.deepEqual(await (await fetch('http://127.0.0.1:3001/api/push/' + pipeline.token)).json(), {ok: true});
   pipeline.accepted = Date.now();
   process.stdout.write('real push acknowledgement and unknown-token refusal verified\n');
+  // One missed 60-second run: the late push lands inside the retry window and must not reach Down.
+  await delay(20000);
+  const transient = monitors.find(item => item.name === 'transient');
+  const transientEvents = () => events.filter(event => event.monitor === transient.id).map(event => event.status);
+  assert.ok(transientEvents().includes(2), 'transient monitor must be pending before its late push');
+  assert.deepEqual(await (await fetch('http://127.0.0.1:3001/api/push/' + transient.token)).json(), {ok: true});
+  transient.accepted = Date.now();
+  assert.ok(!transientEvents().includes(0), 'transient monitor reached down on one missed run');
+  process.stdout.write('one missed run stayed pending and recovered without down\n');
   const deadline = Date.now() + 500000;
   while (Date.now() < deadline) {
     if (monitors.every(monitor => events.some(event => event.monitor === monitor.id && event.status === 0 && event.observed >= (monitor.accepted || monitor.created)))) break;
@@ -54,6 +63,7 @@ async function main() {
     assert.ok(down, monitor.name + ' missing down transition');
     const elapsed = (down.observed - (monitor.accepted || monitor.created)) / 1000;
     assert.ok(elapsed <= (monitor.name === 'delivery' ? 600 : 180), monitor.name + ' detection deadline');
+    if (monitor.name === 'transient') assert.ok(elapsed >= 140, 'late push must restore the full window');
     process.stdout.write(monitor.name + ' missing signal detected in ' + elapsed.toFixed(3) + 's\n');
     if (monitor.push) assert.deepEqual(await (await fetch('http://127.0.0.1:3001/api/push/' + monitor.token)).json(), {ok: true});
   }

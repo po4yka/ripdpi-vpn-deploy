@@ -51,8 +51,13 @@ Explicit panel-only mode has N+1 node/pipeline monitors and no Telegram authorit
   nodes, twelve for ten. Panel-only mode uses N+1 monitors and no notification token. Set a distinct random 20–128-character URL-safe token
   through the authenticated editor and save it in its matching SOPS
   `push_monitors` entry. The role does not claim the monitors are configured.
-- In the UI set node/pipeline heartbeat interval 120 seconds, retries 0, retry
-  interval 120 seconds; delivery interval/retry interval 540 seconds, retries 0.
+- In the UI set node/pipeline heartbeat interval 120 seconds, retries 1, retry
+  interval 30 seconds; delivery interval/retry interval 540 seconds, retries 0.
+  With retries 0 one missed 60-second producer run gives a gap of about 120
+  seconds against Kuma's 121-second window, so a single transient failure sent
+  a Down and Up pair. Pending to Up does not notify. Down arrives about 151
+  seconds after the last push, inside the 180-second bound. Delivery cannot
+  retry: one missed 300-second run already reaches its 600-second bound.
   Disable upside-down and maintenance for these monitors. Select the native
   Telegram integration using the distinct secondary credential for every
   monitor. Set repeat notifications to three failed checks (not three seconds).
