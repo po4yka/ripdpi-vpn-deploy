@@ -167,6 +167,27 @@ Push requests load tokens through systemd credentials, verify TLS, use bounded t
 
 In Telegram mode, the surviving primary route reports observer/push failure as external coverage unavailable, not confirmed VPN failure. Healthy process status is not proof of working alert evaluation or Telegram delivery. Both routes share Telegram; both observer and collector loss cannot guarantee notification. Shared private-network loss remains a common-mode dependency. Authenticated external client-path quorum remains unchanged; missing witnesses remain unknown/stale.
 
+### Telegram message template
+
+The default Kuma text does not show what a monitor proves. In each monitor, set **Description** to the matching row, and use the alias of the node as the monitor name:
+
+| Monitor | Description |
+|---|---|
+| node | Node heartbeat missing: the host is down, a declared local service is inactive, or the path to the observer is broken. |
+| pipeline | Collector pipeline heartbeat missing: node samples are not current or rule evaluation stopped. |
+| delivery | Delivery heartbeat missing: the primary relay could not send or edit its canary, so primary alerts can be lost. |
+
+In the secondary Telegram notification, enable the custom template, set the parse mode to HTML and paste this template. Kuma escapes values only for MarkdownV2, so the template escapes every value itself:
+
+```liquid
+{% if heartbeatJSON %}{% if heartbeatJSON.status == 0 %}<b>DOWN</b>{% else %}<b>UP</b>{% endif %}{% else %}<b>TEST</b>{% endif %} <code>{{ name | escape }}</code>{% if monitorJSON.description %}
+{{ monitorJSON.description | escape }}{% endif %}{% if heartbeatJSON %}
+<b>Signal:</b> {{ heartbeatJSON.msg | escape }}
+<b>At:</b> {{ heartbeatJSON.localDateTime | escape }} ({{ heartbeatJSON.timezone | escape }}){% endif %}
+```
+
+The Kuma **Test** button has no monitor or heartbeat, so it sends only `TEST` and the placeholder name. This UI setting is stored in the Kuma database and does not come from Ansible.
+
 ## Backup, restore and upgrades
 
 Kuma data, VPN restic repositories and the operator kit have separate backup scopes. A successful observer recovery does not prove that node configuration, Terraform state or operator credentials can be recovered. Verify the [operator-kit offsite copy](../how-to/fleet-maintenance.md#seal-and-verify-the-operator-kit) separately. The [deployment snapshot](deployment-status.md) records the dated service-wide results; it does not replace fresh operational checks.

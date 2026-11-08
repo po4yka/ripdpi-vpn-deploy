@@ -554,8 +554,10 @@ def test_rules_have_fixed_severity_recovery_and_deadman_boundaries(
         )
         assert rule["annotations"]["incident_family"]
         assert rule["annotations"]["evidence_class"]
-        assert rule["annotations"]["runbook"].startswith("docs/")
-        assert (ROOT / rule["annotations"]["runbook"]).is_file()
+        assert 0 < len(rule["annotations"]["action"]) <= 160
+        page, section = rule["annotations"]["runbook"].split("#")
+        assert section == rule["annotations"]["incident_family"]
+        assert f"### {section}\n" in (ROOT / page).read_text(encoding="utf-8")
         assert rule["annotations"]["source_generation"] == "c" * 40
         assert "token" not in str(rule).lower()
     assert (

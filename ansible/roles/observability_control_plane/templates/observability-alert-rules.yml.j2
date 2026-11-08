@@ -18,7 +18,8 @@ groups:
           source_generation: "{{ observability_control_plane.alerting.source_generation }}"
           summary: Synthetic rule-to-relay freshness receipt.
           evidence_class: synthetic-pipeline
-          runbook: docs/how-to/incident.md
+          runbook: docs/how-to/monitoring-alerts.md#observability-pipeline
+          action: "No action. This is the synthetic delivery canary."
 {% for kind in ['node', 'pipeline', 'delivery'] %}
 {% for node in (observability_push.expected_nodes if kind == 'node' else [observability_push.node_id]) %}
 {# Senders label their own environment; node and kind alone identify the push scope. -#}
@@ -42,7 +43,8 @@ groups:
           summary: Independent monitoring coverage is unavailable; VPN reachability is unknown.
           incident_family: observability-external-coverage
           evidence_class: external-coverage-unavailable
-          runbook: docs/how-to/incident.md
+          runbook: docs/how-to/monitoring-alerts.md#observability-external-coverage
+          action: "Open the private Kuma panel and find the monitor that is down. VPN state is unknown until coverage returns."
 {% endfor %}
 {% endfor %}
   - name: observability_agent_delivery
@@ -57,7 +59,7 @@ groups:
         for: 0s
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.warning_severity }}", component: observability-agent}
-        annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/monitoring-alerts.md#observability-delivery-loss, action: "Run make observability-status. Check the sender queue and collector disk. History has a gap for this period."}
       - alert: ObservabilityCollectorRelayDeliveryLoss
         expr: >-
           (max(increase(vmagent_remotewrite_packets_dropped_total{job="observability-relay"}[5m]) > bool 0) > 0)
@@ -69,7 +71,7 @@ groups:
           component: observability-relay
           environment: "{{ observability_control_plane.alerting.silence_gateway.environment }}"
           node: collector
-        annotations: {incident_family: observability-delivery-loss, evidence_class: relay-accepted-samples-discarded, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: The collector relay discarded accepted telemetry; monitoring history is incomplete., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: observability-delivery-loss, evidence_class: relay-accepted-samples-discarded, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: The collector relay discarded accepted telemetry; monitoring history is incomplete., runbook: docs/how-to/monitoring-alerts.md#observability-delivery-loss, action: "Run make observability-status. Check the sender queue and collector disk. History has a gap for this period."}
   - name: observability_node_resource_service
     rules:
       - alert: ObservabilityNodeCpuPressure
@@ -79,7 +81,7 @@ groups:
         for: {{ policy.resource_hold }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.warning_severity }}", component: node-resource}
-        annotations: {incident_family: node-cpu, evidence_class: sustained-cpu-pressure, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Node CPU utilization is above the bounded warning threshold., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: node-cpu, evidence_class: sustained-cpu-pressure, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Node CPU use is above the warning threshold., runbook: docs/how-to/monitoring-alerts.md#node-cpu, action: "Find the top process on the node. If a VPN service is the cause and load stays high, move clients or add capacity.", value: '{% raw %}{{ $value | humanizePercentage }} used{% endraw %}'}
       - alert: ObservabilityNodeMemoryPressure
         expr: >-
           (1 - (max by (environment, node) (node_memory_MemAvailable_bytes)
@@ -87,7 +89,7 @@ groups:
         for: {{ policy.resource_hold }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.warning_severity }}", component: node-resource}
-        annotations: {incident_family: node-memory, evidence_class: memory-available-low, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Node available memory is below the bounded warning threshold., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: node-memory, evidence_class: memory-available-low, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Node available memory is low., runbook: docs/how-to/monitoring-alerts.md#node-memory, action: "Find the largest process on the node. Low memory can cause out-of-memory kills of VPN services.", value: '{% raw %}{{ $value | humanizePercentage }} used{% endraw %}'}
       - alert: ObservabilityNodeSwapPressure
         expr: >-
           max by (environment, node) (node_memory_SwapTotal_bytes) > 0
@@ -98,7 +100,7 @@ groups:
         for: {{ policy.resource_hold }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.warning_severity }}", component: node-resource}
-        annotations: {incident_family: node-swap, evidence_class: sustained-swap-pressure, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Node swap utilization is above the bounded warning threshold., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: node-swap, evidence_class: sustained-swap-pressure, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Node swap use is high., runbook: docs/how-to/monitoring-alerts.md#node-swap, action: "Find the process that uses the memory. Sustained swap use slows tunnels."}
       - alert: ObservabilityNodeDiskSpaceLow
         expr: >-
           min by (environment, node) (node_filesystem_avail_bytes{mountpoint="{{ policy.filesystem_mountpoint }}"} / node_filesystem_size_bytes{mountpoint="{{ policy.filesystem_mountpoint }}"}) < {{ policy.disk_warning_ratio }}
@@ -107,28 +109,28 @@ groups:
         for: {{ policy.resource_hold }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.warning_severity }}", component: node-filesystem}
-        annotations: {incident_family: node-disk, evidence_class: disk-available-low, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Root filesystem available space crossed the configured warning threshold., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: node-disk, evidence_class: disk-available-low, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Root filesystem free space is low., runbook: docs/how-to/monitoring-alerts.md#node-disk, action: "Free space on the root filesystem. Check the journal, the metrics queue and old releases.", value: '{% raw %}{{ $value | humanizePercentage }} free{% endraw %}'}
       - alert: ObservabilityNodeDiskSpaceCritical
         expr: >-
           min by (environment, node) (node_filesystem_avail_bytes{mountpoint="{{ policy.filesystem_mountpoint }}"} / node_filesystem_size_bytes{mountpoint="{{ policy.filesystem_mountpoint }}"}) < {{ policy.disk_critical_ratio }}
         for: {{ policy.critical_hold }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.critical_severity }}", component: node-filesystem}
-        annotations: {incident_family: node-disk, evidence_class: disk-available-critical, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Root filesystem available space crossed the configured critical threshold., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: node-disk, evidence_class: disk-available-critical, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Root filesystem free space is critically low., runbook: docs/how-to/monitoring-alerts.md#node-disk, action: "Free space on the root filesystem. Check the journal, the metrics queue and old releases.", value: '{% raw %}{{ $value | humanizePercentage }} free{% endraw %}'}
       - alert: ObservabilityNodeInodesLow
         expr: >-
           min by (environment, node) (node_filesystem_files_free{mountpoint="{{ policy.filesystem_mountpoint }}"} / node_filesystem_files{mountpoint="{{ policy.filesystem_mountpoint }}"}) < {{ policy.inode_warning_ratio }}
         for: {{ policy.resource_hold }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.warning_severity }}", component: node-filesystem}
-        annotations: {incident_family: node-inodes, evidence_class: inode-available-low, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Root filesystem free inodes crossed the configured warning threshold., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: node-inodes, evidence_class: inode-available-low, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Root filesystem free inodes are low., runbook: docs/how-to/monitoring-alerts.md#node-inodes, action: "Find the directory with the most files on the root filesystem and remove stale files.", value: '{% raw %}{{ $value | humanizePercentage }} free{% endraw %}'}
       - alert: ObservabilityNodeInodesCritical
         expr: >-
           min by (environment, node) (node_filesystem_files_free{mountpoint="{{ policy.filesystem_mountpoint }}"} / node_filesystem_files{mountpoint="{{ policy.filesystem_mountpoint }}"}) < {{ policy.inode_critical_ratio }}
         for: {{ policy.critical_hold }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.critical_severity }}", component: node-filesystem}
-        annotations: {incident_family: node-inodes, evidence_class: inode-available-critical, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Root filesystem free inodes crossed the configured critical threshold., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: node-inodes, evidence_class: inode-available-critical, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Root filesystem free inodes are critically low., runbook: docs/how-to/monitoring-alerts.md#node-inodes, action: "Find the directory with the most files on the root filesystem and remove stale files.", value: '{% raw %}{{ $value | humanizePercentage }} free{% endraw %}'}
       - alert: ObservabilityRequiredServiceNotActive
         expr: >-
           max by (environment, node, role) (
@@ -138,7 +140,7 @@ groups:
         for: {{ policy.critical_hold }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.critical_severity }}", component: service}
-        annotations: {incident_family: required-service, evidence_class: observed-service-not-active, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Fresh node telemetry reports a required systemd service is not active., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: required-service, evidence_class: observed-service-not-active, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Fresh node telemetry reports a required systemd service is not active., runbook: docs/how-to/monitoring-alerts.md#required-service, action: "Read systemctl status and the journal for the named service. If the fault stays, redeploy or replace the node."}
       - alert: ObservabilityRequiredServiceEvidenceMissing
         expr: >-
           (vpn_observability_required_service == 1)
@@ -147,50 +149,50 @@ groups:
         for: {{ policy.critical_hold }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.warning_severity }}", component: service}
-        annotations: {incident_family: required-service-evidence, evidence_class: service-evidence-absent, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A profile-required service has no systemd evidence; its health is unknown., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: required-service-evidence, evidence_class: service-evidence-absent, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A profile-required service has no systemd evidence; its health is unknown., runbook: docs/how-to/monitoring-alerts.md#required-service-evidence, action: "Service health is unknown. Run make verify for this node, then check the node exporter systemd collector."}
       - alert: ObservabilityNodeClockSkew
         expr: max by (environment, node) (abs(node_time_seconds - time())) > {{ policy.clock_skew_seconds }}
         for: {{ policy.critical_hold }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.warning_severity }}", component: node-clock}
-        annotations: {incident_family: node-clock, evidence_class: wall-clock-skew, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Node wall clock differs from control-plane evaluation time., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: node-clock, evidence_class: wall-clock-skew, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Node wall clock differs from control-plane evaluation time., runbook: docs/how-to/monitoring-alerts.md#node-clock, action: "Check time synchronization on the node with timedatectl.", value: '{% raw %}{{ $value | humanizeDuration }} skew{% endraw %}'}
       - alert: ObservabilityCertificateExpiresSoon
         expr: min by (environment, node, role) (vpn_certificate_not_after_timestamp_seconds - time()) < {{ policy.certificate_warning_seconds }}
         for: {{ policy.critical_hold }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.warning_severity }}", component: certificate}
-        annotations: {incident_family: certificate-expiry, evidence_class: certificate-expiry-warning, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A managed certificate crossed the configured expiry warning threshold., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: certificate-expiry, evidence_class: certificate-expiry-warning, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A managed certificate expires soon., runbook: docs/how-to/monitoring-alerts.md#certificate-expiry, action: "Renew the certificate named by role. Use make check-certs for transport certificates and make observability-rotate for observability-sender.", value: '{% raw %}{{ $value | humanizeDuration }} to expiry{% endraw %}'}
       - alert: ObservabilityCertificateCollectionFailed
         expr: min by (environment, node, role) (vpn_certificate_collection_success) == 0
         for: {{ policy.detector_hold }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.warning_severity }}", component: certificate}
-        annotations: {incident_family: certificate-health, evidence_class: collection-failed, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Managed certificate expiry collection failed., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: certificate-health, evidence_class: collection-failed, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Managed certificate expiry collection failed., runbook: docs/how-to/monitoring-alerts.md#certificate-health, action: "Expiry data is missing. Read the journal of observability-agent-health-adapter.service on this node."}
       - alert: ObservabilityCertificateExpiresCritical
         expr: min by (environment, node, role) (vpn_certificate_not_after_timestamp_seconds - time()) < {{ policy.certificate_critical_seconds }}
         for: {{ policy.critical_hold }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.critical_severity }}", component: certificate}
-        annotations: {incident_family: certificate-expiry, evidence_class: certificate-expiry-critical, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A managed certificate crossed the configured expiry critical threshold., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: certificate-expiry, evidence_class: certificate-expiry-critical, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A managed certificate is close to expiry., runbook: docs/how-to/monitoring-alerts.md#certificate-expiry, action: "Renew the certificate named by role. Use make check-certs for transport certificates and make observability-rotate for observability-sender.", value: '{% raw %}{{ $value | humanizeDuration }} to expiry{% endraw %}'}
       - alert: ObservabilityNodeNetworkErrors
         expr: >-
           sum by (environment, node) (rate(node_network_receive_errs_total{device!~"{{ policy.network_device_exclude_regex }}"}[5m]) + rate(node_network_transmit_errs_total{device!~"{{ policy.network_device_exclude_regex }}"}[5m])) > {{ policy.network_error_rate }}
         for: {{ policy.critical_hold }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.warning_severity }}", component: node-network}
-        annotations: {incident_family: node-network, evidence_class: sustained-interface-errors, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A node reports sustained interface errors., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: node-network, evidence_class: sustained-interface-errors, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A node reports sustained interface errors., runbook: docs/how-to/monitoring-alerts.md#node-network, action: "Check interface counters on the node. If errors continue, contact the provider or replace the node."}
       - alert: ObservabilityNodeFilesystemReadOnly
         expr: max by (environment, node) (node_filesystem_readonly{mountpoint="{{ policy.filesystem_mountpoint }}"}) == 1
         for: {{ policy.critical_hold }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.critical_severity }}", component: node-filesystem}
-        annotations: {incident_family: node-filesystem, evidence_class: root-filesystem-read-only, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: The root filesystem is read only., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: node-filesystem, evidence_class: root-filesystem-read-only, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: The root filesystem is read only., runbook: docs/how-to/monitoring-alerts.md#node-filesystem, action: "Do not repair in place. Replace the node with the recreation procedure."}
       - alert: ObservabilityServiceRestartLoop
         expr: max by (environment, node) (vpn_watchdog_restart_attempts) >= {{ policy.restart_attempts }}
         for: {{ policy.critical_hold }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.warning_severity }}", component: service}
-        annotations: {incident_family: service-restart-loop, evidence_class: bounded-restart-limit, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Bounded watchdog restart attempts reached the configured limit., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: service-restart-loop, evidence_class: bounded-restart-limit, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: The watchdog reached its hourly restart limit on this node., runbook: docs/how-to/monitoring-alerts.md#service-restart-loop, action: "Read the watchdog journal on the node to see which services restarted and why."}
   - name: observability_security_detectors
     rules:
       - alert: ObservabilityDetectorCollectionFailed
@@ -202,7 +204,7 @@ groups:
         for: {{ policy.detector_hold }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.warning_severity }}", component: detector}
-        annotations: {incident_family: detector-health, evidence_class: collection-failed, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A bounded detector collection failed., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: detector-health, evidence_class: collection-failed, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A security detector failed to collect data., runbook: docs/how-to/monitoring-alerts.md#detector-health, action: "Find which detector metric failed, then read the journal of that unit on the node."}
       - alert: ObservabilityDetectorEvidenceStale
         expr: >-
           max by (environment, node) (time() - vpn_honeypot_last_success_timestamp_seconds) > {{ policy.detector_stale_seconds }}
@@ -212,7 +214,7 @@ groups:
         for: {{ policy.detector_hold }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.warning_severity }}", component: detector}
-        annotations: {incident_family: detector-health, evidence_class: evidence-stale, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A detector success timestamp exceeded its bounded cadence., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: detector-health, evidence_class: evidence-stale, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A security detector stopped updating its results., runbook: docs/how-to/monitoring-alerts.md#detector-health, action: "Find which detector metric failed, then read the journal of that unit on the node."}
       - alert: ObservabilityDetectorInputStalled
         expr: >-
           max by (environment, node) (vpn_policy_ratelimit_dead_contract) == 1
@@ -221,7 +223,7 @@ groups:
         for: {{ policy.detector_hold }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.warning_severity }}", component: detector}
-        annotations: {incident_family: detector-input, evidence_class: input-contract-stalled, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Detector input advanced without any recognized policy event., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: detector-input, evidence_class: input-contract-stalled, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Detector input matches no known policy event., runbook: docs/how-to/monitoring-alerts.md#detector-input, action: "Read the policy-ratelimit journal on the node and check for a log format change after a release."}
       - alert: ObservabilityDetectorError
         expr: >-
           sum by (environment, node) (increase(vpn_honeypot_input_errors_total[{{ policy.detector_hold }}])) > 0
@@ -230,7 +232,7 @@ groups:
         for: 0m
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.warning_severity }}", component: detector}
-        annotations: {incident_family: detector-error, evidence_class: bounded-producer-error, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A detector reports a bounded producer error., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: detector-error, evidence_class: bounded-producer-error, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A security detector reports input errors., runbook: docs/how-to/monitoring-alerts.md#detector-error, action: "Find which detector metric reports errors, then read the journal of that unit on the node."}
       - alert: ObservabilityDetectorEventThreshold
         expr: >-
           max by (environment, node) (vpn_honeypot_events_60min) > {{ policy.honeypot_events_60min }}
@@ -239,7 +241,7 @@ groups:
         for: {{ policy.detector_hold }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.warning_severity }}", component: detector}
-        annotations: {incident_family: detector-events, evidence_class: event-threshold, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A security or reachability detector crossed its event threshold., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: detector-events, evidence_class: event-threshold, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A security or reachability detector crossed its event threshold., runbook: docs/how-to/monitoring-alerts.md#detector-events, action: "For probing events run make probing-summary with IP of this node. For burn failures run make burn-check. Then use the incident matrix."}
   - name: observability_producer_deadlines
     rules:
 {% for node in observability_push.expected_nodes %}
@@ -250,7 +252,7 @@ groups:
         for: 3m
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: warning, component: producer-evidence, node: "{{ node }}", environment: "{{ observability_control_plane.alerting.silence_gateway.environment }}"}
-        annotations: {incident_family: producer-evidence, evidence_class: required-adapter-never-published, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A required node adapter has no completion clock; monitoring health is unknown., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: producer-evidence, evidence_class: required-adapter-never-published, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A required node adapter never published; monitoring health is unknown., runbook: docs/how-to/monitoring-alerts.md#producer-evidence, action: "Monitoring data is unknown here. Run make observability-status and check the agent units on the node."}
 {% endfor %}
 {% for adapter in [{'node': 'observability-control-plane', 'role': 'control-plane-adapter', 'enabled': (observability_control_plane.expected_targets | default({})).enabled | default(false)}, {'node': 'protocol-liveness', 'role': 'liveness-published-evidence', 'enabled': (observability_control_plane.protocol_liveness | default({})).enabled | default(false)}] if adapter.enabled %}
       - alert: ObservabilityOptionalAdapterCompletionMissing
@@ -259,7 +261,7 @@ groups:
         for: 3m
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: warning, component: producer-evidence, node: "{{ adapter.node }}", role: "{{ adapter.role }}", environment: "{{ observability_control_plane.alerting.silence_gateway.environment }}"}
-        annotations: {incident_family: producer-evidence, evidence_class: enabled-adapter-never-published, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: An enabled collector adapter has no completion clock; monitoring health is unknown., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: producer-evidence, evidence_class: enabled-adapter-never-published, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: An enabled collector adapter never published; monitoring health is unknown., runbook: docs/how-to/monitoring-alerts.md#producer-evidence, action: "Monitoring data is unknown here. Run make observability-status and check the agent units on the node."}
 {% endfor %}
       - alert: ObservabilityProducerEvidenceUnavailable
         expr: >-
@@ -272,7 +274,7 @@ groups:
         for: 3m
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: warning, component: producer-evidence}
-        annotations: {incident_family: producer-evidence, evidence_class: stale-future-or-incomplete-deadline, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Producer evidence expired or has an invalid deadline; monitoring health is unknown., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: producer-evidence, evidence_class: stale-future-or-incomplete-deadline, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Monitoring evidence expired or has an invalid deadline; health is unknown., runbook: docs/how-to/monitoring-alerts.md#producer-evidence, action: "Monitoring data is unknown here. Run make observability-status and check the agent units on the node."}
       - alert: ObservabilityManifestAdapterStalled
         expr: >-
           (time() - vpn_observability_adapter_collected_timestamp_seconds > 180)
@@ -280,7 +282,7 @@ groups:
         for: 3m
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: warning, component: producer-evidence}
-        annotations: {incident_family: producer-evidence, evidence_class: manifest-adapter-stalled, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Node manifest adapter completion is expired or future dated., runbook: docs/how-to/incident.md}
+        annotations: {incident_family: producer-evidence, evidence_class: manifest-adapter-stalled, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: The node manifest adapter is stale or reports a future time., runbook: docs/how-to/monitoring-alerts.md#producer-evidence, action: "Monitoring data is unknown here. Run make observability-status and check the agent units on the node."}
   - name: observability_watchdog_backup
     rules:
       - alert: ObservabilityWatchdogEvidenceStale
@@ -298,7 +300,8 @@ groups:
           evidence_class: stale-or-unknown
           source_generation: "{{ observability_control_plane.alerting.source_generation }}"
           summary: Watchdog evidence is missing or stale.
-          runbook: docs/how-to/incident.md
+          runbook: docs/how-to/monitoring-alerts.md#watchdog-evidence
+          action: "Check the watchdog timer and journal on the node."
       - alert: ObservabilityWatchdogRecoveryUnresolved
         expr: vpn_watchdog_recovery_outcome{state="unresolved"} == 1
         for: 2m
@@ -310,8 +313,9 @@ groups:
           incident_family: watchdog-recovery
           evidence_class: local-recovery-unresolved
           source_generation: "{{ observability_control_plane.alerting.source_generation }}"
-          summary: Bounded local watchdog recovery remains unresolved.
-          runbook: docs/how-to/incident.md
+          summary: Local watchdog recovery did not restore the service.
+          runbook: docs/how-to/monitoring-alerts.md#watchdog-recovery
+          action: "Run make verify for this node, then decide to repair or replace it."
       - alert: ObservabilityBackupEvidenceStale
         expr: >-
           (vpn_backup_collection_success == 0)
@@ -327,7 +331,8 @@ groups:
           evidence_class: stale-or-unknown
           source_generation: "{{ observability_control_plane.alerting.source_generation }}"
           summary: Backup evidence is missing or stale.
-          runbook: docs/how-to/restore.md
+          runbook: docs/how-to/monitoring-alerts.md#backup-evidence
+          action: "Check the backup timer and journal on the node."
       - alert: ObservabilityBackupStageFailed
         expr: vpn_backup_result{state="failed"} == 1
         for: 3m
@@ -339,8 +344,9 @@ groups:
           incident_family: backup-stage
           evidence_class: confirmed-stage-failure
           source_generation: "{{ observability_control_plane.alerting.source_generation }}"
-          summary: A producer-owned backup stage reported failure.
-          runbook: docs/how-to/restore.md
+          summary: A backup stage failed.
+          runbook: docs/how-to/monitoring-alerts.md#backup-stage
+          action: "Read the backup unit journal on the node and repair the failed stage before the next run."
       - alert: ObservabilityRestoreReadinessStale
         expr: vpn_backup_freshness_state{role="restore-drill",state="stale"} == 1
         for: 3m
@@ -352,5 +358,6 @@ groups:
           incident_family: restore-readiness
           evidence_class: stale-restore-proof
           source_generation: "{{ observability_control_plane.alerting.source_generation }}"
-          summary: Approved isolated restore evidence is stale.
-          runbook: docs/how-to/restore.md
+          summary: The restore drill result is stale.
+          runbook: docs/how-to/monitoring-alerts.md#restore-readiness
+          action: "Check the restore drill timer and journal on the node."

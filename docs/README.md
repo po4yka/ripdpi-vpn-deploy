@@ -39,6 +39,7 @@ Complete one task against real infrastructure. Every guide names its preconditio
 | [Recreate a lost node and resume after failure](how-to/executable-recovery.md) | Execute reviewed UpCloud replacement, reconcile interruptions and gate completion on device readiness | CORE |
 | [Issue, refresh or revoke a device](how-to/device-lifecycle.md) | Reconcile per-device protocol access and every published grant across the declared fleet | CORE |
 | [Runbook: idle-cycle access-attempt measurement spike](how-to/idle-cycle-measurement.md) | Measurement spike for the bare-HTTPS idle-cycle access-attempt pattern: driver, log collection, correlation | RESEARCH |
+| [Runbook — monitoring alerts](how-to/monitoring-alerts.md) | What each primary Telegram alert means and what to check first | CORE |
 | [Runbook — incidents](how-to/incident.md) | Decision matrix for lost SSH, lost age key, state loss and suspected compromise | CORE |
 | [Local operator kit](how-to/local-operator-kit.md) | The private operator kit contract: where authoritative material lives, how to catalogue and recover it | — |
 | [Existing-node maintenance and operator recovery](how-to/fleet-maintenance.md) | Resume exact maintenance, verify release inputs and restore the encrypted operator kit | CORE |
