@@ -8,6 +8,36 @@
       - split_hop_ingress.listen_port | int <= 65535
     fail_msg: Split-hop ingress requires both WireGuard keys and a valid listen port.
 
+- name: Resolve family recipient egress identities
+  ansible.builtin.command:
+    argv: "{{ ['getent', 'passwd'] + split_hop_ingress_family_users }}"
+  register: _split_hop_family_identity
+  # getent exits 2 when any requested user is absent; the assert below refuses.
+  failed_when: _split_hop_family_identity.rc not in [0, 2]
+  changed_when: false
+  check_mode: false
+  when: vpn.split_hop_family_egress | default(false) | bool
+
+- name: Publish family recipient egress UIDs
+  ansible.builtin.set_fact:
+    split_hop_ingress_family_uids: >-
+      {{ _split_hop_family_identity.stdout_lines | map('split', ':')
+         | selectattr(0, 'in', split_hop_ingress_family_users)
+         | map(attribute=2) | map('int') | list }}
+  when: vpn.split_hop_family_egress | default(false) | bool
+
+- name: Refuse family egress without every recipient identity and device interface
+  ansible.builtin.assert:
+    that:
+      - split_hop_ingress_family_uids | length == split_hop_ingress_family_users | length
+      - not (vpn.enable_amneziawg | default(false) | bool) or split_hop_ingress_family_interfaces | length > 0
+    fail_msg: >-
+      split-hop-family-authority-missing: converge transport-egress (and AmneziaWG
+      instances) before routing family egress through Node B.
+  when:
+    - vpn.split_hop_family_egress | default(false) | bool
+    - not ansible_check_mode
+
 - name: Install split-hop ingress packages
   ansible.builtin.apt:
     name: [wireguard, wireguard-tools, nftables]

@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-09
+goal: ANS-1794231660855533 Route family transport egress through the split-hop
+  exit node

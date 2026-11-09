@@ -390,3 +390,149 @@ s.sendall(b'after');assert s.recv(32)==b'after'
             subprocess.run(
                 ["ip", "netns", "delete", name], capture_output=True, timeout=5
             )
+
+
+def test_family_scope_sends_recipient_and_device_egress_only_through_b(tmp_path):
+    """Family scope: gateway UIDs and forwarded AWG originals exit via Node B, never A's uplink."""
+    if sys.platform != "linux" or os.geteuid() != 0:
+        pytest.skip("requires owned root Linux network namespaces")
+    for tool in ("ip", "wg", "nft", "curl"):
+        if not shutil.which(tool):
+            pytest.skip(f"requires {tool}")
+    stem = "fam-" + uuid.uuid4().hex[:7]
+    names = {n: stem + n for n in "abcde"}
+    children = []
+    gateway_uid, normalizer_uid, other_uid = 65530, 65531, 65534
+
+    def ns(n, *argv, data=None):
+        return command("ip", "netns", "exec", names[n], *argv, data=data)
+
+    def link(left, right, laddr, raddr, lname=None, rname=None):
+        command("ip", "link", "add", stem + "l", "type", "veth", "peer", "name", stem + "r")
+        for node, interface, name, address in (
+            (left, stem + "l", lname or "to" + right, laddr),
+            (right, stem + "r", rname or "to" + left, raddr),
+        ):
+            command("ip", "link", "set", interface, "netns", names[node])
+            ns(node, "ip", "link", "set", interface, "name", name)
+            ns(node, "ip", "addr", "add", address, "dev", name)
+            ns(node, "ip", "link", "set", name, "up")
+
+    def serve(node, address, port):
+        log = tmp_path / f"{node}-{port}.log"
+        ready = tmp_path / f"{node}-{port}.ready"
+        script = """
+import http.server,sys
+address,port,log,ready=sys.argv[1:]
+class H(http.server.BaseHTTPRequestHandler):
+ def do_GET(self):
+  open(log,'a').write(self.client_address[0]+'\\n')
+  self.send_response(200);self.end_headers();self.wfile.write(self.client_address[0].encode())
+ def log_message(self,*a):pass
+s=http.server.HTTPServer((address,int(port)),H);open(ready,'w').close();s.serve_forever()
+"""
+        proc = subprocess.Popen(
+            ["ip", "netns", "exec", names[node], sys.executable, "-c", script,
+             address, str(port), str(log), str(ready)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+        )
+        children.append(proc)
+        # Interpreter start-up inside a fresh namespace can exceed two seconds.
+        for _ in range(500):
+            if ready.exists():
+                return log
+            time.sleep(0.02)
+        raise AssertionError("namespace listener did not start")
+
+    def request(node, url, uid=None):
+        argv = ["curl", "--noproxy", "*", "--silent", "--max-time", "3", url]
+        if uid is not None:
+            script = "import os,subprocess,sys;os.setgid(int(sys.argv[1]));os.setuid(int(sys.argv[1]));raise SystemExit(subprocess.run(sys.argv[2:]).returncode)"
+            argv = [sys.executable, "-c", script, str(uid), *argv]
+        return subprocess.run(["ip", "netns", "exec", names[node], *argv],
+                              text=True, capture_output=True, timeout=6)
+
+    try:
+        for name in names.values():
+            command("ip", "netns", "add", name)
+            command("ip", "-n", name, "link", "set", "lo", "up")
+        # a: Node A, b: Node B, c: A's direct uplink peer, d: AWG device, e: recipient.
+        link("a", "b", "192.0.2.1/30", "192.0.2.2/30")
+        link("a", "c", "198.51.100.1/30", "198.51.100.2/30")
+        link("b", "e", "203.0.113.1/30", "203.0.113.2/30")
+        link("a", "d", "10.66.0.1/24", "10.66.0.2/24", lname="awg7")
+        ns("a", "ip", "route", "add", "default", "via", "198.51.100.2")
+        ns("d", "ip", "route", "add", "default", "via", "10.66.0.1")
+        ns("e", "ip", "route", "add", "default", "via", "203.0.113.1")
+        # The direct peer would deliver the recipient too, so any uplink leak is observable.
+        ns("c", "ip", "addr", "add", "203.0.113.2/32", "dev", "lo")
+        for node in "ab":
+            ns(node, "sysctl", "-q", "-w", "net.ipv4.ip_forward=1")
+        # Baseline enforces strict reverse-path filtering on every interface.
+        ns("a", "sysctl", "-q", "-w", "net.ipv4.conf.all.rp_filter=1")
+        keys = {n: command("wg", "genkey").strip() for n in "ab"}
+        pubs = {n: command("wg", "pubkey", data=keys[n]).strip() for n in "ab"}
+        for node, address in (("a", "10.200.0.1/30"), ("b", "10.200.0.2/30")):
+            file = tmp_path / (node + ".key")
+            file.write_text(keys[node])
+            file.chmod(0o600)
+            ns(node, "ip", "link", "add", "shop0", "type", "wireguard")
+            ns(node, "wg", "set", "shop0", "private-key", str(file))
+            ns(node, "ip", "addr", "add", address, "dev", "shop0")
+            ns(node, "ip", "link", "set", "shop0", "up")
+        ns("a", "wg", "set", "shop0", "listen-port", "51821", "peer", pubs["b"], "allowed-ips", "0.0.0.0/0")
+        ns("b", "wg", "set", "shop0", "peer", pubs["a"], "allowed-ips", "10.200.0.1/32",
+           "endpoint", "192.0.2.1:51821", "persistent-keepalive", "1")
+        values = {
+            "split_hop_ingress": {"fwmark": 1, "wg_interface": "shop0", "node_a_address": "10.200.0.1/30",
+                                  "listen_port": 51821, "routing_table": 200},
+            "split_hop_ingress_secrets": {"node_a_private_key": keys["a"], "node_b_public_key": pubs["b"]},
+            "probe_matrix_runtime_users": {"xray_uid": 65532, "mtg_uid": 65533},
+            "vpn": {"split_hop_family_egress": True},
+            "split_hop_ingress_family_uids": [normalizer_uid, gateway_uid],
+            "split_hop_ingress_family_interfaces": ["awg7"],
+        }
+        configuration = render_template(
+            ROOT / "ansible/roles/split-hop-ingress/templates/split-hop-ingress.conf.j2", values)
+        hooks = {key: line.split(" = ", 1)[1] for line in configuration.splitlines()
+                 for key in ("PostUp", "PostDown") if line.startswith(key + " = ")}
+        policy = tmp_path / "split-hop-ingress.nft"
+        policy.write_text(render_template(
+            ROOT / "ansible/roles/split-hop-ingress/templates/policy.nft.j2", values))
+        ns("a", "nft", "-f", str(policy))
+        ns("a", "sh", "-c", hooks["PostUp"].replace("/etc/wireguard/split-hop-ingress.nft", str(policy)))
+        ns("b", "nft", "-f", "-", data=render_template(
+            ROOT / "ansible/roles/split-hop-egress/templates/split-hop-egress.nft.j2",
+            dict(split_hop_egress={"wg_interface": "shop0", "forward_iface": "toe"})))
+        recipient = serve("e", "203.0.113.2", 18090)
+        leak = serve("c", "203.0.113.2", 18090)
+        tmp_path.chmod(0o777)
+        for parent in tmp_path.parents:
+            if str(parent).startswith("/tmp/pytest"):
+                parent.chmod(0o755)
+
+        for uid in (gateway_uid, normalizer_uid):
+            result = request("a", "http://203.0.113.2:18090/", uid)
+            assert result.returncode == 0 and result.stdout == "203.0.113.1", result.stderr
+        device = request("d", "http://203.0.113.2:18090/")
+        assert device.returncode == 0 and device.stdout == "203.0.113.1", device.stderr
+        # Unowned host users keep A's ordinary uplink.
+        assert request("a", "http://203.0.113.2:18090/", other_uid).stdout == "198.51.100.1"
+        assert recipient.read_text().splitlines() == ["203.0.113.1"] * 3
+
+        ns("a", "sh", "-c", hooks["PostDown"])
+        ns("a", "ip", "link", "set", "shop0", "down")
+        leaked_before = leak.read_text()
+        for uid in (gateway_uid, normalizer_uid):
+            assert request("a", "http://203.0.113.2:18090/", uid).returncode != 0
+        assert request("d", "http://203.0.113.2:18090/").returncode != 0
+        assert leak.read_text() == leaked_before, "family egress reached A's direct uplink"
+    finally:
+        for proc in children:
+            proc.terminate()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+        for name in names.values():
+            subprocess.run(["ip", "netns", "delete", name], capture_output=True, timeout=5)

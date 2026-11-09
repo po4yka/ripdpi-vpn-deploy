@@ -108,6 +108,30 @@ def test_canonical_firewall_retains_original_traffic_guard_before_established_ac
     assert f'oifname != {{ "lo", "{values["split_hop_ingress"]["wg_interface"]}" }} drop' in final
 
 
+def test_family_scope_moves_device_forwarding_and_guard_onto_the_tunnel():
+    values = merge_render_vars()
+    values["vpn"]["enable_split_hop_ingress"] = True
+    values["vpn"]["split_hop_family_egress"] = True
+    values["firewall_split_hop_family_uids"] = [990, 991]
+    tunnel = values["split_hop_ingress"]["wg_interface"]
+    rendered = render_template(FIREWALL, values)
+    forward = rendered.split("  chain forward {", 1)[1].split("\n  }", 1)[0]
+    lines = [line.strip() for line in forward.splitlines()]
+    reject = 'iifname "awg0" meta nfproto ipv6 reject with icmpv6 type admin-prohibited comment "split-hop-family-boundary-v6"'
+    assert lines.index(reject) < lines.index(f'iifname "awg0" oifname != "{tunnel}" counter drop')
+    assert f'ct state new iifname "awg0" oifname "{tunnel}" accept' in lines
+    nat = rendered.split("table inet nat {", 1)[1]
+    assert f'iifname "awg0" oifname "{tunnel}" counter masquerade comment "awg-nat-awg0"' in nat
+    for comment in ("split-hop-ingress-boundary-v6", "split-hop-ingress-boundary-v4"):
+        guard = next(line for line in rendered.splitlines() if comment in line)
+        assert "meta skuid { 971, 972, 990, 991 }" in guard
+    # An explicit role retirement selector also withdraws the family shape.
+    values["split_hop_ingress_role_enabled"] = False
+    plain = render_template(FIREWALL, values)
+    assert "split-hop-family-boundary-v6" not in plain
+    assert f'oifname "{tunnel}" accept' not in plain
+
+
 def test_explicit_ingress_retirement_omits_shared_firewall_guard():
     values = merge_render_vars()
     values["vpn"]["enable_split_hop_ingress"] = True

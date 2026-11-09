@@ -9,6 +9,17 @@ split_hop_ingress:
   routing_table: 200
   fwmark: 1
 
+# Family scope routes every recipient flow through Node B: the transport
+# normalizer and direct gateway users (Xray and Hysteria egress) and forwarded
+# AmneziaWG originals. UIDs are resolved from the host before rendering.
+split_hop_ingress_family_users:
+  - transport-normalizer
+  - transport-gateway
+split_hop_ingress_family_uids: []
+split_hop_ingress_family_interfaces: >-
+  {{ (amneziawg_secrets.instances | default([]) | map(attribute='name') | list)
+     if (vpn.enable_amneziawg | default(false) | bool) and amneziawg_secrets is defined else [] }}
+
 split_hop_ingress_secrets:
   node_a_private_key: ""
   node_b_public_key: ""

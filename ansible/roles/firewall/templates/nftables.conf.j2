@@ -43,6 +43,10 @@ destroy table inet nat
 {% set nginx_collides_with_xray = (vpn.enable_xray_reality | default(true)) and (nginx_tcp_port in xray_tcp_ports) %}
 {% set _awg_inst = (amneziawg_secrets.instances | default([])) if amneziawg_secrets is defined else [] %}
 {% set awg_uplink_interface = firewall_awg_uplink_interface | default(ansible_facts.get('default_ipv4', {}).get('interface', 'eth0')) %}
+{% set split_hop_family = ((vpn.enable_split_hop_ingress | default(false) | bool) and (split_hop_ingress_role_enabled | default(true) | bool) and (vpn.split_hop_family_egress | default(false) | bool)) %}
+{# Family split-hop moves AWG forwarding and NAT from the uplink onto the B-initiated tunnel. #}
+{% set awg_forward_interface = split_hop_ingress.wg_interface if split_hop_family else awg_uplink_interface %}
+{% set split_hop_guard_uids = [probe_matrix_runtime_users.xray_uid, probe_matrix_runtime_users.mtg_uid] + ((firewall_split_hop_family_uids | default([])) if split_hop_family else []) %}
 {% set dhcpv6_uplink = firewall_dhcpv6_uplink_interface | default('') or ansible_facts.get('default_ipv6', {}).get('interface', '') or ansible_facts.get('default_ipv4', {}).get('interface', '') %}
 {% set dhcpv6_servers = firewall_dhcpv6_server_addresses | default([]) %}
 {% set egress_policy = firewall_egress_policy | default('permissive') -%}
@@ -196,8 +200,11 @@ table inet filter {
 {% endif %}
 {% if vpn.enable_amneziawg | default(false) %}
 {% for inst in _awg_inst %}
-    iifname "{{ inst.name }}" oifname != "{{ awg_uplink_interface }}" counter drop
-    oifname "{{ inst.name }}" iifname != "{{ awg_uplink_interface }}" counter drop
+{% if split_hop_family %}
+    iifname "{{ inst.name }}" meta nfproto ipv6 reject with icmpv6 type admin-prohibited comment "split-hop-family-boundary-v6"
+{% endif %}
+    iifname "{{ inst.name }}" oifname != "{{ awg_forward_interface }}" counter drop
+    oifname "{{ inst.name }}" iifname != "{{ awg_forward_interface }}" counter drop
 {% if firewall_awg_destination_deny_v4 %}
     iifname "{{ inst.name }}" ip daddr { {{ firewall_awg_destination_deny_v4 | join(', ') }} } counter drop comment "awg-private-destination"
 {% endif %}
@@ -223,7 +230,7 @@ table inet filter {
 {% if vpn.enable_amneziawg | default(false) %}
 {% for inst in _awg_inst %}
     # New client traffic may leave only via the configured uplink; replies use conntrack above.
-    ct state new iifname "{{ inst.name }}" oifname "{{ awg_uplink_interface }}" accept
+    ct state new iifname "{{ inst.name }}" oifname "{{ awg_forward_interface }}" accept
 {% endfor %}
 {% endif %}
 {% if vpn.enable_split_hop_egress | default(false) %}
@@ -244,7 +251,7 @@ table inet filter {
     type filter hook output priority 0;
 {% if (vpn.enable_split_hop_ingress | default(false) | bool) and (split_hop_ingress_role_enabled | default(true) | bool) %}
     # Keep the recipient boundary when wg-quick removes its routes on stop.
-    meta nfproto ipv6 ct direction original meta skuid { {{ probe_matrix_runtime_users.xray_uid }}, {{ probe_matrix_runtime_users.mtg_uid }} } reject with icmpv6 type admin-prohibited comment "split-hop-ingress-boundary-v6"
+    meta nfproto ipv6 ct direction original meta skuid { {{ split_hop_guard_uids | join(', ') }} } reject with icmpv6 type admin-prohibited comment "split-hop-ingress-boundary-v6"
 {% endif %}
 {% if (_network_exposure_plan | default({})).mode | default('disabled') in ['canary', 'enforce'] %}
 {% for prefix in _network_exposure_plan.directions.host_egress %}
@@ -312,7 +319,7 @@ table inet filter {
   chain split_hop_ingress_egress_guard {
     # The final interface is available after the marked OUTPUT route lookup.
     type filter hook postrouting priority 0; policy accept;
-    meta nfproto ipv4 ct direction original meta skuid { {{ probe_matrix_runtime_users.xray_uid }}, {{ probe_matrix_runtime_users.mtg_uid }} } oifname != { "lo", "{{ split_hop_ingress.wg_interface }}" } drop comment "split-hop-ingress-boundary-v4"
+    meta nfproto ipv4 ct direction original meta skuid { {{ split_hop_guard_uids | join(', ') }} } oifname != { "lo", "{{ split_hop_ingress.wg_interface }}" } drop comment "split-hop-ingress-boundary-v4"
   }
 {% endif %}
 }
@@ -332,10 +339,10 @@ table inet nat {
     type nat hook postrouting priority 100;
 {% for inst in _awg_inst %}
 {% if terraform_nat_source_port_range | default('') != '' %}
-    iifname "{{ inst.name }}" oifname "{{ awg_uplink_interface }}" meta l4proto { tcp, udp } counter masquerade to :{{ terraform_nat_source_port_range }} comment "awg-nat-{{ inst.name }}"
-    iifname "{{ inst.name }}" oifname "{{ awg_uplink_interface }}" meta l4proto != { tcp, udp } counter masquerade comment "awg-nat-other-{{ inst.name }}"
+    iifname "{{ inst.name }}" oifname "{{ awg_forward_interface }}" meta l4proto { tcp, udp } counter masquerade to :{{ terraform_nat_source_port_range }} comment "awg-nat-{{ inst.name }}"
+    iifname "{{ inst.name }}" oifname "{{ awg_forward_interface }}" meta l4proto != { tcp, udp } counter masquerade comment "awg-nat-other-{{ inst.name }}"
 {% else %}
-    iifname "{{ inst.name }}" oifname "{{ awg_uplink_interface }}" counter masquerade comment "awg-nat-{{ inst.name }}"
+    iifname "{{ inst.name }}" oifname "{{ awg_forward_interface }}" counter masquerade comment "awg-nat-{{ inst.name }}"
 {% endif %}
 {% endfor %}
   }
