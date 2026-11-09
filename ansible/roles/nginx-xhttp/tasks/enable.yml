@@ -299,6 +299,32 @@
   no_log: true
   diff: false
 
+# The feed moves on purpose; the refresher admits every candidate against this
+# policy before it replaces the files that clients download.
+- name: Require complete client routing inputs before mutation
+  ansible.builtin.assert:
+    that:
+      - nginx_xhttp_routing_lists.token is regex('^[A-Za-z0-9_-]{16,64}$')
+      - nginx_xhttp_routing_lists.geosite_url is regex('^https://[^/]+/')
+      - nginx_xhttp_routing_lists.geoip_url is regex('^https://[^/]+/')
+      - nginx_xhttp_routing_lists.profile.Name | default('') | length > 0
+      # Unmatched traffic must stay in the tunnel whatever the feed contains.
+      - nginx_xhttp_routing_lists.profile.GlobalProxy | default('') == 'true'
+      - nginx_xhttp_routing_lists.profile.DirectSites | default([]) | length > 0
+      - nginx_xhttp_routing_lists.profile.DirectIp is defined
+      - nginx_xhttp_routing_lists.profile.ProxySites is defined
+      - nginx_xhttp_routing_lists.profile.ProxyIp is defined
+      - nginx_xhttp_routing_lists.policy.must_direct | length > 0
+      - nginx_xhttp_routing_lists.policy.must_not_direct | length > 0
+      - nginx_xhttp_routing_lists.policy.max_change_ratio | float > 1
+      - nginx_xhttp_routing_lists.policy.max_bytes | int <= 52428800
+      - nginx_xhttp_routing_lists.policy.min_ipv4_prefix | int >= 8
+      - nginx_xhttp_routing_lists.policy.min_ipv6_prefix | int >= 16
+    fail_msg: nginx-xhttp-routing-lists-invalid
+    quiet: true
+  no_log: true
+  when: nginx_xhttp_routing_lists.enabled | bool
+
 - name: Decide whether this host serves the refreshed model news page
   ansible.builtin.set_fact:
     _nginx_model_news_active: >-
@@ -356,3 +382,6 @@
 - name: Retire the refreshed model news page
   ansible.builtin.include_tasks: model-news-retire.yml
   when: not (_nginx_model_news_active | bool)
+
+- name: Reconcile client routing lists
+  ansible.builtin.include_tasks: routing-lists-converge.yml

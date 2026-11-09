@@ -12,6 +12,15 @@ limit_req_zone $binary_remote_addr zone=snell_evaluation:1m rate=10r/s;
 # status-column tooling (awk '$9') keeps working on these logs.
 log_format vpn_public '- - - [$time_local] "$request" $status $body_bytes_sent "-" "-"';
 
+{% if (nginx_xhttp.routing_lists | default({})).enabled | default(false) | bool %}
+# A missing file leaves the routing location through error_page, and any near
+# miss reaches the site location; neither may log the token in the request line.
+map $request_uri $vpn_public_loggable {
+    ~^/routing/ 0;
+    default 1;
+}
+
+{% endif %}
 server {
     listen {{ nginx_xhttp_public_port }} ssl http2;
     listen [::]:{{ nginx_xhttp_public_port }} ssl http2;
@@ -97,13 +106,24 @@ server {
         try_files $uri =404;
     }
 {% endif %}
+{% if (nginx_xhttp.routing_lists | default({})).enabled | default(false) | bool %}
+
+    # Client routing profile and lists, published atomically by
+    # vpn-routing-lists. The token only keeps the path undiscoverable.
+    location ~ "^/routing/(?<vpn_routing_token>[A-Za-z0-9_-]{16,64})/(?<vpn_routing_file>profile\.json|geosite\.dat|geosite\.dat\.sha256|geoip\.dat|geoip\.dat\.sha256)$" {
+        alias /var/lib/vpn-routing-lists/$vpn_routing_token/$vpn_routing_file;
+        default_type application/octet-stream;
+        access_log off;
+        error_log /dev/null crit;
+    }
+{% endif %}
 
     # Public site for ordinary browser and scanner requests.
     location / {
         try_files $uri $uri/ =404;
     }
 
-    access_log /var/log/nginx/vpn-xhttp.access.log vpn_public;
+    access_log /var/log/nginx/vpn-xhttp.access.log vpn_public{% if (nginx_xhttp.routing_lists | default({})).enabled | default(false) | bool %} if=$vpn_public_loggable{% endif %};
     error_log  /var/log/nginx/vpn-xhttp.error.log warn;
 }
 {% if nginx_fallback_enabled %}
@@ -195,7 +215,7 @@ server {
         try_files $uri $uri/ =404;
     }
 
-    access_log /var/log/nginx/vpn-xhttp-fallback.access.log vpn_public;
+    access_log /var/log/nginx/vpn-xhttp-fallback.access.log vpn_public{% if (nginx_xhttp.routing_lists | default({})).enabled | default(false) | bool %} if=$vpn_public_loggable{% endif %};
     error_log  /var/log/nginx/vpn-xhttp-fallback.error.log warn;
 }
 

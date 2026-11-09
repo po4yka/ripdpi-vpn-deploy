@@ -13,21 +13,6 @@ subscription:
   enable_bootstrap: true
   revoked_tokens:
     - "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
-  routing_lists:
-    enabled: true
-    token: molecule-routing-token
-    geosite_url: https://feed.example.test/geosite.dat
-    geoip_url: https://feed.example.test/geoip.dat
-    profile:
-      Name: Direct allowlist
-      GlobalProxy: "true"
-      DirectSites: ["geosite:allow"]
-      DirectIp: ["geoip:allow"]
-      ProxySites: []
-      ProxyIp: []
-    policy:
-      must_direct: [service.example.test]
-      must_not_direct: [blocked.example.test]
   # Exercise the continuous payload mirror. rsync with a colon-free
   # local source path performs a local copy (the -e ssh shell is
   # ignored), so the timer-driven pull works self-contained in the

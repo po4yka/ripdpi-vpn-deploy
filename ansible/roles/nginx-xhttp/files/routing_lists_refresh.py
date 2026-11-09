@@ -254,7 +254,7 @@ def publish(config, payloads, digests, counts, now):
     for name in os.listdir(generations):
         if name.startswith('.stage-'):
             shutil.rmtree(os.path.join(generations, name), ignore_errors=True)
-    # The unit's UMask keeps the generation readable by the nginx group only.
+    # The setgid root and the unit's UMask keep generations readable by nginx's group only.
     stage = os.path.join(generations, f'.stage-{os.getpid()}')
     os.mkdir(stage)
     try:

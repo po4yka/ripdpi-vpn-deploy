@@ -79,8 +79,6 @@ state. Check mode only predicts systemd changes. The timer restart handler also
 requires the current mirror toggle. A retained generation pointer still blocks
 direct issuance; disabling pulls is not an implicit authority migration.
 
-**Client routing lists move, so policy replaces the pin** — the refresher treats its feed as untrusted input that decides what leaves the tunnel, and any refusal keeps the served generation. `docs/reference/subscription-plane.md` states the admission rules.
-
 ## What's done well
 
 - **Token store is local-only** — never leaves the host. Bootstrap tokens

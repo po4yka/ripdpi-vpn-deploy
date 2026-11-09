@@ -94,20 +94,23 @@ def test_site_closes_complete_protected_block_before_unrelated_roles():
     names = [value.get('ansible.builtin.import_role', {}).get('name') for value in block['block']]
     assert [name for name in names if name] == ['firewall', 'intrusion_prevention', 'nginx-xhttp', 'geodata', 'tailnet-management',
                                              'transport-egress', 'xray', 'reality-self-steal', 'nginx-xhttp', 'hysteria', 'nginx-xhttp',
-                                             'nginx-xhttp', 'nginx-xhttp']
+                                             'nginx-xhttp', 'nginx-xhttp', 'nginx-xhttp', 'nginx-xhttp']
     assert block['block'][0]['ansible.builtin.import_tasks'] == 'tasks/transport-ingress-begin.yml'
     assert block['block'][1]['vars']['firewall_site_transaction'] is True
     assert 'always' in block['block'][1]['tags']
-    assert block['block'][-7]['ansible.builtin.import_tasks'] == 'tasks/transport-egress-activate.yml'
+    assert block['block'][-9]['ansible.builtin.import_tasks'] == 'tasks/transport-egress-activate.yml'
     # A fresh login, not the run's shared SSH master, must follow publication and precede the commit.
     proofs = [index for index, value in enumerate(block['block'])
               if value.get('ansible.builtin.import_tasks') == 'tasks/fresh-ssh-proof.yml']
-    assert proofs == [2, len(block['block']) - 6]
+    assert proofs == [2, len(block['block']) - 8]
     assert all('always' in block['block'][index]['tags'] for index in proofs)
-    assert block['block'][-5]['ansible.builtin.import_tasks'] == 'tasks/transport-ingress-commit.yml'
+    assert block['block'][-7]['ansible.builtin.import_tasks'] == 'tasks/transport-ingress-commit.yml'
     # Deferred news retirement and convergence run only once the protected commit has succeeded.
-    assert block['block'][-4]['ansible.builtin.import_role']['tasks_from'] == 'model-news-absent'
-    assert block['block'][-3]['ansible.builtin.import_role']['tasks_from'] == 'model-news'
+    assert block['block'][-6]['ansible.builtin.import_role']['tasks_from'] == 'model-news-absent'
+    assert block['block'][-5]['ansible.builtin.import_role']['tasks_from'] == 'model-news'
+    # Routing list reconciliation follows the same commit boundary.
+    assert block['block'][-4]['ansible.builtin.import_role']['tasks_from'] == 'routing-lists-disable'
+    assert block['block'][-3]['ansible.builtin.import_role']['tasks_from'] == 'routing-lists'
     finish = block['block'][-1]
     assert finish['ansible.builtin.command']['argv'] == [
         'python3', '-Es', '/usr/local/libexec/ripdpi-consumer/firewall_consumer.py', 'finish', '--owner', 'site']
@@ -259,6 +262,8 @@ if action!='recover-commit':
     _write(roles / 'nginx-xhttp/tasks/tls-finish.yml', [])
     _write(roles / 'nginx-xhttp/tasks/model-news-absent.yml', [])
     _write(roles / 'nginx-xhttp/tasks/model-news.yml', [])
+    _write(roles / 'nginx-xhttp/tasks/routing-lists-disable.yml', [])
+    _write(roles / 'nginx-xhttp/tasks/routing-lists.yml', [])
     (root / 'firewall-policy').write_bytes(b'accepted firewall')
     _write(roles / 'firewall/tasks/main.yml', [
         {'ansible.builtin.set_fact': {'_firewall_site_transaction_active': True}},

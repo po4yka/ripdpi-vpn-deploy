@@ -22,7 +22,7 @@ A delivery host refreshes client routing lists daily from operator-configured fe
 
 ## Acceptance criteria
 
-- `subscription.routing_lists` enables a daily admitted refresh; it stays off by default.
+- `nginx_xhttp.routing_lists` enables a daily admitted refresh; it stays off by default.
 - A refused candidate leaves the served generation unchanged.
 - Only the five client files are served under `/routing/<token>/`.
 - Disabling retires only owned runtime and preserves unit masks.
