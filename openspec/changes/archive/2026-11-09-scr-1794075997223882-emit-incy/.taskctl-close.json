@@ -1,0 +1,11 @@
+{
+  "change": "scr-1794075997223882-emit-incy",
+  "evidence_summary": "PRs 531 and 539 merged with green required checks; all INCY links and the four-line config imported and connected on a Pixel 8 Pro through the expected nodes.",
+  "execution_sha256": "ac58dc8c09ca6ffe432644fa6b0b35432fe949ea67b3a10e90aa543d9cee99ae",
+  "issue_sha256": "4b47b24bffb460d60ac446e1fc4e855144317b945e686bff3fba9c2ed28b61b9",
+  "outcome": "done",
+  "prepared_at": "2026-11-09T05:51:36Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SCR-1794075997223882"
+}

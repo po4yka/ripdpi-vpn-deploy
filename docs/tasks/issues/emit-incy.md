@@ -2,7 +2,7 @@
 id: SCR-1794075997223882
 title: Emit INCY import material from an issued device artifact
 kind: feature
-status: review
+status: done
 area: scripts
 priority: medium
 risk: high
@@ -14,6 +14,9 @@ openspec_change: scr-1794075997223882-emit-incy
 created: 2026-11-07
 updated: 2026-11-09
 related_tasks: []
+closed_at: "2026-11-09T05:51:36Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: PRs 531 and 539 merged with green required checks; all INCY links and the four-line config imported and connected on a Pixel 8 Pro through the expected nodes.
 ---
 
 ## Goal
