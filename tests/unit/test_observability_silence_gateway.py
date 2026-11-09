@@ -310,6 +310,21 @@ def test_startup_refusal_logs_only_the_fixed_gateway_category(monkeypatch):
         module.main()
 
 
+def _fake_credential_fstat(monkeypatch, module, credential, **metadata):
+    # os.fstat is process-global; pytest's capture also calls it, so fake only
+    # the credential's inode and return real metadata for every other descriptor.
+    target = credential.stat()
+    real_fstat = os.fstat
+
+    def fstat(descriptor):
+        actual = real_fstat(descriptor)
+        if (actual.st_dev, actual.st_ino) != (target.st_dev, target.st_ino):
+            return actual
+        return SimpleNamespace(**metadata)
+
+    monkeypatch.setattr(module.os, "fstat", fstat)
+
+
 def test_private_json_accepts_exact_systemd_root_credential(tmp_path, monkeypatch):
     spec = importlib.util.spec_from_file_location(
         "silence_gateway_systemd_credential",
@@ -322,15 +337,14 @@ def test_private_json_accepts_exact_systemd_root_credential(tmp_path, monkeypatc
         '{"schema_version":1,"environment":"staging","max_ttl_seconds":14400}\n'
     )
     monkeypatch.setattr(module.os, "geteuid", lambda: 1234)
-    monkeypatch.setattr(
-        module.os,
-        "fstat",
-        lambda _descriptor: SimpleNamespace(
-            st_mode=stat.S_IFREG | 0o440,
-            st_uid=0,
-            st_gid=0,
-            st_nlink=1,
-        ),
+    _fake_credential_fstat(
+        monkeypatch,
+        module,
+        credential,
+        st_mode=stat.S_IFREG | 0o440,
+        st_uid=0,
+        st_gid=0,
+        st_nlink=1,
     )
 
     assert module.private_json(credential) == {
@@ -391,15 +405,14 @@ def test_private_json_rejects_non_systemd_credential_metadata_without_relabeling
     credential = tmp_path / "silence-policy.json"
     credential.write_text("{}\n")
     monkeypatch.setattr(module.os, "geteuid", lambda: 1234)
-    monkeypatch.setattr(
-        module.os,
-        "fstat",
-        lambda _descriptor: SimpleNamespace(
-            st_mode=stat.S_IFREG | mode,
-            st_uid=uid,
-            st_gid=gid,
-            st_nlink=nlink,
-        ),
+    _fake_credential_fstat(
+        monkeypatch,
+        module,
+        credential,
+        st_mode=stat.S_IFREG | mode,
+        st_uid=uid,
+        st_gid=gid,
+        st_nlink=nlink,
     )
 
     with pytest.raises(module.GatewayError, match="^configuration-file$"):

@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-09
+goal: ANS-1794214330785468 Host and refresh client routing lists on the
+  subscription plane

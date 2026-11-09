@@ -100,6 +100,20 @@ server {
     }
 {% endif %}
 
+{% if (subscription.routing_lists | default({})).enabled | default(false) | bool %}
+    # Client routing profile and lists, published atomically by
+    # vpn-routing-lists. The token only keeps the path undiscoverable.
+    location ~ "^/routing/(?<vpn_routing_token>[A-Za-z0-9_-]{16,64})/(?<vpn_routing_file>profile\.json|geosite\.dat|geosite\.dat\.sha256|geoip\.dat|geoip\.dat\.sha256)$" {
+        alias /var/lib/vpn-routing-lists/$vpn_routing_token/$vpn_routing_file;
+        default_type application/octet-stream;
+
+        # Error records include request/upstream URIs; bearer locations use
+        # only URI-free categorical diagnostics, including failure outcomes.
+        error_log /dev/null crit;
+        access_log /var/log/nginx/vpn-sub.categorical.log vpn_sub_category;
+    }
+{% endif %}
+
     # Reject everything else.
     location / {
         return 404;

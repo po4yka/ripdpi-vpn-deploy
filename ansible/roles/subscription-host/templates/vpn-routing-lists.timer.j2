@@ -1,0 +1,12 @@
+[Unit]
+Description=Client routing list refresh
+
+[Timer]
+OnActiveSec=2min
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=1h
+Unit=vpn-routing-lists.service
+
+[Install]
+WantedBy=timers.target

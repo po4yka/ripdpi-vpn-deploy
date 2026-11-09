@@ -1,0 +1,38 @@
+[Unit]
+Description=Admit and publish client routing lists
+Documentation=https://github.com/po4yka/ripdpi-vpn-deploy/blob/main/docs/reference/subscription-plane.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=vpn-bootstrap
+Group=www-data
+SupplementaryGroups=vpn-bootstrap
+ExecStart=/usr/local/libexec/vpn-routing-lists-refresh
+TimeoutStartSec=300
+UMask=0027
+
+# Hardening
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# A feed redirect cannot reach private services; the DNS stub stays on loopback.
+IPAddressDeny=link-local 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 fc00::/7
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/vpn-routing-lists
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=yes
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
