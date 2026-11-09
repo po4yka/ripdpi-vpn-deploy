@@ -8,6 +8,7 @@ import errno
 import json
 import os
 from pathlib import Path
+import re
 import selectors
 import signal
 import socket
@@ -17,13 +18,15 @@ import sys
 import threading
 import time
 
-from transport_destination_policy import DestinationPolicy, PolicyError, canonical_name, normalize_address, LOCAL_DNS_FORWARDER
+from transport_destination_policy import (DestinationPolicy, MAX_ALLOW_NAMES, PolicyError, canonical_name, load_deny_list,
+                                          normalize_address, LOCAL_DNS_FORWARDER)
 from transport_private_authority import PrivateAuthorityError, read_private_file
 from transport_socks import (FAILURE, MAX_HANDSHAKE, NeedMore, WireError, authentication,
                              datagram, encoded_datagram, greeting, reply, request,
                              upstream_auth, upstream_reply, upstream_request)
 
 MAX_CONFIG = 131072
+SHA256 = re.compile(r"[0-9a-f]{64}")
 MAX_STREAM_BUFFER = 65536
 MAX_RESOLVER_RESPONSE = 8192
 MAX_CONNECT_CANDIDATES = 8
@@ -71,9 +74,32 @@ def _credential(value, password=False):
         raise NormalizerError("invalid-config-credential")
 
 
+def _validate_destination_filter(value):
+    _keys(value, {"names_path", "names_sha256", "ranges_path", "ranges_sha256", "allow_domains"})
+    for name in ("names_path", "ranges_path"):
+        if not isinstance(value[name], str) or not value[name].startswith("/"):
+            raise NormalizerError("invalid-destination-filter")
+    for name in ("names_sha256", "ranges_sha256"):
+        if not isinstance(value[name], str) or not SHA256.fullmatch(value[name]):
+            raise NormalizerError("invalid-destination-filter")
+    allow = value["allow_domains"]
+    if not isinstance(allow, list) or len(allow) > MAX_ALLOW_NAMES:
+        raise NormalizerError("invalid-destination-filter")
+    try:
+        for name in allow:
+            # A bare suffix would exempt a whole top-level domain from denial.
+            if "." not in canonical_name(name).rstrip("."):
+                raise NormalizerError("invalid-destination-filter")
+    except PolicyError:
+        raise NormalizerError("invalid-destination-filter") from None
+
+
 def validate_config(raw, *, input_only=False):
     """Validate complete typed authority; input mode omits uncreated identities."""
     top = {"schema_version", "backends", "listeners", "resolver", "policy", "limits"}
+    if isinstance(raw, dict) and "destination_filter" in raw:
+        top |= {"destination_filter"}
+        _validate_destination_filter(raw["destination_filter"])
     _keys(raw, top if input_only else top | {"runtime_uid"})
     if type(raw["schema_version"]) is not int or raw["schema_version"] != 1:
         raise NormalizerError("invalid-config-version")
@@ -479,7 +505,11 @@ class Normalizer:
         self.clock = clock
         self.stopped = threading.Event()
         self.resolver = resolver or ResolverPool(config["resolver"], self.stopped)
-        self.policy = DestinationPolicy(**config["policy"])
+        try:
+            deny = load_deny_list(config["destination_filter"]) if "destination_filter" in config else None
+        except PolicyError:
+            raise NormalizerError("destination-filter-refused") from None
+        self.policy = DestinationPolicy(**config["policy"], deny=deny)
         self.connections = threading.BoundedSemaphore(self.limits["max_connections"])
         self.associations = threading.BoundedSemaphore(self.limits["max_associations"])
         self.pending = threading.BoundedSemaphore(self.limits["max_pending_packets"])
@@ -547,13 +577,16 @@ class Normalizer:
                 worker.join(timeout=max(0, deadline - time.monotonic()))
 
     def _destinations(self, host, port, network, control):
+        range_exempt = False
         try:
             values = (str(normalize_address(host)),)
         except PolicyError:
-            values = self.resolver.resolve(canonical_name(host), port, network,
+            name = canonical_name(host)
+            range_exempt = self.policy.admit_name(name)
+            values = self.resolver.resolve(name, port, network,
                                            lambda: self.stopped.is_set() or _closed(control)
                                            or (network == "udp" and bool(_wait([control], timeout=0)[0])))
-        return self.policy.admitted_candidates(values, port, network)
+        return self.policy.admitted_candidates(values, port, network, range_exempt)
 
     def _connect_candidates(self, item, candidates, port, control):
         backend = self.config["backends"][item["backend"]]

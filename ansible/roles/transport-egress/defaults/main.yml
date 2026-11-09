@@ -62,6 +62,10 @@ transport_egress_snapshot_paths:
 # Existing owned canary authority is also required for consumer adoption.
 transport_runtime_probe_url: "{{ watchdog_secrets.reality_probe_url | default('') }}"
 transport_runtime_probe_expected_status: "{{ watchdog_secrets.reality_probe_expected_status | default(204) }}"
+# Runtime acceptance and REALITY need these destinations, so deny data must not list them.
+transport_egress_deny_required_destinations: >-
+  {{ ([transport_runtime_probe_url | urlsplit('hostname')] if transport_runtime_probe_url | length > 0 else [])
+     + ([xray.target | regex_replace(':[0-9]+$', '')] if (xray.target | default('')) | length > 0 else []) }}
 transport_runtime_timeout_seconds: 60
 transport_runtime_probe_clients:
   xray: "{{ watchdog.reality_probe_client | default('watchdog') }}"

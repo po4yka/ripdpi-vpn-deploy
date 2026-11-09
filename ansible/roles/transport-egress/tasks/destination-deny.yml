@@ -1,0 +1,84 @@
+---
+- name: Read accepted deny pins before pruning retained data
+  ansible.builtin.slurp:
+    src: '{{ transport_egress_config_dir }}/normalizer.json'
+  register: _transport_egress_accepted_config
+  failed_when: false
+  no_log: true
+- name: Inspect the retained deny data directory
+  ansible.builtin.stat:
+    path: '{{ transport_egress_config_dir }}/destination-deny'
+  register: _transport_egress_deny_dir
+- name: Find deny data that neither the accepted nor the candidate generation uses
+  vars:
+    _accepted: "{{ ((_transport_egress_accepted_config.content | default('e30=') | b64decode | from_json).destination_filter
+      | default({})) }}"
+    _candidate: '{{ transport_egress_normalizer_config.destination_filter | default({}) }}'
+  ansible.builtin.find:
+    paths: '{{ transport_egress_config_dir }}/destination-deny'
+    excludes: "{{ [_accepted.names_sha256 | default('none'), _accepted.ranges_sha256 | default('none'),
+      _candidate.names_sha256 | default('none'), _candidate.ranges_sha256 | default('none')]
+      | map('regex_replace', '$', '.txt') | list }}"
+  register: _transport_egress_stale_deny
+  when: _transport_egress_deny_dir.stat.exists
+- name: Remove deny data that no rollback can select
+  ansible.builtin.file:
+    path: '{{ item }}'
+    state: absent
+  loop: "{{ _transport_egress_stale_deny.files | default([]) | map(attribute='path') | list }}"
+- name: Admit pinned deny data for the candidate generation
+  when: transport_egress_normalizer_config.destination_filter is defined
+  vars:
+    _filter: '{{ transport_egress_normalizer_config.destination_filter }}'
+    _deny_dir: '{{ transport_egress_config_dir }}/destination-deny'
+  block:
+    - name: Prepare private content-addressed deny data directory
+      ansible.builtin.file:
+        path: '{{ _deny_dir }}'
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+    # The snapshot transaction holds files up to 1 MiB. Digest-named files stay
+    # immutable, so restoring the unit and normalizer.json selects the old data.
+    - name: Download pinned deny data
+      ansible.builtin.get_url:
+        url: '{{ item.url }}'
+        checksum: 'sha256:{{ item.sha256 }}'
+        dest: '{{ _deny_dir }}/{{ item.sha256 }}.txt'
+        owner: root
+        group: root
+        mode: '0644'
+        timeout: 60
+      register: _transport_egress_deny_download
+      retries: 5
+      delay: 10
+      until: _transport_egress_deny_download is succeeded
+      loop:
+        - {url: '{{ destination_filter.domains_url }}', sha256: '{{ _filter.names_sha256 }}'}
+        - {url: '{{ destination_filter.ranges_url }}', sha256: '{{ _filter.ranges_sha256 }}'}
+    - name: Refuse invalid data and data that denies a required destination
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - "{{ lookup('ansible.builtin.file', role_path ~ '/../../../scripts/transport_destination_policy.py', rstrip=false) }}"
+          - --check-deny-data
+        stdin: >-
+          {{ _filter | combine({'names_path': _deny_dir ~ '/' ~ _filter.names_sha256 ~ '.txt',
+             'ranges_path': _deny_dir ~ '/' ~ _filter.ranges_sha256 ~ '.txt',
+             'required_destinations': transport_egress_deny_required_destinations}) | to_json }}
+      register: _transport_egress_deny_admission
+      changed_when: false
+      failed_when: false
+      check_mode: false
+      no_log: true
+    - name: Report the categorical deny data refusal
+      ansible.builtin.fail:
+        msg: >-
+          {{ _transport_egress_deny_admission.stderr
+             if _transport_egress_deny_admission.stderr in ['invalid-deny-data', 'oversized-deny-data', 'deny-digest-mismatch',
+                                                            'unavailable-deny-data', 'destination-denied', 'invalid-name',
+                                                            'invalid-deny-request']
+             else 'deny-data-refused' }}
+      when: _transport_egress_deny_admission.rc != 0

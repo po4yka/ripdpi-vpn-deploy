@@ -44,6 +44,8 @@ Protected runtime consumers stage acquisition and frontend authority before the 
 
 Root-owned ancestry and single-link regular-file admission of the acceptance helpers is one shared task file, `helper-authority.yml`, refusing with `consumer-helper-authority-refused`. `runtime-prepare.yml` runs it before any write, and `playbooks/tasks/transport-ingress-begin.yml` runs it before executing `transport_runtime_outer.py status` as root while adopting an interrupted protected ingress journal, so a symlinked, multiply linked or group- or world-writable helper (or ancestor) fails closed with the journal retained before adoption. Keep one copy of that check.
 
+Pinned deny data uses digest-named files in `destination-deny/`, outside the snapshot set, because the snapshot helper admits files up to 1 MiB. `normalizer.json` and the unit name the digests, so a restored generation selects its old data. Staging keeps only the installed and candidate digests, after interrupted-route recovery. Retirement leaves the public data in place, because a compensation before the retirement commit restores units that name it. `LoadCredential` has the same size problem; the service binds the files into its private `/tmp`.
+
 ## What's done well
 
 - Input and identity admission happen before package or account mutation; unresolved fresh check mode predicts changes without invented UIDs or sockets.
