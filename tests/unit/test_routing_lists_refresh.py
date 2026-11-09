@@ -253,6 +253,16 @@ def test_publication_interrupted_before_the_link_swap_is_retried(feed, config, m
     assert served(config, 'profile.json').exists()
 
 
+def test_service_umask_leaves_generations_group_readable_only(feed, config):
+    previous = os.umask(0o027)
+    try:
+        refresh_module.refresh(config, now=1000)
+    finally:
+        os.umask(previous)
+    assert served(config, 'geosite.dat').stat().st_mode & 0o777 == 0o640
+    assert served(config, 'geosite.dat').parent.stat().st_mode & 0o777 == 0o750
+
+
 def test_stale_stage_from_a_killed_run_is_cleared(feed, config):
     refresh_module.refresh(config, now=1000)
     stale = Path(config['root'], 'generations', '.stage-killed')
