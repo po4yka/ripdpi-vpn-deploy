@@ -19,8 +19,8 @@ import time
 import pytest
 
 from transport_destination_policy import (DestinationPolicy, IPV4_DENY, IPV6_DENY,
-                                          PolicyError, canonical_name, load_deny_list, normalize_address)
-import transport_destination_policy as policy_module
+                                          PolicyError, canonical_name, check_deny_data, load_deny_list,
+                                          normalize_address)
 import transport_egress_normalizer as normalizer
 import transport_socks as wire
 
@@ -710,8 +710,8 @@ def test_allow_list_exempts_name_and_ranges_but_never_isolation(tmp_path):
     (b"", b"203.0.113.1\n203.0.113.2\n203.0.113.3\n", "oversized-deny-data"),
 ], ids=["space", "hyphen", "non-ascii", "prefix", "mapped-range", "many-comments", "many-names", "many-ranges"])
 def test_malformed_or_oversized_data_is_refused_categorically(tmp_path, monkeypatch, names, ranges, category):
-    monkeypatch.setattr(policy_module, "MAX_DENY_NAMES", 2)
-    monkeypatch.setattr(policy_module, "MAX_DENY_RANGES", 2)
+    monkeypatch.setattr("transport_destination_policy.MAX_DENY_NAMES", 2)
+    monkeypatch.setattr("transport_destination_policy.MAX_DENY_RANGES", 2)
     with pytest.raises(PolicyError) as refused:
         load_deny_list(deny_spec(tmp_path, names=names, ranges=ranges))
     assert str(refused.value) == category
@@ -799,10 +799,10 @@ def test_candidate_check_accepts_control_destination_on_allow_list(tmp_path):
     (["203.0.113.9"], True), (["203.0.113.9", "192.0.2.80"], False), (["192.0.2.80"], False),
 ], ids=["all-denied", "mixed", "public"])
 def test_candidate_check_resolves_required_names_against_ranges(tmp_path, monkeypatch, answers, refused):
-    monkeypatch.setattr(policy_module.socket, "getaddrinfo", lambda *_: [(0, 0, 0, "", (value, 0)) for value in answers])
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *_: [(0, 0, 0, "", (value, 0)) for value in answers])
     request = {**deny_spec(tmp_path), "required_destinations": ["canary.test"]}
     if refused:
         with pytest.raises(PolicyError, match="^destination-denied$"):
-            policy_module.check_deny_data(request)
+            check_deny_data(request)
     else:
-        assert policy_module.check_deny_data(request) == {"names": 1, "ranges": 2}
+        assert check_deny_data(request) == {"names": 1, "ranges": 2}
