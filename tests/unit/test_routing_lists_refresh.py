@@ -283,7 +283,7 @@ def test_download_stops_at_the_byte_cap():
 
 def _routing_location():
     template = (ROLE / 'templates/subscription.conf.j2').read_text()
-    environment = Environment()
+    environment = Environment(autoescape=True)
     environment.filters['bool'] = bool
     rendered = environment.from_string(template).render(
         subscription={'routing_lists': {'enabled': True}, 'server_name': 'sub.example.net', 'port': 8444},

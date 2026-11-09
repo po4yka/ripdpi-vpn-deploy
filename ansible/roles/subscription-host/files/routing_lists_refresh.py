@@ -237,7 +237,7 @@ def _write(directory, name, data):
         handle.write(data)
         handle.flush()
         os.fsync(handle.fileno())
-    os.chmod(path, 0o644)
+    os.chmod(path, 0o640)
 
 
 def _sync_directory(path):
@@ -251,14 +251,14 @@ def _sync_directory(path):
 def publish(config, payloads, digests, counts, now):
     root, token = config['root'], config['token']
     generations = os.path.join(root, GENERATIONS)
-    os.makedirs(generations, mode=0o711, exist_ok=True)
+    os.makedirs(generations, mode=0o750, exist_ok=True)
     # A run killed at its timeout cannot clean up after itself.
     for name in os.listdir(generations):
         if name.startswith('.stage-'):
             shutil.rmtree(os.path.join(generations, name), ignore_errors=True)
     stage = tempfile.mkdtemp(prefix='.stage-', dir=generations)
     try:
-        os.chmod(stage, 0o755)
+        os.chmod(stage, 0o750)
         profile = dict(config['profile'])
         for key, name in (('Geositeurl', 'geosite.dat'), ('Geoipurl', 'geoip.dat')):
             profile[key] = f"{config['base_url']}/{name}"
