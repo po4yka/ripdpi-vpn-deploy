@@ -13,7 +13,6 @@ import json
 import os
 import shutil
 import sys
-import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -237,7 +236,6 @@ def _write(directory, name, data):
         handle.write(data)
         handle.flush()
         os.fsync(handle.fileno())
-    os.chmod(path, 0o640)
 
 
 def _sync_directory(path):
@@ -256,9 +254,10 @@ def publish(config, payloads, digests, counts, now):
     for name in os.listdir(generations):
         if name.startswith('.stage-'):
             shutil.rmtree(os.path.join(generations, name), ignore_errors=True)
-    stage = tempfile.mkdtemp(prefix='.stage-', dir=generations)
+    # The unit's UMask keeps the generation readable by the nginx group only.
+    stage = os.path.join(generations, f'.stage-{os.getpid()}')
+    os.mkdir(stage)
     try:
-        os.chmod(stage, 0o750)
         profile = dict(config['profile'])
         for key, name in (('Geositeurl', 'geosite.dat'), ('Geoipurl', 'geoip.dat')):
             profile[key] = f"{config['base_url']}/{name}"
