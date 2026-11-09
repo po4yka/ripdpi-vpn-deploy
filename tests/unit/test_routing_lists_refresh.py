@@ -239,6 +239,20 @@ def test_rotated_token_keeps_the_drift_baseline(feed, config):
     assert served(config, 'profile.json').read_text() == old
 
 
+def test_publication_interrupted_before_the_link_swap_is_retried(feed, config, monkeypatch):
+    real_replace = os.replace
+
+    def fail_once(source, target):
+        monkeypatch.setattr(refresh_module.os, 'replace', real_replace)
+        raise OSError('interrupted')
+
+    monkeypatch.setattr(refresh_module.os, 'replace', fail_once)
+    with pytest.raises(OSError):
+        refresh_module.refresh(config, now=1000)
+    assert refresh_module.refresh(config, now=2000) == 'published'
+    assert served(config, 'profile.json').exists()
+
+
 def test_stale_stage_from_a_killed_run_is_cleared(feed, config):
     refresh_module.refresh(config, now=1000)
     stale = Path(config['root'], 'generations', '.stage-killed')

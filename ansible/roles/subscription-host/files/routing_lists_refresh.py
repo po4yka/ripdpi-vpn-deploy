@@ -216,19 +216,19 @@ def check_drift(config, previous, counts):
 
 
 def _current(root):
-    # The baseline must survive a token rotation, so it does not depend on the token.
-    generations = os.path.join(root, GENERATIONS)
-    finished = sorted(name for name in os.listdir(generations) if not name.startswith('.')) \
-        if os.path.isdir(generations) else []
-    if not finished:
-        return {}
+    """Read the manifest behind the served link, whichever token it belongs to."""
+    manifests = []
     try:
-        with open(os.path.join(generations, finished[-1], MANIFEST), encoding='utf-8') as handle:
-            return json.load(handle)
+        for name in os.listdir(root):
+            if name.startswith('.') or not os.path.islink(os.path.join(root, name)):
+                continue
+            with open(os.path.join(root, name, MANIFEST), encoding='utf-8') as handle:
+                manifests.append(json.load(handle))
     except FileNotFoundError:
         return {}
     except (OSError, ValueError) as error:
         raise Refused('state-unreadable') from error
+    return max(manifests, key=lambda manifest: manifest.get('published', 0), default={})
 
 
 def _write(directory, name, data):
