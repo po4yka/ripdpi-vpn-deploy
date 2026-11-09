@@ -122,6 +122,8 @@ another boot or stale fingerprints require real adoption; future ticks and
 malformed/foreign private authority refuse. This preserves first-to-second
 shared-role idempotence without claiming an inactive unit adopted configuration.
 
+**Client routing lists move, so policy replaces the pin** — the refresher treats its feed as untrusted input that decides what leaves the tunnel, and any refusal keeps the served generation. `docs/reference/subscription-plane.md` states the admission rules. It serves from this frontend so no extra port or certificate is added. The policy and retirement follow the protected commit, as the model news page does. Both vhosts drop the `/routing/` request line from access logs through a `$request_uri` map, because a missing file leaves the location through `error_page`.
+
 ## What's done well
 
 - **Molecule proves global hosts preservation** — prepare retains only a private root-owned SHA256 witness of `/etc/hosts`; verification requires identical post-convergence bytes and retains all real HTTPS checks through explicit local resolution.
@@ -130,9 +132,9 @@ shared-role idempotence without claiming an inactive unit adopted configuration.
 - **Complete candidate before publication** — `tasks/transaction.yml` accepts an exact owned write set, roots, validator argv and target unit. It stages full roots, validates at actual absolute paths in a private mount namespace, then publishes under a per-unit lock. Ordinary activation failure restores prior bytes, runtime and exact boot enablement; failed compensation retains a private pending snapshot and refuses reuse. Ordinary candidate-preparation failure removes only this invocation’s pending snapshot while preserving live bytes, so correcting an unrelated FIFO permits a valid retry. Once publication or activation may occur, failed compensation retains recovery authority. Credential roots are bound to the exact unit credential paths only inside validation namespace. Check mode predicts changes without creating state or activating runtime.
 - **Fresh-host check mode plans nginx without activating it** — the role checks for the distro unit and requires a planned package installation when it is absent. Reload and start remain runtime actions on a real converge; check mode does not claim a nonexistent service is active.
 - **No public admin path** — there is no admin/status/management endpoint on
-  this vhost. The only non-XHTTP public path is the opt-in, secret-token Snell
-  evaluation fixture location; it disables access and error logging and
-  compression and remains rate-limited.
+  this vhost. The non-XHTTP public paths are the opt-in, secret-token routing
+  lists and Snell evaluation fixture locations. Both disable access and error
+  logging; the Snell location also disables compression and is rate-limited.
 - **Plain-HTTP redirects log nothing** — both TCP/80 redirect servers set
   `access_log off` and `error_log /dev/null crit`, because a client can send
   any bearer path over HTTP before the redirect.

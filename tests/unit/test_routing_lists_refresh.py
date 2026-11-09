@@ -5,14 +5,15 @@ import importlib.util
 import ipaddress
 import json
 import os
-from pathlib import Path
 import re
 import threading
+from pathlib import Path
 
-from jinja2 import Environment
 import pytest
 
-ROLE = Path(__file__).resolve().parents[2] / 'ansible/roles/subscription-host'
+from scripts.template_render import merge_render_vars, render_template
+
+ROLE = Path(__file__).resolve().parents[2] / 'ansible/roles/nginx-xhttp'
 SPEC = importlib.util.spec_from_file_location('routing_lists_refresh', ROLE / 'files/routing_lists_refresh.py')
 refresh_module = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(refresh_module)
@@ -292,12 +293,9 @@ def test_download_stops_at_the_byte_cap():
 
 
 def _routing_location():
-    template = (ROLE / 'templates/subscription.conf.j2').read_text()
-    environment = Environment(autoescape=True)
-    environment.filters['bool'] = bool
-    rendered = environment.from_string(template).render(
-        subscription={'routing_lists': {'enabled': True}, 'server_name': 'sub.example.net', 'port': 8444},
-        vpn={}, nginx_xhttp={'server_name': 'sub.example.net'}, subscription_port=8444)
+    variables = merge_render_vars()
+    variables['nginx_xhttp'] = {**variables['nginx_xhttp'], 'routing_lists': {'enabled': True}}
+    rendered = render_template(ROLE / 'templates/site.conf.j2', variables)
     return re.search(r'location ~ "(\^/routing/[^"]+)"', rendered).group(1).replace('(?<', '(?P<')
 
 

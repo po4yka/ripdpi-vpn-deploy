@@ -1,6 +1,6 @@
 ## Context
 
-`subscription-host` already owns an independent HTTPS vhost, bounded bearer-path logging and hardened timers. The `geodata` role serves Xray on the node, requires SHA256 pins and restarts consumers, so it does not fit files that only clients download.
+`nginx-xhttp` already owns a public HTTPS frontend with a managed certificate and a precedent for timer-refreshed content. The `geodata` role serves Xray on the node, requires SHA256 pins and restarts consumers, so it does not fit files that only clients download.
 
 ## Goals / Non-Goals
 
@@ -11,7 +11,7 @@
 
 ## Decisions
 
-- Extend `subscription-host` instead of adding a role. It reuses the vhost, service user and retirement path.
+- Extend `nginx-xhttp` instead of adding a role or using `subscription-host`. A separate listener would add a public port and a static certificate that nothing renews, so the frontend's vhost and certificate are reused, with a dedicated service user.
 - The feed is deliberately unpinned, as an exception to version pinning that covers client list data only. A pin would need a release and a deploy for each list update, which is the staleness this change removes. Admission replaces the pin: `.sha256` sidecar, byte cap, protobuf parse, and policy.
 - Policy treats every feed tag the profile references as untrusted. Local ranges stay as literal profile rules, because an exempt feed tag would let the feed bypass the floors and canaries. Rejected: exempting a `private` tag.
 - Refuse duplicate tags, inverted GeoIP entries, regular expressions, keyword rules, malformed labels, networks above the prefix floors and IPv4-mapped IPv6 prefixes. The role requires `GlobalProxy: "true"`, so unmatched traffic stays in the tunnel.
