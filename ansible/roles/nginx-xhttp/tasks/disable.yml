@@ -50,3 +50,12 @@
 
 - name: Retire the refreshed model news page with the role
   ansible.builtin.include_tasks: model-news-retire.yml
+
+- name: Retire client routing lists now outside a protected ingress transaction
+  ansible.builtin.include_tasks: routing-lists-disable.yml
+  when: _transport_ingress_request is not defined
+
+- name: Defer client routing list retirement until the protected ingress commit
+  ansible.builtin.set_fact:
+    _nginx_routing_lists_retire_after_commit: true
+  when: _transport_ingress_request is defined

@@ -1,0 +1,13 @@
+---
+# The policy carries the candidate origin and retirement deletes what a restored
+# vhost serves, and a protected ingress rollback restores neither, so inside
+# that transaction reconciliation waits for site.yml to run it after the commit.
+- name: Reconcile client routing lists now outside a protected ingress transaction
+  ansible.builtin.include_tasks: "{{ 'routing-lists.yml' if nginx_xhttp_routing_lists.enabled | bool else 'routing-lists-disable.yml' }}"
+  when: _transport_ingress_request is not defined
+
+- name: Defer client routing lists until the protected ingress commit
+  ansible.builtin.set_fact:
+    _nginx_routing_lists_converge_after_commit: "{{ nginx_xhttp_routing_lists.enabled | bool }}"
+    _nginx_routing_lists_retire_after_commit: "{{ not (nginx_xhttp_routing_lists.enabled | bool) }}"
+  when: _transport_ingress_request is defined

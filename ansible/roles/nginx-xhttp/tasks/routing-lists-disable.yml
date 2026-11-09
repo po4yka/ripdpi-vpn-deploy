@@ -3,34 +3,34 @@
   ansible.builtin.command:
     argv: [systemctl, show, '{{ item }}', '--property=LoadState', --value]
   loop: [vpn-routing-lists.timer, vpn-routing-lists.service]
-  register: _subscription_routing_units
+  register: _nginx_routing_units
   changed_when: false
   check_mode: false
   failed_when: >-
-    _subscription_routing_units.stdout not in ['loaded', 'masked', 'not-found'] or
-    _subscription_routing_units.rc not in [0, 1] or
-    (_subscription_routing_units.rc == 1 and
-     _subscription_routing_units.stdout != 'not-found')
+    _nginx_routing_units.stdout not in ['loaded', 'masked', 'not-found'] or
+    _nginx_routing_units.rc not in [0, 1] or
+    (_nginx_routing_units.rc == 1 and
+     _nginx_routing_units.stdout != 'not-found')
 
 - name: Stop and disable loaded routing list refresh
   ansible.builtin.systemd_service:
     name: '{{ item.item }}'
     state: stopped
     enabled: false
-  loop: '{{ _subscription_routing_units.results }}'
+  loop: '{{ _nginx_routing_units.results }}'
   when: item.stdout == 'loaded'
 
 - name: Stop masked routing list refresh while preserving its mask
   ansible.builtin.systemd_service:
     name: '{{ item.item }}'
     state: stopped
-  loop: '{{ _subscription_routing_units.results }}'
+  loop: '{{ _nginx_routing_units.results }}'
   when: item.stdout == 'masked'
 
 - name: Preserve exact administratively masked routing list units
   ansible.builtin.set_fact:
-    _subscription_routing_masks: >-
-      {{ _subscription_routing_units.results
+    _nginx_routing_masks: >-
+      {{ _nginx_routing_units.results
          | selectattr('stdout', 'equalto', 'masked') | map(attribute='item') | list }}
 
 - name: Remove routing list runtime
@@ -43,10 +43,20 @@
     - /usr/local/libexec/vpn-routing-lists-refresh
     - /etc/vpn-routing-lists.json
     - /var/lib/vpn-routing-lists
-  when: (item | basename) not in _subscription_routing_masks
-  register: _subscription_routing_removed
+  when: (item | basename) not in _nginx_routing_masks
+  register: _nginx_routing_removed
 
 - name: Reload retired routing list unit graph
   ansible.builtin.systemd_service:
     daemon_reload: true
-  when: not ansible_check_mode and _subscription_routing_removed.changed
+  when: not ansible_check_mode and _nginx_routing_removed.changed
+
+- name: Remove the routing list system user
+  ansible.builtin.user:
+    name: vpn-routing-lists
+    state: absent
+
+- name: Remove the routing list system group
+  ansible.builtin.group:
+    name: vpn-routing-lists
+    state: absent

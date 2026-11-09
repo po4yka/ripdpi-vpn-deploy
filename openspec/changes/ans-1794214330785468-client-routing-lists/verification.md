@@ -27,4 +27,4 @@ artifact_evidence: docs/reference/subscription-plane.md documents the route, adm
 | REQ-ROUTING-LISTS-ADMISSION | ANS-1794218690815722 | test_unsafe_candidate_keeps_the_previous_generation, test_duplicate_tag_refuses, test_inverted_geoip_tag_refuses, test_digest_mismatch_refuses, test_download_stops_at_the_byte_cap, test_sudden_size_change_refuses | passed |
 | REQ-ROUTING-LISTS-KEEP | ANS-1794218690815722 | test_unsafe_candidate_keeps_the_previous_generation | passed |
 | REQ-ROUTING-LISTS-SERVED | ANS-1794218690815722 | test_nginx_serves_client_files, test_nginx_does_not_serve_other_paths, test_unchanged_feed_keeps_the_timestamp_clients_compare, test_new_address_republishes_an_unchanged_feed | passed |
-| REQ-ROUTING-LISTS-RETIRE | ANS-1794218690815722 | routing-lists-disable.yml and disable.yml retire exact owned paths and preserve masks; subscription-host Molecule in CI | required |
+| REQ-ROUTING-LISTS-RETIRE | ANS-1794218690815722 | routing-lists-disable.yml and disable.yml retire exact owned paths and preserve masks; nginx-xhttp Molecule in CI | required |

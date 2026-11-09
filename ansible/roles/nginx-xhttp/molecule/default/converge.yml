@@ -14,6 +14,21 @@
     xray:
       xhttp_path: "/7c2e9a41d05b3f68"
     nginx_xhttp:
+      routing_lists:
+        enabled: true
+        token: molecule-routing-token
+        geosite_url: https://feed.example.test/geosite.dat
+        geoip_url: https://feed.example.test/geoip.dat
+        profile:
+          Name: Direct allowlist
+          GlobalProxy: "true"
+          DirectSites: ["geosite:allow"]
+          DirectIp: ["geoip:allow"]
+          ProxySites: []
+          ProxyIp: []
+        policy:
+          must_direct: [service.example.test]
+          must_not_direct: [blocked.example.test]
       server_name: vpn.example.test
       cert_pem: |
         -----BEGIN CERTIFICATE-----

@@ -47,5 +47,5 @@ Disabling the feature or the role MUST retire the routing list units, refresher,
 
 #### Scenario: Feature disabled
 
-- **WHEN** convergence runs with `subscription.routing_lists.enabled` false after it was true
+- **WHEN** convergence runs with `nginx_xhttp.routing_lists.enabled` false after it was true
 - **THEN** the owned units and files are absent and the vhost has no routing location

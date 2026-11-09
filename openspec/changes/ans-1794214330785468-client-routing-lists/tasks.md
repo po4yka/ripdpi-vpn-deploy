@@ -6,7 +6,7 @@ A delivery host refreshes client routing lists daily, admits them against privat
 
 ## Ownership
 
-Single serialized lane. `ansible/roles/subscription-host/`, `secrets/schema.json`, `secrets/prod.secrets.example.yaml`, `docs/reference/subscription-plane.md`, `tests/unit/test_routing_lists_refresh.py` and matching snapshots.
+Single serialized lane. `ansible/roles/nginx-xhttp/`, `ansible/roles/subscription-host/`, `secrets/schema.json`, `secrets/prod.secrets.example.yaml`, `docs/reference/subscription-plane.md`, `tests/unit/test_routing_lists_refresh.py` and matching snapshots.
 
 ## Execution
 
@@ -15,5 +15,5 @@ Single serialized lane. `ansible/roles/subscription-host/`, `secrets/schema.json
 ## Verification
 
 - Local: `tests/unit/test_routing_lists_refresh.py`, `make snapshot-check`, `make check`.
-- Remote: PR CI on the exact head SHA, including `subscription-host` Molecule.
+- Remote: PR CI on the exact head SHA, including `nginx-xhttp` Molecule.
 - Dry-run, staging, live and client acceptance: separate authorized steps after this change merges.
