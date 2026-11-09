@@ -64,6 +64,7 @@
       - --input-only
     stdin: >-
       {{ {'vpn': vpn, 'secrets': transport_egress_secrets | default({}),
+          'destination_filter': destination_filter | default(none),
           'owned_addresses': [], 'management_tcp_ports': [],
           'management_udp_ports': []} | to_json }}
     stdin_add_newline: false
@@ -119,6 +120,7 @@
     stdin: >-
       {{ (_transport_egress_host_context.stdout | from_json) | combine({
           'vpn': vpn, 'secrets': transport_egress_secrets,
+          'destination_filter': destination_filter | default(none),
           'normalizer_uid': transport_egress_normalizer_uid | int,
           'gateway_uid': transport_egress_gateway_uid | int,
           'classifier_uid': transport_egress_classifier_uid | default(0) | int,

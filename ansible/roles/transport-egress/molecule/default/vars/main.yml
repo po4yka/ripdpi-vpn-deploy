@@ -4,6 +4,7 @@ vpn:
   enable_nginx_xhttp: false
   enable_hysteria: false
   enable_warp_outbound: false
+  enable_destination_filter: true
   build_xray_from_source: false
 transport_egress_frontend_users:
   - xray
@@ -15,6 +16,15 @@ xray:
   linux_amd64_sha256: e4bd9119f50ae7c41658b1abd0679ae06f98bd864a2907ff33f2f2cf7081b214
   linux_arm64_sha256: 1811c8f1da0c3b6dc707ebaf1c8390e987ba39859a8f0a7aadd8526157f2ec8d
 xray_runtime_publish_geoip: true
+# The role finds these digest-named files in place, so get_url does not contact the URLs.
+molecule_deny_names: "denied-name.invalid\n"
+molecule_deny_ranges: "192.0.2.81/32\n"
+destination_filter:
+  domains_url: https://deny.invalid/releases/download/fixture/names.txt
+  domains_sha256: "{{ molecule_deny_names | hash('sha256') }}"
+  ranges_url: https://deny.invalid/releases/download/fixture/ranges.txt
+  ranges_sha256: "{{ molecule_deny_ranges | hash('sha256') }}"
+  allow_domains: []
 
 transport_runtime_probe_url: http://192.0.2.80:18080/
 transport_runtime_probe_clients:

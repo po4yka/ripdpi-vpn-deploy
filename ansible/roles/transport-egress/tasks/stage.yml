@@ -182,6 +182,10 @@
         msg: Complete admitted private egress candidate differs from the installed generation.
       changed_when: _transport_egress_candidate_changed | bool
       when: ansible_check_mode
+    # Runs without a candidate difference too: a changed canary must meet unchanged data.
+    - name: Acquire and admit pinned deny data before quiescence
+      ansible.builtin.include_tasks: destination-deny.yml
+      when: not ansible_check_mode
     - name: Validate and publish changed private candidates
       when:
         - not ansible_check_mode

@@ -70,6 +70,7 @@ NON_SECRET_TOPLEVEL = {
     "subscription",
     "watchdog",
     "geodata",
+    "destination_filter",  # pinned deny sources for the transport-egress normalizer
     "naive",
     # Private transport topology is built from admitted secrets and actual UIDs.
     "transport_egress_normalizer_config",

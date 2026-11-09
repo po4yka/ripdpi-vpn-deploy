@@ -4,6 +4,8 @@ from __future__ import annotations
 from contextlib import contextmanager
 import copy
 import errno
+import hashlib
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -17,7 +19,8 @@ import time
 import pytest
 
 from transport_destination_policy import (DestinationPolicy, IPV4_DENY, IPV6_DENY,
-                                          PolicyError, canonical_name, normalize_address)
+                                          PolicyError, canonical_name, load_deny_list, normalize_address)
+import transport_destination_policy as policy_module
 import transport_egress_normalizer as normalizer
 import transport_socks as wire
 
@@ -647,3 +650,159 @@ def test_udp_relay_refuses_foreign_address_or_zero_port(address, port):
         finally:
             control.close()
         assert gateway.records == [(3, "0.0.0.0", 0)]
+
+
+def deny_spec(tmp_path, names=b"bad.test\n", ranges=b"203.0.113.0/24\n2001:db8:bad::/48\n", allow=()):
+    (tmp_path / "names").write_bytes(names)
+    (tmp_path / "ranges").write_bytes(ranges)
+    return {"names_path": str(tmp_path / "names"), "names_sha256": hashlib.sha256(names).hexdigest(),
+            "ranges_path": str(tmp_path / "ranges"), "ranges_sha256": hashlib.sha256(ranges).hexdigest(),
+            "allow_domains": list(allow)}
+
+
+def deny_policy(tmp_path, **kwargs):
+    return DestinationPolicy(deny=load_deny_list(deny_spec(tmp_path, **kwargs)))
+
+
+@pytest.mark.parametrize("requested", ["bad.test", "BAD.test.", "a.b.bad.test"])
+def test_listed_name_denies_itself_and_subdomains(tmp_path, requested):
+    with pytest.raises(PolicyError, match="^destination-denied$"):
+        deny_policy(tmp_path).admit_name(canonical_name(requested))
+
+
+@pytest.mark.parametrize("requested", ["notbad.test", "bad.test.example", "test"])
+def test_name_match_stops_at_label_boundaries(tmp_path, requested):
+    assert deny_policy(tmp_path).admit_name(canonical_name(requested)) is False
+
+
+def test_ranges_filter_literals_and_mixed_answers(tmp_path):
+    policy = deny_policy(tmp_path)
+    assert policy.admitted_candidates(["203.0.113.9", "192.0.2.80"], 443, "tcp") == ("192.0.2.80",)
+    for address in ("203.0.113.9", "::ffff:203.0.113.9", "2001:db8:bad::1"):
+        with pytest.raises(PolicyError, match="^destination-denied$"):
+            policy.admitted_candidates([address], 443, "tcp")
+
+
+def test_adjacent_and_nested_ranges_merge_without_gaps(tmp_path):
+    policy = deny_policy(tmp_path, ranges=b"203.0.113.128/25\n203.0.113.0/25\n203.0.113.7\n198.51.100.1\n")
+    assert policy.deny.ranges[4] == (
+        (int(ipaddress.ip_address("198.51.100.1")), int(ipaddress.ip_address("203.0.113.0"))),
+        (int(ipaddress.ip_address("198.51.100.1")), int(ipaddress.ip_address("203.0.113.255"))))
+    assert policy.admitted_candidates(["198.51.100.2"], 443, "tcp") == ("198.51.100.2",)
+
+
+def test_allow_list_exempts_name_and_ranges_but_never_isolation(tmp_path):
+    policy = deny_policy(tmp_path, allow=["ok.bad.test"])
+    assert policy.admit_name(canonical_name("x.ok.bad.test")) is True
+    assert policy.admitted_candidates(["203.0.113.9"], 443, "tcp", range_exempt=True) == ("203.0.113.9",)
+    with pytest.raises(PolicyError, match="^destination-denied$"):
+        policy.admitted_candidates(["127.0.0.1"], 443, "tcp", range_exempt=True)
+
+
+@pytest.mark.parametrize(("names", "ranges", "category"), [
+    (b"bad name.test\n", b"", "invalid-deny-data"),
+    (b"-bad.test\n", b"", "invalid-deny-data"),
+    (b"\xd0\xb1\xd0\xb0\xd0\xb4.test\n", b"", "invalid-deny-data"),
+    (b"bad.test\n", b"203.0.113.0/33\n", "invalid-deny-data"),
+    (b"bad.test\n", b"::ffff:203.0.113.0/120\n", "invalid-deny-data"),
+    (b"#\n" * 5000, b"", "oversized-deny-data"),
+    (b"a.test\nb.test\nc.test\n", b"", "oversized-deny-data"),
+    (b"", b"203.0.113.1\n203.0.113.2\n203.0.113.3\n", "oversized-deny-data"),
+], ids=["space", "hyphen", "non-ascii", "prefix", "mapped-range", "many-comments", "many-names", "many-ranges"])
+def test_malformed_or_oversized_data_is_refused_categorically(tmp_path, monkeypatch, names, ranges, category):
+    monkeypatch.setattr(policy_module, "MAX_DENY_NAMES", 2)
+    monkeypatch.setattr(policy_module, "MAX_DENY_RANGES", 2)
+    with pytest.raises(PolicyError) as refused:
+        load_deny_list(deny_spec(tmp_path, names=names, ranges=ranges))
+    assert str(refused.value) == category
+
+
+def test_digest_mismatch_and_comments_in_deny_data(tmp_path):
+    spec = deny_spec(tmp_path, names=b"# header\n\nBAD.test\r\n")
+    assert load_deny_list(spec).names == frozenset({b"bad.test"})
+    Path(spec["ranges_path"]).write_bytes(b"203.0.113.1\n")
+    with pytest.raises(PolicyError, match="^deny-digest-mismatch$"):
+        load_deny_list(spec)
+
+
+def test_runtime_refuses_changed_data_with_category_only(tmp_path):
+    spec = deny_spec(tmp_path)
+    Path(spec["names_path"]).write_bytes(b"other.test\n")
+    with pytest.raises(normalizer.NormalizerError, match="^destination-filter-refused$"):
+        normalizer.Normalizer({**config(), "destination_filter": spec}, resolver=OwnedResolver())
+
+
+@pytest.mark.parametrize("change", [
+    {"names_sha256": "A" * 64}, {"ranges_sha256": "not-a-digest"}, {"names_path": "relative"},
+    {"allow_domains": ["bad name"]}, {"allow_domains": ["test"]}, {"allow_domains": "bad.test"}, {"extra": True},
+], ids=["uppercase-digest", "placeholder-digest", "relative-path", "invalid-allow", "bare-suffix-allow", "allow-type", "unknown-key"])
+def test_filter_configuration_is_strict(tmp_path, change):
+    with pytest.raises(normalizer.NormalizerError, match="^(invalid-destination-filter|invalid-config-shape)$"):
+        normalizer.validate_config({**config(), "destination_filter": {**deny_spec(tmp_path), **change}})
+
+
+def test_tcp_denial_sends_nothing_and_matches_other_denied_destinations(tmp_path, capfd):
+    spec = deny_spec(tmp_path)
+    with running(mutate=lambda value: value.update(destination_filter=spec)) as (_, value, resolver, gateway):
+        listener = value["listeners"][0]
+        replies = []
+        for name in (b"private.test", b"sub.bad.test"):
+            connection = auth(listener["port"], listener)
+            connection.sendall(b"\x05\x01\x00\x03" + bytes([len(name)]) + name + struct.pack("!H", 9000))
+            replies.append(connection.recv(64))
+            connection.close()
+        assert replies[0] == replies[1] and replies[0][1] != 0
+        assert resolver.calls == [("private.test.", 9000, "tcp")]
+        assert gateway.records == []
+    output = capfd.readouterr()
+    assert "bad.test" not in output.out + output.err
+
+
+def test_udp_denial_sends_nothing_and_keeps_the_association(tmp_path):
+    spec = deny_spec(tmp_path)
+    with running(mutate=lambda value: value.update(destination_filter=spec)) as (_, value, resolver, gateway):
+        control, client, relay = udp_control(value)
+        client.sendto(bytes(3) + bytes([3, 8]) + b"bad.test" + struct.pack("!H", 9000) + b"denied", relay)
+        with pytest.raises(socket.timeout):
+            client.recv(4096)
+        assert resolver.calls == []
+        assert [record for record in gateway.records if record[0] == "udp"] == []
+        assert send_name(client, relay, "public.test", b"allowed")[-1] == b"allowed"
+        client.close()
+        control.close()
+
+
+def run_deny_check(spec, required):
+    return subprocess.run([sys.executable, "-Es", str(ROOT / "scripts/transport_destination_policy.py"), "--check-deny-data"],
+                          input=json.dumps({**spec, "required_destinations": required}).encode(),
+                          capture_output=True, check=False)
+
+
+def test_candidate_check_reports_counts_for_valid_data(tmp_path):
+    result = run_deny_check(deny_spec(tmp_path), ["canary.test", "192.0.2.80"])
+    assert result.returncode == 0
+    assert json.loads(result.stdout) == {"names": 1, "ranges": 2}
+
+
+@pytest.mark.parametrize("required", ["sub.bad.test", "203.0.113.5"])
+def test_candidate_check_refuses_data_that_denies_control_destinations(tmp_path, required):
+    result = run_deny_check(deny_spec(tmp_path), ["canary.test", required])
+    assert result.returncode == 1
+    assert result.stderr.decode().strip() == "destination-denied"
+
+
+def test_candidate_check_accepts_control_destination_on_allow_list(tmp_path):
+    assert run_deny_check(deny_spec(tmp_path, allow=["bad.test"]), ["sub.bad.test"]).returncode == 0
+
+
+@pytest.mark.parametrize(("answers", "refused"), [
+    (["203.0.113.9"], True), (["203.0.113.9", "192.0.2.80"], False), (["192.0.2.80"], False),
+], ids=["all-denied", "mixed", "public"])
+def test_candidate_check_resolves_required_names_against_ranges(tmp_path, monkeypatch, answers, refused):
+    monkeypatch.setattr(policy_module.socket, "getaddrinfo", lambda *_: [(0, 0, 0, "", (value, 0)) for value in answers])
+    request = {**deny_spec(tmp_path), "required_destinations": ["canary.test"]}
+    if refused:
+        with pytest.raises(PolicyError, match="^destination-denied$"):
+            policy_module.check_deny_data(request)
+    else:
+        assert policy_module.check_deny_data(request) == {"names": 1, "ranges": 2}

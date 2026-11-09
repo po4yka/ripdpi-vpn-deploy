@@ -26,6 +26,10 @@ RANGE_TOOLS = "ee0f0a9aa34ff0a0da4b3433b9512781cfe02843"
 DECIMAL = r"(?:0|[1-9][0-9]{0,9})"
 HEADER_PATTERN = rf"{DECIMAL}(?:-{DECIMAL})?"
 TOKEN = re.compile(r"<(?:(b) 0x([0-9a-f]+)|(r|rd|rc) ([1-9][0-9]{0,3})|(t))>")
+DENY_SOURCE_FIELDS = ("domains_url", "domains_sha256", "ranges_url", "ranges_sha256")
+DENY_DIGEST = re.compile(r"[0-9a-f]{64}")
+# A commit or a release tag is immutable enough to pair with a digest; a branch or `latest` is not.
+PINNED_DENY_SOURCE = re.compile(r"https://[^/\s]+/(?:\S+/)?(?:[0-9a-f]{40}|releases/download/(?!latest/)[^/\s]+)/\S+")
 
 
 def header_range(value: object) -> tuple[int, int]:
@@ -927,6 +931,25 @@ def transport_errors(doc: object, context: object = None, *, sections: list[str]
         errors.extend(egress_errors(doc.get("transport_egress_secrets"), context.get("vpn"),
                                     required=require_egress,
                                     allow_placeholders=allow_placeholders))
+        errors.extend(destination_filter_errors(doc.get("destination_filter"), context.get("vpn")))
+    return errors
+
+
+def destination_filter_errors(raw: object, vpn: object) -> list[tuple[str, str]]:
+    """Admit pinned deny sources; the digest alone cannot make a moving URL reviewable."""
+    if not isinstance(vpn, dict) or not vpn.get("enable_destination_filter", False):
+        return []
+    if vpn.get("enable_cascade_ingress", False):
+        # The cascade classifier receives Xray TCP instead of the normalizer and sees no names.
+        return [("vpn.enable_destination_filter", "cascade ingress bypasses the normalizer")]
+    if not isinstance(raw, dict) or set(raw) - {*DENY_SOURCE_FIELDS, "allow_domains"}:
+        return [("destination_filter", "must be a mapping of known fields")]
+    errors = []
+    for field in DENY_SOURCE_FIELDS:
+        value = raw.get(field)
+        pattern = DENY_DIGEST if field.endswith("_sha256") else PINNED_DENY_SOURCE
+        if not isinstance(value, str) or not pattern.fullmatch(value):
+            errors.append(("destination_filter." + field, "must be a pinned source and digest"))
     return errors
 
 
