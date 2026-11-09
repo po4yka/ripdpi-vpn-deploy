@@ -26,6 +26,7 @@ vpn:
   enable_hysteria_realm: false
   enable_split_hop_egress: false
   enable_split_hop_ingress: false
+  split_hop_family_egress: false
   enable_probe_matrix_target: false
   enable_snell: false
   enable_cascade_ingress: false
