@@ -110,3 +110,6 @@ sbom/*.json
 /vpnd/src/vpnd/data/
 /vpnd/test-results.json
 /vpnd/mutants/
+
+# Recipient setup guide kept outside the repository.
+/docs/demo/incy-android/
