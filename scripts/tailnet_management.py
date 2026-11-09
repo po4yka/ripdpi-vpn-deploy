@@ -835,7 +835,12 @@ def _validate_auth_key(auth_key: str) -> None:
     if (
         not isinstance(auth_key, str)
         or not auth_key
-        or re.fullmatch(r"tskey-auth-[A-Za-z0-9_-]{8,480}", auth_key) is None
+        # The optional suffix is the standard-base64 Tailnet Lock wrapping.
+        or re.fullmatch(
+            r"tskey-auth-[A-Za-z0-9_-]{8,480}(?:--TL[A-Za-z0-9+/]{1,1024}-[A-Za-z0-9+/]{1,1024})?",
+            auth_key,
+        )
+        is None
         or "\x00" in auth_key
         or "\n" in auth_key
         or "\r" in auth_key

@@ -60,6 +60,8 @@ make bootstrap-tailnet ANSIBLE_LIMIT=<exact-inventory-alias> \
 unset TAILSCALE_AUTH_KEY
 ```
 
+If the Tailnet uses Tailnet Lock, an unsigned key leaves the node locked out and the Tailnet proof fails. On a device with a trusted signing key, run `tailscale lock sign file:<private-key-file>` and use the printed value as `TAILSCALE_AUTH_KEY`.
+
 The controller validates inputs and public-path readiness, installs pinned inert components through the dedicated bootstrap playbook, then sends the key only on strict SSH stdin. Ansible never receives the key. The guest creates a random mode-`0600` auth file under `/run/vpn-tailnet-management`, uses `--auth-key=file:`, and removes and fsyncs it after login. Bootstrap never changes provider firewall policy or Tailnet ACLs.
 
 Ansible installation permits three initial connection attempts to the same pinned endpoint, as SSH recovery installation does. Remote commands and enrollment RPCs are not replayed by this transport setting.
