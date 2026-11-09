@@ -6,9 +6,8 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=vpn-bootstrap
-Group=www-data
-SupplementaryGroups=vpn-bootstrap
+User=vpn-routing-lists
+Group=vpn-routing-lists
 ExecStart=/usr/local/libexec/vpn-routing-lists-refresh
 TimeoutStartSec=300
 UMask=0027

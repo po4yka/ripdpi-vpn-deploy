@@ -12,8 +12,6 @@
     - vpn-subscription-maintenance.service
     - vpn-sub-mirror.timer
     - vpn-sub-mirror.service
-    - vpn-routing-lists.timer
-    - vpn-routing-lists.service
     - vpn-bootstrap.service
   register: _owned_disabled_units
   changed_when: false
@@ -45,15 +43,10 @@
     - /etc/systemd/system/vpn-subscription-maintenance.service
     - /etc/systemd/system/vpn-sub-mirror.timer
     - /etc/systemd/system/vpn-sub-mirror.service
-    - /etc/systemd/system/vpn-routing-lists.timer
-    - /etc/systemd/system/vpn-routing-lists.service
     - /etc/systemd/system/vpn-bootstrap.service
     - /usr/local/bin/vpn-bootstrap.py
     - /usr/local/sbin/vpn-sub-mirror.sh
     - /usr/local/sbin/vpn-sub-mirror.py
-    - /usr/local/libexec/vpn-routing-lists-refresh
-    - /etc/vpn-routing-lists.json
-    - /var/lib/vpn-routing-lists
   when: (item | basename) not in _owned_preserved_masks
   register: _owned_retired_files
 - name: Reload the retired owned unit graph

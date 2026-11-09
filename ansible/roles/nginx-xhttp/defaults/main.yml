@@ -20,3 +20,25 @@ nginx_xhttp_model_news_sources:
   - {name: ByteDance Seed, kind: hub, section: New open-weight repositories, org: ByteDance-Seed}
   - {name: Xiaomi MiMo, kind: hub, section: New open-weight repositories, org: XiaomiMiMo}
   - {name: AIGC News, kind: feed, section: Headlines, url: "https://aigc.news/feed.xml"}
+
+# Client routing lists (docs/reference/subscription-plane.md). Feed URLs,
+# profile rules and policy canaries are private operator inputs under
+# nginx_xhttp.routing_lists; only bounds have defaults.
+nginx_xhttp_routing_lists_defaults:
+  enabled: false
+  token: ""
+  geosite_url: ""
+  geoip_url: ""
+  profile: {}
+  policy:
+    max_bytes: 5242880
+    max_change_ratio: 2
+    min_ipv4_prefix: 12
+    min_ipv6_prefix: 28
+    single_label_allow: []
+    must_direct: []
+    must_not_direct: []
+    must_not_direct_ips: []
+nginx_xhttp_routing_lists: >-
+  {{ nginx_xhttp_routing_lists_defaults
+     | combine(nginx_xhttp.routing_lists | default({}), recursive=True) }}

@@ -45,6 +45,30 @@ def test_plain_http_redirects_never_log_the_request_path():
         assert all(directive in block for directive in SILENT), block
 
 
+def render_routing_lists(enabled: bool) -> str:
+    variables = merge_render_vars()
+    variables["nginx_xhttp"] = {**variables["nginx_xhttp"], "fallback_enabled": True,
+                                "fallback_server_name": "alternate.example.invalid",
+                                "routing_lists": {"enabled": enabled}}
+    return render_template(SITE, variables)
+
+
+def test_routing_token_stays_out_of_every_tls_access_log():
+    rendered = render_routing_lists(True)
+    assert re.search(r"map \$request_uri \$vpn_public_loggable \{\s+~\^/routing/ 0;\s+default 1;", rendered)
+    # The route regex has braces of its own, so read the body from its alias onward.
+    body = rendered.split("alias /var/lib/vpn-routing-lists/", 1)[1].split("}", 1)[0]
+    assert all(directive in body for directive in SILENT)
+    # error_page and near misses reach these server-level logs with the original request line.
+    logs = re.findall(r"^\s*access_log /var/log/nginx/\S+ vpn_public(.*);$", rendered, re.M)
+    assert logs == [" if=$vpn_public_loggable"] * 2
+
+
+def test_disabled_routing_lists_leave_the_vhost_unchanged():
+    rendered = render_routing_lists(False)
+    assert "/routing/" not in rendered and "vpn_public_loggable" not in rendered
+
+
 def test_snell_evaluation_location_never_logs_its_token_path():
     locations = blocks(render_every_bearer_surface(), r"^\s*location ~ \^/synthetic_token_0123456789/")
     assert len(locations) == 1

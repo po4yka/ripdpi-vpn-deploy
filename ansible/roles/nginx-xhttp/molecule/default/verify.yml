@@ -249,3 +249,29 @@
           ss -lntp '( sport = :8443 )' | grep -q ':8443'
         executable: /bin/bash
       changed_when: false
+
+    - name: Read client routing list runtime
+      ansible.builtin.stat:
+        path: '{{ item }}'
+        follow: false
+      loop:
+        - /etc/vpn-routing-lists.json
+        - /var/lib/vpn-routing-lists
+        - /usr/local/libexec/vpn-routing-lists-refresh
+      register: _routing_runtime
+
+    - name: Client routing list runtime keeps its private and served boundaries
+      ansible.builtin.assert:
+        that:
+          - _routing_runtime.results[0].stat.mode == '0640'
+          - _routing_runtime.results[0].stat.gr_name == 'vpn-routing-lists'
+          - _routing_runtime.results[1].stat.mode == '2750'
+          - _routing_runtime.results[1].stat.pw_name == 'vpn-routing-lists'
+          - _routing_runtime.results[1].stat.gr_name == 'www-data'
+          - _routing_runtime.results[2].stat.mode == '0755'
+          - _routing_runtime.results[2].stat.pw_name == 'root'
+
+    - name: Client routing list refresh is scheduled
+      ansible.builtin.command:
+        argv: [systemctl, is-enabled, vpn-routing-lists.timer]
+      changed_when: false
