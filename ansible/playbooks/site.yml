@@ -388,6 +388,16 @@
             hysteria_role_enabled: '{{ (vpn.enable_hysteria | default(true)) and not (vpn_subscription_only | default(false))
               }}'
           tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
+        - name: Load the split-hop family boundary before protected transports activate
+          # Transport users exist after staging; activation must not dial through the uplink first.
+          ansible.builtin.include_role:
+            name: split-hop-ingress
+            tasks_from: boundary
+          when:
+            - vpn.enable_split_hop_ingress | default(false) | bool
+            - vpn.split_hop_family_egress | default(false) | bool
+            - not (vpn_subscription_only | default(false))
+          tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport, split-hop-ingress]
         - name: Admit protected transports after complete frontend staging
           ansible.builtin.import_tasks: tasks/transport-egress-activate.yml
           tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]

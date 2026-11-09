@@ -2,7 +2,8 @@
 Description=Retain split-hop ingress recipient boundary
 After=local-fs.target systemd-sysctl.service nftables.service
 Wants=nftables.service
-Before=wg-quick@shop0.service
+# Recipient egress units must not start ahead of the boundary at boot.
+Before=wg-quick@shop0.service ripdpi-transport-generation.service ripdpi-transport-normalizer.service ripdpi-transport-direct.service
 
 [Service]
 Type=oneshot

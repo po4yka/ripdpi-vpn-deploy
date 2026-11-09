@@ -8,13 +8,14 @@ table inet split_hop_ingress {
     type route hook output priority mangle; policy accept;
     meta nfproto ipv6 ct direction original meta skuid { {{ _uids | join(', ') }} } reject with icmpv6 type admin-prohibited
     meta nfproto ipv4 ct state new ct direction original meta skuid { {{ _uids | join(', ') }} } ct mark set {{ split_hop_ingress.fwmark }}
-    ct mark {{ split_hop_ingress.fwmark }} meta mark set ct mark
+    # Replies and ICMP errors A sends for marked flows keep the ordinary route.
+    ct direction original ct mark {{ split_hop_ingress.fwmark }} meta mark set ct mark
   }
 {% if _forwarded %}
   chain prerouting {
     # Forwarded device originals take the tunnel route; their replies keep conntrack state.
     type filter hook prerouting priority mangle; policy accept;
-    meta nfproto ipv4 ct state new ct direction original iifname { {% for name in _forwarded %}"{{ name }}"{{ ', ' if not loop.last }}{% endfor %} } ct mark set {{ split_hop_ingress.fwmark }}
+    meta nfproto ipv4 ct state new ct direction original iifname { {% for name in _forwarded %}"{{ name }}"{{ ', ' if not loop.last }}{% endfor %} } fib daddr type != local ct mark set {{ split_hop_ingress.fwmark }}
     ct direction original ct mark {{ split_hop_ingress.fwmark }} meta mark set ct mark
   }
   chain forward_guard {

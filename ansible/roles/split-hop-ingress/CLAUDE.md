@@ -32,7 +32,11 @@ them dynamically, and marks forwarded AWG originals in prerouting. Forwarded
 IPv6 is rejected and non-tunnel AWG originals drop; the firewall owns AWG
 forwarding and NAT on the tunnel. PostUp sets loose `rp_filter` on the tunnel
 only: baseline's strict mode drops replies whose recipient source routes via
-the uplink. Tunnel SYNs are clamped to the route MTU.
+the uplink. Tunnel SYNs are clamped to the route MTU. `tasks/boundary.yml`
+(identities, policy, boot loader) runs from `site.yml` after transport staging
+and before activation, so first-deploy recipient traffic never uses the uplink.
+Only original-direction packets restore the mark, and AWG flows to A's own
+addresses stay unmarked; otherwise A's replies and ICMP errors enter the tunnel.
 
 ## What's done well
 

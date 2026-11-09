@@ -20,8 +20,17 @@ def output_chain(rendered):
     return rendered.split("  chain output {", 1)[1].split("\n  }", 1)[0]
 
 
+def ingress_enable_tasks():
+    """enable.yml with its statically imported boundary tasks expanded in place."""
+    tasks = []
+    for task in yaml.safe_load((INGRESS / "tasks/enable.yml").read_text()):
+        imported = task.get("ansible.builtin.import_tasks")
+        tasks += yaml.safe_load((INGRESS / "tasks" / imported).read_text()) if imported else [task]
+    return tasks
+
+
 def test_ingress_policy_loader_is_required_before_tunnel_activation():
-    tasks = yaml.safe_load((INGRESS / "tasks/enable.yml").read_text())
+    tasks = ingress_enable_tasks()
     named = {task["name"]: task for task in tasks}
     policy = named["Render split-hop ingress routing policy"]
     dependency = named["Require the recipient boundary before starting WireGuard"]
@@ -145,7 +154,7 @@ def test_explicit_ingress_retirement_omits_shared_firewall_guard():
 
 
 def test_first_policy_unit_check_mode_predicts_files_without_systemd(tmp_path):
-    tasks = yaml.safe_load((INGRESS / "tasks/enable.yml").read_text())
+    tasks = ingress_enable_tasks()
     named = {task["name"]: task for task in tasks}
     template = dict(named["Install split-hop ingress boot policy loader"])
     template["ansible.builtin.template"] = {

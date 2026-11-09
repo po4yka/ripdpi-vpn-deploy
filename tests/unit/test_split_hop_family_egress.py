@@ -48,7 +48,7 @@ def test_family_scope_refuses_transports_with_their_own_direct_egress(toggle):
 
 
 def test_identity_resolution_keeps_only_requested_users_and_their_uids():
-    tasks = yaml.safe_load((ANSIBLE / "roles/split-hop-ingress/tasks/enable.yml").read_text())
+    tasks = yaml.safe_load((ANSIBLE / "roles/split-hop-ingress/tasks/boundary.yml").read_text())
     publish = next(task for task in tasks if task["name"] == "Publish family recipient egress UIDs")
     expression = publish["ansible.builtin.set_fact"]["split_hop_ingress_family_uids"]
     variables = {
@@ -72,3 +72,21 @@ def test_family_users_name_the_transport_egress_recipient_identities():
     for role in ("split-hop-ingress", "firewall"):
         defaults = yaml.safe_load((ANSIBLE / f"roles/{role}/defaults/main.yml").read_text())
         assert defaults["split_hop_ingress_family_users"] == expected, role
+
+
+def test_family_boundary_loads_after_transport_staging_and_before_activation():
+    play = yaml.safe_load((ANSIBLE / "playbooks/site.yml").read_text())[0]
+    block = next(task["block"] for task in play["tasks"] if "block" in task
+                 and any(item.get("name") == "Admit protected transports after complete frontend staging"
+                         for item in task["block"]))
+    names = [item.get("name") for item in block]
+    boundary = block[names.index("Load the split-hop family boundary before protected transports activate")]
+    assert boundary["ansible.builtin.include_role"] == {"name": "split-hop-ingress", "tasks_from": "boundary"}
+    assert "vpn.split_hop_family_egress | default(false) | bool" in boundary["when"]
+    assert (names.index("Reconcile transport-egress runtime") < names.index(boundary["name"])
+            < names.index("Admit protected transports after complete frontend staging"))
+    unit = (ANSIBLE / "roles/split-hop-ingress/templates/split-hop-ingress-policy.service.j2").read_text()
+    before = next(line for line in unit.splitlines() if line.startswith("Before="))
+    for name in ("ripdpi-transport-generation.service", "ripdpi-transport-normalizer.service",
+                 "ripdpi-transport-direct.service"):
+        assert name in before

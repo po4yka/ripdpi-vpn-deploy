@@ -437,8 +437,8 @@ s=http.server.HTTPServer((address,int(port)),H);open(ready,'w').close();s.serve_
             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
         )
         children.append(proc)
-        # Interpreter start-up inside a fresh namespace can exceed two seconds.
-        for _ in range(500):
+        # Interpreter start-up inside a fresh namespace can take seconds on a loaded runner.
+        for _ in range(1500):
             if ready.exists():
                 return log
             time.sleep(0.02)
@@ -506,6 +506,7 @@ s=http.server.HTTPServer((address,int(port)),H);open(ready,'w').close();s.serve_
             dict(split_hop_egress={"wg_interface": "shop0", "forward_iface": "toe"})))
         recipient = serve("e", "203.0.113.2", 18090)
         leak = serve("c", "203.0.113.2", 18090)
+        local_service = serve("a", "10.66.0.1", 18091)
         tmp_path.chmod(0o777)
         for parent in tmp_path.parents:
             if str(parent).startswith("/tmp/pytest"):
@@ -516,6 +517,10 @@ s=http.server.HTTPServer((address,int(port)),H);open(ready,'w').close();s.serve_
             assert result.returncode == 0 and result.stdout == "203.0.113.1", result.stderr
         device = request("d", "http://203.0.113.2:18090/")
         assert device.returncode == 0 and device.stdout == "203.0.113.1", device.stderr
+        # Flows a device terminates on A itself are answered locally, not through the tunnel.
+        own = request("d", "http://10.66.0.1:18091/")
+        assert own.returncode == 0 and own.stdout == "10.66.0.2", own.stderr
+        assert local_service.read_text().splitlines() == ["10.66.0.2"]
         # Unowned host users keep A's ordinary uplink.
         assert request("a", "http://203.0.113.2:18090/", other_uid).stdout == "198.51.100.1"
         assert recipient.read_text().splitlines() == ["203.0.113.1"] * 3

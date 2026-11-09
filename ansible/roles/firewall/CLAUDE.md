@@ -144,7 +144,9 @@ enabled transport data-plane needs.
 `vpn.split_hop_family_egress`, `awg_forward_interface` is the split-hop interface
 instead of the uplink for forwarding, replies and NAT, and forwarded IPv6 is
 rejected. The shared UID guard adds the transport users found by `getent`; a
-fresh host has none yet, so the split-hop table supplies that boundary first.
+fresh host has none until the second converge. `site.yml` loads the split-hop
+boundary before transport activation, and its boot loader orders before the
+transport units, so that table covers the gap.
 
 **AWG forwarding shares the recipient destination boundary** — before the
 uplink accept, packets from an AWG interface to
