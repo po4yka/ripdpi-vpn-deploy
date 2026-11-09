@@ -63,10 +63,10 @@
         src: /tmp/molecule.key
       register: stub_key
     - name: Override the role's cert/key with the molecule-generated pair
+      # Merge, not replace: a bare mapping would drop routing_lists and every other play key.
       ansible.builtin.set_fact:
-        nginx_xhttp:
-          server_name: vpn.example.test
-          cert_pem: "{{ stub_cert.content | b64decode }}"
-          key_pem: "{{ stub_key.content | b64decode }}"
+        nginx_xhttp: >-
+          {{ nginx_xhttp | combine({'cert_pem': stub_cert.content | b64decode,
+                                    'key_pem': stub_key.content | b64decode}) }}
   roles:
     - role: nginx-xhttp
