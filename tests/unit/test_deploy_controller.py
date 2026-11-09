@@ -475,6 +475,14 @@ def test_selection_outside_env_refuses_before_secrets_and_transport(workspace, t
                    for entry in calls(workspace))
 
 
+def test_secrets_with_a_large_device_journal_reach_the_dry_run(workspace):
+    secrets = workspace["secrets"]
+    secrets.write_text(secrets.read_text() + 'device_operations: "' + "x" * 80000 + '"\n')
+    result = invoke(workspace, limit="node-one")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "empty or oversized input" not in result.stderr
+
+
 @pytest.mark.parametrize("target", ["deploy", "dry-run"])
 def test_missing_generated_inventory_refuses_with_render_command(workspace, target):
     workspace["inventory"].unlink()
