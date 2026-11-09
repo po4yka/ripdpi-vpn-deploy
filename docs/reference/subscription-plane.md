@@ -51,6 +51,14 @@ Converge the subscription-host role before new issuance. The issuer requires `su
 
 The service holds the existing private state lock, writes and syncs a private sibling, then replaces `<sha256>.document` and syncs its directory. Readers prefer this complete document. A malformed or unsafe document fails closed; it never exposes a stale legacy payload. Older payload/`.meta` pairs remain a read-only compatibility path when no document exists. Mirror generations copy the complete document with the payload tree. A failed publication reply requires reconciliation of remote delivery and the encrypted registry before retry.
 
+## Client routing lists
+
+With `subscription.routing_lists.enabled`, the `vpn-routing-lists` timer downloads `geosite.dat` and `geoip.dat` from operator-configured HTTPS feeds, admits them and publishes them with the operator's INCY profile under `/routing/<token>/`. A client imports `incy://autorouting/onadd/https://<server_name>:<port>/routing/<token>/profile.json`. INCY then refreshes the profile itself, and `LastUpdated` changes only when the lists or the profile change.
+
+The feeds move without a pin because self-refresh is the purpose of this path. The lists only reach clients, never Xray on the node. In place of a pin, a candidate must pass a transport digest check, a size cap, a parser and the policy: every referenced tag exists, direct rules contain only bounded domains and networks, `must_direct` names stay direct, `must_not_direct` names and addresses stay out, and direct entry counts stay within `max_change_ratio` of the served generation. Unmatched traffic stays in the tunnel because the role requires `GlobalProxy: "true"`. Any refusal logs a category, exits non-zero and keeps the served generation.
+
+Feed URLs, rules and canaries are private inputs in `subscription.routing_lists`. The token keeps the path undiscoverable; it is not access control.
+
 ## What to ship next
 
 The eight items previously on the "ship next" list are now landed — the gap matrix above is at parity with the documented contract. Remaining work is operational rather than architectural:

@@ -1,0 +1,52 @@
+---
+- name: Inspect routing list units before retirement
+  ansible.builtin.command:
+    argv: [systemctl, show, '{{ item }}', '--property=LoadState', --value]
+  loop: [vpn-routing-lists.timer, vpn-routing-lists.service]
+  register: _subscription_routing_units
+  changed_when: false
+  check_mode: false
+  failed_when: >-
+    _subscription_routing_units.stdout not in ['loaded', 'masked', 'not-found'] or
+    _subscription_routing_units.rc not in [0, 1] or
+    (_subscription_routing_units.rc == 1 and
+     _subscription_routing_units.stdout != 'not-found')
+
+- name: Stop and disable loaded routing list refresh
+  ansible.builtin.systemd_service:
+    name: '{{ item.item }}'
+    state: stopped
+    enabled: false
+  loop: '{{ _subscription_routing_units.results }}'
+  when: item.stdout == 'loaded'
+
+- name: Stop masked routing list refresh while preserving its mask
+  ansible.builtin.systemd_service:
+    name: '{{ item.item }}'
+    state: stopped
+  loop: '{{ _subscription_routing_units.results }}'
+  when: item.stdout == 'masked'
+
+- name: Preserve exact administratively masked routing list units
+  ansible.builtin.set_fact:
+    _subscription_routing_masks: >-
+      {{ _subscription_routing_units.results
+         | selectattr('stdout', 'equalto', 'masked') | map(attribute='item') | list }}
+
+- name: Remove routing list runtime
+  ansible.builtin.file:
+    path: '{{ item }}'
+    state: absent
+  loop:
+    - /etc/systemd/system/vpn-routing-lists.timer
+    - /etc/systemd/system/vpn-routing-lists.service
+    - /usr/local/libexec/vpn-routing-lists-refresh
+    - /etc/vpn-routing-lists.json
+    - /var/lib/vpn-routing-lists
+  when: (item | basename) not in _subscription_routing_masks
+  register: _subscription_routing_removed
+
+- name: Reload retired routing list unit graph
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: not ansible_check_mode and _subscription_routing_removed.changed

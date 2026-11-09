@@ -258,6 +258,9 @@
   ansible.builtin.import_tasks: mirror.yml
   when: subscription.mirror.enabled | default(false)
 
+- name: Reconcile client routing lists
+  ansible.builtin.include_tasks: "{{ 'routing-lists.yml' if subscription_routing_lists.enabled | bool else 'routing-lists-disable.yml' }}"
+
 - name: Install bounded subscription maintenance service and timer
   ansible.builtin.template:
     src: '{{ item }}.j2'
