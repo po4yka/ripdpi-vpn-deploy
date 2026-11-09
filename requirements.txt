@@ -1196,9 +1196,9 @@ msgpack==1.2.3 \
     --hash=sha256:fafc3b8898b432b841d30a61082c599fa7f4d06885f9dc58ad72259e12059fa6 \
     --hash=sha256:fcc6800daac4922960f6eeb7a0dda3dd4105e0bf7bce0e83ebc465a78cb7bdba
     # via cachecontrol
-mutmut==3.8.0 \
-    --hash=sha256:4c0abcef6b8d1116f2adfaad19df12e1c621e4a402d4367ef15bf8cba497b91d \
-    --hash=sha256:bc670276518f893ab356f1d28826c49b7e606e7cf89c300e3888c0b52fc1d2ed
+mutmut==3.8.1 \
+    --hash=sha256:9fb7cfc23caabff22a938e33b8d34317f5fa79b1deab82642cd5e014f3f400aa \
+    --hash=sha256:e424d72c0557b6a52a721d9b71e2d18eb9590af746db0bbad50b71e8d4d8ed78
     # via -r requirements.in
 mypy==2.4.0 \
     --hash=sha256:058165f564ccf559c68c70fec2091fca5891110480210c22594635e3f6683437 \
