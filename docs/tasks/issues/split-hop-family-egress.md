@@ -2,7 +2,7 @@
 id: ANS-1794231660855533
 title: Route family transport egress through the split-hop exit node
 kind: feature
-status: doing
+status: review
 area: ansible
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: ans-1794231660855533-split-hop-family-egress
 created: 2026-11-09
 updated: 2026-11-09
 related_tasks: []
+status_detail: "Merged to main as 62aff885 via po4yka/ripdpi-vpn-deploy#550; main CI, dry-run, staging, live and client evidence remain required."
 ---
 
 ## Goal
