@@ -752,6 +752,111 @@ def test_native_identity_refusal_fixture_uses_valid_input_only_authority():
         sys.path.remove(str(ROOT / 'scripts'))
 
 
+def _filter_context(toggle, source=None):
+    return {'vpn': {'enable_xray_reality': True, 'enable_nginx_xhttp': False, 'enable_hysteria': False,
+                    'enable_warp_outbound': False, 'enable_destination_filter': toggle},
+            'secrets': {'direct_gateway_password': 'synthetic gateway authority ' + 'a' * 32,
+                        'direct_xray_password': 'synthetic frontend authority ' + 'b' * 32},
+            'destination_filter': source, 'owned_addresses': [], 'management_tcp_ports': [22], 'management_udp_ports': []}
+
+
+PINNED_FILTER = {'domains_url': 'https://raw.example.test/owner/lists/' + 'c' * 40 + '/domains/list.txt', 'domains_sha256': 'd' * 64,
+                 'ranges_url': 'https://example.test/owner/lists/releases/download/2026.11.01/ranges.txt', 'ranges_sha256': 'e' * 64}
+
+
+def test_destination_filter_is_absent_unless_enabled():
+    sys.path.insert(0, str(ROOT / 'scripts'))
+    try:
+        from transport_egress_config import build
+        assert 'destination_filter' not in build(_filter_context(False, PINNED_FILTER), input_only=True)['normalizer']
+        rendered = build(_filter_context(True, {**PINNED_FILTER, 'allow_domains': ['ok.example.test']}), input_only=True)['normalizer']
+        assert rendered['destination_filter'] == {
+            'names_path': '/tmp/destination-deny-names.txt', 'names_sha256': 'd' * 64,
+            'ranges_path': '/tmp/destination-deny-ranges.txt', 'ranges_sha256': 'e' * 64, 'allow_domains': ['ok.example.test']}
+    finally:
+        sys.path.remove(str(ROOT / 'scripts'))
+
+
+@pytest.mark.parametrize('source', [
+    None, {},
+    {**PINNED_FILTER, 'domains_url': 'https://example.test/owner/lists/releases/download/latest/domains.txt'},
+    {**PINNED_FILTER, 'ranges_url': 'https://raw.example.test/owner/lists/main/ranges.txt'},
+    {**PINNED_FILTER, 'ranges_url': 'http://raw.example.test/owner/lists/' + 'c' * 40 + '/ranges.txt'},
+    {**PINNED_FILTER, 'domains_sha256': 'not-a-digest'},
+    {**PINNED_FILTER, 'unknown': True},
+], ids=['absent', 'empty', 'latest-release', 'branch', 'plain-http', 'placeholder-digest', 'unknown-key'])
+def test_enabled_destination_filter_refuses_unpinned_inputs(source):
+    result = subprocess.run([sys.executable, '-Es', str(ROOT / 'scripts/transport_egress_config.py'), '--input-only'],
+                            input=json.dumps(_filter_context(True, source)).encode(), capture_output=True, check=False)
+    assert result.returncode == 1 and result.stdout == b''
+    assert result.stderr.decode().strip() == 'transport-egress-context-refused'
+
+
+def test_destination_filter_refuses_cascade_ingress_that_bypasses_it():
+    context = _filter_context(True, PINNED_FILTER)
+    context['vpn']['enable_cascade_ingress'] = True
+    result = subprocess.run([sys.executable, '-Es', str(ROOT / 'scripts/transport_egress_config.py'), '--input-only'],
+                            input=json.dumps(context).encode(), capture_output=True, check=False)
+    assert result.returncode == 1
+
+
+def _preflight_errors(destination_filter):
+    document = {'secrets': {'transport_egress_secrets': None, 'destination_filter': destination_filter},
+                'context': {'vpn': {'enable_destination_filter': True, 'enable_xray_reality': False, 'enable_nginx_xhttp': False,
+                                    'enable_hysteria': False, 'enable_transport_egress': True}, 'require_transport_egress': True}}
+    result = subprocess.run([sys.executable, '-Es', str(ROOT / 'scripts/transport_semantics.py'), '--section=egress'],
+                            input=json.dumps(document).encode(), capture_output=True, check=False)
+    return result.returncode, result.stdout + result.stderr
+
+
+def test_preflight_refuses_unpinned_deny_sources_before_host_mutation():
+    code, output = _preflight_errors({**PINNED_FILTER, 'ranges_url': 'https://raw.example.test/owner/lists/main/ranges.txt'})
+    assert code != 0 and b'destination_filter.ranges_url' in output and b'raw.example.test' not in output
+    assert _preflight_errors(PINNED_FILTER)[0] == 0
+
+
+def _run_deny_pruning(tmp_path, accepted):
+    import shutil
+    executable = shutil.which('ansible-playbook')
+    assert executable, 'actual Ansible task execution is required'
+    config_dir = tmp_path / 'config'
+    (config_dir / 'destination-deny').mkdir(parents=True)
+    (config_dir / 'normalizer.json').write_text(json.dumps(accepted))
+    for digest in ('a', 'b', 'c'):
+        (config_dir / 'destination-deny' / f'{digest * 64}.txt').write_text('x\n')
+    play = {'hosts': 'localhost', 'connection': 'local', 'gather_facts': False, 'become': False,
+            'vars': {'ansible_python_interpreter': sys.executable, 'transport_egress_config_dir': str(config_dir),
+                     'transport_egress_normalizer_config': {}},
+            'tasks': [{'ansible.builtin.import_tasks': str(ROLE / 'tasks/destination-deny.yml')}]}
+    path = tmp_path / 'play.yml'
+    path.write_text(yaml.safe_dump([play]))
+    result = subprocess.run([executable, '-i', 'localhost,', str(path)], text=True, capture_output=True, timeout=60)
+    assert result.returncode == 0, result.stdout + result.stderr
+    return {item.stem[0] for item in (config_dir / 'destination-deny').iterdir()}
+
+
+def test_pruning_keeps_the_data_of_the_installed_generation(tmp_path):
+    accepted = {'destination_filter': {'names_sha256': 'a' * 64, 'ranges_sha256': 'b' * 64}}
+    assert _run_deny_pruning(tmp_path, accepted) == {'a', 'b'}
+
+
+def test_normalizer_unit_binds_only_the_pinned_digest_files():
+    sys.path.insert(0, str(ROOT / 'scripts'))
+    from template_render import template_environment
+    from jinja2 import FileSystemLoader
+    template = template_environment(FileSystemLoader(str(ROLE / 'templates'))).get_template('normalizer.service.j2')
+    def render(extra):
+        return template.render(transport_egress_normalizer_user='transport-normalizer', transport_egress_config_dir='/etc/ripdpi/transport-egress',
+                               transport_egress_libexec_dir='/usr/local/libexec/ripdpi-transport-egress',
+                               transport_egress_normalizer_config={'limits': {'max_connections': 1, 'max_associations': 1},
+                                                                   'resolver': {'workers': 1}, **extra})
+    assert 'destination-deny' not in render({})
+    enabled = render({'destination_filter': {'names_sha256': 'd' * 64, 'names_path': '/tmp/n', 'ranges_sha256': 'e' * 64, 'ranges_path': '/tmp/r'}})
+    assert f'BindReadOnlyPaths=/etc/ripdpi/transport-egress/destination-deny/{"d" * 64}.txt:/tmp/n\n' in enabled
+    assert f'BindReadOnlyPaths=/etc/ripdpi/transport-egress/destination-deny/{"e" * 64}.txt:/tmp/r\n' in enabled
+    assert 'PrivateTmp=true' in enabled
+
+
 def readiness_controller(mod):
     return mod.Controller({'schema_version': 1, 'normalizer_uid': 1001,
         'gateway_units': ['ripdpi-transport-direct.service'], 'frontend_units': [],

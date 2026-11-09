@@ -24,17 +24,19 @@ Facts that limit the design:
 - Check the name before resolution, by a walk over its label suffixes against a frozen set. The cost depends on the number of labels and the check sends no DNS query for a denied name. Reuse `canonical_name` so that case and a trailing dot have one meaning.
 - Check address ranges on literal and resolved addresses in `DestinationPolicy.admitted_candidates`, after the existing isolation. Filter a mixed answer instead of denying the whole name, as the isolation does.
 - A name matched by the allow list skips the deny name and range checks. Isolation is always evaluated.
-- Use a plain text input (one name or one CIDR per line) instead of `geosite.dat`. The normalizer is Python with no Xray dependency, and one parser can validate the whole list. The role converts the verified input to one private candidate file.
+- Use a plain text input (one name or one CIDR per line) instead of `geosite.dat`. The normalizer is Python with no Xray dependency, and one parser can validate the whole list.
+- Store the data as digest-named files outside the snapshot set. The snapshot helper and `LoadCredential` each stop at about 1 MiB, and a list has several megabytes. `normalizer.json` and the unit name the digests, so a restored generation selects its own data. Staging prunes only files that neither the installed nor the candidate generation names.
 - Pin one source URL and SHA256 per list in the `destination_filter` secrets section, with the same refusal of moving URLs as `geodata`. The first implementation step selects the source and records the reason. Candidate: a maintained threat-intelligence domain feed at a fixed commit. Its medium variant has about 360,000 entries; the full variant has about 1.4 million and is expected to exceed the budget.
 - Update the list through a new pin and the ordinary transport-egress generation change. Rejected: a daily timer as used for geodata, because an unattended list change would run the generation transaction without review. The accepted cost is that entries age between deployments.
 - Denials raise the existing `PolicyError("destination-denied")`, so the wire result and log text do not change.
+- Refuse the toggle together with `enable_cascade_ingress`: the cascade classifier receives Xray TCP and sees only addresses, so the name decision would not apply.
 - Reject activation if the canary host or the REALITY target is denied. The failure must occur at candidate admission, before the accepted generation stops.
 
 ## Contracts and ownership
 
 - `scripts/transport_destination_policy.py`: name and range deny decision, parser, limits.
 - `scripts/transport_egress_normalizer.py`: name check before resolution, private data load.
-- `ansible/roles/transport-egress`: toggle evaluation, verified download, candidate file, `LoadCredential`, rollback set, Molecule scenario. Update its `CLAUDE.md`.
+- `ansible/roles/transport-egress`: toggle evaluation, verified download on the node, digest-named data files, read-only bind into the service private `/tmp`, Molecule scenario. Update its `CLAUDE.md`.
 - `ansible/group_vars/all.yml`: `vpn.enable_destination_filter`, default `false`.
 - `secrets/schema.json`, `scripts/validate-secrets.py`, `scripts/check-secrets-coverage.py` input, `secrets/prod.secrets.example.yaml`: `destination_filter.{domains_url, domains_sha256, ranges_url, ranges_sha256, allow_domains}`.
 - `docs/reference/secrets.md`, `docs/reference/client-notes.md`: inputs, coverage and the client-side block.
@@ -51,4 +53,4 @@ Facts that limit the design:
 
 ## Migration Plan
 
-Forward: deploy the code with the toggle off, which changes nothing. Enable on staging with a pinned list, soak, then enable per production profile as a separately authorized deployment. Rollback: set the toggle to false and deploy, or let the generation transaction restore the accepted generation after a failed candidate. There is no breaking change; existing profiles render the same normalizer configuration.
+Forward: deploy the code with the toggle off. The deploy restarts the egress generation once because helper bytes change, and traffic policy does not change. Enable on staging with a pinned list, soak, then enable per production profile as a separately authorized deployment. Rollback: set the toggle to false and deploy, or let the generation transaction restore the accepted generation after a failed candidate. There is no breaking change; existing profiles render the same normalizer configuration.

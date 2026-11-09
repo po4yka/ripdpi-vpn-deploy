@@ -8,8 +8,19 @@ import sys
 from transport_egress_normalizer import validate_config
 from transport_egress_kernel import validate as validate_policy
 from transport_destination_policy import LOCAL_DNS_FORWARDER
+from transport_semantics import destination_filter_errors
 
 MAX_INPUT = 131072
+# PrivateTmp keeps the systemd bind targets off the host filesystem.
+DENY_NAMES_PATH = '/tmp/destination-deny-names.txt'
+DENY_RANGES_PATH = '/tmp/destination-deny-ranges.txt'
+
+
+def destination_filter(raw, vpn):
+    if destination_filter_errors(raw, vpn):
+        raise ValueError('destination-filter-input')
+    return {'names_path': DENY_NAMES_PATH, 'names_sha256': raw['domains_sha256'], 'ranges_path': DENY_RANGES_PATH,
+            'ranges_sha256': raw['ranges_sha256'], 'allow_domains': raw.get('allow_domains', [])}
 
 
 def build(context, input_only=False):
@@ -36,6 +47,8 @@ def build(context, input_only=False):
               'resolver': {'nameservers': nameservers, 'timeout_seconds': 1 if len(nameservers) > 1 else 2, 'attempts': 1, 'lookup_timeout_seconds': 5, 'workers': 4},
               'policy': {'owned_addresses': sorted(set(context['owned_addresses'])), 'management_tcp_ports': sorted(set(context['management_tcp_ports'])), 'management_udp_ports': sorted(set(context['management_udp_ports']))},
               'limits': {'max_connections': 256, 'max_associations': 128, 'max_pending_packets': 256, 'max_datagram_bytes': 65507, 'handshake_seconds': 5, 'connect_seconds': 5, 'idle_seconds': 300, 'udp_quarantine_seconds': 240, 'max_bindings_per_association': 128}}
+    if vpn.get('enable_destination_filter', False):
+        config['destination_filter'] = destination_filter(context.get('destination_filter'), vpn)
     if not input_only:
         config['runtime_uid'] = context['normalizer_uid']
     validate_config(config, input_only=input_only)

@@ -4,6 +4,7 @@
 # Exact approved Tailnet sources remain inherited from all.yml.
 vpn:
   enable_transport_egress: true
+  enable_destination_filter: false
   enable_xray_reality: true
   enable_reality_self_steal: false
   enable_nginx_xhttp: true

@@ -17,7 +17,8 @@
                       'amneziawg_go_commit': amneziawg_go_commit | default(''),
                       'amneziawg_tools_commit': amneziawg_tools_commit | default(''),
                       'hysteria': hysteria | default({}),
-                      'transport_egress_secrets': transport_egress_secrets | default(none)},
+                      'transport_egress_secrets': transport_egress_secrets | default(none),
+                      'destination_filter': destination_filter | default(none)},
           'context': {'vpn': (vpn | default({})) | combine(
                          {'enable_xray_reality': false, 'enable_nginx_xhttp': false,
                           'enable_hysteria': false, 'enable_amneziawg': false}

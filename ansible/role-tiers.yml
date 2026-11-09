@@ -81,6 +81,7 @@ tiers:
 # here so host-hardening policy cannot participate in transport tiering.
 toggle_role_map:
   enable_transport_egress: transport-egress
+  enable_destination_filter: transport-egress
   enable_xray_reality: xray
   enable_reality_self_steal: reality-self-steal
   enable_nginx_xhttp: nginx-xhttp

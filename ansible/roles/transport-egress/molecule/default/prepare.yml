@@ -85,10 +85,30 @@
           - ip
           - address
           - replace
-          - 192.0.2.80/32
+          - '{{ item }}'
           - dev
           - lo
+      loop:
+        - 192.0.2.80/32
+        - 192.0.2.81/32
       changed_when: true
+    - name: Create the content-addressed deny data directory
+      ansible.builtin.file:
+        path: /etc/ripdpi/transport-egress/destination-deny
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+    - name: Seed the pinned deny data fixtures
+      ansible.builtin.copy:
+        content: '{{ item }}'
+        dest: /etc/ripdpi/transport-egress/destination-deny/{{ item | hash('sha256') }}.txt
+        owner: root
+        group: root
+        mode: '0644'
+      loop:
+        - '{{ molecule_deny_names }}'
+        - '{{ molecule_deny_ranges }}'
     - name: Create frontend configuration directory
       ansible.builtin.file:
         path: /etc/xray
@@ -112,7 +132,7 @@
           threading.Thread(target=canary, daemon=True).start()
           def run(udp):
               s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM if udp else socket.SOCK_STREAM)
-              s.bind(('192.0.2.80',9000))
+              s.bind(('0.0.0.0',9000))
               if udp:
                   while True:
                       payload,peer=s.recvfrom(65535);s.sendto(payload,peer)
