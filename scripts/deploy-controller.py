@@ -32,6 +32,8 @@ class DeployError(Exception):
 
 
 APPROVED_INPUTS = ContextVar('approved_deploy_inputs', default=None)
+# The device lifecycle journal lives in the secrets document and grows with each operation.
+SECRETS_LIMIT = 4_194_304
 
 
 @contextmanager
@@ -736,7 +738,8 @@ def controller(mode):
         if not selected_environment or any(
                 str(metadata[host["name"]].get("env", "")) != selected_environment for host in hosts):
             raise DeployError("selected inventory hosts must belong to ENV")
-        secret_data = read_input(os.environ["DEPLOY_SECRETS_FILE"], private=True, exact_mode=0o600)
+        secret_data = read_input(os.environ["DEPLOY_SECRETS_FILE"], private=True, exact_mode=0o600,
+                                 limit=SECRETS_LIMIT)
         validate_yaml(secret_data)
         secrets = private_file(directory / "secrets.yaml", secret_data)
         environment["VPN_SECRETS_FILE"] = str(secrets)
