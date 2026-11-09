@@ -29,7 +29,8 @@
 
 - Node B or tunnel loss stops all family transports on A → by design; the deploy-time transport canary and watchdog probes traverse the gateway and therefore the tunnel, so the outage is observed. Operators keep a second node for continuity.
 - Recipient IPv6 destinations are unavailable in family scope → accepted; dual-stack names resolve to IPv4.
-- Fresh-host first deploy: transport acceptance runs before the split-hop table exists, so its canary leaves A directly once → limited to the operator-owned canary URL before any client is enrolled.
+- Fresh-host first deploy: the firewall renders before transport users exist → `site.yml` loads the split-hop boundary tasks after transport staging and before activation, and the boundary unit orders before the transport units at boot; the firewall mirror gains the UIDs on the next converge.
+- A-terminated device flows and ICMP errors for marked flows → AWG marking skips local destinations and only original-direction packets restore the mark, so A's own replies keep the ordinary route.
 - Double encapsulation for AWG reduces MTU → MSS clamp on tunnel egress; UDP payloads rely on the devices' configured MTU.
 
 ## Migration Plan
