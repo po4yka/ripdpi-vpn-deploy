@@ -36,7 +36,7 @@ for target in (bytes([1])+socket.inet_aton('192.0.2.81'),bytes([3,19])+b'denied-
                 if not part:break
                 received+=part
         except OSError:
-            pass
+            pass  # A reset or timeout is the expected denial; the next line checks that no echo arrived.
         assert b'payload' not in received
 with control(1)[0] as conn:
     conn.sendall(b'genuine-tcp-echo');assert exact(conn,16)==b'genuine-tcp-echo'
