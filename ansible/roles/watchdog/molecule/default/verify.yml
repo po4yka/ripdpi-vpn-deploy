@@ -103,15 +103,26 @@
                   uuid: "12345678-1234-4234-8234-123456789abc"
                   short_id: "aabbccdd"
               cohorts: []
+            # Verify does not inherit converge vars; without the listener inputs the
+            # role stops earlier and the rescue would pass for an unrelated error.
+            xray_port: 443
+            xray_fallback_port: 2053
+            p0_reality_flow_mode: vision
+            p0_reality_shapes:
+              vision:
+                client_flow: "xtls-rprx-vision"
+                client_mux: false
+                finalmask: false
             watchdog_secrets:
               ntfy_topic: "molecule-stub-topic"
               reality_probe_url: "https://canary.example.test/healthz"
       rescue:
         - name: Record that duplicate watchdog credentials were rejected
           ansible.builtin.set_fact:
-            duplicate_watchdog_credentials_rejected: true
+            duplicate_watchdog_credentials_rejected: >-
+              {{ ansible_failed_task.name == 'Validate dedicated REALITY probe credentials are unique' }}
 
     - name: Duplicate watchdog credentials fail before probe config rendering
       ansible.builtin.assert:
         that:
-          - duplicate_watchdog_credentials_rejected
+          - duplicate_watchdog_credentials_rejected | bool
