@@ -24,6 +24,30 @@
 - name: Admit AmneziaWG dual-stack forwarding prerequisites before mutation
   ansible.builtin.import_tasks: awg-uplink.yml
 
+- name: Select the split-hop family scope for this firewall generation
+  ansible.builtin.set_fact:
+    _firewall_split_hop_family: >-
+      {{ (vpn.enable_split_hop_ingress | default(false) | bool)
+         and (split_hop_ingress_role_enabled | default(true) | bool)
+         and (vpn.split_hop_family_egress | default(false) | bool) }}
+
+- name: Resolve existing split-hop family recipient identities
+  ansible.builtin.command:
+    argv: "{{ ['getent', 'passwd'] + split_hop_ingress_family_users }}"
+  register: _firewall_split_hop_family_identity
+  # A fresh host has no transport users yet; the split-hop role refuses later if they stay absent.
+  failed_when: _firewall_split_hop_family_identity.rc not in [0, 2]
+  changed_when: false
+  check_mode: false
+  when: _firewall_split_hop_family | bool
+
+- name: Publish split-hop family recipient UIDs for the shared guard
+  ansible.builtin.set_fact:
+    firewall_split_hop_family_uids: >-
+      {{ (_firewall_split_hop_family_identity.stdout_lines | map('split', ':')
+          | selectattr(0, 'in', split_hop_ingress_family_users)
+          | map(attribute=2) | map('int') | list) if _firewall_split_hop_family | bool else [] }}
+
 - name: Resolve effective firewall check-mode context
   ansible.builtin.set_fact:
     _firewall_effective_check_mode: >-

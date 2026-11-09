@@ -12,6 +12,13 @@ firewall_dhcpv6_uplink_interface: ""
 # Exact canonical IPv6 server addresses for legacy unicast; no prefixes.
 firewall_dhcpv6_server_addresses: []
 
+# Split-hop family scope on Node A: AWG forwards through the tunnel and the
+# shared guard covers the recipient users below (equal to transport-egress users).
+split_hop_ingress_family_users:
+  - transport-normalizer
+  - transport-gateway
+firewall_split_hop_family_uids: []
+
 # Provider-owned inventory constraint; empty preserves ordinary NAT selection.
 terraform_nat_source_port_range: ""
 

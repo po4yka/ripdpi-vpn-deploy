@@ -163,6 +163,24 @@
           {{ _cascade_conflicts }} with split-hop roles {{ _split_hop_conflicts }}.
       tags: [always]
 
+    - name: Guard — split-hop family egress leaves no recipient path on Node A
+      vars:
+        _family_direct_egress: >-
+          {{ vpn | dict2items
+             | selectattr('key', 'in', ['enable_naive', 'enable_snell', 'enable_dns_morph_bridge',
+                                         'enable_hysteria_realm', 'enable_warp_outbound', 'enable_split_hop_egress'])
+             | selectattr('value') | map(attribute='key') | list }}
+      ansible.builtin.assert:
+        that:
+          - vpn.enable_split_hop_ingress | default(false) | bool
+          - _family_direct_egress | length == 0
+        fail_msg: >-
+          split-hop-family-scope-refused: Host {{ inventory_hostname }} sets vpn.split_hop_family_egress,
+          which requires enable_split_hop_ingress and refuses transports with their own
+          direct egress: {{ _family_direct_egress }}.
+      when: vpn.split_hop_family_egress | default(false) | bool
+      tags: [always]
+
     - name: Guard — cascade classifier owns every egress decision
       ansible.builtin.assert:
         that:

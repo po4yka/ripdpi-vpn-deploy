@@ -6,7 +6,7 @@
 
 Stand up the two-node split-hop research topology from [decision 0003](../decisions/0003-split-hop-relay-topology.md) to prove the ingress and egress separation, not to migrate family production traffic.
 
-Both halves are Ansible-managed. The current ingress role policy-routes only dedicated probe-matrix runtime users, so this runbook proves the research topology, not a family production migration.
+Both halves are Ansible-managed. By default the ingress role policy-routes only dedicated probe-matrix runtime users. [Family egress scope](#6-family-egress-scope) extends it to every Xray, Hysteria and AmneziaWG recipient flow on Node A; it stays RESEARCH tier and needs its own staging evidence.
 
 ```mermaid
 flowchart LR
@@ -127,7 +127,7 @@ ip rule show
 ip route show table 200
 ```
 
-The nftables rule must mark only new original-direction sockets owned by the dedicated probe runtime UIDs. Do not broaden it to all Xray, nginx, or Hysteria traffic as part of this pilot.
+Without family scope, the nftables rule must mark only new original-direction sockets owned by the dedicated probe runtime UIDs. Do not broaden it by hand; use [family egress scope](#6-family-egress-scope).
 
 Generate permission-checked target profiles and run the authenticated matrix as described in `docs/how-to/probe-matrix.md`. A public-IP lookup alone is not sufficient evidence: preserve the redacted matrix verdict, handshake age, per-node flow classification, and direct-control result.
 
@@ -142,6 +142,27 @@ Collect 24–72 hours of flow data from an independent observation point. The pi
 5. Removing B produces an explicit red result; local listener health is not misreported as end-to-end success.
 
 Store only redacted evidence. Do not commit endpoints, provider account data, keys, client identifiers, raw flow logs, or labels tied to a carrier, operator, or geography.
+
+## 6. Family egress scope
+
+Family scope sends recipient traffic of every family transport on Node A through Node B: the `transport-normalizer` and `transport-gateway` users (all Xray and Hysteria recipient egress, including DoH lookups) and forwarded AmneziaWG originals. Node B needs no change. Enable it on Node A only, after steps 1-4 pass:
+
+```yaml
+vpn:
+  enable_split_hop_ingress: true
+  split_hop_family_egress: true
+```
+
+`site.yml` refuses the selector without the ingress responder and while Naive, Snell, DNS-Morph, Hysteria realm, WARP outbound or split-hop egress is enabled on Node A, because those transports open recipient sockets outside the guarded users. Converge Node A with the usual `make dry-run` and `make deploy`; the first family converge needs transport-egress users to exist, which a normal site run creates before the split-hop role.
+
+Behaviour to accept before any family use:
+
+- The recipient sees Node B's address for P0, P1, Hysteria2 and AmneziaWG traffic, while clients keep connecting to Node A.
+- Recipient IPv6 is refused; dual-stack names resolve to IPv4 through the direct gateway.
+- With the tunnel stopped, every family transport stops carrying traffic and no recipient flow leaves Node A's uplink. The firewall keeps this boundary even if the split-hop table is removed, once the transport users exist.
+- Deploys, the transport canary and watchdog probes traverse the tunnel, so a Node B outage fails Node A's deploy and raises transport alerts.
+
+Rollback: set `split_hop_family_egress: false` and converge Node A; AmneziaWG forwarding and NAT return to the uplink.
 
 ## Tear-down
 

@@ -1,6 +1,6 @@
 # ADR: Split-hop relay topology against flow-level dual-role detection
 
-> **Status:** Current · **Type:** decision · **Tier:** RESEARCH · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** decision · **Tier:** RESEARCH · **Reviewed:** 2026-11-09
 
 Status: **Pilot** (reviewed 2026-07-26). Paired Ansible ingress and egress roles are implemented; authenticated flow-data verification and family-path promotion evidence remain operator-driven.
 
@@ -53,6 +53,7 @@ Plain WG is the minimum-complexity choice that satisfies the direction constrain
 | Payload-shape DPI on client→A flows | No — independent; handled by per-transport obfuscation |
 | Per-IP dual-role flow score on A    | **Yes** — A only accepts inbound |
 | Per-IP dual-role flow score on B    | **Yes** — B only initiates outbound |
+| Device application reports the egress address seen through the tunnel, matched against the ingress address | **Yes, in family scope** — recipients see only B; A never sources a recipient flow |
 | Active probing of A's listeners     | No — handled by `honeypot` + `policy-ratelimit` roles |
 | ASN-bucket TCP-freeze on B's egress | No — independent; handled by provider/zone choice |
 | Cross-VPS correlation by RTT timing | **Partial** — adding two-VPS RTT noise makes timing correlation harder but not impossible. Out of scope for this ADR |
@@ -63,7 +64,7 @@ Plain WG is the minimum-complexity choice that satisfies the direction constrain
 - **Provisioning surface:** doubles. Both nodes need separate Terraform roots, secrets, and SSH keys.
 - **Latency:** an extra hop between A and B. For an EU-hosted pair (e.g. fi-hel1 ↔ de-fra1) the added RTT is ~10–25 ms; for cross- continent pairs it can exceed 100 ms.
 - **Failure mode:** the protected UIDs cannot use direct egress while the tunnel is stopped. The retained egress boundary survives WireGuard stop and restart. Its IPv4 check uses the final POSTROUTING interface after policy routing; IPv6 originals are refused in OUTPUT. When B goes down, A can still answer its local listeners while forwarded traffic fails. Cascade has a separate authenticated per-leg health contract, but split-hop has no equivalent family-path gate.
-- **Current routing scope:** `split-hop-ingress` marks only the dedicated probe-matrix Xray and MTProto runtime UIDs. It does not claim to route every family transport through B.
+- **Current routing scope:** by default `split-hop-ingress` marks only the dedicated probe-matrix Xray and MTProto runtime UIDs. The opt-in `vpn.split_hop_family_egress` selector also routes the transport normalizer and direct gateway users and forwarded AmneziaWG originals through B, so every family transport on A exits from B (IPv4 only). It refuses transports that open recipient sockets outside those identities. In family scope a B outage stops every family transport on A; the transport canary and watchdog probes then fail through the same path.
 
 ## When to recommend
 

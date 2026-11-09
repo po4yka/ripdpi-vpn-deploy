@@ -1,9 +1,12 @@
 {%- set _forwarder = _transport_egress_backend_name == 'direct' and '127.0.0.2' in transport_egress_normalizer_config.resolver.nameservers -%}
+{#- The split-hop tunnel carries IPv4 only; family scope must never select an IPv6 address. -#}
+{%- set _vpn = vpn | default({}) -%}
+{%- set _ipv4_only = _transport_egress_backend_name == 'direct' and (_vpn.enable_split_hop_ingress | default(false) | bool) and (_vpn.split_hop_family_egress | default(false) | bool) -%}
 {%- set _unexpected = _transport_egress_forbidden.ipv4 + _transport_egress_forbidden.ipv6 -%}
 {
   "log": {"loglevel": "warning", "access": "none"},
   "dns": {
-    "queryStrategy": "UseIP",
+    "queryStrategy": "{{ 'UseIPv4' if _ipv4_only else 'UseIP' }}",
     "servers": [
       {"address": "https+local://1.1.1.1/dns-query", "unexpectedIPs": {{ _unexpected | to_json }}},
       {"address": "https+local://8.8.8.8/dns-query", "unexpectedIPs": {{ _unexpected | to_json }}}
@@ -24,7 +27,7 @@
     "protocol": "dokodemo-door",
     "settings": {"address": "1.1.1.1", "port": 53, "network": "tcp,udp"}
   }{% endif %}],
-  "outbounds": [{"protocol": "freedom", "settings": {"domainStrategy": "ForceIP", "finalRules": [{"action": "allow"}]}}{% if _forwarder %},
+  "outbounds": [{"protocol": "freedom", "settings": {"domainStrategy": "{{ 'ForceIPv4' if _ipv4_only else 'ForceIP' }}", "finalRules": [{"action": "allow"}]}}{% if _forwarder %},
     {"tag": "dns-out", "protocol": "dns", "settings": {"nonIPQuery": "reject"}}{% endif %}]{% if _forwarder %},
   "routing": {"rules": [{"type": "field", "inboundTag": ["dns-in"], "outboundTag": "dns-out"}]}{% endif %}
 }

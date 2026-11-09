@@ -1,18 +1,37 @@
+{% set _family = (vpn | default({})).split_hop_family_egress | default(false) | bool %}
+{% set _uids = [probe_matrix_runtime_users.xray_uid, probe_matrix_runtime_users.mtg_uid] + (split_hop_ingress_family_uids if _family else []) %}
+{% set _forwarded = split_hop_ingress_family_interfaces if _family else [] %}
+{% set _wg = split_hop_ingress.wg_interface %}
 destroy table inet split_hop_ingress
 table inet split_hop_ingress {
   chain output {
     type route hook output priority mangle; policy accept;
-    meta nfproto ipv6 ct direction original meta skuid { {{ probe_matrix_runtime_users.xray_uid }}, {{ probe_matrix_runtime_users.mtg_uid }} } reject with icmpv6 type admin-prohibited
-    meta nfproto ipv4 ct state new ct direction original meta skuid { {{ probe_matrix_runtime_users.xray_uid }}, {{ probe_matrix_runtime_users.mtg_uid }} } ct mark set {{ split_hop_ingress.fwmark }}
+    meta nfproto ipv6 ct direction original meta skuid { {{ _uids | join(', ') }} } reject with icmpv6 type admin-prohibited
+    meta nfproto ipv4 ct state new ct direction original meta skuid { {{ _uids | join(', ') }} } ct mark set {{ split_hop_ingress.fwmark }}
     ct mark {{ split_hop_ingress.fwmark }} meta mark set ct mark
   }
+{% if _forwarded %}
+  chain prerouting {
+    # Forwarded device originals take the tunnel route; their replies keep conntrack state.
+    type filter hook prerouting priority mangle; policy accept;
+    meta nfproto ipv4 ct state new ct direction original iifname { {% for name in _forwarded %}"{{ name }}"{{ ', ' if not loop.last }}{% endfor %} } ct mark set {{ split_hop_ingress.fwmark }}
+    ct direction original ct mark {{ split_hop_ingress.fwmark }} meta mark set ct mark
+  }
+  chain forward_guard {
+    type filter hook forward priority -10; policy accept;
+    meta nfproto ipv6 iifname { {% for name in _forwarded %}"{{ name }}"{{ ', ' if not loop.last }}{% endfor %} } reject with icmpv6 type admin-prohibited
+    meta nfproto ipv4 ct direction original iifname { {% for name in _forwarded %}"{{ name }}"{{ ', ' if not loop.last }}{% endfor %} } oifname != "{{ _wg }}" drop
+  }
+{% endif %}
   chain egress_guard {
     # OUTPUT retains its original interface after marking; check final egress here.
     type filter hook postrouting priority 0; policy accept;
-    meta nfproto ipv4 ct direction original meta skuid { {{ probe_matrix_runtime_users.xray_uid }}, {{ probe_matrix_runtime_users.mtg_uid }} } oifname != { "lo", "{{ split_hop_ingress.wg_interface }}" } drop
+    meta nfproto ipv4 ct direction original meta skuid { {{ _uids | join(', ') }} } oifname != { "lo", "{{ _wg }}" } drop
+    # Rerouted sockets chose their MSS from the public route; fit the tunnel MTU.
+    oifname "{{ _wg }}" tcp flags syn tcp option maxseg size set rt mtu
   }
   chain postrouting {
     type nat hook postrouting priority srcnat; policy accept;
-    meta nfproto ipv4 ct direction original ct mark {{ split_hop_ingress.fwmark }} oifname "{{ split_hop_ingress.wg_interface }}" snat ip to {{ split_hop_ingress.node_a_address.split('/')[0] }}
+    meta nfproto ipv4 ct direction original ct mark {{ split_hop_ingress.fwmark }} oifname "{{ _wg }}" snat ip to {{ split_hop_ingress.node_a_address.split('/')[0] }}
   }
 }

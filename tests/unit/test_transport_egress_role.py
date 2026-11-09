@@ -690,7 +690,7 @@ def test_generation_controller_retains_uid_drop_without_changing_recipient_capab
             'CapabilityBoundingSet=' + capability, 'AmbientCapabilities=' + capability]
 
 
-def _render_gateway(name, backend, nameservers=('127.0.0.2',)):
+def _render_gateway(name, backend, nameservers=('127.0.0.2',), vpn=None):
     sys.path.insert(0, str(ROOT / 'scripts'))
     from template_render import template_environment
     from jinja2 import FileSystemLoader
@@ -703,7 +703,7 @@ def _render_gateway(name, backend, nameservers=('127.0.0.2',)):
         transport_egress_gateway_user='transport-gateway', transport_egress_warp_gateway_user='transport-warp-gateway',
         transport_egress_config_dir='/etc/ripdpi/transport-egress', transport_egress_namespace='ripdpi-warp',
         transport_egress_policy_loader='/usr/local/libexec/policy-loader.py', transport_egress_policy_config='/etc/policy.json',
-        transport_egress_runtime_binary='/opt/xray/xray')
+        transport_egress_runtime_binary='/opt/xray/xray', vpn=vpn or {})
 
 
 def test_direct_gateway_forwards_normalizer_dns_over_https_only():
@@ -720,6 +720,20 @@ def test_direct_gateway_forwards_normalizer_dns_over_https_only():
     plaintext = json.loads(_render_gateway('gateway.json.j2', 'direct', ['1.1.1.1', '8.8.8.8']))
     assert 'dns-in' not in json.dumps(plaintext) and 'routing' not in plaintext
     assert 'CAP_NET_BIND_SERVICE' not in _render_gateway('gateway.service.j2', 'direct', ['1.1.1.1', '8.8.8.8'])
+
+
+def test_split_hop_family_scope_keeps_direct_gateway_on_ipv4():
+    family = {'enable_split_hop_ingress': True, 'split_hop_family_egress': True}
+
+    def strategies(backend, vpn):
+        config = json.loads(_render_gateway('gateway.json.j2', backend, vpn=vpn))
+        return config['dns']['queryStrategy'], config['outbounds'][0]['settings']['domainStrategy']
+
+    # The tunnel to Node B is IPv4-only; resolving AAAA would select an address the boundary refuses.
+    assert strategies('direct', family) == ('UseIPv4', 'ForceIPv4')
+    assert strategies('direct', {**family, 'split_hop_family_egress': False}) == ('UseIP', 'ForceIP')
+    assert strategies('direct', {'split_hop_family_egress': True}) == ('UseIP', 'ForceIP')
+    assert strategies('warp', family) == ('UseIP', 'ForceIP')
 
 
 def test_native_identity_refusal_fixture_uses_valid_input_only_authority():
