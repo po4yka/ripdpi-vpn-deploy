@@ -1609,7 +1609,7 @@ def test_gateway_token_reader_rejects_wrong_owner_before_read(tmp_path, monkeypa
 
     def wrong_owner(fd):
         value = actual_fstat(fd)
-        return SimpleNamespace(st_uid=12345, st_mode=value.st_mode)
+        return SimpleNamespace(st_uid=12345, st_mode=value.st_mode, st_size=value.st_size)
 
     monkeypatch.setattr(os, "fstat", wrong_owner)
     with pytest.raises(RuntimeError, match="gateway credential unavailable"):

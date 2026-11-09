@@ -380,7 +380,7 @@ def test_source_directory_metadata_failure_closes_acquired_parent(
     tmp_path, monkeypatch
 ):
     acquired, closed = [], []
-    real_open, real_close = os.open, os.close
+    real_open, real_close, real_fstat = os.open, os.close, os.fstat
 
     def record_open(*args, **kwargs):
         fd = real_open(*args, **kwargs)
@@ -392,6 +392,9 @@ def test_source_directory_metadata_failure_closes_acquired_parent(
         return real_close(fd)
 
     def fail_metadata(fd):
+        # os.fstat is process-global; fail only the descriptors this test acquired.
+        if fd not in acquired:
+            return real_fstat(fd)
         raise OSError("synthetic source metadata failure")
 
     monkeypatch.setattr(module.os, "open", record_open)

@@ -94,7 +94,9 @@ def test_collector_allowance_requires_new_guard_and_exact_owned_namespace(
 
     def owned(fd):
         value = original(fd)
-        return SimpleNamespace(st_mode=value.st_mode, st_nlink=value.st_nlink, st_uid=0)
+        return SimpleNamespace(
+            st_mode=value.st_mode, st_nlink=value.st_nlink, st_size=value.st_size, st_uid=0
+        )
 
     monkeypatch.setattr(module.os, "fstat", owned)
     unit.write_text(
