@@ -19,4 +19,4 @@ Single serialized lane. `scripts/device_lifecycle.py`, `scripts/device_lifecycle
 - Local gate: `make check`, because the change touches secrets handling.
 - Remote: PR CI on the exact head SHA.
 - Live: issuance of `personal-pixel-incy` on the production fleet, as a separately authorized step.
-- [ ] SCR-1794157295397257 Adopt devices with operator inputs and stable AWG peer comparison #bug !high @item:SCR-1794116837161459
+- [x] SCR-1794157295397257 Adopt devices with operator inputs and stable AWG peer comparison #bug !high @item:SCR-1794116837161459
