@@ -2,7 +2,7 @@
 id: SCR-1794075997223882
 title: Emit INCY import material from an issued device artifact
 kind: feature
-status: doing
+status: review
 area: scripts
 priority: medium
 risk: high
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: scr-1794075997223882-emit-incy
 created: 2026-11-07
-updated: 2026-11-07
+updated: 2026-11-09
 related_tasks: []
 ---
 

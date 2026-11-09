@@ -2,7 +2,7 @@
 id: SCR-1794116837161459
 title: Issue a device privately when the fleet has no subscription publisher
 kind: feature
-status: doing
+status: review
 area: scripts
 priority: high
 risk: high
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: scr-1794116837161459-device-private-delivery
 created: 2026-11-08
-updated: 2026-11-08
+updated: 2026-11-09
 related_tasks: []
 ---
 
