@@ -1,0 +1,11 @@
+{
+  "change": "scr-1794116837161459-device-private-delivery",
+  "evidence_summary": "PRs 532, 533 and 538 merged with green required checks; operation b5f72cff issued the device privately on three production nodes and reached phase complete.",
+  "execution_sha256": "39778a748932379594f05999c7c7c0dbe7372922a93a74376ceac8d2e9178acd",
+  "issue_sha256": "1ddf7f59fcf2fdc38714dc5fe48279b87dd2ac69fd034e391a23ea0fa17430e6",
+  "outcome": "done",
+  "prepared_at": "2026-11-09T06:39:00Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SCR-1794116837161459"
+}

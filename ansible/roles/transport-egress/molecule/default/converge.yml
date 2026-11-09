@@ -11,8 +11,8 @@
           - '{{ ansible_playbook_python }}'
           - '{{ playbook_dir }}/../../../../../scripts/transport_egress_config.py'
           - --input-only
-        stdin: '{{ {''vpn'': vpn, ''secrets'': transport_egress_secrets, ''owned_addresses'': [], ''management_tcp_ports'':
-          [22], ''management_udp_ports'': []} | to_json }}'
+        stdin: '{{ {''vpn'': vpn, ''secrets'': transport_egress_secrets, ''destination_filter'': destination_filter,
+          ''owned_addresses'': [], ''management_tcp_ports'': [22], ''management_udp_ports'': []} | to_json }}'
       delegate_to: localhost
       become: false
       register: admitted
@@ -33,7 +33,7 @@
           - '{{ ansible_playbook_python }}'
           - '{{ playbook_dir }}/../../../../../scripts/transport_egress_config.py'
         stdin: |-
-          {{ {'vpn': vpn, 'secrets': transport_egress_secrets, 'owned_addresses': ['192.0.2.80'],
+          {{ {'vpn': vpn, 'secrets': transport_egress_secrets, 'destination_filter': destination_filter, 'owned_addresses': ['192.0.2.80'],
               'management_tcp_ports': [22], 'management_udp_ports': [],
               'normalizer_uid': transport_egress_normalizer_uid | int,
               'gateway_uid': transport_egress_gateway_uid | int,

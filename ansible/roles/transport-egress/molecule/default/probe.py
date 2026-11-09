@@ -22,6 +22,22 @@ def control(command):
     port=struct.unpack('!H',exact(conn,2))[0]
     return conn,address,port
 
+# The peer accepts on 192.0.2.81 too, so missing echo through the frontend proves the deny range.
+with socket.create_connection(('192.0.2.81',9000),timeout=5) as conn:
+    conn.sendall(b'x');assert exact(conn,1)==b'x'
+for target in (bytes([1])+socket.inet_aton('192.0.2.81'),bytes([3,19])+b'denied-name.invalid'):
+    with socket.create_connection(('127.0.0.1',19080),timeout=5) as conn:
+        conn.sendall(b'\x05\x01\x00');assert exact(conn,2)==b'\x05\x00'
+        conn.sendall(b'\x05\x01\x00'+target+struct.pack('!H',9000)+b'payload')
+        received=b''
+        try:
+            while b'payload' not in received:
+                part=conn.recv(4096)
+                if not part:break
+                received+=part
+        except OSError:
+            pass  # A reset or timeout is the expected denial; the next line checks that no echo arrived.
+        assert b'payload' not in received
 with control(1)[0] as conn:
     conn.sendall(b'genuine-tcp-echo');assert exact(conn,16)==b'genuine-tcp-echo'
 conn,address,port=control(3)

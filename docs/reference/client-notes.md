@@ -127,6 +127,10 @@ The local acceptance matrix exercises actual Xray processes, transfer, faults an
 
 The paired client changes are merged in [RIPDPI #709](https://github.com/po4yka/RIPDPI/pull/709). The prepared debug APK is a build artifact; it does not prove device installation, bundle import or automatic failover. The [deployment snapshot](deployment-status.md#transport-activation) records the optional pool and payload policy as disabled. Before activation, accept two owned HTTPS control origins, install the compatible client, export a fresh per-device bundle and test transfer plus failure/recovery on that device. Under the explicit policy, active Hysteria2 payload failure gives TCP reserves priority. AmneziaWG is not a selector candidate, and total candidate failure must not fall back to direct traffic.
 
+## Destinations that the server filter does not cover
+
+The optional server destination filter (see [the transport egress reference](transport-egress.md#destination-filter)) applies only to P0, P1 and Hysteria2 traffic that reaches the server. It does not apply to AmneziaWG or to traffic that a client sends directly. To block unsafe sites on direct traffic, add a block rule for those domains in the client routing profile, before the direct rule. Then confirm on the device that a test name in the rule fails.
+
 ## INCY share links
 
 `make emit-incy CLIENT=<device> OUTPUT=<path>` writes INCY share links for the selected device: one `vless://` link per P0 REALITY endpoint, one `vless://` link with `type=xhttp` per P1 endpoint, including `:alternate`, and one `hysteria2://` link. The emitter reads the same plaintext or SOPS inputs as `emit-singbox` and renders the RIPDPI-format payload. Each link carries every field of its outbound, and each URI component is encoded once. Hysteria2 links keep the full `<device>:<password>` auth, Salamander, the `up`/`down` Mbps hints and port hopping as `mport=<low>-<high>` with `mportHopInt` in whole seconds. TLS verification stays enabled (`insecure=0`).

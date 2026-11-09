@@ -66,9 +66,9 @@ chardet==7.6.0 \
     --hash=sha256:f2ec3c78cc6b54bf8e091ec4ee885473078b5d7ef18ab1b01c86ae1e98bf88f7 \
     --hash=sha256:fc1e1571321baf8927582fe34363ad7f02279f11c8c2839c14b4c76894148db6
     # via cyclonedx-bom
-cyclonedx-bom==7.5.0 \
-    --hash=sha256:396cc8c9cb7533d25a21f930b45d2699a1839e3ba2be9ba88f8bd61c566b51dc \
-    --hash=sha256:a3020e225107214a66cb9c79ae83e3a71640a06d4ff3a0e2f9cb0d238f7061fd
+cyclonedx-bom==7.6.0 \
+    --hash=sha256:4db70eb524e859317c645bbe927347e18bdd3cfa31906b1e482b4b936f8c36ef \
+    --hash=sha256:ab8a8c4cf0d8704f75029f75826993047783b8fd416e7dc3431af54c03e8adab
     # via -r vpnd/sbom-requirements.in
 cyclonedx-python-lib[validation]==11.12.0 \
     --hash=sha256:0e807521a921a5c3cb8ce1153f8a61d29eedfe76a46aac2796b7c6b573391a54 \

@@ -23,6 +23,39 @@ WARP vendor isolation requires an actual systemd 257 or newer manager. Older man
 Local unit, namespace, native frontend and Molecule evidence is source/runtime validation. A two-TUN packet fixture proves the local adapter path only. Actual registered vendor TCP/UDP, staging and production acceptance require separate authorized targets and observed evidence. This change does not deploy or register a WARP account.
 
 
+## Destination filter
+
+The destination filter is an optional deny policy at the normalizer. It is off by default. Set `vpn.enable_destination_filter: true` in a deployment profile and add the `destination_filter` section to the secrets file:
+
+| Key | Requirement |
+|---|---|
+| `domains_url` | HTTPS URL with a 40-character commit or a `/releases/download/<tag>/` path. A branch name and `latest` are refused. |
+| `domains_sha256` | SHA-256 digest of the domain file. |
+| `ranges_url` | Same URL rule as `domains_url`. |
+| `ranges_sha256` | SHA-256 digest of the range file. |
+| `allow_domains` | Optional list of up to 256 names with at least two labels. A listed name and its subdomains skip the name and range denial. Private-address isolation still applies. |
+
+Each file has one entry per line. Blank lines and lines that start with `#` are ignored. A domain file holds ASCII names (A-labels). A range file holds addresses or CIDR ranges. An invalid line refuses the whole file. An empty file is valid when you need only one of the two lists.
+
+The limits are 500,000 names, 200,000 ranges and 32 MiB per file. On a local CPython 3 measurement, a list at these limits added 137 MB of peak process memory and took 1.0 s to load; a list of 363,724 names and 50,000 addresses added 92 MB and took 0.4 s. A name decision takes less than 1 microsecond. The memory budget is 150 MB at the limits. Measure the smallest node class during staging before you enable a list near the limits.
+
+The node downloads and admits the pinned files before the accepted generation stops. A digest mismatch, invalid data or data that denies the runtime canary or the REALITY target refuses the candidate. For a required name, the check also resolves the name on the node and refuses when every answer is in a denied range. To accept a listed canary or target, add its name to `allow_domains`. There is no automatic update: change the pins and deploy.
+
+A denied request gets the same bounded failure as a private destination, and the normalizer does not log the destination.
+
+### Coverage limits
+
+| Traffic | Filter applies |
+|---|---|
+| P0 and P1 through Xray | Yes. Validation refuses `enable_destination_filter` together with `enable_cascade_ingress`, because the cascade classifier receives Xray TCP instead of the normalizer. |
+| Hysteria2 | Yes |
+| AmneziaWG | No. It uses kernel forwarding and does not reach the normalizer. |
+| Traffic that the client sends directly | No. It does not reach the server. |
+
+The filter inspects only the destination that the normalizer receives. It does not inspect encrypted content. If a client sends an address instead of a name, only the range check applies. A name that reaches a listed name through an unlisted CNAME is not matched, but the range check still applies to its addresses.
+
+To block unsafe sites on traffic that a client sends directly, add a block rule for those domains in the client routing profile. Put the rule before the direct rule, and confirm on the device that a test name in the rule fails.
+
 ## Protected deployment and recovery
 
 Protected site staging has one compensation owner. It snapshots both ingress owners before publication, keeps frontend staging inside a rescued block, and closes the transaction before unrelated roles run. Failure quiesces owned candidate processes, restores and validates accepted Nginx authority, then resumes accepted egress/frontends. Standalone frontend roles retain their own rollback.

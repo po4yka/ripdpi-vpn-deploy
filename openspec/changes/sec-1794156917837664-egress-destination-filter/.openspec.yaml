@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-11-08
+goal: SEC-1794156917837664 Block unsafe recipient destinations at the egress boundary
