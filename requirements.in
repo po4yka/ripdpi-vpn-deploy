@@ -36,7 +36,7 @@ build==1.6.1
 setuptools==84.2.1
 wheel==0.48.0
 ruff==0.17.2
-mypy==2.4.0
+mypy==2.4.1
 hypothesis==6.170.11
 mutmut==3.8.1
 pip-audit==2.10.1
