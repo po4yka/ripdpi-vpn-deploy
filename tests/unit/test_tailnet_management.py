@@ -1511,7 +1511,13 @@ def test_recovery_worker_proof_is_revalidated_under_transaction_lock(tmp_path) -
 
 @pytest.mark.parametrize(
     "auth_key",
-    ["fixture", "tskey-auth-short", "tskey-auth-fixture_12345678\nextra"],
+    [
+        "fixture",
+        "tskey-auth-short",
+        "tskey-auth-fixture_12345678\nextra",
+        "tskey-auth-fixture_12345678--TLab+c",
+        "tskey-auth-fixture_12345678--TLab+c-d e",
+    ],
 )
 def test_non_auth_key_material_refuses_before_login(tmp_path, auth_key) -> None:
     controller = _load_controller()
@@ -1524,6 +1530,21 @@ def test_non_auth_key_material_refuses_before_login(tmp_path, auth_key) -> None:
         )
 
     assert not any(call[1:2] == ["login"] for call in runner.calls)
+
+
+def test_tailnet_lock_signed_auth_key_reaches_private_auth_file(tmp_path) -> None:
+    controller = _load_controller()
+    (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
+    runner = FakeRunner(tmp_path)
+
+    result = _configure_and_confirm(controller,
+        paths=_paths(controller, tmp_path),
+        runner=runner,
+        auth_key="tskey-auth-fixture_1234--TLc2ln+/-cHJpdg+/",
+    )
+
+    assert result == {"status": "configured", "changed": True}
+    assert runner.auth_file_bytes == b"tskey-auth-fixture_1234--TLc2ln+/-cHJpdg+/\n"
 
 
 def test_check_mode_refuses_missing_receipt_without_login(tmp_path) -> None:
