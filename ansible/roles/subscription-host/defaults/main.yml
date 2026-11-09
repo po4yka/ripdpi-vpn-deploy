@@ -1,4 +1,26 @@
 ---
+# Client routing lists (docs/reference/subscription-plane.md). Feed URLs,
+# profile rules and policy canaries are private operator inputs under
+# subscription.routing_lists; only bounds have defaults.
+subscription_routing_lists_defaults:
+  enabled: false
+  token: ""
+  geosite_url: ""
+  geoip_url: ""
+  profile: {}
+  policy:
+    max_bytes: 5242880
+    max_change_ratio: 2
+    min_ipv4_prefix: 12
+    min_ipv6_prefix: 28
+    single_label_allow: []
+    must_direct: []
+    must_not_direct: []
+    must_not_direct_ips: []
+subscription_routing_lists: >-
+  {{ subscription_routing_lists_defaults
+     | combine(subscription.routing_lists | default({}), recursive=True) }}
+
 subscription:
   port: "{{ subscription_port }}"
   rate_limit: "5r/m"   # per-IP request rate (nginx limit_req)

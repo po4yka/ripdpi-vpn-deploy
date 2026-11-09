@@ -1,0 +1,91 @@
+---
+# The feed moves on purpose; the refresher admits every candidate against this
+# policy before it replaces the files that clients download.
+- name: Require complete client routing inputs before mutation
+  ansible.builtin.assert:
+    that:
+      - subscription_routing_lists.token is regex('^[A-Za-z0-9_-]{16,64}$')
+      - subscription_routing_lists.geosite_url is regex('^https://[^/]+/')
+      - subscription_routing_lists.geoip_url is regex('^https://[^/]+/')
+      - subscription_routing_lists.profile.Name | default('') | length > 0
+      # Unmatched traffic must stay in the tunnel whatever the feed contains.
+      - subscription_routing_lists.profile.GlobalProxy | default('') == 'true'
+      - subscription_routing_lists.profile.DirectSites | default([]) | length > 0
+      - subscription_routing_lists.profile.DirectIp is defined
+      - subscription_routing_lists.profile.ProxySites is defined
+      - subscription_routing_lists.profile.ProxyIp is defined
+      - subscription_routing_lists.policy.must_direct | length > 0
+      - subscription_routing_lists.policy.must_not_direct | length > 0
+      - subscription_routing_lists.policy.max_change_ratio | float > 1
+      - subscription_routing_lists.policy.max_bytes | int <= 52428800
+      - subscription_routing_lists.policy.min_ipv4_prefix | int >= 8
+      - subscription_routing_lists.policy.min_ipv6_prefix | int >= 16
+    fail_msg: subscription-routing-lists-invalid
+    quiet: true
+  no_log: true
+
+- name: Ensure routing list publication root
+  ansible.builtin.file:
+    path: /var/lib/vpn-routing-lists
+    state: directory
+    follow: false
+    owner: vpn-bootstrap
+    group: www-data
+    mode: "0750"
+
+- name: Ensure refresher directory
+  ansible.builtin.file:
+    path: /usr/local/libexec
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install routing list refresher
+  ansible.builtin.copy:
+    src: routing_lists_refresh.py
+    dest: /usr/local/libexec/vpn-routing-lists-refresh
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Publish routing list refresher policy
+  ansible.builtin.copy:
+    content: >-
+      {{ {'root': '/var/lib/vpn-routing-lists',
+          'token': subscription_routing_lists.token,
+          'base_url': 'https://' ~ (subscription.server_name | default(nginx_xhttp.server_name))
+                      ~ ':' ~ (subscription.port | default(subscription_port))
+                      ~ '/routing/' ~ subscription_routing_lists.token,
+          'geosite_url': subscription_routing_lists.geosite_url,
+          'geoip_url': subscription_routing_lists.geoip_url,
+          'profile': subscription_routing_lists.profile,
+          'policy': subscription_routing_lists.policy} | to_json(ensure_ascii=false) }}
+    dest: /etc/vpn-routing-lists.json
+    owner: root
+    group: vpn-bootstrap
+    mode: "0640"
+  no_log: true
+  diff: false
+
+- name: Install routing list refresh units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [vpn-routing-lists.service, vpn-routing-lists.timer]
+  register: _subscription_routing_units
+
+- name: Reload routing list unit graph
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: not ansible_check_mode and _subscription_routing_units.changed
+
+- name: Enable routing list refresh
+  ansible.builtin.systemd_service:
+    name: vpn-routing-lists.timer
+    enabled: true
+    state: started
+  when: not ansible_check_mode
