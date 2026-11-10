@@ -10,11 +10,25 @@ from pathlib import Path
 import sys
 
 import fleet_inspection as inspection
+import yaml
 
 WATCHDOG_MAX_AGE_SECONDS = 300
 
 
-def watchdog_health(report, now):
+def watchdog_expected(host):
+    """False only when a profile group of the host disables the watchdog; anything unreadable keeps it expected."""
+    group_vars = Path(__file__).resolve().parent.parent / "ansible/group_vars"
+    for cohort in host.get("cohorts", ()):
+        try:
+            profile = yaml.safe_load((group_vars / f"vpn-{cohort}.yml").read_text())
+            if profile["vpn"]["enable_watchdog"] is False:
+                return False
+        except (OSError, yaml.YAMLError, KeyError, TypeError):
+            continue
+    return True
+
+
+def watchdog_health(report, now, expected=True):
     """Evaluate validated passive evidence; success is only a local watchdog result."""
     try:
         observed = inspection.parse_time(report["observed_at"])
@@ -24,6 +38,10 @@ def watchdog_health(report, now):
             return {"status": "stale", "reason": "stale-observation"}
         service = report["services"]["vpn-watchdog.service"]
         timer = report["services"]["vpn-watchdog.timer"]
+        if (not expected and service.get("status") == timer.get("status") == "observed"
+                and service.get("load_state") == timer.get("load_state") == "not-found"):
+            # Profiles such as vpn-p1-web and vpn-p2-udp disable the watchdog; that is not a failed observation.
+            return {"status": "not-installed", "reason": "watchdog-not-installed"}
         if service.get("status") != "observed" or service.get("load_state") != "loaded":
             return {"status": "unknown", "reason": "service-unobserved"}
         if service.get("active_state") not in ("inactive", "failed"):
@@ -67,7 +85,7 @@ def collect_status(hosts, known_hosts):
             now = dt.datetime.now(dt.timezone.utc)
             report = inspection.validate_report(inspection.decode_json(raw), now)
             row.update(source_revision=report["manifest"].get("source_revision"),
-                       watchdog_local=watchdog_health(report, now), observation=report)
+                       watchdog_local=watchdog_health(report, now, watchdog_expected(host)), observation=report)
         except inspection.InspectionError as exc:
             row["error"] = str(exc)
         results.append(row)
@@ -86,7 +104,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         hosts = inspection.select_hosts(Path(args.inventory), args.hosts.split(","),
-                                        selection_kind="provider-env", include_variables=True)
+                                        selection_kind="provider-env", include_variables=True,
+                                        include_cohorts=True)
         result = collect_status(hosts, Path(args.known_hosts))
     except (inspection.InspectionError, OSError) as exc:
         category = str(exc) if isinstance(exc, inspection.InspectionError) else "collector-unavailable"
@@ -101,7 +120,7 @@ def main(argv=None):
             print(columns.format(row["provider"], row["environment"], row["name"],
                                  (row["source_revision"] or "unknown")[:12],
                                  row["watchdog_local"]["status"], row["client_path"]))
-    return int(any(row["watchdog_local"]["status"] != "healthy" for row in result["hosts"]))
+    return int(any(row["watchdog_local"]["status"] not in ("healthy", "not-installed") for row in result["hosts"]))
 
 
 if __name__ == "__main__":
