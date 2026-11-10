@@ -140,11 +140,8 @@ def test_restore_drill_systemd_units_isolate_runtime_and_run_monthly() -> None:
         "RestrictSUIDSGID=true",
     ):
         assert directive in service.splitlines()
-    # A local repository needs its lock directory writable; a remote one needs no extra path.
-    local = {**variables, "backup": {**variables["backup"], "remote": {"enabled": False}}}
-    remote = {**variables, "backup": {**variables["backup"], "remote": {**variables["backup"].get("remote", {}), "enabled": True}}}
-    assert f"ReadWritePaths={variables['restic_repo_dir']}" in renderer.render_template(SERVICE_TEMPLATE, local).splitlines()
-    assert "ReadWritePaths" not in renderer.render_template(SERVICE_TEMPLATE, remote)
+    # restic locks the repository it reads; the drill gets the repository paths and nothing else.
+    assert f"ReadWritePaths={variables['restic_repo_dir']} /var/backups" in service.splitlines()
     assert "OnCalendar=monthly" in timer
     assert "RandomizedDelaySec=2h" in timer
     assert "Persistent=true" in timer
