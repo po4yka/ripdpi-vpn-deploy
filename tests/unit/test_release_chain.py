@@ -124,3 +124,9 @@ def test_handoff_validates_real_git_tag_before_dispatch(tmp_path, case):
     else:
         assert result.returncode != 0
         assert not log.exists()
+
+
+def test_every_release_job_has_a_timeout():
+    workflow = yaml.safe_load((ROOT / ".github/workflows/release-vpnd.yml").read_text())
+    missing = [name for name, job in workflow["jobs"].items() if not isinstance(job.get("timeout-minutes"), int)]
+    assert missing == []
