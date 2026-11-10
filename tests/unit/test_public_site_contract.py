@@ -905,8 +905,22 @@ def test_xhttp_locations_answer_upstream_errors_with_the_site_404() -> None:
     assert len(locations) == 2
     for body in locations:
         assert "proxy_intercept_errors on;" in body
-        assert "error_page 404 502 503 504 =404 /404.html;" in body
+        assert "error_page 400 403 404 405 500 502 503 504 =404 /404.html;" in body
         assert "add_header" not in body
+
+
+def test_xhttp_path_without_trailing_slash_is_an_ordinary_404() -> None:
+    rendered = _render(fallback=True)
+    # A prefix location with proxy_pass redirects the slashless path with a 301;
+    # the exact match in each server block answers 404 through the site error page.
+    exact = re.findall(r"location = (/\S+) \{\n(.*?)\n    \}", rendered, flags=re.DOTALL)
+    prefixes = re.findall(r"location (/\S+)/ \{", rendered)
+    assert len(prefixes) == 2 and len(set(prefixes)) == 1
+    matching = [body for path, body in exact if path == prefixes[0]]
+    assert len(matching) == 2
+    for body in matching:
+        assert body.strip().splitlines()[-1].strip() == "return 404;"
+        assert "proxy_pass" not in body
 
 
 ENABLE_TASKS = REPO_ROOT / "ansible/roles/nginx-xhttp/tasks/enable.yml"

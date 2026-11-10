@@ -32,6 +32,14 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
 
 
+    # Without this exact match nginx answers the path without its trailing
+    # slash with a 301, which tells a probe that the prefix is routed.
+    location = /REPLACE_WITH_PRIVATE_XHTTP_PATH {
+        access_log off;
+        error_log /dev/null crit;
+        return 404;
+    }
+
     # XHTTP path → Xray localhost inbound
     location /REPLACE_WITH_PRIVATE_XHTTP_PATH/ {
         access_log off;
@@ -47,7 +55,7 @@ server {
         # Upstream refusals and an absent upstream answer as the ordinary site
         # 404, so a probe sees one identity whether or not Xray is running.
         proxy_intercept_errors on;
-        error_page 404 502 503 504 =404 /404.html;
+        error_page 400 403 404 405 500 502 503 504 =404 /404.html;
 
         # Streaming-friendly
         client_max_body_size 0;
