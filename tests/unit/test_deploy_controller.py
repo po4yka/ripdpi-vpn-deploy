@@ -994,8 +994,8 @@ ONE_TCP = "W3sibmFtZSI6InhyYXkiLCJwb3J0Ijo0NDMsInByb3RvY29sIjoidGNwIn1d"  # one 
 
 
 @pytest.mark.parametrize("case", [
-    "admitted", "listener-published", "contract-absent", "contract-group-wide", "contract-in-secrets",
-    "hysteria-default-on", "egress-role-off",
+    "admitted", "shipped-staging-profile", "listener-published", "contract-absent", "contract-group-wide",
+    "contract-in-secrets", "hysteria-default-on", "egress-role-off",
 ])
 def test_no_listener_promotion_needs_an_explicit_egress_only_listener_free_host(workspace, case):
     root = workspace["root"]
@@ -1004,6 +1004,8 @@ def test_no_listener_promotion_needs_an_explicit_egress_only_listener_free_host(
         group_vars = EGRESS_ONLY.replace("enable_hysteria: false, ", "")
     if case == "egress-role-off":
         group_vars = EGRESS_ONLY.replace("enable_split_hop_egress: true", "enable_split_hop_egress: false")
+    if case == "shipped-staging-profile":  # the tracked Node B cohort must satisfy the same gate
+        group_vars = (ROOT / "ansible/group_vars/vpn-split-hop-egress-staging.yml").read_text()
     (root / "ansible/group_vars/vpn-p1p2.yml").write_text(group_vars)
     subprocess.run(["git", "-c", "commit.gpgsign=false", "commit", "-qam", "test: egress-only cohort"],
                    cwd=root, env=workspace["env"], check=True, capture_output=True)
@@ -1032,7 +1034,7 @@ def test_no_listener_promotion_needs_an_explicit_egress_only_listener_free_host(
     programs = [entry["program"] for entry in calls(workspace)]
     # The kind has no liveness document, so the sentinel proof validator never sees it.
     assert "sshd-promotion-proof.py" not in programs
-    if case == "admitted":
+    if case in {"admitted", "shipped-staging-profile"}:
         assert "ssh" in programs, result.stdout + result.stderr
     else:
         assert result.returncode != 0

@@ -66,6 +66,9 @@ def test_live_fleet_profiles_enable_only_reviewed_tailnet_management_sources() -
         "vpn-p2-udp.yml",
         "vpn-device-full-staging.yml",
         "vpn-device-full-tailnet.yml",
+        "vpn-split-hop-egress-staging.yml",
+        "vpn-split-hop-ingress-staging.yml",
+        "vpn-split-hop-family-egress-staging.yml",
         "vpn-ci-p0.yml",
         "vpn-ci-p0p1.yml",
         "vpn-ci-p0p1p2.yml",
@@ -78,6 +81,19 @@ def test_live_fleet_profiles_enable_only_reviewed_tailnet_management_sources() -
         assert enabled is (path.name in enabled_profiles), path.name
         if enabled:
             assert document.get("tailnet_management", {}).get("approved_sources", approved_sources) == approved_sources
+
+
+@pytest.mark.parametrize(("name", "toggles"), [
+    ("vpn-split-hop-ingress-staging.yml", {"enable_split_hop_ingress": True}),
+    ("vpn-split-hop-family-egress-staging.yml",
+     {"enable_split_hop_ingress": True, "split_hop_family_egress": True}),
+])
+def test_split_hop_node_a_profiles_keep_the_staging_transports(name, toggles) -> None:
+    # Node A must keep every device-full-staging transport so the four-profile acceptance still runs.
+    group_vars = ROOT / "ansible" / "group_vars"
+    staging = yaml.safe_load((group_vars / "vpn-device-full-staging.yml").read_text())["vpn"]
+    document = yaml.safe_load((group_vars / name).read_text())
+    assert document == {"allow_research_roles": ["split-hop-ingress"], "vpn": {**staging, **toggles}}
 
 
 def test_staging_profile_preserves_transports_and_limits_rehearsal_services(

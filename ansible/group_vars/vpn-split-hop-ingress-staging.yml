@@ -1,0 +1,37 @@
+---
+# Split-hop Node A for disposable staging: device-full-staging transports plus the shop0 responder.
+# Complete map because the deployment controller replaces canonical vpn maps.
+# Only probe-matrix runtime users are policy-routed; the family-egress profile extends the scope.
+allow_research_roles: [split-hop-ingress]
+
+vpn:
+  enable_transport_egress: true
+  enable_destination_filter: false
+  enable_xray_reality: true
+  enable_reality_self_steal: false
+  enable_nginx_xhttp: true
+  enable_naive: false
+  enable_hysteria: true
+  enable_amneziawg: true
+  enable_geodata: true
+  enable_monitoring: false
+  enable_watchdog: false
+  enable_backup: false
+  enable_subscription_host: false
+  enable_tailnet_management: true
+  build_xray_from_source: false
+  enable_policy_ratelimit: false
+  enable_cdn_front: false
+  enable_honeypot: false
+  enable_warp_outbound: false
+  enable_dns_morph_bridge: false
+  enable_hysteria_realm: false
+  enable_split_hop_egress: false
+  enable_split_hop_ingress: true
+  split_hop_family_egress: false
+  enable_probe_matrix_target: false
+  enable_snell: false
+  enable_cascade_ingress: false
+  enable_cascade_egress: false
+  warp_outbound_routes: []
+  awg_cohort: ''

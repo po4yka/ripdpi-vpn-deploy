@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-10
+goal: ANS-1794322927427537 Add split-hop staging cohort profiles for Node A and
+  Node B
