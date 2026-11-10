@@ -129,6 +129,36 @@ def test_xray_public_digest_exception_is_exact(tmp_path: Path, case: str, digest
     assert (_gitleaks(repo).returncode == 0) == (case == "public-pin")
 
 
+def test_per_device_credential_rules_detect_client_material() -> None:
+    uuid = re.compile(_custom_rule("xray-client-uuid")["regex"])
+    short_id = re.compile(_custom_rule("reality-short-id")["regex"])
+
+    assert uuid.search('"uuid": "0f8fad5b-d9cb-469f-a165-70867728950e"') is not None
+    assert uuid.search("uuid: 0f8fad5b-d9cb-469f-a165-70867728950e") is not None
+    assert uuid.search("filesystem_uuid = 0f8fad5b-d9cb-469f-a165-70867728950e") is None
+    assert uuid.search("uuid: <CLIENT_UUID>") is None
+    assert short_id.search('"short_id": "0123456789abcdef"') is not None
+    assert short_id.search("shortIds: [\"a1b2c3d4\"]") is not None
+    assert short_id.search("shortIds: [\"\", \"a1b2c3d4\"]") is not None
+    assert short_id.search("short_id: <SHORT_ID>") is None
+
+
+@pytest.mark.usefixtures("isolated_synthetic_git_config")
+def test_a_new_molecule_file_is_scanned(tmp_path: Path) -> None:
+    repo = _temporary_repo(tmp_path)
+    target = repo / "ansible/roles/example/molecule/default/host_vars.yml"
+    target.parent.mkdir(parents=True)
+    secret = "B" * 32
+    target.write_text(f"psk: {secret}\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "add molecule input")
+
+    result = _gitleaks(repo)
+
+    assert result.returncode == 1
+    assert secret not in result.stdout + result.stderr
+
+
 @pytest.mark.usefixtures("isolated_synthetic_git_config")
 def test_gitleaks_history_detects_committed_secret(tmp_path: Path) -> None:
     repo = _temporary_repo(tmp_path)
