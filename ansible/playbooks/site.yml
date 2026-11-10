@@ -75,11 +75,13 @@
         that:
           - allowed_ssh_cidrs is defined
           - allowed_ssh_cidrs | length > 0
+          - allowed_ssh_cidrs | select('match', '.*/0$') | list | length == 0
         fail_msg: |
-          allowed_ssh_cidrs is empty. The firewall role would render a
-          policy-drop ruleset with no SSH accept rule and lock you out of
-          this node. Populate allowed_ssh_cidrs in tfvars and re-render the
-          inventory (scripts/render-inventory.sh) before deploying.
+          allowed_ssh_cidrs is empty or holds a /0 entry. An empty list
+          renders a policy-drop ruleset with no SSH accept rule and locks you
+          out of this node; a /0 entry opens SSH to every address. Populate
+          allowed_ssh_cidrs in tfvars and re-render the inventory
+          (scripts/render-inventory.sh) before deploying.
 
     # Role-tier guard: a role tagged `research` in ansible/role-tiers.yml must
     # never converge on a family node. A lab/pilot host opts in explicitly by
@@ -288,6 +290,7 @@
       tags: [baseline, always]
 
     - role: package_updates
+      when: (security_controls | default({})).unattended_upgrades | default(false)
       tags: [baseline, security, updates]
 
   tasks:

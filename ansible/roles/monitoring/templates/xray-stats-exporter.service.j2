@@ -1,7 +1,8 @@
 [Unit]
 Description=Export redacted Xray StatsService counters
 After=xray.service
-Requires=xray.service
+# Requisite, not Requires: a timer run must fail, never start an Xray that was stopped on purpose.
+Requisite=xray.service
 
 [Service]
 Type=oneshot

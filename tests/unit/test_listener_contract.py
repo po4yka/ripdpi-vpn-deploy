@@ -395,6 +395,7 @@ def test_listener_contract_pre_tasks_run_during_tagged_deploys() -> None:
     [
         ("missing-secrets", "VPN_SECRETS_FILE is not set"),
         ("empty-allowlist", "allowed_ssh_cidrs is empty"),
+        ("world-allowlist", "holds a /0 entry"),
         ("research", "RESEARCH-tier role(s)"),
         ("exception", "EXCEPTION-tier role(s)"),
         ("standard", None),
@@ -425,6 +426,8 @@ def test_tagged_convergence_executes_source_preflight_guards(
     variables = {"vpn": {}, "allowed_ssh_cidrs": ["203.0.113.1/32"]}
     if case == "empty-allowlist":
         variables["allowed_ssh_cidrs"] = []
+    if case == "world-allowlist":
+        variables["allowed_ssh_cidrs"] = ["203.0.113.1/32", "::/0"]
     if case in {"research", "approved-research"}:
         variables["vpn"]["enable_split_hop_egress"] = True
     if case == "approved-research":
