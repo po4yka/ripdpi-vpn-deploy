@@ -89,6 +89,15 @@ PY
   fi
 fi
 
+# blue-green.sh refuses without these before it does anything. Check them while
+# the OTP is still pending: during an outage a consumed OTP costs a new watcher cycle.
+for required in ANSIBLE_SSH_PRIVATE_KEY_FILE GREEN_SOPS_FILE DEVICE_MIGRATION_PLAN; do
+  if [[ -z "${!required:-}" ]]; then
+    echo "${required} must be set before promotion; the OTP stays pending" >&2
+    exit 1
+  fi
+done
+
 # OTP is valid — consume it immediately so it can't be replayed.
 rm -f "$otp_file" "$context_file"
 
