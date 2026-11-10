@@ -11,8 +11,22 @@ RuntimeDirectoryMode=0700
 StateDirectory=vpn-backup
 StateDirectoryMode=0700
 UMask=0077
+# Same hardening floor as vpn-backup.service. The drill writes its runtime and
+# state directories, which systemd keeps writable under ProtectSystem=strict.
 PrivateTmp=true
 NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+# restic takes a non-exclusive lock in the repository even to read it, and an
+# rclone remote can be a directory on this host. Same paths as vpn-backup.service.
+ReadWritePaths={{ restic_repo_dir }} /var/backups
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7

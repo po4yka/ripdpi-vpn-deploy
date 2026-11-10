@@ -946,7 +946,7 @@ def test_bootstrap_marker_depends_on_validated_successful_ssh_reload(
         text=True,
     ).stdout
     rendered_config = yaml.safe_load(rendered)
-    assert rendered_config["users"][1]["name"] == "deploy"
+    assert [user["name"] for user in rendered_config["users"]] == ["deploy"]
     hardening = next(
         item
         for item in rendered_config["write_files"]

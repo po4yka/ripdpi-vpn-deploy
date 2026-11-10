@@ -4,8 +4,9 @@ package_update: true
 package_upgrade: false
 package_reboot_if_required: false
 
+# No `default` entry: the image's stock account would keep passwordless sudo and
+# any provider-injected key beside the one admin user this stack manages.
 users:
-  - default
   - name: ${jsonencode(format("%s", admin_user))}
     gecos: VPN Deploy User
     groups: [sudo]

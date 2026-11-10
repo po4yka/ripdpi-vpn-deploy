@@ -131,8 +131,17 @@ def test_restore_drill_systemd_units_isolate_runtime_and_run_monthly() -> None:
         "UMask=0077",
         "PrivateTmp=true",
         "NoNewPrivileges=true",
+        "ProtectHome=true",
+        "ProtectSystem=strict",
+        "ProtectKernelTunables=true",
+        "ProtectKernelModules=true",
+        "ProtectControlGroups=true",
+        "RestrictNamespaces=true",
+        "RestrictSUIDSGID=true",
     ):
-        assert directive in service
+        assert directive in service.splitlines()
+    # restic locks the repository it reads; the drill gets the repository paths and nothing else.
+    assert f"ReadWritePaths={variables['restic_repo_dir']} /var/backups" in service.splitlines()
     assert "OnCalendar=monthly" in timer
     assert "RandomizedDelaySec=2h" in timer
     assert "Persistent=true" in timer

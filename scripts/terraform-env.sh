@@ -10,6 +10,8 @@
 #   PROVIDER=upcloud ENV=green ./scripts/terraform-env.sh init
 #   PROVIDER=upcloud ENV=green ./scripts/terraform-env.sh output -raw server_ipv4
 set -euo pipefail
+# State, its backups and saved plans can hold provider-generated credentials.
+umask 077
 
 PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"

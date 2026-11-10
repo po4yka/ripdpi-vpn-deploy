@@ -58,6 +58,52 @@ paths = [
 ]
 
 [[rules]]
+id = "xray-client-uuid"
+description = "VLESS client UUID (per-device credential)"
+regex = '''(?i)\buuid["'\s:=]+[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b'''
+tags = ["vpn", "secret"]
+
+[[rules.allowlists]]
+description = "Synthetic values in contract goldens and test fixtures"
+paths = [
+    '''^contract/ripdpi\-bundle\.golden\-full\.json$''',
+    '''^tests/fixtures/singbox\-killswitch\-valid\.json$''',
+    '''^tests/fixtures/xhttp\-payload\-tcp\-reserve\.json$''',
+    '''^tests/unit/test_awg_encrypted_transactions\.py$''',
+    '''^tests/unit/test_ci_ssh_seed\.py$''',
+    '''^tests/unit/test_device_lifecycle_probe\.py$''',
+    '''^tests/unit/test_liveness_profiles\.py$''',
+    '''^tests/unit/test_probe_matrix_driver\.py$''',
+    '''^tests/unit/test_recovery_provider\.py$''',
+    '''^tests/unit/test_retire_unbound_staging_client\.py$''',
+    '''^tests/unit/test_secrets_schema\.py$''',
+    '''^tests/unit/test_transport_semantics\.py$''',
+    '''^tests/unit/test_transport_semantics_native\.py$''',
+    '''^tests/unit/test_xhttp_alternate_profiles\.py$''',
+    '''^vpnd/tests/secrets_gate\.rs$''',
+    '''^vpnd/tests/test_secrets\.py$''',
+]
+
+[[rules]]
+id = "reality-short-id"
+description = "REALITY shortId (per-device credential)"
+regex = '''(?i)\bshort_?ids?["'\s:=\[,]+[0-9a-f]{8,16}\b'''
+tags = ["vpn", "secret"]
+
+[[rules.allowlists]]
+description = "Synthetic values in contract goldens and test fixtures"
+paths = [
+    '''^contract/ripdpi\-bundle\.golden\-full\.json$''',
+    '''^tests/fixtures/singbox\-killswitch\-valid\.json$''',
+    '''^tests/unit/test_awg_encrypted_transactions\.py$''',
+    '''^tests/unit/test_device_lifecycle_probe\.py$''',
+    '''^tests/unit/test_liveness_profiles\.py$''',
+    '''^tests/unit/test_secrets_schema\.py$''',
+    '''^tests/unit/test_transport_semantics_native\.py$''',
+    '''^tests/unit/test_xhttp_alternate_profiles\.py$''',
+]
+
+[[rules]]
 id = "subscription-token"
 description = "Subscription token / path"
 regex = '''(?i)(sub|subscription).{0,30}(token|uuid|key)["'\s:=]+[A-Za-z0-9._~/-]{16,}'''
@@ -90,8 +136,6 @@ commits = [
 paths = [
     '''secrets/prod\.secrets\.example\.yaml''',
     '''.*\.example\..*''',
-    '''ansible/roles/.*/molecule/.*''',
-    '''ansible/molecule/.*''',
     '''tests/bats/age_recovery_roundtrip\.bats''',
     '''tests/unit/test_age_recovery_roundtrip\.py''',
     '''tests/unit/test_gitleaks_rules\.py''',
@@ -101,7 +145,24 @@ paths = [
     '''tests/fixtures/age-test\.key''',
     '''tests/fixtures/secrets-sample\.yml''',
     '''tests/fixtures/age-recovery-shares/.*''',
-    '''tests/snapshot/golden/.*''',
+    # Synthetic Molecule inputs and rendered goldens, listed one by one: a new
+    # file in those trees is scanned like any other.
+    '''^ansible/molecule/full\-stack\-published/test\-secrets\.yaml$''',
+    '''^ansible/molecule/full\-stack/test\-secrets\.yaml$''',
+    '''^ansible/roles/amneziawg/molecule/default/converge\.yml$''',
+    '''^ansible/roles/naive/molecule/default/converge\.yml$''',
+    '''^ansible/roles/snell/molecule/default/converge\.yml$''',
+    '''^ansible/roles/snell/molecule/default/verify\.yml$''',
+    '''^ansible/roles/subscription\-host/molecule/default/converge\.yml$''',
+    '''^ansible/roles/subscription\-host/molecule/default/verify\.yml$''',
+    '''^ansible/roles/watchdog/molecule/default/converge\.yml$''',
+    '''^ansible/roles/watchdog/molecule/default/verify\.yml$''',
+    '''^ansible/roles/watchdog/molecule/failure/converge\.yml$''',
+    '''^ansible/roles/xray/molecule/default/converge\.yml$''',
+    '''^tests/snapshot/golden/observability_control_plane/templates/silence\-auth\.json\.j2$''',
+    '''^tests/snapshot/golden/real\-vps\-awg\-nat/templates/server\-awg\.conf\.j2$''',
+    '''^tests/snapshot/golden/split\-hop\-egress/templates/split\-hop\-egress\.conf\.j2$''',
+    '''^tests/snapshot/golden/split\-hop\-ingress/templates/split\-hop\-ingress\.conf\.j2$''',
 ]
 regexes = [
     '''REPLACE_WITH_[A-Z_]+''',
