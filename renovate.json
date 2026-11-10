@@ -10,6 +10,7 @@
   "schedule": [
     "on weekend"
   ],
+  "minimumReleaseAge": "7 days",
   "packageRules": [
     {
       "description": "Group all Terraform provider updates into one weekly PR",

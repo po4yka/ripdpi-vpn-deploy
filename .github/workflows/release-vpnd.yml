@@ -15,6 +15,7 @@ permissions:
 jobs:
   validate-tag:
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     outputs:
       release-tag: ${{ steps.validate.outputs.release-tag }}
     steps:
@@ -33,6 +34,7 @@ jobs:
   build:
     needs: validate-tag
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     permissions:
       contents: read
       id-token: write
@@ -76,6 +78,7 @@ jobs:
     name: attach release assets
     needs: [build, validate-tag]
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     concurrency:
       group: vpnd-release-${{ needs.validate-tag.outputs.release-tag }}
       cancel-in-progress: false

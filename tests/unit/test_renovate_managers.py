@@ -22,3 +22,13 @@ def test_custom_managers_do_not_target_secret_backed_transport_pins():
     assert "Xray / Realm / AmneziaWG binaries | yes (via regex managers)" not in testing
     assert "Hysteria Realm / Snell sing-box binaries | yes (via regex managers)" in testing
     assert "Xray / AmneziaWG binaries | **no**" in testing
+
+
+def test_updates_wait_before_a_pull_request_and_bot_issues_stay_open():
+    root = Path(__file__).resolve().parents[2]
+    config = json.loads((root / "renovate.json").read_text())
+    # A release a few hours old must not reach a pull request.
+    assert config["minimumReleaseAge"] == "7 days"
+    intake = (root / ".github/workflows/issue-intake-policy.yml").read_text()
+    for login in ("github-actions[bot]", "renovate[bot]", "dependabot[bot]"):
+        assert f"'{login}'" in intake

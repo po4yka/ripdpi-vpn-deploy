@@ -21,7 +21,10 @@ jobs:
         with:
           script: |
             const issue = context.payload.issue;
-            if (issue.user?.login === 'github-actions[bot]') {
+            // Update bots report their own configuration errors through issues;
+            // closing those hides a broken dependency pipeline.
+            const automation = ['github-actions[bot]', 'renovate[bot]', 'dependabot[bot]'];
+            if (automation.includes(issue.user?.login)) {
               core.info(`Preserving automation-created issue #${issue.number}`);
               return;
             }
