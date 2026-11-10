@@ -393,12 +393,13 @@ def test_selector_cli_writes_machine_outputs_and_explains_the_plan(repo, tmp_pat
     assert "Full CI" in summary.read_text()
 
 
-def merged_history(repo, shape="same"):
+def merged_history(repo, shape="same", path="pr.txt"):
     """Create a PR head and the commit main received for it; return (pushed, head)."""
     base = git(repo, "rev-parse", "HEAD")
     git(repo, "checkout", "-qb", "pr")
-    (repo / "pr.txt").write_text("pull request change\n")
-    git(repo, "add", "pr.txt")
+    (repo / path).parent.mkdir(parents=True, exist_ok=True)
+    (repo / path).write_text("pull request change\n")
+    git(repo, "add", path)
     git(repo, "commit", "-qm", "PR change")
     head = git(repo, "rev-parse", "HEAD")
     git(repo, "checkout", "-q", "--detach", base)
@@ -447,6 +448,41 @@ def test_main_push_reuses_a_full_successful_run_of_the_identical_tree(repo, page
     assert run_gate({"selection": {"result": "success", "outputs": {"checks": json.dumps(result["checks"])}},
                      **{name: {"result": "success" if selected else "skipped"}
                         for name, selected in result["checks"].items()}}).returncode == 0
+
+
+def selective_jobs(*ran):
+    """Jobs of a selective run: the given checks ran, every other selectable one was skipped."""
+    return {"total_count": len(selection.JOB_NAMES) + 1, "jobs": [{"name": "gitleaks", "conclusion": "success"}] + [
+        {"name": prefix + "x)", "conclusion": "success" if name in ran else "skipped"}
+        for name, prefix in selection.JOB_NAMES.items()]}
+
+
+VPND = ("vpnd-test", "vpnd-lint", "vpnd-package", "vpnd-dependency", "vpnd-sbom")
+
+
+@pytest.mark.parametrize("path,ran,reused", [
+    ("docs/page.md", VPND, True),
+    ("docs/page.md", VPND[:-1], False),  # the push needs a check that the PR run skipped
+    ("scripts/tool.sh", VPND, False),  # an unmapped path needs every check
+])
+def test_main_push_reuses_a_selective_run_only_when_it_covers_the_pushed_diff(repo, path, ran, reused):
+    sha, head = merged_history(repo, path=path)
+    result = selection.plan_from_git(repo, "push", "", sha=sha,
+                                     api=fake_api(sha, head, pages={1: selective_jobs(*ran)}))
+    assert result["mode"] == ("reused" if reused else "full")
+    assert {name for name, selected in result["checks"].items() if selected} == (
+        selection.ALWAYS if reused else selection.ALL_CHECKS)
+
+
+def test_reuse_job_names_match_the_workflow():
+    for name, prefix in selection.JOB_NAMES.items():
+        job = JOBS[name]
+        expected = job.get("name", name)
+        # Actions appends " (<matrix values>)" to a matrix job with a static name.
+        expected = (expected.split("${{")[0] if "${{" in expected else
+                    expected + (" / " if "uses" in job else " (" if "strategy" in job else ""))
+        assert prefix == expected, name
+    assert set(selection.JOB_NAMES) == selection.ALL_CHECKS - selection.ALWAYS
 
 
 @pytest.mark.parametrize("case", ["tree", "stale", "no-pr", "two-prs", "unmerged", "other-base",

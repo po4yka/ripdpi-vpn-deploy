@@ -13,10 +13,14 @@ runs:
       run: |
         set -euo pipefail
         df -h / | tail -1
+        pids=()
         for path in /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
                     /usr/share/swift /usr/local/share/powershell /usr/local/julia* \
                     /opt/hostedtoolcache/CodeQL; do
           [ -e "$path" ] || continue
-          sudo rm -rf -- "$path"
+          sudo rm -rf -- "$path" &
+          pids+=("$!")
         done
+        # The trees are independent; removing them one after another took over a minute per job.
+        for pid in "${pids[@]}"; do wait "$pid"; done
         df -h / | tail -1
