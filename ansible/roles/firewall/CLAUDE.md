@@ -185,6 +185,8 @@ there is no userspace snapshot race or timeout restart. Disabled sets retire
 explicitly. Tailnet source sets are replaced from their owned authority fragment,
 and active CDN origin sets retain the prefix refresher's current authority.
 
+**A failed load fails closed** — `nftables.service` has `OnFailure=vpn-nftables-failsafe.service`, which loads `/etc/nftables-failsafe.nft`: default-drop input that admits only SSH from `allowed_ssh_cidrs` (and from `tailscale0` when Tailnet management is on) plus ICMP and address renewal. The VPN stays down on that node until the main ruleset loads; `nftables.conf.j2` destroys `inet vpn_failsafe` in the same transaction. Keep the failsafe free of sets and includes, so it cannot fail for the reason the main ruleset did.
+
 ## What's done well
 
 - **Cleanup limited to known ports** — when toggling features (disabling
