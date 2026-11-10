@@ -139,7 +139,7 @@ Backup configuration regressions require a real `restic` executable on `PATH` (v
 
 `daily-security.yml` runs at 06:17 UTC each day and supports manual dispatch. It scans locked dependencies and the complete image inventory. Results and scan failures update an owner-assigned issue only when the result changes; complete clean results close it. The current default-branch revision controls that issue. See [security scan operations](../../.github/SECURITY.md#daily-dependency-and-image-checks) for report retention, retry and notification rules. These jobs use no fleet credentials and do not replace `make security-audit` on an authorized host. That host audit records `systemd-analyze security` output, command status and diagnostics privately. The isolation score is not a vulnerability verdict.
 
-`ci.yml` always starts for PRs. `scripts/select-ci-checks.py` compares the PR base with the checked-out merge commit and follows downstream consumer groups:
+`ci.yml` always starts for PRs. A main push whose tree equals the head of its merged, up-to-date PR reuses that PR's successful run and repeats only the common checks; a selective PR run qualifies only when it ran every check that the pushed diff selects, so merge after the PR run is green. `scripts/select-ci-checks.py` compares the PR base with the checked-out merge commit and follows downstream consumer groups:
 
 | Changed paths | Additional checks beyond the common checks |
 |---|---|
