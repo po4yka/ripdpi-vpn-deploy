@@ -4,6 +4,14 @@
 # and /bootstrap/<token> (single-use), with hashed-on-disk storage,
 # per-token expiry, revocation, and an audit log of every read.
 
+- name: Require a loopback address for the delivery backend
+  # nginx is the only intended peer: it applies the rate limit and supplies the
+  # client address that the backend records in its read audit.
+  ansible.builtin.assert:
+    that:
+      - subscription.bootstrap_listen_addr | default('127.0.0.1') in ['127.0.0.1', '::1']
+    fail_msg: subscription.bootstrap_listen_addr must be 127.0.0.1 or ::1
+
 - name: Require bounded bootstrap and audit retention settings before mutation
   ansible.builtin.assert:
     that:
