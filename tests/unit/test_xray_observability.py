@@ -183,6 +183,13 @@ def test_monitoring_role_runs_xray_exporter_as_the_textfile_reader() -> None:
     }
 
 
+def test_exporter_timer_cannot_start_a_stopped_xray() -> None:
+    unit = (REPO_ROOT / "ansible/roles/monitoring/templates/xray-stats-exporter.service.j2").read_text().splitlines()
+    assert "Requisite=xray.service" in unit
+    assert "After=xray.service" in unit
+    assert not any(line.startswith(("Requires=", "Wants=", "BindsTo=")) for line in unit)
+
+
 def test_new_timer_handler_is_safe_during_check_mode() -> None:
     handlers = yaml.safe_load(MONITORING_HANDLERS.read_text())
     handler = next(

@@ -93,7 +93,7 @@ provisioner:
         ansible_user: root
         # Provider-assigned public IPv4; render-inventory.sh injects the real one.
         vpn_service_address: 203.0.113.10
-        allowed_ssh_cidrs: ["0.0.0.0/0"]
+        allowed_ssh_cidrs: ["198.51.100.0/24"]
         vpn:
           enable_xray_reality: true
           enable_nginx_xhttp: true

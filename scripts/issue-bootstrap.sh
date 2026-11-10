@@ -82,15 +82,15 @@ sub_port="$(python3 "${REPO_ROOT}/scripts/resolve-subscription-port.py" --host "
 grant="$(printf '%s' "$subscription_config" | python3 "${REPO_ROOT}/scripts/resolve-subscription-port.py" --host "$server_hostname" --bootstrap-grant --expires "$EXPIRES")"
 token="$(printf '%s' "$grant" | python3 -c 'import sys,json; print(json.load(sys.stdin)["token"])')"
 expiry_epoch="$(printf '%s' "$grant" | python3 -c 'import sys,json; print(json.load(sys.stdin)["expires"])')"
-token_hash="$(printf '%s' "$token" | shasum -a 256 2>/dev/null | awk '{print $1}')"
-if [[ -z "$token_hash" ]]; then
-  token_hash="$(printf '%s' "$token" | sha256sum | awk '{print $1}')"
-fi
+token_hash="$(printf '%s' "$token" | python3 -c 'import hashlib, sys; print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())')"
 remote_path="${SUBSCRIPTION_DIR}/bootstrap/${token_hash}"
+
+# The bearer payload goes only to a host whose key is already pinned; never trust a new key here.
+ssh_options=(-o StrictHostKeyChecking=yes -o ForwardAgent=no)
 
 # See issue-sub-token.sh: mirrored generations do not consume legacy direct
 # writes, so fail closed before installing a bearer payload.
-if ! ssh "${admin_user}@${server_ip}" \
+if ! ssh "${ssh_options[@]}" "${admin_user}@${server_ip}" \
   "sudo test ! -e '${SUBSCRIPTION_DIR}/.vpn-sub-mirror-generations' -a ! -L '${SUBSCRIPTION_DIR}/.vpn-sub-mirror-current'"; then
   echo "error: subscription mirror mode is active; direct token issuance is unavailable" >&2
   exit 1
@@ -99,9 +99,9 @@ fi
 # Publish the bounded deadline first; interrupted issuance cannot create an
 # unbounded grant. The token timestamp remains authoritative if metadata is lost.
 meta="{\"expires\":${expiry_epoch}}"
-printf '%s' "$meta" | ssh "${admin_user}@${server_ip}" \
+printf '%s' "$meta" | ssh "${ssh_options[@]}" "${admin_user}@${server_ip}" \
   "sudo install -o vpn-bootstrap -g vpn-bootstrap -m 0600 /dev/stdin '${remote_path}.meta'"
-printf '%s' "$payload" | ssh "${admin_user}@${server_ip}" \
+printf '%s' "$payload" | ssh "${ssh_options[@]}" "${admin_user}@${server_ip}" \
   "sudo install -o vpn-bootstrap -g vpn-bootstrap -m 0600 /dev/stdin '${remote_path}'"
 
 echo "stored hash: ${token_hash:0:8}…  path: ${remote_path}"

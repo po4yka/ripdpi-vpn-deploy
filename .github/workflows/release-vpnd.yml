@@ -27,6 +27,9 @@ jobs:
         env:
           TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: bash scripts/validate-vpnd-release-tag.sh "$TAG" "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+      # Tag creation is not restricted, so a tag alone does not prove review.
+      - name: Require the release commit on main
+        run: git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main
   build:
     needs: validate-tag
     runs-on: ${{ matrix.runner }}

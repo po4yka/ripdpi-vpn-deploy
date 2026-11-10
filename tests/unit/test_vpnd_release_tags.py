@@ -43,6 +43,7 @@ def test_release_job_uses_one_validated_tag_for_all_dispatch_paths(tmp_path):
     assert workflow.count(resolver) == 1
     assert "fetch-depth: 0" in workflow
     assert 'bash scripts/validate-vpnd-release-tag.sh "$TAG" "$GITHUB_SHA"' in workflow
+    assert 'git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main' in workflow
     assert "release-tag: ${{ steps.validate.outputs.release-tag }}" in workflow
     assert "RELEASE_TAG: ${{ needs.validate-tag.outputs.release-tag }}" in workflow
     assert "uses: ./.github/actions/vpnd-sbom" in workflow

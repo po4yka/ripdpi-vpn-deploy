@@ -112,8 +112,12 @@ def validate(args):
     policy = artifact['policy']
     for ranges in policy.values():
         for prefix in ranges:
-            if str(ipaddress.ip_network(prefix, strict=True)) != prefix:
+            network = ipaddress.ip_network(prefix, strict=True)
+            if str(network) != prefix:
                 raise InvalidArtifact('noncanonical-prefix')
+            # The drops render before the management accepts: a default route would cut the deploy session.
+            if network.prefixlen == 0:
+                raise InvalidArtifact('default-route-prefix')
     if hashlib.sha256(canonical(policy)).hexdigest() != artifact['content_sha256']:
         raise InvalidArtifact('content-digest')
     key = read_owned(args.trusted_key, private=False)

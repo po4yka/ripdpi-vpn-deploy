@@ -7,6 +7,7 @@ Cross-provider policy layer above the per-provider `terraform test` suite. Every
 | File | Rule | Deny condition |
 |---|---|---|
 | `server_metadata.rego` | `every_server_has_metadata_enabled` | Any supported server resource has `metadata = false` in the post-apply state. |
+| `server_metadata.rego` | `active_edge_firewall_stays_active` | An `upcloud_server` plan changes `firewall` from `true` to `false` in place. |
 | `secondary_ip.rego` | `no_secondary_public_ip_without_opt_in` | A server plan adds a secondary public IPv4 without `var.additional_public_ip = true`; ordinary dual-stack IPv6 is permitted. |
 | `admin_port.rego` | `no_admin_port_exposed_to_world` | Any firewall resource allows the effective `var.ssh_port` or TCP/3389 from `0.0.0.0/0` or `::/0`. panel_port rules removed — no admin panel is deployed. |
 | `ssh_cidrs.rego` | `firewall_rules_pin_ssh_to_documented_cidrs` | An SSH allow rule on `var.ssh_port` references a source CIDR not present in `var.allowed_ssh_cidrs`. |

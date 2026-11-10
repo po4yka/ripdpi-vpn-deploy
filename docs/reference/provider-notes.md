@@ -50,7 +50,7 @@ UpCloud is the primary provider in v1. Resource shape:
 - `upcloud_server` — the VPS itself, with `template { … }` cloning a public storage template UUID into the root disk.
 - `upcloud_firewall_rules` — attached to the server. Note that UpCloud's firewall is on the hypervisor, not the OS — so even if `nftables` is misconfigured, UpCloud's rules apply first.
 - `network_interface { type = "public" }` + `{ type = "utility" }` are required for the server to be reachable; `private` interfaces are optional for multi-VPS networking (out of scope for v1).
-- Daily snapshots are enabled in `template.backup_rule` (7-day retention) when `enable_backups` is true (the default). This is a hypervisor-level safety net **separate from** restic backups, which contain the configs you can restore onto a fresh VPS.
+- Daily snapshots are enabled in `template.backup_rule` (7-day retention) when `enable_backups` is true. It is off by default: a provider image is an unencrypted copy of the node's runtime secrets and stays with the provider after the node is gone. Restic backups remain the supported recovery path and contain the configs you can restore onto a fresh VPS.
 
 ### Forwarded NAT and stateless filtering
 

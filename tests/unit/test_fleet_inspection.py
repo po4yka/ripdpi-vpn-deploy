@@ -244,9 +244,12 @@ def test_manifest_output_does_not_copy_unapproved_fields():
 
 def test_listener_output_contains_only_address_protocol_and_port():
     m = module()
-    raw = "tcp LISTEN 0 100 127.0.0.1:22 0.0.0.0:*\nudp UNCONN 0 0 [::]:443 [::]:*\n"
+    raw = ("tcp LISTEN 0 100 127.0.0.1:22 0.0.0.0:*\nudp UNCONN 0 0 [::]:443 [::]:*\n"
+           "udp UNCONN 0 0 [fe80::1]%eth0:546 [::]:*\nudp UNCONN 0 0 127.0.0.53%lo:53 0.0.0.0:*\n")
     assert m.parse_listeners(raw) == [{"protocol": "tcp", "address": "127.0.0.1", "port": 22},
-                                     {"protocol": "udp", "address": "::", "port": 443}]
+                                     {"protocol": "udp", "address": "::", "port": 443},
+                                     {"protocol": "udp", "address": "fe80::1", "port": 546},
+                                     {"protocol": "udp", "address": "127.0.0.53", "port": 53}]
     with pytest.raises(m.InspectionError):
         m.parse_listeners("raw-secret-output")
 

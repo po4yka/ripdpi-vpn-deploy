@@ -62,6 +62,8 @@ jobs:
             echo "exit_code=${exit_code}"
             echo "output<<DRIFT_EOF"
             echo "$output" | head -c 60000
+            # head can cut mid-line; the delimiter must start its own line.
+            echo
             echo "DRIFT_EOF"
           } >> "$GITHUB_OUTPUT"
 

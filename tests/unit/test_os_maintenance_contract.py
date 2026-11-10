@@ -160,3 +160,9 @@ def test_make_exposes_verified_os_maintenance_target() -> None:
     assert "playbooks/os-maintenance.yml" in makefile
     assert "$(MAKE) verify" in makefile
     assert "$(MAKE) security-verify" in makefile
+
+
+def test_site_runs_package_updates_only_when_the_security_control_is_on():
+    play = yaml.safe_load((REPO_ROOT / "ansible/playbooks/site.yml").read_text())[0]
+    role = next(item for item in play["roles"] if isinstance(item, dict) and item.get("role") == "package_updates")
+    assert role["when"] == "(security_controls | default({})).unattended_upgrades | default(false)"

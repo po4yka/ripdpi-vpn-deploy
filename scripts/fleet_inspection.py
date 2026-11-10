@@ -258,7 +258,8 @@ def parse_listeners(raw):
                 raise ValueError
         except ValueError:
             raise InspectionError("malformed-listeners") from None
-        result.append({"protocol": fields[0], "address": _address(address.strip("[]")), "port": port})
+        # ss prints a scoped address as [fe80::1]%eth0:546: drop the scope before the brackets.
+        result.append({"protocol": fields[0], "address": _address(address.split("%", 1)[0].strip("[]")), "port": port})
     return result
 
 

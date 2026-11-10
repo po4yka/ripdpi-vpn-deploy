@@ -187,7 +187,9 @@ watchdog, readiness, Ansible or provider calls to fill absent evidence.
 
 `fleet-status.sh` uses the same collector and provider/environment selection
 mode without changing exact-name inspection. Its watchdog verdict is local and
-requires a completed fresh invocation; client-path health remains unknown.
+requires a completed fresh invocation, except on a host whose inventory profile
+group sets `vpn.enable_watchdog: false`, where absent units report `not-installed`;
+client-path health remains unknown.
 `fleet-rotate.sh` separately admits authenticated liveness for an explicit
 survivor pool. Its Python controller owns strict plan parsing, immutable plan
 identity and a serialized durable journal; the liveness adapter does not mutate
