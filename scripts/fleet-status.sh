@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Passive status for HOSTS provider:environment pairs in the existing inventory.
-# Exit 0: recent local watchdog success; 1: incomplete/unhealthy observation;
+# Exit 0: recent local watchdog success, or no watchdog where the host's profile disables it; 1: incomplete/unhealthy observation;
 # 2: local admission failure. Client-path health remains explicitly unknown.
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"

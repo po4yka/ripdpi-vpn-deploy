@@ -114,6 +114,23 @@ def test_active_timer_never_masks_failed_or_uncompleted_service(modules, change,
     assert status.watchdog_health(observation, now)["status"] == expected
 
 
+def test_watchdog_disabled_by_profile_is_not_a_failed_observation(modules):
+    inspection, status = modules
+    now = dt.datetime.now(dt.timezone.utc)
+    observation = report(inspection, now)
+    absent = {"status": "observed", "load_state": "not-found", "active_state": "inactive", "sub_state": "dead",
+              "result": "success", "exec_main_status": None, "exec_main_exit_timestamp": None}
+    observation["services"]["vpn-watchdog.service"] = dict(absent)
+    observation["services"]["vpn-watchdog.timer"] = dict(absent)
+    assert status.watchdog_expected({"cohorts": ["p1-web"]}) is False
+    assert status.watchdog_expected({"cohorts": ["p0-self-steal"]}) is True
+    assert status.watchdog_expected({"cohorts": []}) is True
+    assert status.watchdog_health(observation, now, expected=False) == {
+        "status": "not-installed", "reason": "watchdog-not-installed"}
+    # A missing watchdog on a profile that enables it stays a failed observation.
+    assert status.watchdog_health(observation, now)["status"] == "unknown"
+
+
 @pytest.mark.parametrize("field,seconds,expected", [
     ("exec_main_exit_timestamp", -301, "stale"),
     ("exec_main_exit_timestamp", -300, "healthy"),
