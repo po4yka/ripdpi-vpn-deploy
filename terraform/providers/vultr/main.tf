@@ -86,10 +86,12 @@ resource "vultr_instance" "vpn" {
     }
     # Existing nodes predate the digest guards. Check their retained bootstrap
     # identity before recording new guard inputs, without comparing helper data.
+    # The admin entry is the last user: nodes created before the stock account
+    # was dropped keep it at index 1 in their retained user_data, newer ones at 0.
     postcondition {
       condition = try(
-        yamldecode(self.user_data).users[1].name == var.admin_user
-        && [for key in tolist(yamldecode(self.user_data).users[1].ssh_authorized_keys) : trimspace(key)] == [trimspace(var.admin_ssh_public_key)],
+        yamldecode(self.user_data).users[length(yamldecode(self.user_data).users) - 1].name == var.admin_user
+        && [for key in tolist(yamldecode(self.user_data).users[length(yamldecode(self.user_data).users) - 1].ssh_authorized_keys) : trimspace(key)] == [trimspace(var.admin_ssh_public_key)],
         false,
       )
       error_message = "Bootstrap administrator identity differs from the requested username or key; provision a replacement node instead of adopting divergent identity."

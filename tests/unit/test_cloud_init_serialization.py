@@ -33,8 +33,9 @@ def assert_scalar_document(document, values):
     baseline = yaml.safe_load(renderer.render())
     assert set(document) == set(baseline)
     assert document["runcmd"] == baseline["runcmd"]
-    assert document["users"][1]["name"] == values["admin_user"]
-    assert document["users"][1]["ssh_authorized_keys"] == [values["admin_ssh_public_key"]]
+    assert len(document["users"]) == 1
+    assert document["users"][0]["name"] == values["admin_user"]
+    assert document["users"][0]["ssh_authorized_keys"] == [values["admin_ssh_public_key"]]
     files = {item["path"]: item for item in document["write_files"]}
     assert set(files) == {item["path"] for item in baseline["write_files"]}
     assert files["/etc/vpn-build-id"]["content"] == (
