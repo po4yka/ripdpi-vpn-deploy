@@ -254,6 +254,59 @@ def cleanup_signal_window():
             signal.signal(number, handler)
 
 
+def provider_teardown(runtime, work, state, environment, alias, seed_manifest, phases):
+    """Destroy the owned provider resources through the staging cleanup guard."""
+    runtime.environment.update(STAGING_CLEANUP_MANIFEST=str(work / "cleanup.json"),
+                               STAGING_CLEANUP_STATE=str(state), STAGING_CLEANUP_HOSTNAME=alias,
+                               STAGING_POST_DESTROY_EVIDENCE=str(work / "destroy-evidence.json"))
+    if not (work / "cleanup.json").exists() and state.exists():
+        state.chmod(0o600)
+        try:
+            runtime.make("staging-cleanup-manifest")
+        except DeploymentError:
+            # The exact detached-seed path below handles partial state;
+            # it still reports provisioning as unconfirmed.
+            pass
+    if (work / "cleanup.json").exists():
+        runtime.make("staging-destroy")
+    elif state.exists():
+        state.chmod(0o600)
+        runtime.script("ci-ssh-seed.py", "cleanup-seed", "--manifest", seed_manifest,
+                       "--state", state, "--environment", environment)
+        phases.append("detached-seed-cleanup-confirmed")
+        raise DeploymentError("provisioning-outcome-unconfirmed")
+    else:
+        raise DeploymentError("provisioning-outcome-unknown")
+    phases.append("provider-cleanup-confirmed")
+
+
+def resume_cleanup(work, *, runtime_factory=Runtime):
+    """Finish the provider teardown that a hard-stopped run still owes.
+
+    The runner kills a cancelled step about ten seconds after its first signal,
+    which is shorter than a destroy. teardown.json exists from just before
+    apply until the provider teardown is confirmed, so a later step can finish it.
+    """
+    marker = work / "teardown.json"
+    if not marker.exists():
+        return {"schema_version": 1, "status": "nothing-owed"}
+    context = json.loads(marker.read_text())
+    environment, alias, seed_manifest = context["environment"], context["alias"], context["seed_manifest"]
+    if (not re.fullmatch(r"ci-staging-[0-9a-f]{16}", environment) or alias != "vpn-" + environment + ".ci.test"
+            or work not in Path(seed_manifest).resolve().parents):
+        raise DeploymentError("teardown-context-invalid")
+    runtime = runtime_factory(work)
+    # Command logs are exclusive files; continue after the ones the stopped run wrote.
+    runtime.counter = len(list(work.glob("command-*.log")))
+    runtime.environment.update(ENV=environment, PROVIDER="upcloud", SKIP_PRECHECK="1", TAG_ON_SUCCESS="0")
+    state = ROOT / "terraform/providers/upcloud/terraform.tfstate.d" / environment / "terraform.tfstate"
+    phases = []
+    with cleanup_signal_window():
+        provider_teardown(runtime, work, state, environment, alias, seed_manifest, phases)
+    marker.unlink()
+    return {"schema_version": 1, "status": "provider-cleanup-confirmed", "phases": phases}
+
+
 def execute(config, args, work, artifact, *, runtime_factory=Runtime, enrollment_factory=Enrollment):
     runtime = runtime_factory(work)
     environment = "ci-staging-" + uuid.uuid4().hex[:16]
@@ -310,6 +363,8 @@ def execute(config, args, work, artifact, *, runtime_factory=Runtime, enrollment
         runtime.make("init")
         runtime.make("plan")
         runtime.script("ci-ssh-seed.py", "validate", "--manifest", seed["manifest_path"])
+        document(work / "teardown.json", {"environment": environment, "alias": alias,
+                                           "seed_manifest": seed["manifest_path"]})
         apply_started = True
         runtime.make("apply")
         state.chmod(0o600)
@@ -343,28 +398,8 @@ def execute(config, args, work, artifact, *, runtime_factory=Runtime, enrollment
         with cleanup_signal_window():
             if apply_started:
                 try:
-                    if not (work / "cleanup.json").exists() and state.exists():
-                        state.chmod(0o600)
-                        runtime.environment.update(STAGING_CLEANUP_MANIFEST=str(work / "cleanup.json"),
-                                                   STAGING_CLEANUP_STATE=str(state), STAGING_CLEANUP_HOSTNAME=alias,
-                                                   STAGING_POST_DESTROY_EVIDENCE=str(work / "destroy-evidence.json"))
-                        try:
-                            runtime.make("staging-cleanup-manifest")
-                        except DeploymentError:
-                            # The exact detached-seed path below handles partial state;
-                            # it still reports provisioning as unconfirmed.
-                            pass
-                    if (work / "cleanup.json").exists():
-                        runtime.make("staging-destroy")
-                    elif state.exists() and seed is not None:
-                        state.chmod(0o600)
-                        runtime.script("ci-ssh-seed.py", "cleanup-seed", "--manifest", seed["manifest_path"],
-                                       "--state", state, "--environment", environment)
-                        phases.append("detached-seed-cleanup-confirmed")
-                        raise DeploymentError("provisioning-outcome-unconfirmed")
-                    else:
-                        raise DeploymentError("provisioning-outcome-unknown")
-                    phases.append("provider-cleanup-confirmed")
+                    provider_teardown(runtime, work, state, environment, alias, seed["manifest_path"], phases)
+                    (work / "teardown.json").unlink(missing_ok=True)
                 except (DeploymentError, OSError):
                     cleanup_errors.append("provider-cleanup-incomplete")
             if sentinel_started:
@@ -421,12 +456,21 @@ def main():
     parser.add_argument("--mode", choices=("deploy", "matrix"), required=True)
     parser.add_argument("--work-dir", type=Path, required=True)
     parser.add_argument("--artifact-dir", type=Path, required=True)
+    parser.add_argument("--resume-cleanup", action="store_true",
+                        help="Only finish a provider teardown that a stopped run of the same work directory still owes")
     args = parser.parse_args()
     artifact = None
     try:
         work, output = args.work_dir.resolve(), args.artifact_dir.resolve()
         if work == output or work in output.parents or output in work.parents:
             raise DeploymentError("private-and-public-output-overlap")
+        if args.resume_cleanup:
+            # The stopped run owns the artifact directory; this mode publishes only its stdout verdict.
+            if not os.environ.get("UPCLOUD_TOKEN"):
+                raise DeploymentError("missing-UPCLOUD_TOKEN")
+            os.umask(0o077)
+            print(json.dumps(resume_cleanup(work)))
+            return 0
         output.mkdir(mode=0o700, parents=False)
         artifact = output
         if (sys.platform != "linux" or os.environ.get("GITHUB_ACTIONS") != "true"

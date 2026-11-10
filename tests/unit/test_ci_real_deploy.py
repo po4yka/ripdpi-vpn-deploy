@@ -333,6 +333,36 @@ def test_orchestration_requires_deploy_and_verified_cleanup(tmp_path, monkeypatc
     variables = list((root / "terraform/providers/upcloud/environments").glob("*.tfvars"))
     assert bool(variables) is (fail_goal in {"staging-destroy", "logout"})
     assert (artifact / "recovery.tar.gz.age").exists() is bool(fail_goal)
+    # The teardown marker outlives the run only while the provider teardown is still owed.
+    marker = work / "teardown.json"
+    assert marker.exists() is (fail_goal == "staging-destroy")
+    if fail_goal == "staging-destroy":
+        calls.clear()
+        fail_goal = None
+        resumed = MODULE.resume_cleanup(work.resolve(), runtime_factory=BoundaryRuntime)
+        assert resumed["status"] == "provider-cleanup-confirmed"
+        assert calls == [["make", "staging-destroy"]]
+        assert not marker.exists()
+
+
+def test_resume_cleanup_owes_nothing_without_a_marker_and_refuses_a_foreign_context(tmp_path):
+    work = tmp_path.resolve() / "private"
+    work.mkdir(mode=0o700)
+
+    class Unused:
+        def __init__(self, _work):
+            raise AssertionError("no command may run")
+
+    assert MODULE.resume_cleanup(work, runtime_factory=Unused) == {"schema_version": 1, "status": "nothing-owed"}
+    for context in (
+        {"environment": "prod", "alias": "vpn-prod.ci.test", "seed_manifest": str(work / "seed/manifest.json")},
+        {"environment": "ci-staging-" + "a" * 16, "alias": "vpn-other.ci.test", "seed_manifest": str(work / "seed/manifest.json")},
+        {"environment": "ci-staging-" + "a" * 16, "alias": "vpn-ci-staging-" + "a" * 16 + ".ci.test", "seed_manifest": "/etc/passwd"},
+    ):
+        (work / "teardown.json").unlink(missing_ok=True)
+        MODULE.document(work / "teardown.json", context)
+        with pytest.raises(MODULE.DeploymentError, match="teardown-context-invalid"):
+            MODULE.resume_cleanup(work, runtime_factory=Unused)
 
 
 def test_invalid_recipient_checksum_is_refused_by_real_age_before_actions(tmp_path, monkeypatch):
