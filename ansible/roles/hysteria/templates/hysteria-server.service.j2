@@ -38,6 +38,8 @@ RestrictNamespaces=yes
 LockPersonality=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
+# Same socket families as xray.service: no packet, raw or exotic sockets.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 MemoryDenyWriteExecute=yes
 SystemCallArchitectures=native
 # Same filter profile hysteria-realm's sing-box processes run with in production.
