@@ -82,6 +82,15 @@ JOB_NAMES = {
 }
 
 
+# Mentions in these paths are prose, data or stubs, never a CI consumer of a script.
+MENTION_INERT = ("docs/", "openspec/", ".agents/", ".claude/", "tests/snapshot/", "tests/fixtures/", "tests/stubs/")
+TOKEN = re.compile(r"[\w-]+(?:\.[\w-]+)*")
+IMPORT = re.compile(r"\b(?:import|from)[ \t]+\.*([A-Za-z_][\w., \t]*)")
+MAKE_CALL = re.compile(r"\bmake\b|\$\(MAKE\)")
+MAKE_RULE = re.compile(r"^([A-Za-z0-9_.%-]+(?:[ \t]+[A-Za-z0-9_.%-]+)*)[ \t]*:(?!=)(.*)")
+MAKE_VARIABLE = re.compile(r"^(?:(?:override|export)[ \t]+)*([A-Za-z0-9_.-]+)[ \t]*(?:[?:+]|::)?=")
+
+
 def full_plan(reason, changed_files=None):
     return {
         "mode": "full", "reason": reason, "changed_files": changed_files,
@@ -123,15 +132,160 @@ def portable_unit_tests(repo):
     return frozenset(set(units) - reachable)
 
 
-def plan(paths, portable_tests=frozenset()):
+def words(text):
+    """Return every name-like token of text, and the dot-separated parts of each."""
+    found = set()
+    for token in TOKEN.findall(text):
+        found.add(token)
+        found.update(token.split("."))
+    return found
+
+
+def script_graph(repo):
+    """Return consumers(path) for one scripts/ path of a pull request.
+
+    consumers gives (components, checks) that run the script, or None when a
+    consumer is unknown and full CI is required. A consumer is any tracked file
+    that names the script's file name, or imports it as a Python module.
+    Scripts, composite actions and reusable workflows pass the dependency on.
+    A Makefile rule passes it to its dependents and to every
+    line that runs make with its target; a Makefile variable passes it to the
+    rules that use it. The always-run checks cover scripts/tests/ and portable
+    unit tests. The match is textual, so a name that is built at run time is
+    invisible: main pushes do not use this graph and run what a PR skipped.
+    """
+    root = Path(repo)
+    tracked = subprocess.run(["git", "ls-files", "-z"], cwd=repo, check=True, capture_output=True,
+                             text=True, timeout=60).stdout.split("\0")
+    portable = portable_unit_tests(repo)
+    files, jobs, targets, variables, make_global = {}, {}, {}, {}, set()
+
+    def make_words(lines):
+        # A comment that says "make" is prose, not a command.
+        return words("\n".join(line for line in lines
+                                if MAKE_CALL.search(line) and not line.lstrip().startswith("#")))
+
+    for path in tracked:
+        if not path or path.endswith(".md") or path.startswith(MENTION_INERT):
+            continue
+        # Root configuration and repository settings name scripts only in comments or local hooks.
+        if path != "Makefile" and ("/" not in path or (
+                path.startswith(".github/") and not path.startswith((".github/workflows/", ".github/actions/")))):
+            continue
+        try:
+            lines = (root / path).read_text(errors="replace").split("\n")
+        except OSError:
+            continue  # deleted in the working tree, or a directory symlink
+        if path == "Makefile":
+            rules, define = [], False
+            for line in lines:
+                if define or line.startswith("define "):
+                    define = not line.startswith("endef")
+                    make_global.update(words(line))
+                elif line.startswith("\t") and rules:
+                    for rule in rules:
+                        rule[0].update(words(line))
+                        if MAKE_CALL.search(line):
+                            rule[1].update(words(line))
+                elif line.startswith("#"):
+                    continue
+                elif (found := MAKE_RULE.match(line)) and not line.startswith(".PHONY"):
+                    rules = [targets.setdefault(name, (set(), set())) for name in found.group(1).split()]
+                    for rule in rules:
+                        # The rest of the line holds prerequisites, a target variable or an inline recipe.
+                        rule[0].update(words(found.group(2)))
+                        rule[1].update(words(found.group(2)))
+                elif found := MAKE_VARIABLE.match(line):
+                    rules = []  # a tab-indented continuation of this value is not a recipe
+                    variables.setdefault(found.group(1), set()).update(words(line))
+                else:
+                    make_global.update(words(line))
+        elif path == ".github/workflows/ci.yml":
+            head, _, body = "\n".join(lines).partition("\njobs:\n")
+            parts = re.split(r"(?m)^  ([A-Za-z0-9_-]+):[ \t]*(?:#.*)?\n", body)
+            jobs[""] = (words(head + parts[0]), set())
+            for name, chunk in zip(parts[1::2], parts[2::2]):
+                jobs[name] = (words(chunk), make_words(chunk.split("\n")))
+        else:
+            text = "\n".join(lines)
+            files[path] = (words(text), make_words(lines), words(" ".join(IMPORT.findall(text))))
+
+    def consumers(changed):
+        components, checks, pending, seen = set(), set(), [("file", changed)], set()
+
+        def consume(job=None, path=None):
+            """Record one consumer; False means it is unknown."""
+            if job is not None:
+                if job in ALL_CHECKS - ALWAYS:
+                    checks.add(job)
+                return job in ALL_CHECKS
+            if path.startswith("scripts/tests/"):
+                return True
+            if path.startswith(("scripts/", ".github/")):
+                pending.append(("file", path))
+            elif path.startswith("tests/unit/"):
+                if path not in portable:
+                    components.add("native")
+            elif path.startswith("tests/") and path.count("/") == 1:
+                components.add("native")  # shared helpers that native suites import
+            else:
+                for prefix, found in PATHS:
+                    if path.startswith(prefix):
+                        components.update(found)
+                        return True
+                return False
+            return True
+
+        while pending:
+            kind, item = entry = pending.pop()
+            if entry in seen:
+                continue
+            seen.add(entry)
+            if kind == "file":
+                name = Path(item).parent.name if item.startswith(".github/actions/") else Path(item).name
+                # Only an identifier can be imported; a package is imported by its directory name.
+                module = Path(item).parent.name if name == "__init__.py" else (
+                    Path(name).stem if re.fullmatch(r"[A-Za-z_]\w*\.py", name) else None)
+                if name in make_global:
+                    return None
+                pending += [("variable", other) for other, found in variables.items() if name in found]
+                pending += [("target", other) for other, (found, _) in targets.items() if name in found]
+                for job, (found, _) in jobs.items():
+                    if name in found and not consume(job=job):
+                        return None
+                for path, (found, _, imports) in files.items():
+                    if path != item and (name in found or module in imports):
+                        if not consume(path=path):
+                            return None
+            elif kind == "variable":
+                if item in make_global:
+                    return None
+                pending += [("variable", other) for other, found in variables.items() if item in found]
+                pending += [("target", other) for other, (found, _) in targets.items() if item in found]
+            else:
+                components.add("python-vpnd")  # vpnd runs Make targets by name
+                pending += [("target", other) for other, (_, found) in targets.items() if item in found]
+                for job, (_, found) in jobs.items():
+                    if item in found and not consume(job=job):
+                        return None
+                for path, (_, found, _) in files.items():
+                    if item in found and not path.startswith("vpnd/") and not consume(path=path):
+                        return None
+        return components, checks
+
+    return consumers
+
+
+def plan(paths, portable_tests=frozenset(), script_consumers=None):
     """Map all changed paths, including deleted names, to transitive consumers.
 
     portable_tests lists tests/unit modules that only the always-run portable
     pytest groups execute; every other tests/unit path selects native lanes.
+    script_consumers is script_graph's result; without it a script needs full CI.
     """
     if not paths:
         return full_plan("Empty diff cannot authorize selective checks", 0)
-    components = set()
+    components, checks = set(), set()
     for path in paths:
         if path == 'tools/engine-interop.json':
             components.add('engine')
@@ -142,6 +296,13 @@ def plan(paths, portable_tests=frozenset()):
             continue
         if path in NATIVE_TEST_INPUTS:
             components.add("native")
+            continue
+        if script_consumers and path.startswith("scripts/") and not path.startswith("scripts/tests/"):
+            found = script_consumers(path)
+            if found is None:
+                return full_plan("A changed script has an unknown consumer", len(paths))
+            components.update(found[0])
+            checks.update(found[1])
             continue
         for prefix, consumers in PATHS:
             if path.startswith(prefix):
@@ -156,7 +317,7 @@ def plan(paths, portable_tests=frozenset()):
         for consumer in CONSUMERS.get(pending.pop(), set()) - components:
             components.add(consumer)
             pending.append(consumer)
-    selected = ALWAYS | set().union(*(CHECKS[component] for component in components))
+    selected = ALWAYS | checks | set().union(*(CHECKS[component] for component in components))
     return {
         "mode": "selected", "reason": "Complete changed-file consumer groups",
         "changed_files": len(paths), "components": sorted(components),
@@ -180,9 +341,11 @@ def reused_plan(repo, sha, api):
     """Reuse a successful PR run when main received exactly its tested tree.
 
     The pushed tree must equal the PR head tree, and the previous main tip must
-    be an ancestor of that head. A full run is reused as is. A selective run is
-    reused only when every check that this push's own diff selects has jobs in
-    it and all of them succeeded. Anything else returns None and keeps full CI.
+    be an ancestor of that head. A full run is reused as is. After a selective
+    run the push repeats every check that its own diff selects, unless that
+    check has jobs in the run and all of them succeeded. The push diff is
+    planned without the script graph and with native lanes, so main runs what
+    the PR skipped. Anything else returns None and keeps full CI.
     """
     if re.fullmatch(r"[0-9a-f]{40}", sha) is None:
         return None
@@ -222,7 +385,7 @@ def reused_plan(repo, sha, api):
         if not listed or total != len(listed):
             continue
         # A full plan runs every job; one skipped job means the PR used a selection.
-        covered = all(job.get("conclusion") == "success" for job in listed)
+        covered, missing = all(job.get("conclusion") == "success" for job in listed), set()
         if not covered and all(job.get("conclusion") in {"success", "skipped"} for job in listed):
             try:
                 portable = portable_unit_tests(repo)
@@ -233,18 +396,28 @@ def reused_plan(repo, sha, api):
             results = {name: {job.get("conclusion") for job in listed
                               if str(job.get("name", "")).startswith(prefix)}
                        for name, prefix in JOB_NAMES.items()}
-            covered = all(results[name] == {"success"} for name, on in needed.items()
-                          if on and name not in ALWAYS)
+            missing = {name for name, on in needed.items()
+                       if on and name not in ALWAYS and results[name] != {"success"}}
+            covered = missing != ALL_CHECKS - ALWAYS  # otherwise the run covered nothing
         if covered:
             return {
                 "mode": "reused", "reason": f"Main tree matches successful PR CI run {run['id']}",
                 "changed_files": None, "components": [],
-                "checks": {name: name in ALWAYS for name in sorted(ALL_CHECKS)},
+                "checks": {name: name in ALWAYS | missing for name in sorted(ALL_CHECKS)},
             }
     return None
 
 
 def plan_from_git(repo, event, base, sha="", api=None):
+    result = event_plan(repo, event, base, sha, api)
+    if event == "pull_request":
+        # Native lanes run on main only: the push after the merge repeats them.
+        result["checks"].update(dict.fromkeys(CHECKS["native"], False))
+        result["reason"] += "; native lanes run on the main push"
+    return result
+
+
+def event_plan(repo, event, base, sha, api):
     if event == "push" and api is not None:
         try:
             reused = reused_plan(repo, sha, api)
@@ -278,7 +451,14 @@ def plan_from_git(repo, event, base, sha="", api=None):
         portable = frozenset()
     # NUL delimiters preserve whitespace/newlines. --no-renames includes both
     # old and new paths, so moving a file cannot lose its previous consumers.
-    return plan([os.fsdecode(path) for path in changed.split(b"\0") if path], portable)
+    paths = [os.fsdecode(path) for path in changed.split(b"\0") if path]
+    consumers = None
+    if any(path.startswith("scripts/") for path in paths):
+        try:
+            consumers = script_graph(repo)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            consumers = None  # scripts then keep full CI
+    return plan(paths, portable, consumers)
 
 
 def main():

@@ -40,8 +40,9 @@ inside one module; a collision across modules is a test defect.
 **CI selection follows complete consumers** — common Python/static checks always
 run; costly PR lanes follow the selector's path graph. Docs are bundled into
 Python vpnd. Keep Ansible scenarios together for cross-role inputs, and full CI for
-manual/shared/unknown changes. A main push runs only the always-run checks when it
-reuses a successful PR run of the same tree that covers its diff (see the selector docstring);
+manual/shared/unknown changes. A PR never runs native lanes and narrows a `scripts/`
+change through a textual consumer graph; the main push ignores that graph and repeats
+what the reused PR run of the same tree did not complete (see the selector docstrings);
 any uncertainty keeps full CI. A portable-only `tests/unit/test_*.py` edit skips
 native lanes only when no native lane selects, names or imports that module, and
 such modules must not change process state at import time. The final gate requires every selected job
