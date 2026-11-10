@@ -1,0 +1,28 @@
+#!/usr/sbin/nft -f
+# Managed by Ansible role `firewall`. Hand edits will be overwritten.
+#
+# Loaded only by vpn-nftables-failsafe.service after nftables.service failed
+# to load /etc/nftables.conf. Without it a failed load leaves the kernel with
+# no ruleset and every listener reachable. It keeps the management path and
+# drops every other inbound packet, so the VPN stays down until the main
+# ruleset loads; that load destroys this table in the same transaction.
+add table inet vpn_failsafe
+flush table inet vpn_failsafe
+
+table inet vpn_failsafe {
+  chain input {
+    type filter hook input priority 0;
+    policy drop;
+
+    iif "lo" accept
+    ct state established,related accept
+    ip protocol icmp icmp type { destination-unreachable, time-exceeded, parameter-problem, echo-request } accept
+    meta l4proto ipv6-icmp icmpv6 type { destination-unreachable, packet-too-big, time-exceeded, parameter-problem, echo-request } accept
+    meta l4proto ipv6-icmp icmpv6 type nd-router-advert ip6 saddr fe80::/10 ip6 hoplimit 255 accept
+    meta l4proto ipv6-icmp icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert } ip6 hoplimit 255 accept
+    # Address renewal keeps the management path reachable.
+    udp sport 67 udp dport 68 accept
+    ip6 saddr fe80::/10 udp sport 547 udp dport 546 accept
+    tcp dport 22 ip saddr { 198.51.100.42/32 } accept
+  }
+}

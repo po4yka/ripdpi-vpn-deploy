@@ -1,0 +1,9 @@
+[Unit]
+Description=Load the default-drop failsafe ruleset after nftables.service failed
+Documentation=man:nft(8)
+DefaultDependencies=no
+ConditionPathExists=/etc/nftables-failsafe.nft
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/nft -f /etc/nftables-failsafe.nft

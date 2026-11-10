@@ -333,6 +333,14 @@
     group: root
     mode: "0644"
 
+- name: Install the failsafe loader for a failed nftables start
+  ansible.builtin.copy:
+    src: vpn-nftables-failsafe.service
+    dest: /etc/systemd/system/vpn-nftables-failsafe.service
+    owner: root
+    group: root
+    mode: "0644"
+
 - name: Install nftables required-dependency directory for boot recovery
   ansible.builtin.file:
     path: /etc/systemd/system/nftables.service.requires
@@ -608,6 +616,18 @@
     - firewall_site_transaction | default(false) | bool
     - ansible_check_mode
     - _firewall_consumer_install.changed
+
+- name: Render the default-drop failsafe ruleset
+  ansible.builtin.template:
+    src: nftables-failsafe.nft.j2
+    dest: /etc/nftables-failsafe.nft
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "nft -c -f %s"
+  # The allowlist holds reviewed operator addresses.
+  no_log: true
+  diff: false
 
 - name: Publish firewall generation with AWG compensation
   when:
