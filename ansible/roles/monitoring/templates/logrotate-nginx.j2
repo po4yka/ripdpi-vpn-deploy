@@ -13,6 +13,11 @@
         fi
     endscript
     postrotate
-        systemctl reload nginx 2>/dev/null || true
+        # USR1 makes the master reopen its logs. A reload would also re-read the
+        # whole configuration outside its transaction owner, and a swallowed
+        # failure would leave workers writing to the rotated file.
+        if systemctl is-active --quiet nginx.service; then
+            systemctl kill --signal=USR1 --kill-whom=main nginx.service
+        fi
     endscript
 }

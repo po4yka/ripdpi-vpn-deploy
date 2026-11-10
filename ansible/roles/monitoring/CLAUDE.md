@@ -71,10 +71,10 @@ direct restart under the controller restarts the whole protected generation.
   other than 127.0.0.1. The role's Molecule verify asserts the loopback bind;
   `verify.yml` only scrapes the loopback address and does not prove the
   port is closed publicly.
-- **Logrotate postrotate signal** — the Nginx logrotate stanza uses
-  `systemctl reload nginx`. If nginx is not running (e.g. on a Hysteria-only
-  node), the `|| true` guard prevents a failure, but confirm the service name
-  matches your deployment.
+- **Logrotate postrotate signal** — the Nginx logrotate stanza sends `USR1` to
+  the nginx master so it reopens its logs; it never reloads the configuration.
+  It acts only when `nginx.service` is active (a Hysteria-only node has none)
+  and lets a failed signal fail the rotation instead of hiding it.
 - **Nginx logrotate globs must not overlap** — never add a second policy for a
   subset of `/var/log/nginx/*.log`; logrotate rejects the complete configuration
   when the same log appears twice.
