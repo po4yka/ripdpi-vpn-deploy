@@ -165,8 +165,8 @@ variable "enable_ipv6" {
 
 variable "enable_backups" {
   type        = bool
-  default     = true
-  description = "Enable provider-side server backups."
+  default     = false
+  description = "Enable provider-side server backups. Off by default: provider images are unencrypted copies of runtime secrets and bypass the restic+age backup role."
 }
 
 variable "additional_public_ip" {
