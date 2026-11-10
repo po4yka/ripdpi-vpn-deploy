@@ -28,3 +28,21 @@ deny[msg] {
     [rc.address, rc.type],
   )
 }
+
+# active_edge_firewall_stays_active
+#
+# A fresh UpCloud node starts with firewall = false (the provider firewall is
+# stateless; see terraform/providers/upcloud/README.md) and promotion turns it
+# on. A later plan built from an unchanged tfvars file would turn it off again
+# in place and expose every port at the edge, so that transition is refused.
+deny[msg] {
+  rc := input.resource_changes[_]
+  rc.type == "upcloud_server"
+  rc.change.before.firewall == true
+  rc.change.after.firewall == false
+
+  msg := sprintf(
+    "resource %q: plan turns the active provider firewall off; set enable_provider_firewall = true",
+    [rc.address],
+  )
+}
