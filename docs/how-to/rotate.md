@@ -74,8 +74,7 @@ Use when the REALITY private key is suspected leaked, or you want to invalidate 
 
 ```bash
 # Generate new REALITY keypair
-docker run --rm ghcr.io/xtls/xray-core x25519
-# or: xray x25519
+xray x25519
 
 # Update secrets
 sops ~/.config/vpn-provision/prod.secrets.sops.yaml

@@ -301,6 +301,19 @@ EOF
   [ -z "$(find "${BATS_TEST_TMPDIR}/private" -maxdepth 1 -name '.refused.secrets.*' -print)" ]
 }
 
+@test "bootstrap --force keeps the existing ciphertext when encryption fails" {
+  _install_bootstrap_stubs
+  printf '#!/usr/bin/env bash\nexit 47\n' > "${FAKE_BIN}/sops"
+  mkdir -p "${BATS_TEST_TMPDIR}/private"
+  printf 'existing-ciphertext\n' > "${BATS_TEST_TMPDIR}/private/kept.secrets.sops.yaml"
+  run env PATH="${FAKE_BIN}:${PATH}" UUID_STATE="$UUID_STATE" OPENSSL_STATE="$OPENSSL_STATE" \
+    HOME="$BATS_TEST_TMPDIR" VPN_PROVISION_CONFIG_DIR="${BATS_TEST_TMPDIR}/private" \
+    bash "$SCRIPT" --env kept --force --target mirror.example.com:443 --server-name mirror.example.com
+  [ "$status" -eq 47 ]
+  [ "$(cat "${BATS_TEST_TMPDIR}/private/kept.secrets.sops.yaml")" = "existing-ciphertext" ]
+  [ -z "$(find "${BATS_TEST_TMPDIR}/private" -maxdepth 1 -name '.kept.secrets.*' -print)" ]
+}
+
 @test "bootstrap removes plaintext on termination during encryption" {
   _install_bootstrap_stubs
   cat > "${FAKE_BIN}/sops" <<'EOF'
