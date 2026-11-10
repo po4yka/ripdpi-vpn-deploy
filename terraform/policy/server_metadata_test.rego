@@ -59,3 +59,39 @@ test_allow_scaleway_no_metadata_attribute {
   }
   count(result) == 0
 }
+
+# -- provider firewall: an active edge firewall must not be turned off in place --
+
+test_deny_upcloud_firewall_turned_off {
+  result := deny with input as {
+    "resource_changes": [{
+      "address": "upcloud_server.vpn",
+      "type": "upcloud_server",
+      "change": {"before": {"firewall": true}, "after": {"firewall": false, "metadata": true}},
+    }]
+  }
+  count(result) == 1
+}
+
+test_allow_upcloud_firewall_bootstrap_and_promotion {
+  result := deny with input as {
+    "resource_changes": [
+      {
+        "address": "upcloud_server.fresh",
+        "type": "upcloud_server",
+        "change": {"before": null, "after": {"firewall": false, "metadata": true}},
+      },
+      {
+        "address": "upcloud_server.promoted",
+        "type": "upcloud_server",
+        "change": {"before": {"firewall": false}, "after": {"firewall": true, "metadata": true}},
+      },
+      {
+        "address": "upcloud_server.destroyed",
+        "type": "upcloud_server",
+        "change": {"before": {"firewall": true}, "after": null},
+      },
+    ]
+  }
+  count(result) == 0
+}
