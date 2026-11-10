@@ -57,16 +57,10 @@ The wrapper exits 0 when no verdict has shifted since the previous run, and non-
 `.github/workflows/rkn-block-checker-baseline.yml` runs the same harness from a GitHub-hosted runner on `workflow_dispatch`. The runner has no privileged path into the filtered network; the lane is for:
 
 - Validating that the URL set itself produces sane results from a vantage with no filtering applied (every blacklist URL is expected to reach OK from a non-filtered runner — failures here indicate URL rot, not deploy regression).
-- Cross-validating a `--proxy` bypass: route the runner through a bypass channel and confirm the blacklist URLs now reach OK.
 
-Inputs:
+The lane takes no inputs and always uses the report key `local`. Dispatch inputs, logs and artifacts of a public repository are world-readable, so an exit IP or proxy URL passed there would publish the node address. Cross-validate a `--proxy` bypass only with the local wrapper above.
 
-| Input | Default | Notes |
-|-------|---------|-------|
-| `exit_ip` | `local` | Anchors the report key. Use the literal `local` when running from the runner itself. |
-| `proxy`   | (empty) | Optional `socks5://…` URL. |
-
-The lane uploads the full JSON report + diff as a workflow artifact (`rkn-block-checker-baseline-<exit_ip>`, 90-day retention).
+The lane uploads the full JSON report + diff as a workflow artifact (`rkn-block-checker-baseline-local`, 90-day retention).
 
 ## URL set
 

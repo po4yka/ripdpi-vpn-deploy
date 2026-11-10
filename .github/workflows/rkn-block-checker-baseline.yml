@@ -2,22 +2,17 @@
 name: rkn-block-checker-baseline
 
 # Operator-triggered regression baseline. Runs the four-layer
-# diagnostic against an exit IP (or the local resolver path when no
-# IP is given) and uploads the JSON report + diff as a workflow
-# artifact. Not run on push or PR — the upstream tool issues real
-# network probes that are out of place in CI lanes.
+# diagnostic from the GitHub runner itself and uploads the JSON report
+# + diff as a workflow artifact. Not run on push or PR — the upstream
+# tool issues real network probes that are out of place in CI lanes.
+#
+# The lane takes no exit IP or proxy input: dispatch inputs, logs and
+# artifacts of this public repository are world-readable, and a node
+# address published there is burned. Probe through a node only with the
+# local wrapper (docs/how-to/regression-baseline.md).
 
 on:
   workflow_dispatch:
-    inputs:
-      exit_ip:
-        description: "Exit IP to anchor the report key. Use 'local' to run from the GitHub runner directly."
-        required: true
-        default: "local"
-      proxy:
-        description: "Optional socks5:// URL routing the probes through a bypass channel."
-        required: false
-        default: ""
 permissions:
   contents: read
 
@@ -44,15 +39,9 @@ jobs:
 
       - name: Run baseline
         id: baseline
-        env:
-          EXIT_IP: ${{ github.event.inputs.exit_ip }}
-          PROXY: ${{ github.event.inputs.proxy }}
         run: |
           set -euo pipefail
-          args=("$EXIT_IP")
-          if [[ -n "$PROXY" ]]; then
-            args+=(--proxy "$PROXY")
-          fi
+          args=(local)
           # State dir inside the runner workspace so the upload step picks it up.
           args+=(--state-dir "${GITHUB_WORKSPACE}/.rkn-baseline")
           # Wrapper exits non-zero when verdicts shift; capture but do not fail
@@ -62,7 +51,7 @@ jobs:
       - name: Upload baseline report
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
-          name: rkn-block-checker-baseline-${{ github.event.inputs.exit_ip }}
+          name: rkn-block-checker-baseline-local
           path: .rkn-baseline/
           if-no-files-found: error
           retention-days: 90
