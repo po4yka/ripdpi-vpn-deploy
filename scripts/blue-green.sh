@@ -218,6 +218,8 @@ assert_migration_plan
 SECRETS_FILE="$SECRETS_FILE" ANSIBLE_LIMIT="$BLUE_ALIAS" \
   ENV="${BLUE_ENV}" PROVIDER="${PROVIDER}" \
   run_make verify
+# Blue plaintext has no later consumer: remove it before the long provision and deploy phases.
+shred -u -- "$SECRETS_FILE" 2>/dev/null || rm -f -- "$SECRETS_FILE"
 python3 "$REPO_ROOT/scripts/device_migration_inventory.py" check --plan "$DEVICE_MIGRATION_PLAN"
 
 # ---------------------------------------------------------------------------
@@ -340,7 +342,7 @@ sops --decrypt "$GREEN_SOPS_FILE" > "$GREEN_SECRETS_FILE"
 SECRETS_FILE="$GREEN_SECRETS_FILE" SOPS_FILE="$GREEN_SOPS_FILE" ANSIBLE_LIMIT="$GREEN_ALIAS" \
   ENV="$GREEN_ENV" PROVIDER="$PROVIDER" run_make dry-run
 if ! confirm "Review the green dry-run above. Deploy it?"; then
-  echo "Aborting before deploy. Green is provisioned; clean up later with: ENV=${GREEN_ENV} make destroy" >&2
+  echo "Aborting before deploy. Green is provisioned; clean up later with: PROVIDER=${PROVIDER} ENV=${GREEN_ENV} make destroy" >&2
   exit 1
 fi
 SECRETS_FILE="$GREEN_SECRETS_FILE" SOPS_FILE="$GREEN_SOPS_FILE" ANSIBLE_LIMIT="$GREEN_ALIAS" \
@@ -392,7 +394,7 @@ echo "Convention: keep blue alive for 24-72 hours so cached client sessions"
 echo "fail over to green. Re-run the next step when you're ready to retire blue."
 echo
 echo "When ready to destroy blue, run:"
-echo "    ENV=${BLUE_ENV} make destroy"
+echo "    PROVIDER=${PROVIDER} ENV=${BLUE_ENV} make destroy"
 
 # ---------------------------------------------------------------------------
 # 8. Retain the identity consumed by migrated devices
