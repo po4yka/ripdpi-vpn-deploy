@@ -3,6 +3,7 @@
 # Public listeners: HTTP redirect and nginx HTTPS/XHTTP on TCP/80 and TCP/443.
 
 vpn:
+  enable_destination_filter: true
   enable_xray_reality: false
   enable_nginx_xhttp: true
   enable_naive: false

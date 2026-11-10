@@ -3,6 +3,7 @@
 # Public listeners: Hysteria2 and AmneziaWG only.
 
 vpn:
+  enable_destination_filter: true
   enable_xray_reality: false
   enable_nginx_xhttp: false
   enable_naive: false
