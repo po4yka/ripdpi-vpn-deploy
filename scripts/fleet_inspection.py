@@ -24,6 +24,7 @@ SAFE_NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,252}\Z")
 AWG_UNIT = re.compile(r"awg-quick@[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,14}\.service\Z")
 MANIFEST = "/var/lib/ripdpi-vpn-deploy/manifest.json"
 RESTORE = "/var/lib/vpn-backup/restore-drill-last-success.json"
+BACKUP_STATUS = "/var/lib/vpn-backup/backup-stage-status.json"
 
 
 class InspectionError(Exception):
@@ -157,7 +158,7 @@ def decode_json(raw):
 
 
 def read_host_json(path):
-    if path not in (MANIFEST, RESTORE):
+    if path not in (MANIFEST, RESTORE, BACKUP_STATUS):
         raise InspectionError("unsupported-path")
     root_fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
     try:
@@ -191,6 +192,30 @@ def manifest_evidence(raw):
             or not re.fullmatch(r"[0-9a-f]{64}", raw["deployable_digest"])):
         return {"status": "unknown"}
     return {"status": "observed", **{k: raw[k] for k in ("schema_version", "source_revision", "deployable_digest")}}
+
+
+def latest_backup_evidence(raw, now):
+    """Stage results of the last backup run; fresh only when the local backup and its integrity check both succeeded within 36 hours."""
+    try:
+        if not isinstance(raw, dict) or type(raw.get("version")) is not int or raw["version"] != 1:
+            raise InspectionError("invalid-backup-status")
+        stages = {}
+        for name in ("local_backup", "integrity"):
+            stage = raw.get(name)
+            if not isinstance(stage, dict) or stage.get("result") not in ("pending", "success", "failed"):
+                raise InspectionError("invalid-backup-status")
+            stages[name] = {"result": stage["result"]}
+            if "succeeded_at" in stage:
+                succeeded = parse_time(stage["succeeded_at"])
+                if succeeded > now:
+                    raise InspectionError("invalid-time")
+                stages[name]["succeeded_at"] = timestamp(succeeded)
+        fresh = all(stage["result"] == "success" and "succeeded_at" in stage
+                    and now - parse_time(stage["succeeded_at"]) <= dt.timedelta(hours=36)
+                    for stage in stages.values())
+        return {"status": "observed" if fresh else "stale", "version": 1, **stages}
+    except InspectionError:
+        return {"status": "unknown"}
 
 
 def restore_evidence(raw, now):
@@ -314,6 +339,10 @@ def collect():
         result["backup"]["restore"] = restore_evidence(read_host_json(RESTORE), now)
     except InspectionError:
         result["backup"]["restore"] = {"status": "unknown"}
+    try:
+        result["backup"]["latest_snapshot"] = latest_backup_evidence(read_host_json(BACKUP_STATUS), now)
+    except InspectionError:
+        result["backup"]["latest_snapshot"] = {"status": "unknown"}
     return result
 
 
@@ -574,8 +603,9 @@ def validate_report(raw, now):
         if manifest_evidence(raw["manifest"]) != raw["manifest"]:
             raise InspectionError("malformed-manifest")
         _keys(raw["backup"], ("latest_snapshot", "restore"))
-        if raw["backup"]["latest_snapshot"] != {"status": "unknown"}:
-            raise InspectionError("unsupported-backup-evidence")
+        latest = raw["backup"]["latest_snapshot"]
+        if latest_backup_evidence(latest, observed) != latest:
+            raise InspectionError("malformed-backup-status")
         restore = raw["backup"]["restore"]
         if restore_evidence(restore, observed) != restore:
             raise InspectionError("malformed-restore")
@@ -603,7 +633,8 @@ def observation_status(report, now):
         return "unknown"
     if (now - parse_time(report["observed_at"]) > dt.timedelta(minutes=5)
             or any(item["status"] == "stale" for item in evidence)
-            or report["backup"]["restore"].get("snapshot_freshness") == "stale"):
+            or report["backup"]["restore"].get("snapshot_freshness") == "stale"
+            or report["backup"]["latest_snapshot"]["status"] == "stale"):
         return "stale"
     return "observed"
 
