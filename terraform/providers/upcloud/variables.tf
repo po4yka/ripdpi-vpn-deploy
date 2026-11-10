@@ -244,8 +244,8 @@ variable "provider_return_ephemeral_ports" {
 
 variable "enable_backups" {
   type        = bool
-  default     = true
-  description = "Enable provider-side server backups (daily, 7-day retention)."
+  default     = false
+  description = "Enable provider-side server backups (daily, 7-day retention). Off by default: provider images are unencrypted copies of runtime secrets and bypass the restic+age backup role."
 }
 
 variable "additional_public_ip" {
