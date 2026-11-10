@@ -27,6 +27,35 @@ def test_nginx_logrotate_policy_replaces_the_overlapping_legacy_dropin():
     assert "rotate 7" in policy
 
 
+def test_nginx_rotation_reopens_logs_without_reload_and_propagates_failure(tmp_path):
+    import os
+    import subprocess
+
+    policy = render_template(ROLE / "templates/logrotate-nginx.j2", merge_render_vars())
+    body = policy.split("postrotate", 1)[1].split("endscript", 1)[0]
+    binary = tmp_path / "systemctl"
+    log = tmp_path / "calls"
+    binary.write_text("""#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$CALLS"
+if [[ "$1" == 'kill' ]]; then exit "${KILL_STATUS:-0}"; fi
+if [[ "${INACTIVE:-0}" == 1 ]]; then exit 3; fi
+""")
+    binary.chmod(0o755)
+    env = {**os.environ, "PATH": f'{tmp_path}:{os.environ["PATH"]}', "CALLS": str(log)}
+    result = subprocess.run(["bash", "-c", body], env=env, capture_output=True)
+    assert result.returncode == 0
+    assert log.read_text().splitlines() == [
+        "is-active --quiet nginx.service",
+        "kill --signal=USR1 --kill-whom=main nginx.service",
+    ]
+    failed = subprocess.run(["bash", "-c", body], env={**env, "KILL_STATUS": "23"}, capture_output=True)
+    assert failed.returncode == 23
+    log.unlink()
+    inactive = subprocess.run(["bash", "-c", body], env={**env, "INACTIVE": "1"}, capture_output=True)
+    assert inactive.returncode == 0
+    assert log.read_text().splitlines() == ["is-active --quiet nginx.service"]
+
+
 def test_xray_rotation_restarts_active_service_and_propagates_failure(tmp_path):
     import os
     import subprocess
