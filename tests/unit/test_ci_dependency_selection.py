@@ -222,7 +222,11 @@ def script_repo(repo):
     """A synthetic tree with one consumer of each kind."""
     files = {
         "Makefile": "TOOL := ./scripts/variable.sh\n# scripts/unused.sh is prose here\n"
-                    "lint: build\n\t$(TOOL)\nbuild:\n\tscripts/made.sh\naudit:\n\tscripts/audited.sh\n"
+                    "lint: build gen tsv inline alias\n\t$(TOOL)\nbuild:\n\tscripts/made.sh\n"
+                    "audit:\n\tscripts/audited.sh\ngen: scripts/prereq.sh\n\tsh $<\n"
+                    "tsv: LOCAL := scripts/tsv.sh\ntsv:\n\t$(LOCAL)\ninline: ; scripts/inline.sh\n"
+                    "alias:\n\tscripts/alias.sh\nother alias:\n\ttrue\n"
+                    "FILES := \\\n\tscripts/continued.sh\n"
                     "ifeq ($(shell scripts/global.sh),1)\nendif\n",
         ".github/workflows/ci.yml": "name: ci\njobs:\n  bats-test:\n    steps:\n      - run: make lint\n"
                                     "  selection:\n    steps:\n      - run: python3 scripts/gate.py\n"
@@ -231,7 +235,11 @@ def script_repo(repo):
         "ansible/roles/x/tasks/main.yml": "- script: '{{ role_path }}/../../../scripts/{{ item }}'\n  loop: [role.sh]\n",
         "scripts/library.py": "value = 1\n",
         "scripts/tool.py": "import library\n",
-        "terraform/main.tf": "# runs scripts/tool.py\n",
+        "terraform/main.tf": "# runs scripts/tool.py scripts/user.py scripts/rel/main.py\n",
+        "scripts/pkg/__init__.py": "value = 1\n",
+        "scripts/user.py": "import pkg\n",
+        "scripts/rel/mod.py": "value = 1\n",
+        "scripts/rel/main.py": "from .mod import value\n",
         "tests/unit/test_portable.py": "SCRIPT = 'scripts/tested.sh'\n",
         "tests/unit/test_engine_native.py": "SCRIPT = 'scripts/engine.sh'\nRUN = ['make', 'audit']\n",
         "scripts/tests/test_own.py": "SCRIPT = 'scripts/tested.sh'\n",
@@ -254,6 +262,13 @@ def script_repo(repo):
     ("engine.sh", ({"native"}, set())),
     ("made.sh", ({"python-vpnd"}, {"bats-test"})),  # build is a prerequisite of the target a job runs
     ("variable.sh", ({"python-vpnd"}, {"bats-test"})),
+    ("prereq.sh", ({"python-vpnd"}, {"bats-test"})),  # named only as a prerequisite
+    ("tsv.sh", ({"python-vpnd"}, {"bats-test"})),  # named only in a target-specific variable
+    ("inline.sh", ({"python-vpnd"}, {"bats-test"})),  # recipe on the rule line
+    ("alias.sh", ({"python-vpnd"}, {"bats-test"})),  # a later rule also names its target
+    ("continued.sh", None),  # a continued variable value is not the previous rule's recipe
+    ("pkg/__init__.py", ({"terraform"}, set())),  # imported by its directory name
+    ("rel/mod.py", ({"terraform"}, set())),  # imported relatively
     ("audited.sh", ({"python-vpnd", "native"}, set())),  # a native test runs the target
     ("action.sh", (set(), {"tf-test"})),
     ("gate.py", None),  # the selection job is not a selectable check

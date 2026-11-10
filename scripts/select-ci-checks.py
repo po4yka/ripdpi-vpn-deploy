@@ -85,7 +85,7 @@ JOB_NAMES = {
 # Mentions in these paths are prose, data or stubs, never a CI consumer of a script.
 MENTION_INERT = ("docs/", "openspec/", ".agents/", ".claude/", "tests/snapshot/", "tests/fixtures/", "tests/stubs/")
 TOKEN = re.compile(r"[\w-]+(?:\.[\w-]+)*")
-IMPORT = re.compile(r"\b(?:import|from)[ \t]+([A-Za-z_][\w., \t]*)")
+IMPORT = re.compile(r"\b(?:import|from)[ \t]+\.*([A-Za-z_][\w., \t]*)")
 MAKE_CALL = re.compile(r"\bmake\b|\$\(MAKE\)")
 MAKE_RULE = re.compile(r"^([A-Za-z0-9_.%-]+(?:[ \t]+[A-Za-z0-9_.%-]+)*)[ \t]*:(?!=)(.*)")
 MAKE_VARIABLE = re.compile(r"^(?:(?:override|export)[ \t]+)*([A-Za-z0-9_.-]+)[ \t]*(?:[?:+]|::)?=")
@@ -177,24 +177,26 @@ def script_graph(repo):
         except OSError:
             continue  # deleted in the working tree, or a directory symlink
         if path == "Makefile":
-            rule, define = None, False
+            rules, define = [], False
             for line in lines:
                 if define or line.startswith("define "):
                     define = not line.startswith("endef")
                     make_global.update(words(line))
-                elif line.startswith("\t") and rule is not None:
-                    rule[0].update(words(line))
-                    if MAKE_CALL.search(line):
-                        rule[1].update(words(line))
+                elif line.startswith("\t") and rules:
+                    for rule in rules:
+                        rule[0].update(words(line))
+                        if MAKE_CALL.search(line):
+                            rule[1].update(words(line))
                 elif line.startswith("#"):
                     continue
                 elif (found := MAKE_RULE.match(line)) and not line.startswith(".PHONY"):
-                    names = found.group(1).split()
-                    rule = targets.setdefault(names[0], (set(), set()))
-                    for name in names[1:]:
-                        targets[name] = rule
-                    rule[1].update(words(found.group(2)))  # prerequisites
+                    rules = [targets.setdefault(name, (set(), set())) for name in found.group(1).split()]
+                    for rule in rules:
+                        # The rest of the line holds prerequisites, a target variable or an inline recipe.
+                        rule[0].update(words(found.group(2)))
+                        rule[1].update(words(found.group(2)))
                 elif found := MAKE_VARIABLE.match(line):
+                    rules = []  # a tab-indented continuation of this value is not a recipe
                     variables.setdefault(found.group(1), set()).update(words(line))
                 else:
                     make_global.update(words(line))
@@ -241,8 +243,9 @@ def script_graph(repo):
             seen.add(entry)
             if kind == "file":
                 name = Path(item).parent.name if item.startswith(".github/actions/") else Path(item).name
-                # Only an identifier can be imported; "__init__" names every package.
-                module = Path(name).stem if re.fullmatch(r"(?!__)[A-Za-z_]\w*\.py", name) else None
+                # Only an identifier can be imported; a package is imported by its directory name.
+                module = Path(item).parent.name if name == "__init__.py" else (
+                    Path(name).stem if re.fullmatch(r"[A-Za-z_]\w*\.py", name) else None)
                 if name in make_global:
                     return None
                 pending += [("variable", other) for other, found in variables.items() if name in found]
@@ -453,7 +456,7 @@ def event_plan(repo, event, base, sha, api):
     if any(path.startswith("scripts/") for path in paths):
         try:
             consumers = script_graph(repo)
-        except (OSError, subprocess.SubprocessError):
+        except (OSError, ValueError, subprocess.SubprocessError):
             consumers = None  # scripts then keep full CI
     return plan(paths, portable, consumers)
 
