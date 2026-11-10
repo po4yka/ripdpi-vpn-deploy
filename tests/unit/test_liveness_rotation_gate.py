@@ -43,6 +43,9 @@ def _setup(tmp_path: Path) -> tuple[dict[str, str], Path, Path]:
             "BLUE_ENV": "prod",
             "GREEN_ENV": "spare",
             "BLUE_GREEN_SCRIPT": str(blue_green),
+            "ANSIBLE_SSH_PRIVATE_KEY_FILE": "synthetic-key",
+            "GREEN_SOPS_FILE": "synthetic-green.sops.yaml",
+            "DEVICE_MIGRATION_PLAN": "synthetic-plan.json",
             "BLUE_GREEN_LOG": str(blue_green_log),
         }
     )

@@ -4,6 +4,8 @@ from __future__ import annotations
 import os
 import stat
 import subprocess
+
+import pytest
 from pathlib import Path
 
 
@@ -39,6 +41,9 @@ def _run(stubs: Path, state: Path, *args: str, env_extra: dict[str, str] | None 
             # Point the promotion at the stub so the gate is tested without a
             # real traffic swing.
             "BLUE_GREEN_SCRIPT": str(stubs / "blue-green.sh"),
+            "ANSIBLE_SSH_PRIVATE_KEY_FILE": str(state / "key"),
+            "GREEN_SOPS_FILE": str(state / "green.sops.yaml"),
+            "DEVICE_MIGRATION_PLAN": str(state / "plan.json"),
         }
     )
     if env_extra:
@@ -82,6 +87,19 @@ def test_wrong_otp_refuses_and_stays_pending(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert "does not match" in result.stderr
     # A wrong guess must not burn the pending OTP.
+    assert (state / "pending-otp").exists()
+
+
+@pytest.mark.parametrize("missing", ["ANSIBLE_SSH_PRIVATE_KEY_FILE", "GREEN_SOPS_FILE", "DEVICE_MIGRATION_PLAN"])
+def test_missing_promotion_input_refuses_and_keeps_the_otp(tmp_path: Path, missing: str) -> None:
+    state, stubs = _setup(tmp_path)
+    _issue_otp(state, "123456")
+
+    result = _run(stubs, state, "123456", env_extra={missing: ""})
+
+    assert result.returncode == 1
+    assert missing in result.stderr
+    assert "blue-green ran" not in result.stdout
     assert (state / "pending-otp").exists()
 
 
