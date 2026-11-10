@@ -129,13 +129,13 @@ resource "upcloud_firewall_rules" "vpn" {
 
   lifecycle {
     precondition {
-      condition     = length(local.effective_public_listeners) > 0 || var.node_purpose == "observer"
+      condition     = length(local.effective_public_listeners) > 0 || var.node_purpose != "vpn"
       error_message = "public_listeners resolves to an empty set; set public_listeners explicitly or opt into the historical defaults with use_legacy_public_listeners = true."
     }
 
     precondition {
-      condition     = var.node_purpose != "observer" || (length(local.effective_public_listeners) == 0 && !var.use_legacy_public_listeners && !var.enable_hysteria)
-      error_message = "Observer nodes must explicitly disable legacy listeners and Hysteria and declare an empty public_listeners list."
+      condition     = var.node_purpose == "vpn" || (length(local.effective_public_listeners) == 0 && !var.use_legacy_public_listeners && !var.enable_hysteria)
+      error_message = "Observer and split-hop-egress nodes must explicitly disable legacy listeners and Hysteria and declare an empty public_listeners list."
     }
   }
 }

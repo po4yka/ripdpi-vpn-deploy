@@ -20,7 +20,7 @@ Node B starts the tunnel. Node A only answers, so it has no `Endpoint` and no ke
 
 ## Preconditions
 
-- Two disposable VPS environments provisioned through any supported Terraform roots, with separate provider state and SOPS scopes.
+- Two disposable VPS environments with separate provider state and SOPS scopes: Node A through any supported Terraform root, Node B through the UpCloud root, the only root with a listener-free `split-hop-egress` node purpose.
 - Node A's typed `public_listeners` contract admits `split_hop_ingress_listen_port` (default 51821) over UDP.
 - SOPS + age and the operator SSH identity are configured as in `docs/reference/secrets.md`.
 - WireGuard tools are available only for local key generation; Ansible installs them on both nodes.
@@ -84,6 +84,8 @@ vpn:
   enable_hysteria: false
   enable_amneziawg: false
 ```
+
+Provision Node B on UpCloud with `node_purpose = "split-hop-egress"`, `public_listeners = []` and `enable_hysteria = false` in its private tfvars; the provider root then refuses any public protocol listener. Node B has no transport for a sentinel to probe, so its exact-alias `DEPLOY_PROMOTION_CONFIG_FILE` entry uses the [`no-public-listener` kind](../reference/protocol-liveness.md#nodes-that-publish-no-client-listener).
 
 Review and deploy through the ordinary provider/environment boundary:
 

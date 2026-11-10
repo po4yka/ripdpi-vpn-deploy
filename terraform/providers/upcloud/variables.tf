@@ -54,11 +54,11 @@ variable "storage_size_gb" {
 variable "node_purpose" {
   type        = string
   default     = "vpn"
-  description = "VPN node or management-only independent observer; observers must declare no public protocol listeners."
+  description = "VPN node, management-only independent observer, or split-hop egress Node B; observer and split-hop-egress nodes must declare no public protocol listeners."
 
   validation {
-    condition     = contains(["vpn", "observer"], var.node_purpose)
-    error_message = "node_purpose must be vpn or observer."
+    condition     = contains(["vpn", "observer", "split-hop-egress"], var.node_purpose)
+    error_message = "node_purpose must be vpn, observer or split-hop-egress."
   }
 }
 

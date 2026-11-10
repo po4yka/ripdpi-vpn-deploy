@@ -72,7 +72,7 @@ No modules.
 | <a name="input_enable_provider_firewall"></a> [enable\_provider\_firewall](#input\_enable\_provider\_firewall) | Activate the UpCloud stateless Public & Utility firewall after the exact node has passed guest-firewall and strict-SSH verification. | `bool` | `false` | no |
 | <a name="input_labels"></a> [labels](#input\_labels) | Provider-specific resource tags/labels. | `map(string)` | `{}` | no |
 | <a name="input_nginx_xhttp_public_port"></a> [nginx\_xhttp\_public\_port](#input\_nginx\_xhttp\_public\_port) | Public TCP port for nginx-xhttp. Keep this in sync with Ansible nginx\_xhttp\_public\_port. | `number` | `8443` | no |
-| <a name="input_node_purpose"></a> [node\_purpose](#input\_node\_purpose) | VPN node or management-only independent observer; observers must declare no public protocol listeners. | `string` | `"vpn"` | no |
+| <a name="input_node_purpose"></a> [node\_purpose](#input\_node\_purpose) | VPN node, management-only independent observer, or split-hop egress Node B; observer and split-hop-egress nodes must declare no public protocol listeners. | `string` | `"vpn"` | no |
 | <a name="input_observer_backup_size_gb"></a> [observer\_backup\_size\_gb](#input\_observer\_backup\_size\_gb) | Explicit separate Archive backup disk for the observer; zero creates no extra storage. | `number` | `0` | no |
 | <a name="input_plan"></a> [plan](#input\_plan) | Exact UpCloud plan slug, e.g. STARTER-2xCPU-4GB or an existing supported legacy SKU. | `string` | n/a | yes |
 | <a name="input_provider_return_ephemeral_ports"></a> [provider\_return\_ephemeral\_ports](#input\_provider\_return\_ephemeral\_ports) | Linux client ephemeral port range accepted for inbound TCP/UDP return traffic by the stateless provider firewall. | <pre>object({<br/>    start = number<br/>    end   = number<br/>  })</pre> | <pre>{<br/>  "end": 60999,<br/>  "start": 32768<br/>}</pre> | no |
@@ -100,3 +100,5 @@ No modules.
 <!-- END_TF_DOCS -->
 
 An observer sets `node_purpose = "observer"` and `observer_backup_size_gb = 10`. This adds one encrypted Archive volume for separate backup filesystem admission. VPN nodes keep `observer_backup_size_gb = 0`.
+
+A split-hop egress Node B sets `node_purpose = "split-hop-egress"`, `public_listeners = []` and `enable_hysteria = false`. It publishes no protocol listener and owns no observer storage; the root refuses any public listener for it ([split-hop pilot](../../../docs/how-to/split-hop-pilot.md#2-configure-node-b-egress)).
