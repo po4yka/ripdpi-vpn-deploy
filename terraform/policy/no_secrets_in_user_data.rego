@@ -33,7 +33,14 @@ server_resource_types := {
 # because those lines begin with "ssh_authorized_keys" or "- ssh-", not a secret keyword.
 # The bare word "key" is intentionally excluded — it is too generic and matches
 # ssh_authorized_keys / ssh-ed25519 key material. Use api_key instead.
-secret_pattern := `(?im)^\s*(password|token|api_key|secret)\s*[:=]\s*[^\s]{6,}`
+#
+# The key may be quoted and may follow a list dash, because yamlencode() emits
+# `"password": "..."`. cloud-init account passwords (passwd, hashed_passwd,
+# plain_text_passwd) and any PEM private key block are secrets too.
+#
+# Limit: the Hetzner provider stores a hash of user_data in the plan, so this
+# rule cannot see Hetzner content. The rendered-template unit tests cover it.
+secret_pattern := `(?im)(^\s*-?\s*"?(password|passwd|hashed_passwd|plain_text_passwd|token|api_key|secret)"?\s*[:=]\s*"?[^\s"]{6,}|-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----)`
 
 deny[msg] {
   rc := input.resource_changes[_]
