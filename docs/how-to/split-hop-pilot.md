@@ -72,7 +72,9 @@ Delete the temporary key files after both encrypted files have been verified.
 
 ## 2. Configure Node B (egress)
 
-In Node B host vars or its lab cohort:
+Assign each node to a tracked cohort profile through `COHORTS` when you render its inventory. The deployment controller reads the per-host `vpn` map only from `ansible/group_vars/vpn-*.yml`: it does not read `host_vars`, and `ANSIBLE_EXTRA_VARS_FILE` refuses `vpn` and `allow_research_roles`. Each profile holds a complete `vpn` map, because the controller replaces the canonical map instead of merging it.
+
+For disposable staging, Node B uses `vpn-split-hop-egress-staging`. A lab cohort for another environment needs at least:
 
 ```yaml
 allow_research_roles: [split-hop-egress]
@@ -98,7 +100,7 @@ Node B must have no client-facing transport listener. Its `shop0` peer has Node 
 
 ## 3. Configure Node A (ingress)
 
-In Node A host vars or its lab cohort:
+For disposable staging, Node A uses `vpn-split-hop-ingress-staging`: the `device-full-staging` transports plus the responder, without a probe target. The first deployment of a fresh staging node must still use `device-full-staging` alone, because the [disposable onboarding intent](../reference/protocol-liveness.md#first-onboarding-during-a-disposable-staging-deployment) admits only that cohort. Render the inventory again with the split-hop cohort before the next dry-run. A lab cohort that runs the probe matrix needs at least:
 
 ```yaml
 allow_research_roles: [split-hop-ingress, probe-matrix-target]
@@ -147,7 +149,7 @@ Store only redacted evidence. Do not commit endpoints, provider account data, ke
 
 ## 6. Family egress scope
 
-Family scope sends recipient traffic of every family transport on Node A through Node B: the `transport-normalizer` and `transport-gateway` users (all Xray and Hysteria recipient egress, including DoH lookups) and forwarded AmneziaWG originals. Node B needs no change. Enable it on Node A only, after steps 1-4 pass:
+Family scope sends recipient traffic of every family transport on Node A through Node B: the `transport-normalizer` and `transport-gateway` users (all Xray and Hysteria recipient egress, including DoH lookups) and forwarded AmneziaWG originals. Node B needs no change. Enable it on Node A only, after steps 1-4 pass. For disposable staging, render Node A with the `vpn-split-hop-family-egress-staging` cohort. A lab cohort sets:
 
 ```yaml
 vpn:
@@ -164,11 +166,11 @@ Behaviour to accept before any family use:
 - With the tunnel stopped, every family transport stops carrying traffic and no recipient flow leaves Node A's uplink. The firewall keeps this boundary even if the split-hop table is removed, once the transport users exist.
 - Deploys, the transport canary and watchdog probes traverse the tunnel, so a Node B outage fails Node A's deploy and raises transport alerts.
 
-Rollback: set `split_hop_family_egress: false` and converge Node A; AmneziaWG forwarding and NAT return to the uplink.
+Rollback: return Node A to a cohort with `split_hop_family_egress: false` and converge it; AmneziaWG forwarding and NAT return to the uplink.
 
 ## Tear-down
 
-Set both enable toggles false in their respective host variables and remove the exact allowlist entries. The current roles are skipped when disabled and do not remove already-created files or services, so a toggle-only redeploy is not a complete cleanup. End the pilot by destroying its disposable provider environments; do not repurpose those nodes or invent broad firewall cleanup commands in this runbook.
+Move both nodes to cohorts with both enable toggles false and without the allowlist entries. The current roles are skipped when disabled and do not remove already-created files or services, so a toggle-only redeploy is not a complete cleanup. End the pilot by destroying its disposable provider environments; do not repurpose those nodes or invent broad firewall cleanup commands in this runbook.
 
 ## Verification
 

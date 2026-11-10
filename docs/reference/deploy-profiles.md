@@ -18,6 +18,9 @@ Family profiles are listed in `ansible/role-tiers.yml` under `family_profiles`. 
 | `vpn-device-full.yml` | family-standard + AmneziaWG | default family controls | full device-VPN family node |
 | `vpn-device-full-tailnet.yml` | family-standard + AmneziaWG; ordinary OpenSSH over the Tailnet | default family controls | device-full node managed over the Tailnet |
 | `vpn-device-full-staging.yml` | device-full transports with transport egress on; monitoring, watchdog and backup off | default family controls | scoped transport and SSH recovery rehearsal, not monitoring or backup acceptance |
+| `vpn-split-hop-egress-staging.yml` | none: split-hop egress initiator only, every client transport off | research allowlist `split-hop-egress`; monitoring, watchdog and backup off | disposable staging Node B of the [split-hop pilot](../how-to/split-hop-pilot.md) |
+| `vpn-split-hop-ingress-staging.yml` | device-full-staging transports + split-hop responder on UDP/51821 | research allowlist `split-hop-ingress`; monitoring, watchdog and backup off | disposable staging Node A after its first onboarding deploy |
+| `vpn-split-hop-family-egress-staging.yml` | as the ingress profile, with every recipient flow routed through Node B | research allowlist `split-hop-ingress`; monitoring, watchdog and backup off | disposable staging Node A for [family egress scope](../how-to/split-hop-pilot.md#6-family-egress-scope) acceptance |
 | `vpn-prod-hardened.yml` | device-full | Fail2Ban, tighter SSH limits, egress observation counters | production node when the operator accepts extra host controls |
 
 `vpn-p0-minimal.yml` intentionally leaves `vpn.enable_reality_self_steal` off. Use `vpn-p0-self-steal.yml` only after adding the owned certificate secret contract and changing `xray.target` plus `xray.server_names` together; the role adds a private loopback TLS target without widening the profile's public listener surface.

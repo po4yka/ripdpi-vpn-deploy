@@ -1,0 +1,37 @@
+---
+# Split-hop Node B for disposable staging: WireGuard initiator and NAT egress, no client listener.
+# Complete map because the deployment controller replaces canonical vpn maps.
+# Every listener toggle is explicitly false, which the no-public-listener SSH promotion kind requires.
+allow_research_roles: [split-hop-egress]
+
+vpn:
+  enable_transport_egress: false
+  enable_destination_filter: false
+  enable_xray_reality: false
+  enable_reality_self_steal: false
+  enable_nginx_xhttp: false
+  enable_naive: false
+  enable_hysteria: false
+  enable_amneziawg: false
+  enable_geodata: false
+  enable_monitoring: false
+  enable_watchdog: false
+  enable_backup: false
+  enable_subscription_host: false
+  enable_tailnet_management: true
+  build_xray_from_source: false
+  enable_policy_ratelimit: false
+  enable_cdn_front: false
+  enable_honeypot: false
+  enable_warp_outbound: false
+  enable_dns_morph_bridge: false
+  enable_hysteria_realm: false
+  enable_split_hop_egress: true
+  enable_split_hop_ingress: false
+  split_hop_family_egress: false
+  enable_probe_matrix_target: false
+  enable_snell: false
+  enable_cascade_ingress: false
+  enable_cascade_egress: false
+  warp_outbound_routes: []
+  awg_cohort: ''
