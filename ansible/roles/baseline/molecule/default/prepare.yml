@@ -1,0 +1,20 @@
+---
+# Stock cloud-image account fixture. It runs once before converge, so the idempotence rerun does not create the account again for the role to remove.
+
+- name: Prepare a stock cloud-image account
+  hosts: all
+  become: true
+  tasks:
+    - name: Create a stock image account with a cloud-init sudo grant
+      ansible.builtin.user:
+        name: ubuntu
+        groups: sudo
+        create_home: true
+
+    - name: Grant the stock and admin accounts sudo as cloud-init does
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/90-cloud-init-users
+        content: |
+          deploy ALL=(ALL) NOPASSWD:ALL
+          ubuntu ALL=(ALL) NOPASSWD:ALL
+        mode: "0440"
