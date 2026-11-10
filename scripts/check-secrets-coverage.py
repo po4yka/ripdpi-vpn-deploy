@@ -13,11 +13,10 @@ PR time.
 
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 
-from jinja2 import Environment
+from jinja2 import Environment, meta
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -115,6 +114,37 @@ NON_SECRET_TOPLEVEL = {
     "_observability_telegram_generation",
     "_observability_kuma_tls_generation",
     "public_listener_contract",
+    # role-local facts and inventory values read only inside statements or
+    # parenthesized expressions
+    "_awg_instances",
+    "_baseline_mptcp_sysctl",
+    "_filter",
+    "_honeypot_secondary_required",
+    "_observability_agent_self_steal_certificate",
+    "_package_updates_effective_enabled",
+    "hysteria_masquerade_hosts",
+    "nginx_aliases",
+    "nginx_fallback_hsts",
+    "server_ipv6",
+    "vpn_subscription_only",
+    "_",
+    "_all_clients",
+    "_cohorts",
+    "_firewall_effective_check_mode",
+    "_firewall_tailnet_ssh_sets_was_absent",
+    "_multi",
+    "_network_exposure_plan",
+    "firewall_awg_uplink_interface",
+    "firewall_effective_ssh_ports",
+    "public_ifaces",
+    "public_listener_manifest",
+    "structured_data",
+    "watchdog_reality_probes",
+    "xray_tcp_ports",
+    # Ansible built-ins
+    "ansible_check_mode",
+    "inventory_hostname",
+    "lookup",
 }
 
 # Top-level keys that are real secrets and must exist in the example file
@@ -145,77 +175,30 @@ EXPECTED_SECRET_TOPLEVEL = {
 }
 
 # Non-greedy capture of {{ ... }} with optional whitespace
-JINJA_VAR = re.compile(r"\{\{\s*([^}]+?)\s*\}\}")
-JINJA_FOR = re.compile(r"\{%-?\s*for\s+(\w+)(?:\s*,\s*(\w+))?\s+in\s+", re.MULTILINE)
-JINJA_SET = re.compile(r"\{%-?\s*set\s+(\w+)\s*=", re.MULTILINE)
-JINJA_MACRO_BLOCK = re.compile(
-    r"\{%-?\s*macro\s+\w+\s*\((.*?)\)\s*-?%\}(.*?)" r"\{%-?\s*endmacro\s*-?%\}",
-    re.DOTALL,
-)
-JINJA_IMPORT = re.compile(
-    r"\{%-?\s*import\s+.+?\s+as\s+(\w+)(?:\s+with(?:out)?\s+context)?\s*-?%\}",
-    re.DOTALL,
-)
-# Only lexing is used; keep rendering defaults safe if this environment is reused.
-JINJA_ENVIRONMENT = Environment(autoescape=True)
+class _AnyName(dict):
+    """Ansible filters and tests are unknown here; only variable names matter."""
+
+    def __contains__(self, name: object) -> bool:
+        return True
+
+    def get(self, name, default=None):  # the compiler resolves names with get()
+        return super().get(name, str)
 
 
-def _without_raw_regions(template_text: str) -> str:
-    """Remove lexer-confirmed raw regions without rendering the template."""
-    outside_raw: list[str] = []
-    in_raw = False
-    for _line, token_type, value in JINJA_ENVIRONMENT.lex(template_text):
-        if token_type == "raw_begin":
-            in_raw = True
-        elif token_type == "raw_end":
-            in_raw = False
-        elif not in_raw:
-            outside_raw.append(value)
-    return "".join(outside_raw)
-
-
-def _extract_output_vars(scope_text: str, extra_locals: set[str]) -> set[str]:
-    locals_ = {"loop", "none", "true", "false", "True", "False", "None"}
-    locals_.update(extra_locals)
-    for match in JINJA_FOR.finditer(scope_text):
-        locals_.add(match.group(1))
-        if match.group(2):
-            locals_.add(match.group(2))
-    for match in JINJA_SET.finditer(scope_text):
-        locals_.add(match.group(1))
-    for match in JINJA_IMPORT.finditer(scope_text):
-        locals_.add(match.group(1))
-
-    found = set()
-    for match in JINJA_VAR.finditer(scope_text):
-        expr = match.group(1)
-        token = re.split(r"[\s.\[|]", expr, maxsplit=1)[0].strip()
-        if token and token.isidentifier():
-            found.add(token)
-    return found - locals_
+# Parsing only; nothing is rendered. Every filter and test name is accepted so
+# the analysis reaches expressions that use Ansible-only filters.
+JINJA_ENVIRONMENT = Environment(autoescape=True, extensions=["jinja2.ext.do", "jinja2.ext.loopcontrols"])
+JINJA_ENVIRONMENT.filters = _AnyName(JINJA_ENVIRONMENT.filters)
+JINJA_ENVIRONMENT.tests = _AnyName(JINJA_ENVIRONMENT.tests)
 
 
 def extract_toplevel_vars(template_text: str) -> set[str]:
-    """Return context-supplied identifiers referenced in output expressions.
+    """Return every context-supplied identifier the template reads.
 
-    Macro arguments are local only inside that macro's body. Imports remain
-    template-local and are also visible to macros declared in the same file.
+    The Jinja AST covers output expressions and statements alike, and it
+    resolves loop, set, macro and import scopes and raw blocks itself.
     """
-    template_text = _without_raw_regions(template_text)
-    imported = {match.group(1) for match in JINJA_IMPORT.finditer(template_text)}
-    macro_blocks = list(JINJA_MACRO_BLOCK.finditer(template_text))
-    without_macros = JINJA_MACRO_BLOCK.sub("", template_text)
-    found = _extract_output_vars(without_macros, imported)
-
-    for macro in macro_blocks:
-        arguments = {
-            argument.split("=", maxsplit=1)[0].strip()
-            for argument in macro.group(1).split(",")
-            if argument.strip()
-        }
-        found.update(_extract_output_vars(macro.group(2), imported | arguments))
-
-    return found
+    return set(meta.find_undeclared_variables(JINJA_ENVIRONMENT.parse(template_text)))
 
 
 def main() -> int:

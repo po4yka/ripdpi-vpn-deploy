@@ -43,7 +43,17 @@ def test_imported_namespace_is_local_but_context_values_are_not() -> None:
 def test_numeric_output_literals_are_not_context_variables() -> None:
     template = "{{ 660 if kind == 'delivery' else 180 }} {{ 1.5 }} {{ _private }}"
 
-    assert checker.extract_toplevel_vars(template) == {"_private"}
+    assert checker.extract_toplevel_vars(template) == {"kind", "_private"}
+
+
+def test_statements_and_parenthesized_expressions_are_references() -> None:
+    template = """
+    {% if gated.enabled %}{{ (wrapped.key or "") }}{% endif %}
+    {% for item in looped.items %}{{ item | to_json }}{% endfor %}
+    {{ value | some_ansible_only_filter if value is some_ansible_only_test }}
+    """
+
+    assert checker.extract_toplevel_vars(template) == {"gated", "wrapped", "looped", "value"}
 
 
 def test_macro_argument_does_not_hide_same_named_global_outside_macro() -> None:
