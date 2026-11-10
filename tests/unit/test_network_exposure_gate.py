@@ -143,13 +143,15 @@ def test_unknown_rfc3339_offset_fails_closed(signed_artifact):
 
 
 @pytest.mark.parametrize('case', ['expired', 'future', 'unsigned', 'unreviewed', 'wrong-digest',
-                                 'tampered', 'unknown-key', 'unknown-source', 'bad-cidr', 'extra-field'])
+                                 'tampered', 'unknown-key', 'unknown-source', 'bad-cidr', 'default-route',
+                                 'extra-field'])
 def test_invalid_inputs_fail_without_policy_output(signed_artifact, case):
     changes = {
         'expired': lambda v: v.update(expires_at=(datetime.now(timezone.utc)-timedelta(minutes=1)).isoformat()),
         'future': lambda v: v.update(created_at=(datetime.now(timezone.utc)+timedelta(minutes=1)).isoformat()),
         'unreviewed': lambda v: v['review'].update(approved=False),
         'bad-cidr': lambda v: v['policy'].update(ingress=['not-a-prefix']),
+        'default-route': lambda v: v['policy'].update(ingress=['0.0.0.0/0']),
         'extra-field': lambda v: v.update(unrecognized='value'),
     }
     artifact, value = signed_artifact['write'](changes.get(case), resign=case != 'tampered')
