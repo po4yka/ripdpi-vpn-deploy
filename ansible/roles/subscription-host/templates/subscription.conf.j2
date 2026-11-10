@@ -1,6 +1,15 @@
 # Subscription delivery host. Listens on a non-default port to keep the
 # transport endpoint and the delivery endpoint topologically separated.
 
+{% if vpn.share_bundles | default([]) | length > 0 %}
+# The bare bundle URL serves its page. A map, not `if`: try_files is not
+# inherited into the implicit location that a matching `if` creates.
+map $vpn_share_file $vpn_share_target {
+    ""      index.html;
+    default $vpn_share_file;
+}
+
+{% endif %}
 server {
     listen {{ subscription.port | default(subscription_port) }} ssl http2;
     listen [::]:{{ subscription.port | default(subscription_port) }} ssl http2;
@@ -56,6 +65,13 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
 
+        # The backend's own error page names its software. nginx answers with
+        # its built-in page for the same status, so the 410 contract is kept.
+        proxy_intercept_errors on;
+        error_page 404 = @vpn_sub_not_found;
+        error_page 410 = @vpn_sub_gone;
+        error_page 503 = @vpn_sub_unavailable;
+
         # Error records include request/upstream URIs; bearer locations use
         # only URI-free categorical diagnostics, including failure outcomes.
         error_log /dev/null crit;
@@ -76,6 +92,13 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
 
+        # The backend's own error page names its software. nginx answers with
+        # its built-in page for the same status, so the 410 contract is kept.
+        proxy_intercept_errors on;
+        error_page 404 = @vpn_sub_not_found;
+        error_page 410 = @vpn_sub_gone;
+        error_page 503 = @vpn_sub_unavailable;
+
         # Error records include request/upstream URIs; bearer locations use
         # only URI-free categorical diagnostics, including failure outcomes.
         error_log /dev/null crit;
@@ -89,9 +112,12 @@ server {
     # Raw token MUST NOT appear in logs — categorical logging applies here
     # as it does on /sub/. The vpnd audit trail is maintained
     # out-of-band; nginx never sees the plaintext token in a logged field.
-    location ~ "^/share/(?<vpn_share_token>[A-Za-z0-9_-]{16,64})(/.*)?$" {
-        alias /var/www/subscription-host/share/$vpn_share_token/;
-        try_files $uri $uri/index.html =404;
+    # `alias` with a variable in a regex location appends the whole request
+    # URI, so every page answered 404. Bundles are flat: one file name, no
+    # slash, which also keeps a request inside its own token directory.
+    location ~ "^/share/(?<vpn_share_token>[A-Za-z0-9_-]{16,64})/(?<vpn_share_file>[A-Za-z0-9._-]*)$" {
+        root /var/www/subscription-host/share/$vpn_share_token;
+        try_files /$vpn_share_target =404;
 
         # Error records include request/upstream URIs; bearer locations use
         # only URI-free categorical diagnostics, including failure outcomes.
@@ -99,6 +125,18 @@ server {
         access_log /var/log/nginx/vpn-sub.categorical.log vpn_sub_category;
     }
 {% endif %}
+
+    location @vpn_sub_not_found {
+        return 404;
+    }
+
+    location @vpn_sub_gone {
+        return 410;
+    }
+
+    location @vpn_sub_unavailable {
+        return 503;
+    }
 
     # Reject everything else.
     location / {

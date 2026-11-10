@@ -56,6 +56,13 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
 
+        # The backend's own error page names its software. nginx answers with
+        # its built-in page for the same status, so the 410 contract is kept.
+        proxy_intercept_errors on;
+        error_page 404 = @vpn_sub_not_found;
+        error_page 410 = @vpn_sub_gone;
+        error_page 503 = @vpn_sub_unavailable;
+
         # Error records include request/upstream URIs; bearer locations use
         # only URI-free categorical diagnostics, including failure outcomes.
         error_log /dev/null crit;
@@ -63,6 +70,18 @@ server {
     }
 
 
+
+    location @vpn_sub_not_found {
+        return 404;
+    }
+
+    location @vpn_sub_gone {
+        return 410;
+    }
+
+    location @vpn_sub_unavailable {
+        return 503;
+    }
 
     # Reject everything else.
     location / {

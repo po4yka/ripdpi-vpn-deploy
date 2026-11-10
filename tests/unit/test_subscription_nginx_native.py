@@ -105,6 +105,7 @@ def nginx_server(*, routes_enabled=True, upstream=None, rate="5r/m", burst=1):
         )
         .replace("/etc/nginx/tls/subscription-host/server.key", str(key))
         .replace("/var/log/nginx/", str(base) + "/")
+        .replace("/var/www/subscription-host/share/", str(base) + "/share/")
     )
     zone = render_template(
         ROOT / "ansible/roles/subscription-host/templates/rate-limit.conf.j2",
@@ -169,6 +170,32 @@ def test_bearer_rate_and_upstream_failures_keep_only_categorical_diagnostics(rou
         )
 
 
+def test_share_bundle_files_are_served_only_from_their_own_token_directory():
+    token = "SyntheticShareBoundary00000001"
+    with nginx_server(routes_enabled=True, rate="1000r/s", burst=50) as (origin, base):
+        bundle = base / "share" / token
+        bundle.mkdir(parents=True)
+        (bundle / "index.html").write_text("recipient-page")
+        (bundle / "qr.svg").write_text("qr-image")
+        (base / "share" / "outside.txt").write_text("outside-bundle")
+        for path in (base / "share", bundle, *bundle.iterdir(), base / "share" / "outside.txt"):
+            path.chmod(0o755 if path.is_dir() else 0o644)
+        tls = ssl._create_unverified_context()
+        for path, body in ((f"/share/{token}/", b"recipient-page"), (f"/share/{token}/index.html", b"recipient-page"),
+                           (f"/share/{token}/qr.svg", b"qr-image")):
+            with urllib.request.urlopen(origin + path, context=tls, timeout=2) as response:
+                assert response.status == 200 and response.read() == body
+                assert response.headers.get_all("Cache-Control") == ["no-store"]
+        for path in (f"/share/{token}", f"/share/{token}/missing", f"/share/{token}/..%2Foutside.txt",
+                     f"/share/{token}/nested/qr.svg", "/share/" + "B" * 24 + "/"):
+            with pytest.raises(urllib.error.HTTPError) as refused:
+                urllib.request.urlopen(origin + path, context=tls, timeout=2)
+            assert refused.value.code == 404
+        time.sleep(0.1)
+        logs = "\n".join(path.read_text() for path in base.glob("*.log"))
+        assert token not in logs, "nginx share diagnostics exposed the synthetic bearer URI"
+
+
 def test_generated_import_and_qr_targets_cross_real_nginx_and_backend(service):
     token, digest, body, meta = prepare_subscription(service)
     with (
@@ -187,6 +214,9 @@ def test_generated_import_and_qr_targets_cross_real_nginx_and_backend(service):
         with pytest.raises(urllib.error.HTTPError) as expired:
             urllib.request.urlopen(imported, context=tls, timeout=3)
         assert expired.value.code == 410
+        # nginx owns the error body: the backend's page would name its software.
+        gone = expired.value.read()
+        assert b"410 Gone" in gone and b"Error response" not in gone and b"Error code" not in gone
         meta.write_text("{}")
         service.REVOKED_FILE.write_text(digest + "\n")
         with pytest.raises(urllib.error.HTTPError) as revoked:

@@ -92,6 +92,9 @@ direct issuance; disabling pulls is not an implicit authority migration.
 
 ## Pitfalls
 
+- **Share pages use `root` plus a mapped file name, never `alias` or `if`.** `alias` with a variable inside a regex location appends the whole request URI, so every page answered 404; a matching `if` creates an implicit location that does not inherit `try_files`. Bundles are flat, so the route accepts one file name without a slash.
+- **nginx owns the body of backend errors.** The backend answers unknown, expired and revoked tokens with 410 by contract, and its own error page names its software. `proxy_intercept_errors` with per-status named locations keeps the status and replaces the body.
+
 - **Fresh check mode plans units without installing them** — read the actual
   systemd load state and require the exact template's planned change before
   deferring an absent bootstrap service's activation and restart. Loaded units
