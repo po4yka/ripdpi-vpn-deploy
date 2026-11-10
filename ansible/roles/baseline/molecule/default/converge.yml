@@ -22,18 +22,6 @@
         shell: /bin/bash
         create_home: true
         state: present
-    - name: Create a stock image account with a cloud-init sudo grant
-      ansible.builtin.user:
-        name: ubuntu
-        groups: sudo
-        create_home: true
-    - name: Grant the stock and admin accounts sudo as cloud-init does
-      ansible.builtin.copy:
-        dest: /etc/sudoers.d/90-cloud-init-users
-        content: |
-          deploy ALL=(ALL) NOPASSWD:ALL
-          ubuntu ALL=(ALL) NOPASSWD:ALL
-        mode: "0440"
   tasks:
     - name: Exercise the actual baseline role with bounded fixture failure evidence
       block:
