@@ -54,6 +54,23 @@ sys.exit(int(os.environ['REFUSE']))
     assert plan.read_text() == 'foreign-plan'
 
 
+@pytest.mark.parametrize('refuse', [False, True])
+def test_only_an_applied_unchanged_plan_is_removed(tmp_path, refuse):
+    scripts = tmp_path / 'scripts'
+    scripts.mkdir()
+    shutil.copy(ROOT / 'scripts/policy-plan.sh', scripts)
+    plan = tmp_path / 'terraform/providers/upcloud/prod.tfplan'
+    plan.parent.mkdir(parents=True)
+    plan.write_text('reviewed-plan')
+    executable(scripts / 'terraform-env.sh', '#!/bin/sh\n[ "$1" = show ] && echo "{}"\nexit 0\n')
+    executable(scripts / 'check-tf-plan.sh', '#!/bin/sh\nexit "$REFUSE"\n')
+    result = subprocess.run(['bash', str(scripts / 'policy-plan.sh'), 'apply'],
+                            env={**os.environ, 'REFUSE': str(int(refuse)), 'PROVIDER': 'upcloud', 'ENV': 'prod'},
+                            capture_output=True, text=True)
+    assert (result.returncode != 0) == refuse, result.stderr
+    assert plan.exists() == refuse
+
+
 @pytest.mark.parametrize('mutation', ['none', 'port', 'credential', 'malformed'])
 def test_real_ansible_drift_comparison_detects_changes_without_disclosing_values(tmp_path, mutation):
     # Only the read/compare tasks run here; version/service probes need a guest.

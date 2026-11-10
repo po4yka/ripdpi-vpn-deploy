@@ -29,4 +29,9 @@ export PROVIDER ENV
 "$REPO_ROOT/scripts/check-tf-plan.sh" "$work/plan.json"
 if [[ "$1" == apply ]]; then
   "$REPO_ROOT/scripts/terraform-env.sh" apply "$work/plan.tfplan"
+  # An applied plan is stale and can hold provider-generated credentials. A file
+  # that changed since the snapshot is another plan and stays.
+  if cmp -s -- "$PLAN_SOURCE" "$work/plan.tfplan"; then
+    rm -f -- "$PLAN_SOURCE"
+  fi
 fi
