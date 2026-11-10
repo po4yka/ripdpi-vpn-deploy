@@ -134,3 +134,5 @@ def test_disk_reserving_lanes_free_the_hosted_toolchains_before_setup():
     for path in ("/usr/share/dotnet", "/usr/local/lib/android", "/opt/ghc", "/opt/hostedtoolcache/CodeQL"):
         assert path in script
     assert 'sudo rm -rf -- "$path"' in script and "hostedtoolcache/Python" not in script
+    # Parallel removal must still fail the step when one removal fails.
+    assert 'wait "$pid"' in script

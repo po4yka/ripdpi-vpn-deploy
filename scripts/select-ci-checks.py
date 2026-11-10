@@ -64,6 +64,22 @@ NATIVE_TEST_INPUTS = {"tests/conftest.py", "tests/pytest-durations.json.gz"}
 # Folder notes are read only by the common pytest checks; docs/ notes ship with vpnd.
 INSTRUCTION_NAMES = {"AGENTS.md", "CLAUDE.md"}
 ALL_CHECKS = ALWAYS | set().union(*CHECKS.values())
+# Job names of each selectable check as the Actions API reports them; a matrix or
+# reusable workflow appends its own part. Used only to reuse a selective PR run.
+JOB_NAMES = {
+    "ansible": "ansible-lint + syntax-check", "molecule": "molecule (",
+    "molecule-full-stack": "molecule full-stack (", "molecule-failure-scenarios": "molecule failure (",
+    "terraform": "terraform fmt + validate (", "terraform-exception": "terraform inert exception root",
+    "tf-test": "terraform test (", "tf-policy": "tf-policy / ", "cloud-init": "cloud-init schema",
+    "vpnd-test": "vpnd-test / ", "vpnd-lint": "vpnd-lint / ", "vpnd-package": "vpnd-package / ",
+    "vpnd-dependency": "vpnd-dependency / ", "vpnd-sbom": "vpnd release SBOM",
+    "native-runtime": "native runtime integration (",
+    "transport-runtime-acceptance": "native transport runtime acceptance (",
+    "transport-native-acceptance": "native four-transport acceptance (",
+    "go-helper": "MTProxy Go helper tests", "bats-test": "bats shell tests",
+    "image-scan": "image-scan / ", "reproducible-build": "reproducible-build / ",
+    "contract-sync": "contract-sync / ", "engine-interop": "engine-interop / ",
+}
 
 
 def full_plan(reason, changed_files=None):
@@ -161,10 +177,12 @@ def github_api(path):
 
 
 def reused_plan(repo, sha, api):
-    """Reuse a full successful PR run when main received exactly its tested tree.
+    """Reuse a successful PR run when main received exactly its tested tree.
 
     The pushed tree must equal the PR head tree, and the previous main tip must
-    be an ancestor of that head. Anything else returns None and keeps full CI.
+    be an ancestor of that head. A full run is reused as is. A selective run is
+    reused only when every check that this push's own diff selects has jobs in
+    it and all of them succeeded. Anything else returns None and keeps full CI.
     """
     if re.fullmatch(r"[0-9a-f]{40}", sha) is None:
         return None
@@ -201,11 +219,25 @@ def reused_plan(repo, sha, api):
             listed += jobs.get("jobs", [])
             if not jobs.get("jobs") or len(listed) >= (total or 0):
                 break
+        if not listed or total != len(listed):
+            continue
         # A full plan runs every job; one skipped job means the PR used a selection.
-        if listed and total == len(listed) and all(
-                job.get("conclusion") == "success" for job in listed):
+        covered = all(job.get("conclusion") == "success" for job in listed)
+        if not covered and all(job.get("conclusion") in {"success", "skipped"} for job in listed):
+            try:
+                portable = portable_unit_tests(repo)
+            except OSError:
+                portable = frozenset()
+            changed = git("diff", "--name-only", "--no-renames", "-z", f"{sha}^", sha, "--")
+            needed = plan([path for path in changed.split("\0") if path], portable)["checks"]
+            results = {name: {job.get("conclusion") for job in listed
+                              if str(job.get("name", "")).startswith(prefix)}
+                       for name, prefix in JOB_NAMES.items()}
+            covered = all(results[name] == {"success"} for name, on in needed.items()
+                          if on and name not in ALWAYS)
+        if covered:
             return {
-                "mode": "reused", "reason": f"Main tree matches full successful PR CI run {run['id']}",
+                "mode": "reused", "reason": f"Main tree matches successful PR CI run {run['id']}",
                 "changed_files": None, "components": [],
                 "checks": {name: name in ALWAYS for name in sorted(ALL_CHECKS)},
             }
