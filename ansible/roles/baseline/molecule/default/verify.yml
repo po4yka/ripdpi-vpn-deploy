@@ -29,6 +29,20 @@
         name: baseline
         tasks_from: module-verify.yml
 
+    - name: Read the stock and admin accounts
+      ansible.builtin.getent:
+        database: passwd
+    - name: Read the cloud-init sudo grants
+      ansible.builtin.slurp:
+        src: /etc/sudoers.d/90-cloud-init-users
+      register: baseline_cloud_init_sudoers
+    - name: Stock account is gone and the admin account keeps its sudo grant
+      ansible.builtin.assert:
+        that:
+          - "'ubuntu' not in ansible_facts.getent_passwd"
+          - "'deploy' in ansible_facts.getent_passwd"
+          - "(baseline_cloud_init_sudoers.content | b64decode).splitlines() == ['deploy ALL=(ALL) NOPASSWD:ALL']"
+
     - name: Collect service facts
       ansible.builtin.service_facts:
 
