@@ -24,10 +24,9 @@ RestrictNamespaces=true
 LockPersonality=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
-{% if not (backup.remote.enabled | default(false)) %}
-# restic takes a non-exclusive lock inside a local repository even to read it.
-ReadWritePaths={{ restic_repo_dir }}
-{% endif %}
+# restic takes a non-exclusive lock in the repository even to read it, and an
+# rclone remote can be a directory on this host. Same paths as vpn-backup.service.
+ReadWritePaths={{ restic_repo_dir }} /var/backups
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7

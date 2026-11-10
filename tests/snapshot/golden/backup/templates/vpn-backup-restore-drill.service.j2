@@ -24,8 +24,9 @@ RestrictNamespaces=true
 LockPersonality=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
-# restic takes a non-exclusive lock inside a local repository even to read it.
-ReadWritePaths=/var/backups/vpn-restic
+# restic takes a non-exclusive lock in the repository even to read it, and an
+# rclone remote can be a directory on this host. Same paths as vpn-backup.service.
+ReadWritePaths=/var/backups/vpn-restic /var/backups
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7
