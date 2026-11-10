@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-11-10
+goal: SEC-1794287701595900 Pin the SSH host key before first contact with a new node
