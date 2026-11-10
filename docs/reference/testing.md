@@ -139,7 +139,7 @@ Backup configuration regressions require a real `restic` executable on `PATH` (v
 
 `daily-security.yml` runs at 06:17 UTC each day and supports manual dispatch. It scans locked dependencies and the complete image inventory. Results and scan failures update an owner-assigned issue only when the result changes; complete clean results close it. The current default-branch revision controls that issue. See [security scan operations](../../.github/SECURITY.md#daily-dependency-and-image-checks) for report retention, retry and notification rules. These jobs use no fleet credentials and do not replace `make security-audit` on an authorized host. That host audit records `systemd-analyze security` output, command status and diagnostics privately. The isolation score is not a vulnerability verdict.
 
-`ci.yml` always starts for PRs. A main push whose tree equals the head of its merged, up-to-date PR reuses that PR's successful run and repeats only the common checks; a selective PR run qualifies only when it ran every check that the pushed diff selects, so merge after the PR run is green. `scripts/select-ci-checks.py` compares the PR base with the checked-out merge commit and follows downstream consumer groups:
+`ci.yml` always starts for PRs. A PR never runs the three native lanes: they run on the main push after the merge, so a native regression appears on main, not on the PR. To run them before a merge, start `ci` manually on the branch (`workflow_dispatch` runs the full graph). A main push whose tree equals the head of its merged, up-to-date PR reuses that PR's successful run: it repeats the common checks and every check that its own diff selects and the PR run did not complete, so merge after the PR run is green. `scripts/select-ci-checks.py` compares the PR base with the checked-out merge commit and follows downstream consumer groups:
 
 | Changed paths | Additional checks beyond the common checks |
 |---|---|
@@ -152,11 +152,12 @@ Backup configuration regressions require a real `restic` executable on `PATH` (v
 | `tests/unit/` | Native runtime tests, alongside the complete common pytest suite |
 | `tests/bats/` | Bats tests |
 | Agent instructions: `AGENTS.md`/`CLAUDE.md` outside `docs/`, `.agents/`, `.claude/`, `.github/skills/` | None |
-| Shared scripts, fixtures, tooling/configuration, CI or any unmapped path | Full graph |
+| `scripts/` (except `scripts/tests/`) | On a PR, the consumers that the script graph finds: files that name the script or import it, followed through other scripts, Makefile rules and variables, composite actions and reusable workflows. An unknown consumer selects the full graph. The match is textual, so the main push ignores the graph and runs every check that the PR skipped |
+| Fixtures, tooling/configuration, CI or any unmapped path | Full graph |
 
 The common checks are gitleaks, actionlint, zizmor, task contracts, shellcheck, all Python validators and all four pytest groups with their coverage aggregate. Python tests inspect many repository contracts, so they are not selected by test filename. Molecule selection also stays at the complete Ansible group because roles share imports, variables and full-stack interactions. The selector owns the exact path rules, including auxiliary test/tasking inputs.
 
-Main pushes and manual runs always execute the full graph. Invalid or missing PR history, a non-ancestor base and an empty diff also select everything. The Git diff covers the whole PR without API file limits, uses NUL delimiters and retains both sides of renames and deleted paths. No workflow-level path filter can suppress the required gate. Each run's summary lists the decisions.
+Manual runs always execute the full graph, and so do main pushes that cannot reuse a PR run. Invalid or missing PR history, a non-ancestor base and an empty diff also select everything. The Git diff covers the whole PR without API file limits, uses NUL delimiters and retains both sides of renames and deleted paths. No workflow-level path filter can suppress the required gate. Each run's summary lists the decisions.
 
 A new push to a PR cancels that PR's running `ci`. Closing or merging the PR cancels it too: `ci-cancel-closed.yml` joins the same concurrency group, which both workflows key by PR number because a merged PR's closed event reports the base branch as its ref. Main runs are not cancelled; each finishes, and only the newest pending main run waits behind it.
 

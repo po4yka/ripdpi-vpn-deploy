@@ -256,7 +256,7 @@ AWG callers do not consume a hostname and must retain their export path.
 
 Native acceptance fixtures cross unit and integration directories. Keep the
 selector's native group closed over every consuming job, including changes
-under `tests/native/`; a Python-only selection can omit real-engine acceptance. The portable-test exception uses a broad textual reachability closure, so a false positive only selects more CI.
+under `tests/native/`; a Python-only selection can omit real-engine acceptance. PRs leave native lanes to the main push, and the PR-only script graph in `select-ci-checks.py` matches names textually: a script name built at run time is invisible to it, so never let main pushes use it. The portable-test exception uses a broad textual reachability closure, so a false positive only selects more CI.
 
 REALITY validation shares `reality_target_validation.py` across point-in-time and
 recurring callers. It normalizes comma/whitespace names once, verifies each SNI
