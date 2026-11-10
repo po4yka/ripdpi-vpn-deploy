@@ -43,6 +43,21 @@ regex = '''(?i)(privatekey|private_key)["'\s:=]+[A-Za-z0-9+/]{40,}={0,2}'''
 tags = ["vpn", "secret"]
 
 [[rules]]
+id = "wireguard-preshared-key"
+description = "WireGuard / AmneziaWG per-device preshared key"
+regex = '''(?i)preshared_?key["'\s:=]+[A-Za-z0-9+/]{43}='''
+tags = ["vpn", "secret"]
+
+[[rules.allowlists]]
+description = "Synthetic preshared keys in contract goldens and unit fixtures"
+paths = [
+    '''^contract/ripdpi-bundle\.golden-full\.json$''',
+    '''^tests/unit/test_emit_bundle_host_selection\.py$''',
+    '''^tests/unit/test_retire_unbound_staging_client\.py$''',
+    '''^tests/unit/test_secrets_schema\.py$''',
+]
+
+[[rules]]
 id = "subscription-token"
 description = "Subscription token / path"
 regex = '''(?i)(sub|subscription).{0,30}(token|uuid|key)["'\s:=]+[A-Za-z0-9._~/-]{16,}'''

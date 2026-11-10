@@ -56,6 +56,15 @@ def test_snell_credential_rule_still_detects_credential_assignment() -> None:
     assert regex.search("snell_psk = CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC") is not None
 
 
+def test_preshared_key_rule_detects_client_and_secrets_forms() -> None:
+    regex = re.compile(_custom_rule("wireguard-preshared-key")["regex"])
+    value = "A" * 43 + "="
+
+    assert regex.search(f"PresharedKey = {value}") is not None
+    assert regex.search(f'preshared_key: "{value}"') is not None
+    assert regex.search("PresharedKey = <PSK>") is None
+
+
 def _git(repo: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True)
 
