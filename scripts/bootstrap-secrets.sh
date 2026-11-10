@@ -186,15 +186,14 @@ AGE_RECIPIENT="$(grep '^# public key:' "$AGE_KEY" | awk '{print $4}')"
 echo ">>> age recipient: $AGE_RECIPIENT"
 
 # ---------------------------------------------------------------------------
-# REALITY keypair — prefer local xray, fall back to docker.
+# REALITY keypair — the locally installed, pinned xray only. An unpinned
+# container image must never generate a long-lived private key.
 # ---------------------------------------------------------------------------
 echo ">>> generating REALITY x25519 keypair"
 if command -v xray >/dev/null 2>&1; then
   REALITY_RAW="$(xray x25519)"
-elif command -v docker >/dev/null 2>&1; then
-  REALITY_RAW="$(docker run --rm ghcr.io/xtls/xray-core x25519)"
 else
-  echo "need either 'xray' or 'docker' to generate the REALITY keypair" >&2
+  echo "need 'xray' to generate the REALITY keypair" >&2
   exit 1
 fi
 REALITY_PRIV="$(echo "$REALITY_RAW" | awk -F': ' '/Private/{print $2}' | tr -d '\r\n ')"
@@ -261,9 +260,13 @@ NTFY_TOPIC="vpn-$(openssl rand -hex 8)"
 # Compose plaintext YAML
 # ---------------------------------------------------------------------------
 PLAINTEXT=""
+ENCRYPTED_STAGED=""
 cleanup_plaintext() {
   if [[ -n "$PLAINTEXT" ]]; then
     shred -u "$PLAINTEXT" 2>/dev/null || rm -f "$PLAINTEXT"
+  fi
+  if [[ -n "$ENCRYPTED_STAGED" ]]; then
+    rm -f "$ENCRYPTED_STAGED"
   fi
 }
 trap cleanup_plaintext EXIT
@@ -448,8 +451,12 @@ except (OSError, ValueError):
 path.write_text(yaml.safe_dump(document, sort_keys=False))
 PY_ECH
 fi
-sops --encrypt --age "$AGE_RECIPIENT" --input-type yaml --output-type yaml "$PLAINTEXT" > "$ENCRYPTED"
-chmod 0600 "$ENCRYPTED"
+# Encrypt beside the destination and rename: a failed --force run must keep the old ciphertext.
+ENCRYPTED_STAGED="$(mktemp "${CONFIG_DIR}/.${ENV}.secrets.sops.XXXXXX")"
+sops --encrypt --age "$AGE_RECIPIENT" --input-type yaml --output-type yaml "$PLAINTEXT" > "$ENCRYPTED_STAGED"
+chmod 0600 "$ENCRYPTED_STAGED"
+mv -f "$ENCRYPTED_STAGED" "$ENCRYPTED"
+ENCRYPTED_STAGED=""
 cleanup_plaintext
 echo ">>> encrypted to: $ENCRYPTED"
 echo
