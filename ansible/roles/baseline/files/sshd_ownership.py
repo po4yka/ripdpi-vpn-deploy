@@ -588,7 +588,9 @@ def _effective_outputs(captures, replacements, contexts):
                         for key in ("user", "host", "addr", "laddr", "lport")
                     ),
                 ]
-            result.append(_command(arguments, deadline - time.monotonic()))
+            # OpenSSH 10 prints keywords in their documented case; earlier releases print lowercase.
+            output = _command(arguments, deadline - time.monotonic())
+            result.append(re.sub(rb"(?m)^[^ \n]+", lambda match: match[0].lower(), output))
         return result
 
 
