@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 from copy import deepcopy
 from pathlib import Path
@@ -272,7 +273,8 @@ def _run_nginx_403_detector(tmp_path, logs: dict[str, list[int]]) -> str:
         + block.replace("/var/log/nginx", str(tmp_path))
         + 'printf %s "${classes[nginx_403_spike]-}"\n'
     )
-    result = subprocess.run(["bash", "-euo", "pipefail", "-c", script],
+    # The detector needs Bash 4 associative arrays; the reduced PATH would select macOS /bin/bash 3.2.
+    result = subprocess.run([shutil.which("bash"), "-euo", "pipefail", "-c", script],
                             env={"ENABLE_NGINX_XHTTP": "true", "PATH": "/usr/bin:/bin"},
                             capture_output=True, text=True, check=True)
     return result.stdout

@@ -18,9 +18,13 @@ def policy(context=None):
     )
     if result.returncode:
         raise ValueError("sshd unavailable")
-    return dict(
-        line.split(" ", 1) for line in result.stdout.splitlines() if " " in line
-    )
+    # OpenSSH 10 prints keywords in their documented case; earlier releases print lowercase.
+    return {
+        key.lower(): value
+        for key, value in (
+            line.split(" ", 1) for line in result.stdout.splitlines() if " " in line
+        )
+    }
 
 
 def verify(value):
