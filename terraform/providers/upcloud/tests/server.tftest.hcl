@@ -112,6 +112,35 @@ run "observer_rejects_public_protocols" {
   expect_failures = [upcloud_firewall_rules.vpn]
 }
 
+run "split_hop_egress_node_has_no_public_protocol_listener" {
+  command = plan
+
+  variables {
+    node_purpose     = "split-hop-egress"
+    public_listeners = []
+    enable_hysteria  = false
+  }
+
+  assert {
+    condition     = length(output.public_listeners) == 0 && length(upcloud_storage.observer_backup) == 0
+    error_message = "A split-hop egress Node B publishes no listener and owns no observer storage"
+  }
+}
+
+run "split_hop_egress_node_rejects_public_protocols" {
+  command = plan
+
+  variables {
+    node_purpose = "split-hop-egress"
+    public_listeners = [
+      { name = "xray", protocol = "tcp", port = 443 },
+    ]
+    enable_hysteria = false
+  }
+
+  expect_failures = [upcloud_firewall_rules.vpn]
+}
+
 run "rejects_unreviewed_starter_sku" {
   command = plan
 

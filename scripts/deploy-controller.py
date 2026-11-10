@@ -327,36 +327,55 @@ def tailnet_enabled_for_selection(root, hosts, memberships, metadata, override_v
     """Resolve the effective replace-semantics Tailnet toggle for selected hosts."""
     enabled = []
     for host in hosts:
-        vpn = {}
-        for group in ("all", "vpn", *memberships[host["name"]]):
-            if not re.fullmatch(r"all|vpn|vpn-[a-z0-9][a-z0-9-]*", group):
-                raise DeployError("unsupported canonical cohort")
-            document = yaml.safe_load(read_input(root / "ansible/group_vars" / (group + ".yml")))
-            if document is None:
-                document = {}
-            if not isinstance(document, dict):
-                raise DeployError("canonical variables invalid")
-            if "vpn" in document:
-                vpn = document["vpn"]
-                if not isinstance(vpn, dict):
-                    raise DeployError("canonical vpn variables invalid")
-        host_metadata = metadata.get(host["name"])
-        if not isinstance(host_metadata, dict):
-            raise DeployError("canonical host metadata invalid")
-        if "vpn" in host_metadata:
-            vpn = host_metadata["vpn"]
-            if not isinstance(vpn, dict):
-                raise DeployError("canonical host vpn variables invalid")
-        if "vpn" in override_values:
-            vpn = override_values["vpn"]
-            if not isinstance(vpn, dict):
-                raise DeployError("operator vpn variables invalid")
-        value = vpn.get("enable_tailnet_management", False)
+        value = effective_vpn(root, host, memberships, metadata, override_values).get(
+            "enable_tailnet_management", False)
         if not isinstance(value, bool):
             raise DeployError("Tailnet management toggle invalid")
         if value:
             enabled.append(host["name"])
     return enabled
+
+
+def effective_vpn(root, host, memberships, metadata, override_values):
+    """Resolve the host's `vpn` dictionary with Ansible's replace semantics."""
+    vpn = {}
+    for group in ("all", "vpn", *memberships[host["name"]]):
+        if not re.fullmatch(r"all|vpn|vpn-[a-z0-9][a-z0-9-]*", group):
+            raise DeployError("unsupported canonical cohort")
+        document = yaml.safe_load(read_input(root / "ansible/group_vars" / (group + ".yml")))
+        if document is None:
+            document = {}
+        if not isinstance(document, dict):
+            raise DeployError("canonical variables invalid")
+        if "vpn" in document:
+            vpn = document["vpn"]
+            if not isinstance(vpn, dict):
+                raise DeployError("canonical vpn variables invalid")
+    host_metadata = metadata.get(host["name"])
+    if not isinstance(host_metadata, dict):
+        raise DeployError("canonical host metadata invalid")
+    if "vpn" in host_metadata:
+        vpn = host_metadata["vpn"]
+        if not isinstance(vpn, dict):
+            raise DeployError("canonical host vpn variables invalid")
+    if "vpn" in override_values:
+        vpn = override_values["vpn"]
+        if not isinstance(vpn, dict):
+            raise DeployError("operator vpn variables invalid")
+    return vpn
+
+
+def listener_free_hosts(root, hosts, memberships, metadata, override_values, global_lines, secret_data):
+    """Hosts that may use the no-public-listener SSH promotion kind."""
+    import no_listener_promotion
+    group_wide = dict(line.strip().split("=", 1) for line in global_lines)
+    deployed = yaml.safe_load(secret_data)
+    shadowing = (group_wide, override_values, deployed if isinstance(deployed, dict) else {})
+    return frozenset(
+        host["name"] for host in hosts
+        if no_listener_promotion.listener_free(
+            metadata[host["name"]], effective_vpn(root, host, memberships, metadata, override_values),
+            shadowing))
 
 
 def checked(command, *, environment, cwd, timeout=15, capture=False, stream=False):
@@ -578,7 +597,7 @@ def prepare_host_playbooks(root, directory, index, host, memberships, metadata, 
 
 
 def transaction_inputs(mode, hosts, identity, directory, root, environment, *,
-                       memberships=None, deployed_secrets=None):
+                       memberships=None, deployed_secrets=None, listener_free_hosts=frozenset()):
     try:
         raw = read_input(os.environ["DEPLOY_SSH_CONTEXTS_FILE"], private=True, exact_mode=0o600)
         contexts = json.loads(raw, object_pairs_hook=unique_object)
@@ -624,6 +643,7 @@ def transaction_inputs(mode, hosts, identity, directory, root, environment, *,
         }
         if len(receipt_targets) != len(failure_receipts):
             raise DeployError("SSH failure receipt paths collide")
+    import no_listener_promotion
     result = {}
     promotion_paths = []
     for host in hosts:
@@ -640,7 +660,14 @@ def transaction_inputs(mode, hosts, identity, directory, root, environment, *,
                     or any(target.get(key) != value for key, value in expected_target.items())):
                 raise DeployError("promotion proof configs do not bind selected targets")
             config = promotions[alias]
-            if config.get("kind") in {"disposable-staging-intent", "recovery-promotion-intent", "cloud-promotion-intent"}:
+            if no_listener_promotion.is_kind(config):
+                if alias not in listener_free_hosts:
+                    raise DeployError("no-listener promotion requires an empty provider listener contract")
+                try:
+                    no_listener_promotion.validate(config, expected_target)
+                except no_listener_promotion.Refusal:
+                    raise DeployError("promotion proof configs do not bind selected targets") from None
+            elif config.get("kind") in {"disposable-staging-intent", "recovery-promotion-intent", "cloud-promotion-intent"}:
                 if config["kind"] in {"recovery-promotion-intent", "cloud-promotion-intent"}:
                     from recovery_promotion import PromotionError as OnboardingError
                     from recovery_promotion import prepare_intent
@@ -658,7 +685,8 @@ def transaction_inputs(mode, hosts, identity, directory, root, environment, *,
                     raise DeployError("onboarding capability refused: " + str(error)) from None
             promotion = private_file(directory / (alias + "-promotion-config.json"),
                                      json.dumps(config, sort_keys=True).encode())
-            promotion_paths.append(promotion)
+            if not no_listener_promotion.is_kind(config):
+                promotion_paths.append(promotion)
         result[alias] = {
             "ssh_transaction_controller_managed": True,
             "ssh_transaction_contexts": contexts[alias],
@@ -791,7 +819,10 @@ def controller(mode):
             commands.append(fleet_inspection.ssh_command(host, known_hosts))
         transactions = transaction_inputs("deploy" if mode == "deploy" else "check",
                                           hosts, identity, directory, root, environment,
-                                          memberships=memberships, deployed_secrets=secret_data)
+                                          memberships=memberships, deployed_secrets=secret_data,
+                                          listener_free_hosts=listener_free_hosts(
+                                              root, hosts, memberships, metadata, override_values,
+                                              _global_lines, secret_data))
         if os.environ.get("DEPLOY_CI_TAILNET_HANDOFF"):
             from ci_deployment import confirmed_sources
             from tailnet_management import Refusal

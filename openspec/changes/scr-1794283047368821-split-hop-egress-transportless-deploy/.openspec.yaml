@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-10
+goal: SCR-1794283047368821 Deploy a split-hop egress node that publishes no
+  client listener

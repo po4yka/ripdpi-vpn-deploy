@@ -105,6 +105,57 @@ def test_deploy_orders_apply_fresh_public_and_management_proofs_before_confirm(t
     ]
 
 
+def no_listener_promotion(request, **changes):
+    path = Path(request["promotion_config_path"])
+    path.write_text(json.dumps({"schema_version": 1, "kind": "no-public-listener",
+                                "target_identity": request["target_identity"], **changes}))
+    path.chmod(0o600)
+
+
+def test_no_listener_promotion_keeps_fresh_ssh_checks_and_runs_no_sentinel_proof(transaction_request):
+    controller = module()
+    no_listener_promotion(transaction_request)
+    calls = []
+
+    def rpc(host, known, action, payload, environment, cleanup=False):
+        calls.append((host["transport"], action))
+        return receipt({"prepare": "prepared", "apply": "applied", "status": (
+            "committed" if any(call[1] == "confirm" for call in calls) else "applied"),
+            "confirm": "committed"}[action])
+
+    def sftp(host, known, environment):
+        calls.append((host["transport"], "sftp"))
+
+    def proof(*args):
+        raise AssertionError("a node without public listeners has no sentinel proof")
+
+    assert controller.execute(transaction_request, {}, rpc=rpc, sftp=sftp, proof=proof,
+                              clock=lambda: 100) == {"status": "committed"}
+    assert calls == [
+        ("100.64.0.10", "prepare"), ("100.64.0.10", "apply"),
+        ("192.0.2.10", "status"), ("192.0.2.10", "sftp"),
+        ("100.64.0.10", "status"), ("100.64.0.10", "sftp"),
+        ("100.64.0.10", "status"), ("100.64.0.10", "confirm"), ("100.64.0.10", "status"),
+    ]
+
+
+@pytest.mark.parametrize("change", [
+    {"target_identity": {"inventory_alias": "node-a", "public_service_address_sha256": "f" * 64,
+                         "deployable_digest": "c" * 64}},
+    {"schema_version": 2},
+    {"liveness_config": "/extra"},
+])
+def test_no_listener_promotion_bound_to_another_target_refuses_before_prepare(transaction_request, change):
+    controller = module()
+    no_listener_promotion(transaction_request, **change)
+
+    def rpc(*args, **kwargs):
+        raise AssertionError("prepare must not run")
+
+    with pytest.raises(controller.BaselineError, match="promotion-proof-mismatch"):
+        controller.execute(transaction_request, {}, rpc=rpc, clock=lambda: 100)
+
+
 def test_check_mode_only_previews_and_creates_no_promotion_dependency(transaction_request):
     controller = module()
     transaction_request = dict(transaction_request, mode="check", promotion_config_path=None,

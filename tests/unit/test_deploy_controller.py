@@ -41,7 +41,8 @@ def workspace(tmp_path):
                  "validate-ansible-extra-vars.py", "firewall_collector_ingress.py", "transport_semantics.py",
                  "public_site_inputs.py",
                  "deploy-controller.py", "bootstrap_readiness.py",
-                 "network-exposure-gate.py", "ci_deployment.py", "tailnet_management.py"):
+                 "network-exposure-gate.py", "ci_deployment.py", "tailnet_management.py",
+                 "no_listener_promotion.py"):
         source = ROOT / "scripts" / name
         if source.exists():
             target = root / "scripts" / name
@@ -984,6 +985,59 @@ def test_swapped_valid_promotion_configs_refuse_before_validation_or_ssh(workspa
                             text=True, capture_output=True, timeout=25)
     assert result.returncode != 0
     assert calls(workspace) == []
+
+
+EGRESS_ONLY = ("vpn: {enable_split_hop_egress: true, enable_xray_reality: false, enable_nginx_xhttp: false, "
+               "enable_hysteria: false, enable_amneziawg: false}\n")
+EMPTY = "W10="  # base64 of [] -- the provider publishes no client listener
+ONE_TCP = "W3sibmFtZSI6InhyYXkiLCJwb3J0Ijo0NDMsInByb3RvY29sIjoidGNwIn1d"  # one TCP/443 listener
+
+
+@pytest.mark.parametrize("case", [
+    "admitted", "listener-published", "contract-absent", "contract-group-wide", "contract-in-secrets",
+    "hysteria-default-on", "egress-role-off",
+])
+def test_no_listener_promotion_needs_an_explicit_egress_only_listener_free_host(workspace, case):
+    root = workspace["root"]
+    group_vars = EGRESS_ONLY
+    if case == "hysteria-default-on":  # site.yml enables Hysteria when the key is absent
+        group_vars = EGRESS_ONLY.replace("enable_hysteria: false, ", "")
+    if case == "egress-role-off":
+        group_vars = EGRESS_ONLY.replace("enable_split_hop_egress: true", "enable_split_hop_egress: false")
+    (root / "ansible/group_vars/vpn-p1p2.yml").write_text(group_vars)
+    subprocess.run(["git", "-c", "commit.gpgsign=false", "commit", "-qam", "test: egress-only cohort"],
+                   cwd=root, env=workspace["env"], check=True, capture_output=True)
+    workspace["source_digest"] = subprocess.run(
+        [str(root / "scripts/deploy-source-identity.sh"), "--digest"],
+        cwd=root, env=workspace["env"], text=True, capture_output=True, check=True).stdout.strip()
+    inventory = workspace["inventory"]
+    text = inventory.read_text()
+    if case == "contract-group-wide":
+        text = text.replace("[vpn:vars]\n", f"[vpn:vars]\nterraform_public_listeners_b64={EMPTY}\n")
+    elif case != "contract-absent":
+        listeners = ONE_TCP if case == "listener-published" else EMPTY
+        text = text.replace("provider=vultr env=prod ", f"provider=vultr env=prod terraform_public_listeners_b64={listeners} ")
+    inventory.write_text(text)
+    if case == "contract-in-secrets":
+        workspace["secrets"].write_text(workspace["secrets"].read_text()
+                                        + f"terraform_public_listeners_b64: {ONE_TCP}\n")
+    set_contexts(workspace, "node-two")
+    promotion = Path(workspace["env"]["DEPLOY_PROMOTION_CONFIG_FILE"])
+    value = json.loads(promotion.read_text())
+    value["node-two"] = {"schema_version": 1, "kind": "no-public-listener",
+                         "target_identity": value["node-two"]["target_identity"]}
+    promotion.write_text(json.dumps(value) + "\n")
+    result = subprocess.run(["make", "deploy", "ANSIBLE_LIMIT=node-two", "SECRETS_FILE=" + str(workspace["secrets"])],
+                            cwd=root, env=workspace["env"], text=True, capture_output=True, timeout=25)
+    programs = [entry["program"] for entry in calls(workspace)]
+    # The kind has no liveness document, so the sentinel proof validator never sees it.
+    assert "sshd-promotion-proof.py" not in programs
+    if case == "admitted":
+        assert "ssh" in programs, result.stdout + result.stderr
+    else:
+        assert result.returncode != 0
+        assert "no-listener promotion requires an empty provider listener contract" in result.stdout + result.stderr
+        assert "ssh" not in programs
 
 
 def test_all_promotion_configs_are_validated_before_first_ssh(workspace):

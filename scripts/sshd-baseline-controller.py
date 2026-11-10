@@ -300,6 +300,7 @@ def _transports(host):
 
 def prepare_promotion(path, environment):
     """Only a typed lifecycle intent can invoke its fixed onboarding adapter."""
+    import no_listener_promotion
     try:
         with os.fdopen(fleet_inspection._open_local_file(path, private=True), "rb") as handle:
             raw = handle.read(MAX_REQUEST + 1)
@@ -312,6 +313,9 @@ def prepare_promotion(path, environment):
         if isinstance(document, dict) and document.get("kind") in {"recovery-promotion-intent", "cloud-promotion-intent"}:
             from recovery_promotion import finalize
             return finalize(document, environment), True
+        if no_listener_promotion.is_kind(document):
+            # A dict, not a path: the caller binds it to the target and runs no external proof.
+            return document, False
         return path, False
     except (OSError, ValueError, fleet_inspection.InspectionError):
         raise BaselineError("onboarding-refused") from None
@@ -327,7 +331,15 @@ def _execute_validated(value, environment, *, rpc, sftp, proof, clock, onboard):
     known_hosts = Path(value["known_hosts_path"])
     if value["mode"] == "deploy":
         config, first_onboarding = onboard(Path(value["promotion_config_path"]), environment)
-        value["promotion_config_path"] = str(config)
+        if isinstance(config, dict):
+            import no_listener_promotion
+            try:
+                no_listener_promotion.validate(config, value["target_identity"])
+            except no_listener_promotion.Refusal:
+                raise BaselineError("promotion-proof-mismatch") from None
+            value["no_public_listener"] = True
+        else:
+            value["promotion_config_path"] = str(config)
         if first_onboarding:
             started = int(clock())
             observed = proof(ROOT, config, environment)
@@ -369,10 +381,12 @@ def _execute_validated(value, environment, *, rpc, sftp, proof, clock, onboard):
             status = rpc(transport, known_hosts, "status", None, environment)
             _same_identity(status, identity, "applied")
             sftp(transport, known_hosts, environment)
-        observed = proof(ROOT, Path(value["promotion_config_path"]), environment)
-        if (observed.get("target_identity") != value["target_identity"]
-                or type(observed.get("observed_at")) is not int or observed["observed_at"] < applied_after):
-            raise BaselineError("promotion-proof-mismatch")
+        # With no published listener the fresh SSH/SFTP checks above are the whole promotion proof.
+        if not value.get("no_public_listener"):
+            observed = proof(ROOT, Path(value["promotion_config_path"]), environment)
+            if (observed.get("target_identity") != value["target_identity"]
+                    or type(observed.get("observed_at")) is not int or observed["observed_at"] < applied_after):
+                raise BaselineError("promotion-proof-mismatch")
         final_status = rpc(host, known_hosts, "status", None, environment)
         _same_identity(final_status, identity, "applied")
         confirmed = rpc(host, known_hosts, "confirm", {"generation": identity["generation"],
