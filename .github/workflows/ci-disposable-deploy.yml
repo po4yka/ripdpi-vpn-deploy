@@ -59,6 +59,24 @@ jobs:
             --zone "$SELECTED_ZONE" --mode "$SELECTED_MODE" \
             --work-dir "$RUNNER_TEMP/deployment-private" \
             --artifact-dir "$RUNNER_TEMP/deployment-artifact"
+      # A cancelled or timed-out step is killed about ten seconds after its first
+      # signal, before a destroy can finish. This step runs even then and completes
+      # the teardown that the stopped run recorded as owed.
+      - name: Finish provider cleanup after a stopped run
+        if: always()
+        timeout-minutes: 20
+        env:
+          UPCLOUD_TOKEN: ${{ secrets.UPCLOUD_TOKEN }}
+          SELECTED_DISTRO: ${{ inputs.distro }}
+          SELECTED_PROFILE: ${{ inputs.profile }}
+          SELECTED_ZONE: ${{ inputs.zone }}
+          SELECTED_MODE: ${{ inputs.mode }}
+        run: |
+          python3 scripts/ci-real-deploy.py \
+            --distro "$SELECTED_DISTRO" --profile "$SELECTED_PROFILE" \
+            --zone "$SELECTED_ZONE" --mode "$SELECTED_MODE" \
+            --work-dir "$RUNNER_TEMP/deployment-private" \
+            --artifact-dir "$RUNNER_TEMP/deployment-artifact" --resume-cleanup
       - name: Upload categorical result and encrypted failure recovery
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
