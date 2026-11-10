@@ -86,6 +86,21 @@
     not ansible_check_mode or
     'systemd-timesyncd.service' in ansible_facts.services
 
+- name: Remove stock cloud-image account sudo grants
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers.d/90-cloud-init-users
+    regexp: '^{{ item }}\s'
+    state: absent
+    validate: visudo -cf %s
+  loop: "{{ baseline_stock_accounts | difference([ansible_user] + baseline_ssh_extra_allowed_users) }}"
+
+- name: Remove stock cloud-image accounts
+  ansible.builtin.user:
+    name: "{{ item }}"
+    state: absent
+    remove: true
+  loop: "{{ baseline_stock_accounts | difference([ansible_user] + baseline_ssh_extra_allowed_users) }}"
+
 - name: Ensure sshd drop-in directory exists
   ansible.builtin.file:
     path: /etc/ssh/sshd_config.d
