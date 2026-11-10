@@ -36,6 +36,7 @@
     state: present
     update_cache: true
     cache_valid_time: 3600
+  register: _split_hop_ingress_packages
 
 - name: Ensure WireGuard configuration directory
   ansible.builtin.file:

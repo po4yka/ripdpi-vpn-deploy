@@ -132,3 +132,38 @@ print(json.dumps(consumer.operate('apply',payload)))
     assert 'fresh-check-runtime-mutation' not in result.stdout + result.stderr
     assert not state.parent.exists()
     assert {str(path): (path.read_bytes(), path.stat().st_ino) for path in root.rglob('*') if path.is_file()} == before
+
+
+@pytest.mark.parametrize('check,planned,activate', [
+    (True, True, False),
+    (True, False, True),
+    (False, True, True),
+])
+def test_fresh_split_hop_check_mode_skips_units_that_only_exist_as_a_plan(check, planned, activate):
+    # The package ships the wg-quick@ template and the loader unit is rendered in the same run.
+    environment = template_environment(DictLoader({}))
+    load = lambda path: yaml.safe_load((ROOT / 'ansible/roles' / path).read_text())
+    egress = {task['name']: task for task in load('split-hop-egress/tasks/enable.yml')}
+    ingress_boundary = {task['name']: task for task in load('split-hop-ingress/tasks/boundary.yml')}
+    ingress = {task['name']: task for task in load('split-hop-ingress/tasks/enable.yml')}
+    handler = next(task for task in load('split-hop-ingress/handlers/main.yml')
+                   if task['name'] == 'Restart split-hop ingress')
+    values = {
+        'ansible_check_mode': check,
+        egress['Install WireGuard tooling']['register']: {'changed': planned},
+        egress['Install split-hop egress boot policy loader']['register']: {'changed': planned},
+        ingress_boundary['Install split-hop ingress packages']['register']: {'changed': planned},
+        'split_hop_ingress': {'manage_service': True},
+        'split_hop_ingress_role_enabled': True,
+    }
+
+    def runs(task):
+        conditions = task.get('when', [])
+        conditions = conditions if isinstance(conditions, list) else [conditions]
+        return all(bool(environment.compile_expression(c)(**values)) for c in conditions)
+
+    for task in (egress['Enable split-hop egress boot policy loader'],
+                 egress['Enable + start wg-quick for the tunnel'],
+                 ingress['Enable split-hop ingress']):
+        assert runs(task) is activate, task['name']
+    assert runs(handler) is (not check)

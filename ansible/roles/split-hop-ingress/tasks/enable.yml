@@ -28,4 +28,7 @@
     enabled: true
     state: started
     daemon_reload: true
-  when: split_hop_ingress.manage_service | bool
+  when:
+    - split_hop_ingress.manage_service | bool
+    # A fresh check-mode run only plans wireguard-tools, which ships the wg-quick@ template.
+    - not (ansible_check_mode and _split_hop_ingress_packages.changed)

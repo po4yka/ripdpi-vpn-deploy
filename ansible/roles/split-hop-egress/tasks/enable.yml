@@ -39,6 +39,7 @@
     state: present
     update_cache: true
     cache_valid_time: 3600
+  register: split_hop_egress_packages
 
 - name: Reconcile the baseline-owned forwarding policy
   ansible.builtin.include_role:
@@ -167,12 +168,15 @@
     owner: root
     group: root
     mode: "0644"
+  register: split_hop_egress_policy_unit
 
+# A fresh check-mode run only plans the package and unit, so systemd cannot see them yet.
 - name: Enable split-hop egress boot policy loader
   ansible.builtin.systemd_service:
     name: split-hop-egress-policy.service
     enabled: true
     daemon_reload: true
+  when: not (ansible_check_mode and (split_hop_egress_packages.changed or split_hop_egress_policy_unit.changed))
 
 - name: Render WireGuard config for Node B
   ansible.builtin.template:
@@ -191,3 +195,4 @@
     enabled: true
     state: started
     daemon_reload: true
+  when: not (ansible_check_mode and split_hop_egress_packages.changed)
