@@ -27,7 +27,7 @@ jobs:
     name: CI dependency selection
     runs-on: ubuntu-24.04
     timeout-minutes: 3
-    # Read-only API access lets a main push reuse the full PR run of its exact tree.
+    # Read-only API access lets a main push reuse the PR run of its exact tree.
     permissions:
       contents: read  # check out the tested tree
       actions: read  # read the PR run and its job conclusions
@@ -284,7 +284,8 @@ jobs:
         run: ansible-playbook playbooks/site.yml --syntax-check -i 'localhost,'
 
   molecule:
-    timeout-minutes: 30
+    # The slowest group takes about 16 minutes; a hung run must fail early.
+    timeout-minutes: 25
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['molecule'] }}
     name: molecule (${{ matrix.roles }})
@@ -417,7 +418,7 @@ jobs:
   unit-tests:
     name: pytest group ${{ matrix.group }}/4
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       max-parallel: 4
@@ -558,7 +559,7 @@ jobs:
     name: native runtime integration (${{ matrix.part }}/4)
     runs-on: ubuntu-24.04
     # Setup, early AWG gates, one native part and cleanup share this budget.
-    timeout-minutes: 45
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       # Four disjoint parts; their union is the complete native runtime bundle.
@@ -679,7 +680,7 @@ jobs:
     name: native transport runtime acceptance (${{ matrix.group }}/4)
     runs-on: ubuntu-24.04
     # Cold artifact setup and all native recovery cases share the job budget.
-    timeout-minutes: 60
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
@@ -773,7 +774,7 @@ jobs:
     if: ${{ fromJSON(needs.selection.outputs.checks)['transport-native-acceptance'] }}
     name: native four-transport acceptance (${{ matrix.plan }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
