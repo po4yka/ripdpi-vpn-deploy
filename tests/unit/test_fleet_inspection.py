@@ -215,6 +215,24 @@ def test_restore_evidence_distinguishes_snapshot_and_drill_freshness():
     assert m.restore_evidence(raw, m.parse_time("2026-01-01T23:59:59Z"))["status"] == "unknown"
 
 
+def test_latest_backup_evidence_needs_fresh_local_and_integrity_success():
+    m = module()
+    now = m.parse_time("2026-01-03T00:00:00Z")
+    stage = {"result": "success", "attempted_at": "2026-01-02T03:29:00Z", "succeeded_at": "2026-01-02T03:30:00Z"}
+    raw = {"version": 1, "updated_at": "2026-01-02T03:31:00Z", "local_backup": stage, "integrity": stage,
+           "remote_copy": {"result": "failed"}}
+    expected = {"result": "success", "succeeded_at": "2026-01-02T03:30:00Z"}
+    result = m.latest_backup_evidence(raw, now)
+    assert result == {"status": "observed", "version": 1, "local_backup": expected, "integrity": expected}
+    # The controller re-derives the same evidence from the emitted report.
+    assert m.latest_backup_evidence(result, now) == result
+    assert m.latest_backup_evidence(raw, m.parse_time("2026-01-04T00:00:00Z"))["status"] == "stale"
+    failed = {**raw, "integrity": {"result": "failed", "failed_at": "2026-01-02T03:30:00Z"}}
+    assert m.latest_backup_evidence(failed, now)["status"] == "stale"
+    assert m.latest_backup_evidence({**raw, "version": 2}, now) == {"status": "unknown"}
+    assert m.latest_backup_evidence(raw, m.parse_time("2026-01-01T00:00:00Z")) == {"status": "unknown"}
+
+
 def test_manifest_output_does_not_copy_unapproved_fields():
     m = module()
     result = m.manifest_evidence({"schema_version": 2, "source_revision": "a" * 40,
