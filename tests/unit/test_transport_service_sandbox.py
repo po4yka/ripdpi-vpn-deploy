@@ -61,6 +61,13 @@ def test_transport_units_carry_the_sandbox_baseline() -> None:
             assert "AmbientCapabilities=" not in unit
 
 
+def test_public_proxy_units_restrict_socket_families() -> None:
+    for rel in ("ansible/roles/xray/templates/xray.service.j2",
+                "ansible/roles/hysteria/templates/hysteria-server.service.j2"):
+        unit = (REPO_ROOT / rel).read_text().splitlines()
+        assert "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK" in unit, rel
+
+
 def test_public_tls_coordinator_can_inspect_cross_uid_nginx_workers():
     unit = (REPO_ROOT / 'ansible/roles/nginx-xhttp/templates/vpn-public-tls.service.j2').read_text()
     capabilities = next(line.split('=', 1)[1].split() for line in unit.splitlines()
