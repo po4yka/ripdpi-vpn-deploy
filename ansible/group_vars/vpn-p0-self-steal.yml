@@ -3,6 +3,7 @@
 # Public listeners remain identical to vpn-p0-minimal: Xray TCP only, plus SSH from allowed CIDRs.
 
 vpn:
+  enable_destination_filter: true
   enable_xray_reality: true
   enable_reality_self_steal: true
   enable_nginx_xhttp: false
