@@ -26,12 +26,12 @@ artifact_evidence: null
 |---|---|---|---|
 | REQ-EDF-DEFAULT-OFF | SEC-1794158806186281 | `make snapshot-check` with the toggle disabled; `python3 -m pytest tests/unit/test_transport_destination_boundary.py tests/unit/test_transport_egress_role.py` | Local pass; Molecule pending in CI |
 | REQ-EDF-ENFORCE | SEC-1794158301568776 | `python3 -m pytest tests/unit/test_transport_destination_boundary.py tests/unit/test_transport_egress_role.py` over real sockets with a fixture gateway | Local pass |
-| REQ-EDF-ENFORCE | SEC-1794160777177995 | Staging run below: a listed name, its subdomain and a listed address are denied on P0, P1 and Hysteria2 | Partial; the deployment controller did not run |
+| REQ-EDF-ENFORCE | SEC-1794160777177995 | Staging run below: a listed name, its subdomain and a listed address are denied on P0, P1 and Hysteria2, with a one-hour soak | Pass for the step; the deployment controller did not run, so this is not deployment acceptance |
 | REQ-EDF-ALLOW | SEC-1794158301568776 | `python3 -m pytest tests/unit/test_transport_destination_boundary.py tests/unit/test_transport_egress_role.py` | Local pass |
-| REQ-EDF-INPUT | SEC-1794158806186281 | `python3 -m pytest tests/unit/test_transport_destination_boundary.py tests/unit/test_transport_egress_role.py`; generation-level rollback pending Molecule in CI | Local pass for parser, digest and source checks |
+| REQ-EDF-INPUT | SEC-1794158806186281 | `python3 -m pytest tests/unit/test_transport_destination_boundary.py tests/unit/test_transport_egress_role.py`; Molecule `transport-egress` scenario passed in CI on PR 541; the staging rollback below restored the prior generation | Pass |
 | REQ-EDF-CONTROL-PATHS | SEC-1794159684079419 | `python3 -m pytest tests/unit/test_transport_destination_boundary.py tests/unit/test_transport_egress_role.py` | Local pass |
 | REQ-EDF-PRIVACY | SEC-1794158301568776 | `python3 -m pytest tests/unit/test_transport_destination_boundary.py tests/unit/test_transport_egress_role.py` captures process output | Local pass |
-| REQ-EDF-BOUNDS | SEC-1794157748624712 | Staging run below: 66 MB resident and 94 MB peak in the normalizer, 138 MB peak for its service, on a 1 GB node with 363,724 names and 35,296 addresses | Measured on the smallest node class; the entry limit is not changed |
+| REQ-EDF-BOUNDS | SEC-1794157748624712 | Staging run below: 66 MB resident and 94 MB peak in the normalizer, 138 MB peak for its service, on a 1 GB node with 363,724 names and 35,296 addresses | Pass; the process peak is below the 137 MB local peak at the limits, so the limits stay |
 | REQ-EDF-COVERAGE | SEC-1794160231676642 | `docs/reference/transport-egress.md` and `docs/reference/client-notes.md`; `make check` | Local pass |
 
 ## Staging run 2026-11-09
