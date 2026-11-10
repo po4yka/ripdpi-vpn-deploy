@@ -197,6 +197,101 @@ def git(repo, *args):
     return subprocess.check_output(["git", "-C", str(repo), *args], text=True).strip()
 
 
+def selected(result):
+    return {name for name, on in result["checks"].items() if on}
+
+
+NATIVE = {"native-runtime", "transport-runtime-acceptance", "transport-native-acceptance"}
+
+
+def full_for(event):
+    """Every check; a pull request leaves the native lanes to the main push."""
+    return selection.ALL_CHECKS - (NATIVE if event == "pull_request" else set())
+
+
+def test_pull_request_leaves_native_lanes_to_main(repo):
+    base = git(repo, "rev-parse", "HEAD")
+    (repo / "ansible/input.yml").write_text("changed\n")
+    git(repo, "commit", "-qam", "role change")
+    assert selection.plan(["ansible/input.yml"])["checks"]["native-runtime"]
+    result = selection.plan_from_git(repo, "pull_request", base)
+    assert result["checks"]["molecule"] and not NATIVE & selected(result)
+
+
+def script_repo(repo):
+    """A synthetic tree with one consumer of each kind."""
+    files = {
+        "Makefile": "TOOL := ./scripts/variable.sh\n# scripts/unused.sh is prose here\n"
+                    "lint: build\n\t$(TOOL)\nbuild:\n\tscripts/made.sh\naudit:\n\tscripts/audited.sh\n"
+                    "ifeq ($(shell scripts/global.sh),1)\nendif\n",
+        ".github/workflows/ci.yml": "name: ci\njobs:\n  bats-test:\n    steps:\n      - run: make lint\n"
+                                    "  selection:\n    steps:\n      - run: python3 scripts/gate.py\n"
+                                    "  tf-test:\n    steps:\n      - uses: ./.github/actions/setup\n",
+        ".github/actions/setup/action.yml": "runs:\n  steps:\n    - run: scripts/action.sh\n",
+        "ansible/roles/x/tasks/main.yml": "- script: '{{ role_path }}/../../../scripts/{{ item }}'\n  loop: [role.sh]\n",
+        "scripts/library.py": "value = 1\n",
+        "scripts/tool.py": "import library\n",
+        "terraform/main.tf": "# runs scripts/tool.py\n",
+        "tests/unit/test_portable.py": "SCRIPT = 'scripts/tested.sh'\n",
+        "tests/unit/test_engine_native.py": "SCRIPT = 'scripts/engine.sh'\nRUN = ['make', 'audit']\n",
+        "scripts/tests/test_own.py": "SCRIPT = 'scripts/tested.sh'\n",
+        "docs/page.md": "Run scripts/unused.sh.\n",
+        "mise.toml": "# scripts/unused.sh\n",
+        "other/consumer.txt": "scripts/unknown.sh\n",
+    }
+    for name, text in files.items():
+        (repo / name).parent.mkdir(parents=True, exist_ok=True)
+        (repo / name).write_text(text)
+    git(repo, "add", ".")
+    return selection.script_graph(repo)
+
+
+@pytest.mark.parametrize("script,expected", [
+    ("unused.sh", (set(), set())),  # prose, comments and root configuration are not consumers
+    ("tested.sh", (set(), set())),  # the always-run pytest groups cover it
+    ("role.sh", ({"ansible"}, set())),  # named through a loop item, without its path
+    ("library.py", ({"terraform"}, set())),  # imported by a script that Terraform runs
+    ("engine.sh", ({"native"}, set())),
+    ("made.sh", ({"python-vpnd"}, {"bats-test"})),  # build is a prerequisite of the target a job runs
+    ("variable.sh", ({"python-vpnd"}, {"bats-test"})),
+    ("audited.sh", ({"python-vpnd", "native"}, set())),  # a native test runs the target
+    ("action.sh", (set(), {"tf-test"})),
+    ("gate.py", None),  # the selection job is not a selectable check
+    ("global.sh", None),  # evaluated by every make invocation
+    ("unknown.sh", None),
+    ("deleted.sh", (set(), set())),
+])
+def test_script_graph_follows_each_kind_of_consumer(repo, script, expected):
+    assert script_repo(repo)(f"scripts/{script}") == expected
+
+
+def test_changed_script_selects_its_consumers_or_full_ci():
+    graph = {"scripts/a.sh": ({"terraform"}, {"bats-test"}), "scripts/b.sh": None}.get
+    result = selection.plan(["scripts/a.sh", "scripts/tests/test_a.py"], script_consumers=graph)
+    assert selected(result) == selection.ALWAYS | selection.CHECKS["terraform"] | NATIVE | {"bats-test"}
+    assert all(selection.plan(["scripts/a.sh", "scripts/b.sh"], script_consumers=graph)["checks"].values())
+    assert all(selection.plan(["scripts/a.sh"])["checks"].values())
+
+
+def test_pull_request_uses_the_script_graph_and_main_does_not(repo):
+    script_repo(repo)
+    git(repo, "commit", "-qm", "tree")
+    base = git(repo, "rev-parse", "HEAD")
+    (repo / "scripts/role.sh").write_text("true\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "script")
+    result = selection.plan_from_git(repo, "pull_request", base)
+    assert result["mode"] == "selected" and result["checks"]["molecule"] and not result["checks"]["tf-test"]
+    assert all(selection.plan_from_git(repo, "push", base)["checks"].values())
+
+
+def test_live_gate_scripts_keep_full_ci_and_a_role_script_selects_ansible():
+    consumers = selection.script_graph(ROOT)
+    assert consumers("scripts/select-ci-checks.py") is None
+    assert consumers("scripts/check-ci-results.py") is None
+    assert "ansible" in consumers("scripts/template_render.py")[0]
+
+
 @pytest.fixture
 def repo(tmp_path):
     git(tmp_path, "init", "-q")
@@ -235,20 +330,18 @@ def test_git_range_covers_all_commits_renames_and_deleted_paths(repo):
     ],
 )
 def test_full_run_when_event_or_history_cannot_authorize_selection(repo, event, base):
-    assert all(selection.plan_from_git(repo, event, base)["checks"].values())
+    assert selected(selection.plan_from_git(repo, event, base)) == full_for(event)
 
 
 def test_empty_diff_and_nonancestor_base_force_full_run(repo):
     base = git(repo, "rev-parse", "HEAD")
-    assert all(selection.plan_from_git(repo, "pull_request", base)["checks"].values())
+    assert selected(selection.plan_from_git(repo, "pull_request", base)) == full_for("pull_request")
     (repo / "README.md").write_text("other branch\n")
     git(repo, "add", ".")
     git(repo, "commit", "-qm", "other branch")
     unrelated = git(repo, "rev-parse", "HEAD")
     git(repo, "checkout", "--detach", base)
-    assert all(
-        selection.plan_from_git(repo, "pull_request", unrelated)["checks"].values()
-    )
+    assert selected(selection.plan_from_git(repo, "pull_request", unrelated)) == full_for("pull_request")
 
 
 def test_merge_checkout_compares_with_advanced_base_without_losing_pr_changes(repo):
@@ -460,18 +553,20 @@ def selective_jobs(*ran):
 VPND = ("vpnd-test", "vpnd-lint", "vpnd-package", "vpnd-dependency", "vpnd-sbom")
 
 
-@pytest.mark.parametrize("path,ran,reused", [
-    ("docs/page.md", VPND, True),
-    ("docs/page.md", VPND[:-1], False),  # the push needs a check that the PR run skipped
-    ("scripts/tool.sh", VPND, False),  # an unmapped path needs every check
+@pytest.mark.parametrize("path,ran,repeated", [
+    ("docs/page.md", VPND, set()),
+    ("docs/page.md", VPND[:-1], {"vpnd-sbom"}),  # the push needs a check that the PR run skipped
+    # A script needs every check on main, whatever the PR's graph selected.
+    ("scripts/tool.sh", VPND, selection.ALL_CHECKS - selection.ALWAYS - set(VPND)),
+    ("ansible/role.yml", ("ansible", "molecule", "molecule-full-stack", "molecule-failure-scenarios", "image-scan"),
+     NATIVE),  # the lanes a pull request leaves to main
 ])
-def test_main_push_reuses_a_selective_run_only_when_it_covers_the_pushed_diff(repo, path, ran, reused):
+def test_main_push_repeats_only_what_the_selective_run_did_not_cover(repo, path, ran, repeated):
     sha, head = merged_history(repo, path=path)
     result = selection.plan_from_git(repo, "push", "", sha=sha,
                                      api=fake_api(sha, head, pages={1: selective_jobs(*ran)}))
-    assert result["mode"] == ("reused" if reused else "full")
-    assert {name for name, selected in result["checks"].items() if selected} == (
-        selection.ALWAYS if reused else selection.ALL_CHECKS)
+    assert result["mode"] == "reused"
+    assert selected(result) == selection.ALWAYS | repeated
 
 
 def test_reuse_job_names_match_the_workflow():

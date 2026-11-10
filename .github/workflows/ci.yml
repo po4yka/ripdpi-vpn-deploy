@@ -28,6 +28,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     # Read-only API access lets a main push reuse the PR run of its exact tree.
+    # Pull requests skip the native lanes; the main push after the merge runs them.
     permissions:
       contents: read  # check out the tested tree
       actions: read  # read the PR run and its job conclusions
