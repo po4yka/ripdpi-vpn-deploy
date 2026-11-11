@@ -21,7 +21,7 @@ Deny recipient connections to operator-selected unsafe names and address ranges 
 - [x] SEC-1794159684079419 Refuse deny data that blocks the runtime canary or REALITY target at candidate admission, with tests #feature @item:SEC-1794156917837664
 - [x] SEC-1794160231676642 Document inputs, coverage limits and the client-side block for direct traffic #feature @item:SEC-1794156917837664
 - [x] SEC-1794160777177995 Enable on staging, verify name delivery and denial on P0, P1 and Hysteria2, and record soak results #feature @item:SEC-1794156917837664
-- [ ] SEC-1794161271796231 Accept on a client device and enable per production profile under separate deployment authorization #feature @item:SEC-1794156917837664
+- [x] SEC-1794161271796231 Accept on a client device and enable per production profile under separate deployment authorization #feature @item:SEC-1794156917837664
 
 ## Verification
 
