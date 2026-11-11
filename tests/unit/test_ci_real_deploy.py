@@ -464,3 +464,16 @@ def test_bootstrap_publishes_current_ownership_documents(tmp_path, monkeypatch):
     assert [entry["mode"] for entry in calls] == ["check", "deploy"]
     assert all(entry["schema_version"] == 3 and entry["intent"] == "ownership"
                and entry["inventory_section"] == "vpn" for entry in calls)
+
+
+@pytest.mark.parametrize("profile", ["vpn-device-full-staging.yml", "vpn-split-hop-ingress-staging.yml",
+                                     "vpn-split-hop-family-egress-staging.yml"])
+@pytest.mark.parametrize("port,expected", [(8443, "https://vpn-ci-staging-x.ci.test:8443"),
+                                           (443, "https://vpn-ci-staging-x.ci.test")])
+def test_disposable_staging_profiles_serve_the_generated_masquerade_origin(profile, port, expected):
+    # Regression: without it the first staging deploy refused on public_site_canonical_url.
+    from template_render import render_fragment
+    value = yaml.safe_load((ROOT / "ansible/group_vars" / profile).read_text())["public_site_canonical_url"]
+    rendered = render_fragment("staging-origin.txt", value, {"nginx_xhttp": {"server_name": "vpn-ci-staging-x.ci.test"},
+                                                              "nginx_xhttp_public_port": port})
+    assert rendered == expected
