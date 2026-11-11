@@ -4,13 +4,16 @@
     name: runtime-release
     tasks_from: retire
   vars:
-    runtime_retire_units:
-      - wg-quick@{{ split_hop_egress.wg_interface }}.service
-      - split-hop-egress-policy.service
-    runtime_retire_paths:
-      - /etc/wireguard/{{ split_hop_egress.wg_interface }}.conf
-      - '{{ split_hop_egress.policy_path }}'
-      - /etc/systemd/system/split-hop-egress-policy.service
+    # Node A's enabled ingress role owns the same shop0 tunnel unit and config.
+    _split_hop_tunnel_retired: >-
+      {{ not ((vpn | default({})).enable_split_hop_ingress | default(false) | bool
+      and not (vpn_subscription_only | default(false) | bool)) }}
+    runtime_retire_units: >-
+      {{ (['wg-quick@' ~ split_hop_egress.wg_interface ~ '.service'] if _split_hop_tunnel_retired | bool else [])
+      + ['split-hop-egress-policy.service'] }}
+    runtime_retire_paths: >-
+      {{ (['/etc/wireguard/' ~ split_hop_egress.wg_interface ~ '.conf'] if _split_hop_tunnel_retired | bool else [])
+      + [split_hop_egress.policy_path, '/etc/systemd/system/split-hop-egress-policy.service'] }}
 
 - name: Inspect installed packages for scoped policy retirement
   ansible.builtin.package_facts:
