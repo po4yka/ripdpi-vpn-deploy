@@ -7,6 +7,10 @@ firewall_forward_interface_contract: []
 # This grants no public listener and stays inert on other nodes.
 firewall_tailnet_collector_ingress: {}
 
+# Exact AmneziaWG IPv6 uplink when the provider attaches IPv6 to a separate
+# interface; empty keeps IPv6 on the IPv4 uplink. Never inferred from facts.
+firewall_awg_uplink6_interface: ""
+
 # Empty selects the observed IPv6 route, then IPv4 for first IPv6 acquisition.
 firewall_dhcpv6_uplink_interface: ""
 # Exact canonical IPv6 server addresses for legacy unicast; no prefixes.

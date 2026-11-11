@@ -1,22 +1,29 @@
 ---
-- name: Admit effective AmneziaWG uplink name
+- name: Admit effective AmneziaWG uplink names
   ansible.builtin.assert:
     that:
-      - _awg_uplink is string
-      - _awg_uplink is match('^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$')
-      - _awg_uplink not in (amneziawg_secrets.instances | map(attribute='name') | list)
+      - item is string
+      - item is match('^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$')
+      - item not in (amneziawg_secrets.instances | map(attribute='name') | list)
+      - item != 'lo'
+      - item != ((split_hop_ingress | default({})).wg_interface | default(''))
     fail_msg: awg-invalid-uplink-interface
+  loop: "{{ [_awg_uplink, _awg_uplink6] }}"
   no_log: true
   vars:
     _awg_uplink: "{{ firewall_awg_uplink_interface | default(ansible_facts.get('default_ipv4', {}).get('interface', '')) }}"
+    _awg_uplink6: "{{ firewall_awg_uplink6_interface | default('', true) or _awg_uplink }}"
   when: awg_uplink_required | default(vpn.enable_amneziawg | default(false)) | bool
 
-- name: Require public dual-stack routes on the exact AmneziaWG uplink
+- name: Require public IPv4 and IPv6 routes on the exact AmneziaWG uplinks
   ansible.builtin.script:
     cmd: >-
-      {{ role_path }}/../../../scripts/awg_uplink.py --interface
-      {{ firewall_awg_uplink_interface | default(ansible_facts.get('default_ipv4', {}).get('interface', '')) | quote }}
+      {{ role_path }}/../../../scripts/awg_uplink.py --interface {{ _awg_uplink | quote }}
+      --interface6 {{ _awg_uplink6 | quote }}
     executable: python3
+  vars:
+    _awg_uplink: "{{ firewall_awg_uplink_interface | default(ansible_facts.get('default_ipv4', {}).get('interface', '')) }}"
+    _awg_uplink6: "{{ firewall_awg_uplink6_interface | default('', true) or _awg_uplink }}"
   changed_when: false
   check_mode: false
   when: awg_uplink_required | default(vpn.enable_amneziawg | default(false)) | bool

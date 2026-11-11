@@ -248,3 +248,46 @@ def test_firewall_retention_admits_distro_starter_without_executable_owned_autho
     assert len(conditions) == 2
     assert all(templar.template(trust_as_template('{{ ' + condition + ' }}'))
                for condition in conditions) is admitted
+
+
+@pytest.mark.parametrize('interface6,code', [('eth1', 0), (None, 1), ('eth0', 1)])
+def test_separate_ipv6_uplink_is_admitted_only_when_named(monkeypatch, interface6, code):
+    # Providers such as UpCloud route IPv4 via eth0 and IPv6 via a separate eth1.
+    routes = {'4': [{'dev': 'eth0', 'prefsrc': '8.8.8.8'}],
+              '6': [{'dev': 'eth1', 'prefsrc': '2001:4860:4860::8888', 'gateway': 'fe80::1'}]}
+    defaults = []
+
+    def run(argv, **kwargs):
+        if argv[3:5] == ['route', 'get']:
+            return SimpleNamespace(stdout=json.dumps(routes[argv[2][1]]))
+        defaults.append(argv[-1])
+        return SimpleNamespace(stdout=json.dumps([{'dst': 'default', 'protocol': 'static'}]))
+
+    monkeypatch.setattr(awg_uplink.subprocess, 'run', run)
+    argv = ['awg_uplink.py', '--interface', 'eth0'] + (['--interface6', interface6] if interface6 else [])
+    monkeypatch.setattr(awg_uplink.sys, 'argv', argv)
+    assert awg_uplink.main() == code
+    assert defaults == (['eth1'] if code == 0 else [])
+
+
+@pytest.mark.parametrize('uplink6,split_hop,admitted', [
+    (None, False, True), ('eth1', False, True), ('lo', False, False),
+    ('awg0', False, False), ('shop0', True, False), ('bad name', False, False)])
+def test_uplink_names_are_admitted_without_firewall_role_defaults(tmp_path, uplink6, split_hop, admitted):
+    # The amneziawg role imports this task without the firewall role's defaults.
+    import os, subprocess, sys, yaml
+    tasks = yaml.safe_load((ROOT / 'ansible/roles/firewall/tasks/awg-uplink.yml').read_text())
+    variables = {'ansible_python_interpreter': sys.executable, 'awg_uplink_required': True,
+                 'amneziawg_secrets': {'instances': [{'name': 'awg0'}]}, 'firewall_awg_uplink_interface': 'eth0'}
+    if uplink6 is not None:
+        variables['firewall_awg_uplink6_interface'] = uplink6
+    if split_hop:
+        variables['split_hop_ingress'] = {'wg_interface': 'shop0'}
+    play = [{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False, 'vars': variables,
+             'tasks': [tasks[0]]}]
+    path = tmp_path / 'play.yml'
+    path.write_text(yaml.safe_dump(play))
+    environment = {key: value for key, value in os.environ.items() if not key.startswith('ANSIBLE_')}
+    result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(path)], capture_output=True, text=True,
+                            timeout=60, env={**environment, 'ANSIBLE_LOCAL_TEMP': str(tmp_path / 'tmp')})
+    assert (result.returncode == 0) is admitted, result.stdout[-400:]
