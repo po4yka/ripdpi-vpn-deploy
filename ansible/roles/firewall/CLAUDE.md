@@ -138,7 +138,7 @@ the historical output-chain `policy accept`. `logged` adds counters only, and
 `strict` changes host-originated egress to default-drop while preserving
 enabled transport data-plane needs.
 
-**AWG forwarding is uplink-scoped** — the forward chain is always default-drop. New packets may only move from an AWG interface to `firewall_awg_uplink_interface` (or the fact-derived default route interface, or the split-hop tunnel in family scope); reply packets use `established,related`. Never restore a broad forward `policy accept`.
+**AWG forwarding is uplink-scoped** — the forward chain is always default-drop. New packets may only move from an AWG interface to `firewall_awg_uplink_interface` (or the fact-derived default route interface, or the split-hop tunnel in family scope); reply packets use `established,related`. An explicit `firewall_awg_uplink6_interface` (never inferred from facts) pins IPv6 forwarding and NAT to a separate provider interface and IPv4 to the IPv4 uplink; when it is empty or equal, the ruleset is unchanged. Never restore a broad forward `policy accept`.
 
 **Split-hop family scope moves AWG onto the tunnel** — with
 `vpn.split_hop_family_egress`, `awg_forward_interface` is the split-hop interface

@@ -135,6 +135,7 @@ NON_SECRET_TOPLEVEL = {
     "_multi",
     "_network_exposure_plan",
     "firewall_awg_uplink_interface",
+    "firewall_awg_uplink6_interface",
     "firewall_effective_ssh_ports",
     "public_ifaces",
     "public_listener_manifest",

@@ -485,3 +485,52 @@ def test_provider_nat_range_is_applied_to_every_awg_instance_without_input_chang
     assert constrained.count("masquerade to :32768-60999") == len(
         variables["amneziawg_secrets"]["instances"]
     )
+
+
+def test_awg_separate_ipv6_uplink_pins_each_family_to_its_interface():
+    vars_ = ctr.merge_render_vars()
+    vars_["vpn"] = {**vars_["vpn"], "enable_amneziawg": True}
+    vars_["firewall_awg_uplink_interface"] = "eth0"
+    same = ctr.render_template(TEMPLATE, vars_)
+    # Naming the IPv4 uplink again keeps today's ruleset byte for byte.
+    assert ctr.render_template(TEMPLATE, {**vars_, "firewall_awg_uplink6_interface": "eth0"}) == same
+    rendered = ctr.render_template(TEMPLATE, {**vars_, "firewall_awg_uplink6_interface": "eth1"})
+    forward = rendered[rendered.index("  chain forward {") : rendered.index("  chain output {")]
+    accept = forward.index("ct state established,related accept")
+    for rule in ('iifname "awg0" meta nfproto ipv4 oifname != "eth0" counter drop',
+                 'iifname "awg0" meta nfproto ipv6 oifname != "eth1" counter drop',
+                 'oifname "awg0" meta nfproto ipv4 iifname != "eth0" counter drop',
+                 'oifname "awg0" meta nfproto ipv6 iifname != "eth1" counter drop'):
+        assert forward.index(rule) < accept
+    for rule in ('ct state new iifname "awg0" meta nfproto ipv4 oifname "eth0" accept',
+                 'ct state new iifname "awg0" meta nfproto ipv6 oifname "eth1" accept'):
+        assert forward.index(rule) > accept
+    assert 'ct state new iifname "awg0" oifname' not in forward
+    nat = rendered[rendered.index("table inet nat {"):]
+    assert 'iifname "awg0" meta nfproto ipv4 oifname "eth0"' in nat
+    assert 'iifname "awg0" meta nfproto ipv6 oifname "eth1"' in nat
+    assert 'comment "awg-nat-awg0"' in nat and 'comment "awg-nat-v6-awg0"' in nat
+    assert 'iifname "awg0" oifname' not in nat
+
+
+def test_split_hop_family_scope_keeps_both_families_on_the_tunnel():
+    vars_ = ctr.merge_render_vars()
+    vars_["vpn"] = {**vars_["vpn"], "enable_amneziawg": True, "enable_split_hop_ingress": True,
+                    "split_hop_family_egress": True}
+    vars_["firewall_awg_uplink_interface"] = "eth0"
+    same = ctr.render_template(TEMPLATE, vars_)
+    assert ctr.render_template(TEMPLATE, {**vars_, "firewall_awg_uplink6_interface": "eth1"}) == same
+    assert '"eth1"' not in same
+
+
+def test_awg_separate_ipv6_uplink_keeps_the_provider_nat_port_range_per_family():
+    vars_ = ctr.merge_render_vars()
+    vars_["vpn"] = {**vars_["vpn"], "enable_amneziawg": True}
+    vars_.update(firewall_awg_uplink_interface="eth0", firewall_awg_uplink6_interface="eth1",
+                 terraform_nat_source_port_range="32768-60999")
+    nat = ctr.render_template(TEMPLATE, vars_).split("table inet nat {", 1)[1]
+    for family, uplink, suffix in (("ipv4", "eth0", ""), ("ipv6", "eth1", "v6-")):
+        assert (f'iifname "awg0" meta nfproto {family} oifname "{uplink}" meta l4proto {{ tcp, udp }} counter '
+                f'masquerade to :32768-60999 comment "awg-nat-{suffix}awg0"') in nat
+        assert (f'iifname "awg0" meta nfproto {family} oifname "{uplink}" meta l4proto != {{ tcp, udp }} counter '
+                f'masquerade comment "awg-nat-other-{suffix}awg0"') in nat

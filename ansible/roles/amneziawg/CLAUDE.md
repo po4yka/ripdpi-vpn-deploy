@@ -48,7 +48,8 @@ This applies to routed peers as well as devices; overlapping pools remain valid
 when their peer claims do not contain a server address or another peer claim.
 MTU resolves instance > technical cohort > role default > 1420, with integer
 bounds 1280–1420. Server, standalone, bundle and liveness use that value.
-Before mutation the exact uplink needs an IPv6 default route with a global
+Before mutation the exact IPv6 uplink (`firewall_awg_uplink6_interface`, else the
+IPv4 uplink) needs an IPv6 default route with a global
 source. Kernel-owned RA requires per-interface `accept_ra=2`; networkd-owned RA
 requires kernel `accept_ra=0` and matching typed NDisc source and route evidence.
 The host owner must persist explicit networkd RA enablement before forwarding.

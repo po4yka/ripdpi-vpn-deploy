@@ -48,6 +48,10 @@ destroy table inet nat
 {% set split_hop_family = ((vpn.enable_split_hop_ingress | default(false) | bool) and (split_hop_ingress_role_enabled | default(true) | bool) and (vpn.split_hop_family_egress | default(false) | bool)) %}
 {# Family split-hop moves AWG forwarding and NAT from the uplink onto the B-initiated tunnel. #}
 {% set awg_forward_interface = split_hop_ingress.wg_interface if split_hop_family else awg_uplink_interface %}
+{# An explicit IPv6 uplink pins each address family to its own provider interface. #}
+{% set awg_uplink6_interface = firewall_awg_uplink6_interface | default('', true) or awg_uplink_interface %}
+{% set awg_forward6_interface = split_hop_ingress.wg_interface if split_hop_family else awg_uplink6_interface %}
+{% set awg_split_uplinks = awg_forward6_interface != awg_forward_interface %}
 {% set split_hop_guard_uids = [probe_matrix_runtime_users.xray_uid, probe_matrix_runtime_users.mtg_uid] + ((firewall_split_hop_family_uids | default([])) if split_hop_family else []) %}
 {% set dhcpv6_uplink = firewall_dhcpv6_uplink_interface | default('') or ansible_facts.get('default_ipv6', {}).get('interface', '') or ansible_facts.get('default_ipv4', {}).get('interface', '') %}
 {% set dhcpv6_servers = firewall_dhcpv6_server_addresses | default([]) %}
@@ -205,8 +209,15 @@ table inet filter {
 {% if split_hop_family %}
     iifname "{{ inst.name }}" meta nfproto ipv6 reject with icmpv6 type admin-prohibited comment "split-hop-family-boundary-v6"
 {% endif %}
+{% if awg_split_uplinks %}
+    iifname "{{ inst.name }}" meta nfproto ipv4 oifname != "{{ awg_forward_interface }}" counter drop
+    iifname "{{ inst.name }}" meta nfproto ipv6 oifname != "{{ awg_forward6_interface }}" counter drop
+    oifname "{{ inst.name }}" meta nfproto ipv4 iifname != "{{ awg_forward_interface }}" counter drop
+    oifname "{{ inst.name }}" meta nfproto ipv6 iifname != "{{ awg_forward6_interface }}" counter drop
+{% else %}
     iifname "{{ inst.name }}" oifname != "{{ awg_forward_interface }}" counter drop
     oifname "{{ inst.name }}" iifname != "{{ awg_forward_interface }}" counter drop
+{% endif %}
 {% if firewall_awg_destination_deny_v4 %}
     iifname "{{ inst.name }}" ip daddr { {{ firewall_awg_destination_deny_v4 | join(', ') }} } counter drop comment "awg-private-destination"
 {% endif %}
@@ -232,7 +243,12 @@ table inet filter {
 {% if vpn.enable_amneziawg | default(false) %}
 {% for inst in _awg_inst %}
     # New client traffic may leave only via the configured uplink; replies use conntrack above.
+{% if awg_split_uplinks %}
+    ct state new iifname "{{ inst.name }}" meta nfproto ipv4 oifname "{{ awg_forward_interface }}" accept
+    ct state new iifname "{{ inst.name }}" meta nfproto ipv6 oifname "{{ awg_forward6_interface }}" accept
+{% else %}
     ct state new iifname "{{ inst.name }}" oifname "{{ awg_forward_interface }}" accept
+{% endif %}
 {% endfor %}
 {% endif %}
 {% if vpn.enable_split_hop_egress | default(false) %}
@@ -340,12 +356,15 @@ table inet nat {
   chain postrouting {
     type nat hook postrouting priority 100;
 {% for inst in _awg_inst %}
+{% for family, uplink, suffix in ([('ipv4', awg_forward_interface, ''), ('ipv6', awg_forward6_interface, 'v6-')] if awg_split_uplinks else [('', awg_forward_interface, '')]) %}
+{% set match = 'meta nfproto ' ~ family ~ ' ' if family else '' %}
 {% if terraform_nat_source_port_range | default('') != '' %}
-    iifname "{{ inst.name }}" oifname "{{ awg_forward_interface }}" meta l4proto { tcp, udp } counter masquerade to :{{ terraform_nat_source_port_range }} comment "awg-nat-{{ inst.name }}"
-    iifname "{{ inst.name }}" oifname "{{ awg_forward_interface }}" meta l4proto != { tcp, udp } counter masquerade comment "awg-nat-other-{{ inst.name }}"
+    iifname "{{ inst.name }}" {{ match }}oifname "{{ uplink }}" meta l4proto { tcp, udp } counter masquerade to :{{ terraform_nat_source_port_range }} comment "awg-nat-{{ suffix }}{{ inst.name }}"
+    iifname "{{ inst.name }}" {{ match }}oifname "{{ uplink }}" meta l4proto != { tcp, udp } counter masquerade comment "awg-nat-other-{{ suffix }}{{ inst.name }}"
 {% else %}
-    iifname "{{ inst.name }}" oifname "{{ awg_forward_interface }}" counter masquerade comment "awg-nat-{{ inst.name }}"
+    iifname "{{ inst.name }}" {{ match }}oifname "{{ uplink }}" counter masquerade comment "awg-nat-{{ suffix }}{{ inst.name }}"
 {% endif %}
+{% endfor %}
 {% endfor %}
   }
 {% endif %}

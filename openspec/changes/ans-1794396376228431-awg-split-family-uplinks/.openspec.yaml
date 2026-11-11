@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-11-11
+goal: ANS-1794396376228431 Let AmneziaWG use separate IPv4 and IPv6 uplinks

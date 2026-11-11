@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Read-only admission of the exact public dual-stack AWG uplink."""
+"""Read-only admission of the exact public AWG uplinks for IPv4 and IPv6.
+
+The IPv6 uplink defaults to the IPv4 one; providers that attach IPv6 to a
+separate interface name it with ``--interface6``.
+"""
 from __future__ import annotations
 
 import argparse
@@ -91,21 +95,24 @@ def admit_ra_owner(interface, route, accept_ra):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--interface', required=True)
+    parser.add_argument('--interface6')
     args = parser.parse_args()
+    interfaces = {4: args.interface, 6: args.interface6 or args.interface}
     try:
         for version, target in ((4, '1.1.1.1'), (6, '2606:4700:4700::1111')):
+            interface = interfaces[version]
             result = subprocess.run(['ip', '-j', f'-{version}', 'route', 'get', target],
                                     check=True, capture_output=True, text=True, timeout=5)
-            admit(json.loads(result.stdout), args.interface, version)
+            admit(json.loads(result.stdout), interface, version)
             if version == 6:
-                defaults = subprocess.run(['ip', '-j', '-6', 'route', 'show', 'default', 'dev', args.interface],
+                defaults = subprocess.run(['ip', '-j', '-6', 'route', 'show', 'default', 'dev', interface],
                                           check=True, capture_output=True, text=True, timeout=5)
                 routes = json.loads(defaults.stdout)
                 if not routes:
                     raise ValueError('awg-ipv6-default-route-unavailable')
                 if any(route.get('protocol') == 'ra' for route in routes):
-                    value = Path('/proc/sys/net/ipv6/conf', args.interface, 'accept_ra').read_text().strip()
-                    admit_ra_owner(args.interface, json.loads(result.stdout)[0], value)
+                    value = Path('/proc/sys/net/ipv6/conf', interface, 'accept_ra').read_text().strip()
+                    admit_ra_owner(interface, json.loads(result.stdout)[0], value)
     except (ValueError, KeyError, TypeError, OSError, subprocess.SubprocessError):
         print('awg-dualstack-uplink-unavailable', file=sys.stderr)
         return 1
