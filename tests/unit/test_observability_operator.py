@@ -305,6 +305,55 @@ def test_status_report_requires_mode_matched_units(monkeypatch, mode, unit_mode,
             module._remote(args, {}, b'payload', operation='status')
 
 
+@pytest.mark.parametrize('load_state,active_state,expected_state,expected_unit', [
+    ('not-found', 'inactive', 'healthy', 'not-installed'),
+    ('loaded', 'inactive', 'degraded', 'inactive'),
+    ('loaded', 'active', 'healthy', 'active'),
+])
+def test_control_plane_status_ignores_only_an_uninstalled_liveness_adapter(
+        monkeypatch, capsys, load_state, active_state, expected_state, expected_unit):
+    from types import SimpleNamespace
+    import urllib.request
+
+    module = _operator_module()
+    liveness = 'observability-protocol-liveness-adapter.timer'
+    def systemctl(argv, **kwargs):
+        if '--property=Environment' in argv:
+            return SimpleNamespace(returncode=0, stdout='OBSERVABILITY_NOTIFICATION_MODE=panel-only\n')
+        if '--property=LoadState' in argv:
+            assert argv[2] == liveness
+            return SimpleNamespace(returncode=0, stdout=load_state + '\n')
+        return SimpleNamespace(returncode=0, stdout=(active_state if argv[2] == liveness else 'active') + '\n')
+    monkeypatch.setattr(subprocess, 'run', systemctl)
+    monkeypatch.setattr(urllib.request, 'build_opener', lambda *_: SimpleNamespace(open=lambda url, **kw: _DrillResponse(200, {})))
+    exec(compile(module._status_program('control-plane'), 'status-program', 'exec'), {})
+    report = json.loads(capsys.readouterr().out)
+    assert report['state'] == expected_state
+    assert report['units'][liveness] == expected_unit
+
+
+@pytest.mark.parametrize('unit,accepted', [
+    ('observability-protocol-liveness-adapter.timer', True),
+    ('observability-prometheus.service', False),
+])
+def test_status_report_accepts_not_installed_only_for_the_optional_unit(monkeypatch, unit, accepted):
+    from types import SimpleNamespace
+
+    module = _operator_module()
+    units = {name: 'active' for name in module._status_units('control-plane', 'panel-only')}
+    units[unit] = 'not-installed'
+    report = {'schema_version': 1, 'component': 'control-plane', 'state': 'healthy',
+              'notification_mode': 'panel-only', 'units': units}
+    monkeypatch.setattr(module.fleet_inspection, 'ssh_command', lambda *_: ['ssh'])
+    monkeypatch.setattr(module.fleet_inspection, 'bounded_command', lambda *a, **kw: json.dumps(report).encode())
+    args = SimpleNamespace(component='control-plane', known_hosts=Path('/unused'))
+    if accepted:
+        assert module._remote(args, {}, b'payload', operation='status') == report
+    else:
+        with pytest.raises(module.OperatorError, match='remote report rejected'):
+            module._remote(args, {}, b'payload', operation='status')
+
+
 def _calls(operator: dict[str, object]) -> list[dict[str, object]]:
     path = operator["log"]
     assert isinstance(path, Path)

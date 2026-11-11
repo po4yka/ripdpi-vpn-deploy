@@ -62,6 +62,8 @@ STATUS_UNITS = {
     ),
     "kuma": ("observability-kuma.service", "nginx.service"),
 }
+# The protocol-liveness adapter is opt-in; its disabled role leaves no unit file behind.
+OPTIONAL_STATUS_UNITS = frozenset({"observability-protocol-liveness-adapter.timer"})
 CONTROL_PLANE_ALERTING_UNITS = frozenset({
     "observability-alertmanager.service", "observability-telegram-relay.service",
     "observability-silence-gateway.service", "observability-push-delivery.timer",
@@ -827,6 +829,7 @@ import urllib.request
 
 COMPONENT = {component!r}
 UNITS = {units!r}
+OPTIONAL_UNITS = {sorted(OPTIONAL_STATUS_UNITS)!r}
 READINESS = {readiness!r}
 notification_mode = None
 if COMPONENT == "control-plane":
@@ -849,6 +852,15 @@ if COMPONENT == "control-plane":
 states = {{}}
 for unit in UNITS:
     try:
+        if unit in OPTIONAL_UNITS:
+            loaded = subprocess.run(
+                ["/usr/bin/systemctl", "show", unit, "--property=LoadState", "--value"],
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                text=True, timeout=5, check=False,
+            )
+            if loaded.returncode == 0 and loaded.stdout.strip() == "not-found":
+                states[unit] = "not-installed"
+                continue
         result = subprocess.run(
             ["/usr/bin/systemctl", "show", unit, "--property=ActiveState", "--value"],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
@@ -869,7 +881,9 @@ for url in READINESS:
             ready.append(valid)
     except Exception:
         ready.append(False)
-healthy = (notification_mode != "unknown" and all(value == "active" for value in states.values()) and all(ready))
+healthy = (notification_mode != "unknown"
+           and all(value == "active" or (value == "not-installed" and unit in OPTIONAL_UNITS) for unit, value in states.items())
+           and all(ready))
 report = {{"schema_version": 1, "component": COMPONENT, "state": "healthy" if healthy else "degraded", "units": states}}
 if COMPONENT == "control-plane":
     report["notification_mode"] = notification_mode
@@ -1046,7 +1060,8 @@ def _remote(
                     "deactivating",
                     "unknown",
                 }
-                for state in units.values()
+                and not (state == "not-installed" and unit in OPTIONAL_STATUS_UNITS)
+                for unit, state in units.items()
             )
         ):
             raise OperatorError("remote report rejected")
