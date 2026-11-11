@@ -57,7 +57,7 @@ class Runner:
                     }
                 )
             )
-            (root / "colima.yaml").chmod(0o600)
+            # Like Colima 0.10, leave the config mode to the caller's umask.
             return b""
         if len(command) >= 4 and command[:3] == ("colima", "status", "--profile"):
             profile = command[3]

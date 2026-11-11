@@ -536,7 +536,13 @@ def _prepare_owned(
     )
     started = False
     try:
-        runner(start, timeout=600)
+        # Colima writes the profile config with the caller's umask; the
+        # executor contract requires an owner-only config.
+        previous_umask = os.umask(0o077)
+        try:
+            runner(start, timeout=600)
+        finally:
+            os.umask(previous_umask)
         started = True
         _, config_payload, _ = _config(home, profile)
         status_payload, mounts = _inspect(profile, home=home, runner=runner)
