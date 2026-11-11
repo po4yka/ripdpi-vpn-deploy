@@ -321,3 +321,16 @@ def test_retained_publisher_override_requires_revocation(tmp_path):
         validator.validate(write_yaml(tmp_path, {'vpn_device_retained_publisher': True}))
     validator.validate(write_yaml(tmp_path, {'vpn_device_retained_publisher': True,
         'vpn_device_revocation': {'operation_id': '11111111-1111-4111-8111-111111111111', 'intent_sha256': 'a'*64}}))
+
+
+@pytest.mark.parametrize("value,accepted", [
+    ("eth1", True), ("ens4", True), ("", False), ("eth1; flush", False), ("a" * 16, False), (["eth1"], False),
+])
+def test_awg_ipv6_uplink_override_is_one_safe_interface_name(tmp_path, value, accepted):
+    # Providers that attach IPv6 to a separate NIC name it per host, e.g. UpCloud eth1.
+    path = write_yaml(tmp_path, {"firewall_awg_uplink6_interface": value})
+    if accepted:
+        validator.validate(path)
+    else:
+        with pytest.raises(ValueError, match="safe Linux interface name"):
+            validator.validate(path)

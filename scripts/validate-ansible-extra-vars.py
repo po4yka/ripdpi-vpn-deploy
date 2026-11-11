@@ -17,6 +17,7 @@ from public_site_inputs import read_site
 ALLOWED_KEYS = {
     "ansible_host",
     "ansible_port",
+    "firewall_awg_uplink6_interface",
     "firewall_forward_interface_contract",
     "firewall_tailnet_collector_ingress",
     "public_site_canonical_url",
@@ -147,6 +148,11 @@ def validate(path: Path) -> None:
 
     if "firewall_tailnet_collector_ingress" in document:
         validate_collector_ingress(document['firewall_tailnet_collector_ingress'])
+
+    if "firewall_awg_uplink6_interface" in document:
+        value = document["firewall_awg_uplink6_interface"]
+        if not isinstance(value, str) or INTERFACE_NAME.fullmatch(value) is None:
+            raise ValueError("firewall_awg_uplink6_interface is not a safe Linux interface name")
 
     if "firewall_forward_interface_contract" in document:
         contracts = document["firewall_forward_interface_contract"]
