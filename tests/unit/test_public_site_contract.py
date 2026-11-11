@@ -853,13 +853,14 @@ def test_transport_profiles_share_one_canonical_site_identity() -> None:
 def _neutral_committed_origin(profile: str, url: str) -> bool:
     from transport_semantics import PUBLIC_ORIGIN_TEMPLATE
     return url == ("https://vpn.example.com:8443" if profile == "all.yml" else "https://vpn.example.com") or (
-        profile == "vpn-ci-p0p1p2.yml"
+        profile in {"vpn-ci-p0p1p2.yml", "vpn-device-full-staging.yml", "vpn-split-hop-ingress-staging.yml",
+                    "vpn-split-hop-family-egress-staging.yml"}
         and url == PUBLIC_ORIGIN_TEMPLATE
     )
 
 
 def test_committed_profiles_carry_only_the_neutral_placeholder_origin() -> None:
-    """Identity comes from operator overrides or the one CI bootstrap consumer."""
+    """Identity comes from operator overrides or the generated CI and disposable staging origin."""
     for path in sorted((REPO_ROOT / "ansible" / "group_vars").glob("*.yml")):
         document = yaml.safe_load(path.read_text())
         url = (document or {}).get("public_site_canonical_url")

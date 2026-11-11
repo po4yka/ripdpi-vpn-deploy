@@ -93,7 +93,9 @@ def test_split_hop_node_a_profiles_keep_the_staging_transports(name, toggles) ->
     group_vars = ROOT / "ansible" / "group_vars"
     staging = yaml.safe_load((group_vars / "vpn-device-full-staging.yml").read_text())["vpn"]
     document = yaml.safe_load((group_vars / name).read_text())
-    assert document == {"allow_research_roles": ["split-hop-ingress"], "vpn": {**staging, **toggles}}
+    origin = yaml.safe_load((group_vars / "vpn-device-full-staging.yml").read_text())["public_site_canonical_url"]
+    assert document == {"allow_research_roles": ["split-hop-ingress"], "public_site_canonical_url": origin,
+                        "vpn": {**staging, **toggles}}
 
 
 def test_staging_profile_preserves_transports_and_limits_rehearsal_services(
@@ -105,7 +107,7 @@ def test_staging_profile_preserves_transports_and_limits_rehearsal_services(
     profile = group_vars / "vpn-device-full-staging.yml"
     assert profile.is_file()
     document = yaml.safe_load(profile.read_text())
-    assert set(document) == {"vpn"}
+    assert set(document) == {"public_site_canonical_url", "vpn"}
     assert document["vpn"] == {
         **baseline,
         **fullstack,
