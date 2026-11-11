@@ -2,6 +2,10 @@
 # Scoped transport and SSH recovery rehearsal; not monitoring/backup acceptance.
 # Complete map because the deployment controller replaces canonical vpn maps.
 # Exact approved Tailnet sources remain inherited from all.yml.
+# Served XHTTP origin; matches the hysteria.masquerade_url that
+# scripts/ci-bootstrap-secrets.sh writes for disposable staging.
+public_site_canonical_url: >-
+  https://{{ nginx_xhttp.server_name }}{{ ':' ~ nginx_xhttp_public_port if nginx_xhttp_public_port | int != 443 else '' }}
 vpn:
   enable_transport_egress: true
   enable_destination_filter: false
