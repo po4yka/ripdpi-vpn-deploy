@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-11
+goal: SCR-1794387120415327 Provision the disposable liveness executor with
+  sentinel runtimes

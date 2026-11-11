@@ -566,13 +566,15 @@ endif
 
 # Disposable liveness lifecycle inputs are controller data, not Make syntax.
 # Capture them before trusted includes and eager source-identity assignments.
-_DISPOSABLE_LIVENESS_GOALS := prepare-disposable-liveness install-disposable-liveness-sentinel protocol-liveness-disposable deonboard-disposable-liveness
+_DISPOSABLE_LIVENESS_GOALS := prepare-disposable-liveness provision-disposable-liveness-runtime install-disposable-liveness-sentinel protocol-liveness-disposable deonboard-disposable-liveness
 ifneq ($(filter $(_DISPOSABLE_LIVENESS_GOALS),$(MAKECMDGOALS)),)
 ifneq ($(words $(MAKECMDGOALS)),1)
 $(error disposable liveness requires exactly one Make goal)
 endif
 ifneq ($(filter prepare-disposable-liveness,$(MAKECMDGOALS)),)
 _DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES := EXECUTOR_PROFILE EXECUTOR_MANIFEST
+else ifneq ($(filter provision-disposable-liveness-runtime,$(MAKECMDGOALS)),)
+_DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES := EXECUTOR_MANIFEST RUNTIME_WORK_DIR
 else ifneq ($(filter install-disposable-liveness-sentinel,$(MAKECMDGOALS)),)
 _DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES := LIVENESS_CONFIG SENTINEL CLIENT EXECUTOR_MANIFEST EXECUTOR_BINDING STAGING_CLEANUP_MANIFEST HOSTS COHORTS
 ifneq ($(strip $(value SOPS_FILES)),)
@@ -788,7 +790,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         test-tls-policing probe-payload-throttle fleet-status drift-since-tag fleet-rotate \
         snell-refinement \
         protocol-liveness monitor-protocol-liveness install-liveness-sentinel \
-        prepare-disposable-liveness install-disposable-liveness-sentinel protocol-liveness-disposable deonboard-disposable-liveness \
+        prepare-disposable-liveness provision-disposable-liveness-runtime install-disposable-liveness-sentinel protocol-liveness-disposable deonboard-disposable-liveness \
         watch-spare promote-spare probing-summary xray-diagnostics tspu-canary \
         emit-sbom molecule-full-stack audit-log audit-log-append pyinfra-audit \
         setup-yubikey check-killswitch install-operator-crons \
@@ -890,6 +892,7 @@ help:
 	@echo "  monitor-protocol-liveness LIVENESS_CONFIG=…  Persist and alert on protocol-liveness transitions"
 	@echo "  install-liveness-sentinel LIVENESS_CONFIG=… SENTINEL=… CLIENT=…  Secure sentinel onboarding"
 	@echo "  prepare-disposable-liveness EXECUTOR_PROFILE=… EXECUTOR_MANIFEST=…  Create one no-mount executor"
+	@echo "  provision-disposable-liveness-runtime EXECUTOR_MANIFEST=… RUNTIME_WORK_DIR=…  Install pinned sentinel runtimes into the executor"
 	@echo "  prepare-disposable-promotion-intent  Assemble private intent/mapping locally from PROMOTION_* environment inputs"
 	@echo "  install-disposable-liveness-sentinel …  Bind and onboard one disposable sentinel from stdin"
 	@echo "  protocol-liveness-disposable …  Evaluate one exact executor-bound report"
@@ -1941,6 +1944,12 @@ prepare-disposable-liveness:
 	  --profile "$${EXECUTOR_PROFILE}" \
 	  --manifest "$${EXECUTOR_MANIFEST}" \
 	  --ttl-seconds 21600
+
+provision-disposable-liveness-runtime:
+	@test -n "$${EXECUTOR_MANIFEST}" -a -n "$${RUNTIME_WORK_DIR}" || { echo "usage: make provision-disposable-liveness-runtime EXECUTOR_MANIFEST=… RUNTIME_WORK_DIR=…"; exit 1; }
+	@python3 ./scripts/provision-disposable-liveness-runtime.py \
+	  --manifest "$${EXECUTOR_MANIFEST}" \
+	  --work-dir "$${RUNTIME_WORK_DIR}"
 
 install-disposable-liveness-sentinel: export HOSTS := $(HOSTS)
 install-disposable-liveness-sentinel: export COHORTS := $(COHORTS)

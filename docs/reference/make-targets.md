@@ -96,6 +96,7 @@ Variables (override on command line):
   monitor-protocol-liveness LIVENESS_CONFIG=…  Persist and alert on protocol-liveness transitions
   install-liveness-sentinel LIVENESS_CONFIG=… SENTINEL=… CLIENT=…  Secure sentinel onboarding
   prepare-disposable-liveness EXECUTOR_PROFILE=… EXECUTOR_MANIFEST=…  Create one no-mount executor
+  provision-disposable-liveness-runtime EXECUTOR_MANIFEST=… RUNTIME_WORK_DIR=…  Install pinned sentinel runtimes into the executor
   prepare-disposable-promotion-intent  Assemble private intent/mapping locally from PROMOTION_* environment inputs
   install-disposable-liveness-sentinel …  Bind and onboard one disposable sentinel from stdin
   protocol-liveness-disposable …  Evaluate one exact executor-bound report

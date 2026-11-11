@@ -11,6 +11,12 @@ condition = "AND"
 paths = ['''^\.github/actions/install-xray/action\.yml$''']
 regexTarget = "line"
 regexes = ['''^\s*XRAY_SHA256: (23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae|e4bd9119f50ae7c41658b1abd0679ae06f98bd864a2907ff33f2f2cf7081b214)\s*$''']
+[[rules.allowlists]]
+description = "Exact public Xray Linux release archive SHA-256 values in the disposable executor provisioner"
+condition = "AND"
+paths = ['''^scripts/provision-disposable-liveness-runtime\.py$''']
+regexTarget = "line"
+regexes = ['''^\s*"(amd64|arm64)": \("Xray-linux-(64|arm64-v8a)\.zip", "(e4bd9119f50ae7c41658b1abd0679ae06f98bd864a2907ff33f2f2cf7081b214|1811c8f1da0c3b6dc707ebaf1c8390e987ba39859a8f0a7aadd8526157f2ec8d)"\),\s*$''']
 
 [[rules]]
 id = "vless-uri"
