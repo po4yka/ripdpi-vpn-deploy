@@ -101,7 +101,7 @@ Full VPN deployment preserves independently managed monitoring components. Use t
 | `make observability-silence-create` / `delete` | Finite scoped suppression through the authenticated gateway. |
 | `make observability-pki-prepare` | Explicit local generation of new private IP-SAN PKI, encrypted to the approved age recipient. No host or notification access. |
 
-Collector status reports include `notification_mode` from the installed Prometheus unit. Panel-only status checks collection and pipeline units without notification credentials. A missing or invalid installed mode reports `unknown` and `degraded`; it never infers a healthy panel-only mode from a missing credential.
+Collector status reports include `notification_mode` from the installed Prometheus unit. Panel-only status checks collection and pipeline units without notification credentials. A missing or invalid installed mode reports `unknown` and `degraded`; it never infers a healthy panel-only mode from a missing credential. The opt-in protocol-liveness adapter timer reports `not-installed` when systemd has no unit file for it, and that state does not degrade the collector; an installed adapter timer must be active.
 
 The CLI check verb additionally requires `--confirm-host-access`; Make supplies it only for the explicitly selected check target. Other lifecycle confirmations remain mandatory.
 
