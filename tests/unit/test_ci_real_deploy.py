@@ -412,7 +412,9 @@ def test_ci_generator_real_crypto_passes_secret_schema(tmp_path):
     environment = {**os.environ, "OUT": str(output), "SERVER_NAME": "vpn-ci.example.test",
                    "CLIENT_NAME": "ci-test", "REALITY_TARGET": "example.test:443",
                    "REALITY_SERVER_NAME": "example.test", "WATCHDOG_CANARY_URL": "https://example.test/204",
-                   "PROVIDER": "upcloud", "ENV": "ci-staging-generator", "COHORTS": "ci-p0p1p2"}
+                   "PROVIDER": "upcloud", "ENV": "ci-staging-generator", "COHORTS": "ci-p0p1p2",
+                   "GEODATA_GEOSITE_URL": "https://example.test/geosite.dat", "GEODATA_GEOSITE_SHA256": "a" * 64,
+                   "GEODATA_GEOIP_URL": "https://example.test/geoip.dat", "GEODATA_GEOIP_SHA256": "b" * 64}
     generated = subprocess.run([str(ROOT / "scripts/ci-bootstrap-secrets.sh")], cwd=ROOT,
                                env=environment, capture_output=True, timeout=300)
     # Do not put private subprocess diagnostics or generated values in assertions.
@@ -424,6 +426,12 @@ def test_ci_generator_real_crypto_passes_secret_schema(tmp_path):
     value = yaml.safe_load(output.read_bytes())
     assert value["hysteria"]["masquerade_url"] == "https://" + environment["SERVER_NAME"] + ":8443"
     assert value["watchdog_secrets"]["reality_probe_url"] == environment["WATCHDOG_CANARY_URL"]
+    # Transport preflight requires a dedicated Hysteria acceptance probe beside the device credential.
+    hysteria = {client["name"]: client["password"] for client in value["hysteria"]["clients"]}
+    assert set(hysteria) == {"ci-test", "runtime-acceptance-hysteria"}
+    assert hysteria["ci-test"] != hysteria["runtime-acceptance-hysteria"]
+    assert value["geodata"]["geosite_url"] == "https://example.test/geosite.dat"
+    assert value["geodata"]["geoip_sha256"] == "b" * 64
     from template_render import render_fragment
     profile = yaml.safe_load((ROOT / "ansible/group_vars/vpn-ci-p0p1p2.yml").read_text())
     served_origin = render_fragment("ci-origin.txt", profile["public_site_canonical_url"],
@@ -477,3 +485,21 @@ def test_disposable_staging_profiles_serve_the_generated_masquerade_origin(profi
     rendered = render_fragment("staging-origin.txt", value, {"nginx_xhttp": {"server_name": "vpn-ci-staging-x.ci.test"},
                                                               "nginx_xhttp_public_port": port})
     assert rendered == expected
+
+
+@pytest.mark.parametrize("pins", [
+    {"GEODATA_GEOSITE_URL": "https://example.test/geosite.dat"},
+    {"GEODATA_GEOSITE_URL": "http://example.test/geosite.dat", "GEODATA_GEOIP_URL": "https://example.test/geoip.dat",
+     "GEODATA_GEOSITE_SHA256": "a" * 64, "GEODATA_GEOIP_SHA256": "b" * 64},
+    {"GEODATA_GEOSITE_URL": "https://example.test/geosite.dat", "GEODATA_GEOIP_URL": "https://example.test/geoip.dat",
+     "GEODATA_GEOSITE_SHA256": "A" * 64, "GEODATA_GEOIP_SHA256": "b" * 64},
+])
+def test_ci_generator_refuses_partial_or_unsafe_geodata_pins_before_any_work(tmp_path, pins):
+    output = tmp_path / "generated.yaml"
+    environment = {**os.environ, "OUT": str(output), "SERVER_NAME": "vpn-ci.example.test",
+                   "REALITY_TARGET": "example.test:443", "REALITY_SERVER_NAME": "example.test", **pins}
+    result = subprocess.run([str(ROOT / "scripts/ci-bootstrap-secrets.sh")], cwd=ROOT, env=environment,
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 2
+    assert "geodata pins need both https URLs and both sha256 values" in result.stderr
+    assert not output.exists()
