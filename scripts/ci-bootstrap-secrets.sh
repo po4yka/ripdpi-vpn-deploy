@@ -15,8 +15,8 @@
 #     peer (the role itself is disabled in the CI deploy via
 #     group_vars, but the schema still needs the fields)
 #   * naive_secrets fields (role disabled)
-#   * geodata pinned URLs + sha256 (role disabled — these are
-#     placeholders since the role's get_url is gated on
+#   * geodata pinned URLs + sha256 (placeholders unless the GEODATA_*
+#     pins below are supplied; the role's get_url is gated on
 #     vpn.enable_geodata)
 #   * backup restic_password
 #   * watchdog_secrets.ntfy_topic + owned REALITY probe URL
@@ -42,6 +42,10 @@
 #   XRAY_SOURCE_COMMIT                reviewed 40-64 character source commit
 #   XRAY_SOURCE_LINUX_AMD64_SHA256    expected amd64 built-binary digest
 #   XRAY_SOURCE_LINUX_ARM64_SHA256    expected arm64 built-binary digest
+# Optional geodata pins (all or none) for cohorts that enable geodata, such
+# as device-full-staging; without them the geodata section is a placeholder:
+#   GEODATA_GEOSITE_URL, GEODATA_GEOIP_URL          pinned https release URLs
+#   GEODATA_GEOSITE_SHA256, GEODATA_GEOIP_SHA256    their lowercase sha256
 set -euo pipefail
 
 OUT="${OUT:?OUT path is required}"
@@ -66,6 +70,27 @@ if [[ -n "$XRAY_SOURCE_COMMIT" || -n "$XRAY_SOURCE_LINUX_AMD64_SHA256" || -n "$X
   source_linux_arm64_sha256: \"${XRAY_SOURCE_LINUX_ARM64_SHA256}\""
 else
   xray_source_fields=""
+fi
+
+GEODATA_GEOSITE_URL="${GEODATA_GEOSITE_URL:-}"
+GEODATA_GEOIP_URL="${GEODATA_GEOIP_URL:-}"
+GEODATA_GEOSITE_SHA256="${GEODATA_GEOSITE_SHA256:-}"
+GEODATA_GEOIP_SHA256="${GEODATA_GEOIP_SHA256:-}"
+if [[ -n "$GEODATA_GEOSITE_URL$GEODATA_GEOIP_URL$GEODATA_GEOSITE_SHA256$GEODATA_GEOIP_SHA256" ]]; then
+  for url in "$GEODATA_GEOSITE_URL" "$GEODATA_GEOIP_URL"; do
+    [[ "$url" =~ ^https://[A-Za-z0-9.-]+/[^[:space:]\"]+$ ]] || {
+      echo "ci-bootstrap-secrets: geodata pins need both https URLs and both sha256 values" >&2; exit 2; }
+  done
+  for digest in "$GEODATA_GEOSITE_SHA256" "$GEODATA_GEOIP_SHA256"; do
+    [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || {
+      echo "ci-bootstrap-secrets: geodata pins need both https URLs and both sha256 values" >&2; exit 2; }
+  done
+else
+  # Placeholders keep the schema valid where the cohort disables geodata.
+  GEODATA_GEOSITE_URL="https://example.invalid/geosite.dat"
+  GEODATA_GEOIP_URL="https://example.invalid/geoip.dat"
+  GEODATA_GEOSITE_SHA256="$(printf '0%.0s' {1..64})"
+  GEODATA_GEOIP_SHA256="$(printf '0%.0s' {1..64})"
 fi
 
 : "${PROVIDER:?PROVIDER is required}" "${ENV:?ENV is required}" "${COHORTS:?COHORTS is required}"
@@ -157,6 +182,8 @@ sid="$(openssl rand -hex 4)"
 watchdog_uuid="$(uuidgen | tr 'A-Z' 'a-z')"
 watchdog_sid="$(openssl rand -hex 4)"
 hys_pw="$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)"
+# Dedicated runtime adoption and rollback probe; never a device credential.
+hys_acceptance_pw="$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)"
 egress_direct_xray="$(openssl rand -hex 32)"
 egress_direct_hysteria="$(openssl rand -hex 32)"
 egress_warp_xray="$(openssl rand -hex 32)"
@@ -239,6 +266,8 @@ $(echo "$key_pem")
   clients:
     - name: ${CLIENT_NAME}
       password: "${hys_pw}"
+    - name: runtime-acceptance-hysteria
+      password: "${hys_acceptance_pw}"
 
 naive_secrets:
   server_name: "${SERVER_NAME}"
@@ -253,10 +282,10 @@ $(echo "$cert_pem")
 $(echo "$key_pem")
 
 geodata:
-  geosite_url: "https://example.invalid/geosite.dat"
-  geoip_url:   "https://example.invalid/geoip.dat"
-  geosite_sha256: "$(printf '0%.0s' {1..64})"
-  geoip_sha256:   "$(printf '0%.0s' {1..64})"
+  geosite_url: "${GEODATA_GEOSITE_URL}"
+  geoip_url:   "${GEODATA_GEOIP_URL}"
+  geosite_sha256: "${GEODATA_GEOSITE_SHA256}"
+  geoip_sha256:   "${GEODATA_GEOIP_SHA256}"
   install_dir: /usr/local/share/xray
   refresh_interval: "1d"
 
