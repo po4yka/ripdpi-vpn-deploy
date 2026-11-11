@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 from scripts.template_render import merge_render_vars, render_template
@@ -288,3 +289,37 @@ def test_provider_nat_range_changes_split_hop_translation_and_drift_authority():
     tasks = yaml.safe_load((ROLE / "tasks/enable.yml").read_text())
     command = next(task for task in tasks if task["name"] == "Check exact split-hop egress policy shape")["ansible.builtin.command"]["argv"]
     assert command[-1] == "{{ terraform_nat_source_port_range | default('') }}"
+
+
+@pytest.mark.parametrize("role,paired_toggle,policy_unit", [
+    ("split-hop-ingress", "enable_split_hop_egress", "split-hop-ingress-policy.service"),
+    ("split-hop-egress", "enable_split_hop_ingress", "split-hop-egress-policy.service"),
+])
+@pytest.mark.parametrize("paired,subscription_only", [(True, False), (False, False), (True, True)])
+def test_retirement_leaves_the_shared_tunnel_to_an_enabled_paired_role(
+    tmp_path, role, paired_toggle, policy_unit, paired, subscription_only
+) -> None:
+    # Regression: Node B's disabled ingress role stopped and deleted the egress role's shop0 tunnel.
+    tasks = yaml.safe_load((ROOT / f"ansible/roles/{role}/tasks/disable.yml").read_text())
+    retire = next(task for task in tasks
+                  if task.get("ansible.builtin.include_role", {}).get("name") == "runtime-release")
+    defaults = yaml.safe_load((ROOT / f"ansible/roles/{role}/defaults/main.yml").read_text())
+    tunnel_kept = paired and not subscription_only
+    play = [{
+        "hosts": "localhost", "connection": "local", "gather_facts": False, "become": False,
+        "vars": {**defaults, **retire["vars"], "ansible_python_interpreter": sys.executable,
+                 "vpn": {paired_toggle: paired}, "vpn_subscription_only": subscription_only},
+        "tasks": [{"name": "Require the shared tunnel only when no paired role keeps it",
+                   "ansible.builtin.assert": {"that": [
+                       f"('wg-quick@shop0.service' in runtime_retire_units) == {not tunnel_kept}",
+                       f"('/etc/wireguard/shop0.conf' in runtime_retire_paths) == {not tunnel_kept}",
+                       f"'{policy_unit}' in runtime_retire_units",
+                   ]}}],
+    }]
+    candidate = tmp_path / "play.yml"
+    candidate.write_text(yaml.safe_dump(play))
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("ANSIBLE_")}
+    environment.update(ANSIBLE_LOCAL_TEMP=str(tmp_path / "ansible-local"))
+    result = subprocess.run(["ansible-playbook", "-i", "localhost,", str(candidate)],
+                            capture_output=True, text=True, timeout=60, env=environment)
+    assert result.returncode == 0, result.stdout + result.stderr
