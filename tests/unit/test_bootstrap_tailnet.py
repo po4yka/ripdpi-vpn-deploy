@@ -223,12 +223,23 @@ def test_installer_real_ansible_preserves_local_delegation(controller, inputs, m
     (project / "ansible/ansible.cfg").write_text("[defaults]\n")
     expected_ssh = ['ConnectionAttempts=3' if value == 'ConnectionAttempts=1' else value for value in ssh]
     transport = controller.deploy.transport_variables(host, expected_ssh)
-    play = [{"hosts": "vpn", "gather_facts": False, "vars": {"expected_transport": transport},
+    # Only the three multiplexing options differ; their run-owned socket path is random.
+    strict_arguments = transport.pop("ansible_ssh_args")
+    option = "-o ControlPath=none -o ControlMaster=no -o ControlPersist=no"
+    assert strict_arguments.count(option) == 1
+    before, after = strict_arguments.split(option)
+    play = [{"hosts": "vpn", "gather_facts": False,
+             "vars": {"expected_transport": transport, "before": before, "after": after},
              "tasks": [
                  {"name": "Keep every pinned connection value on the selected node",
                   "ansible.builtin.assert": {"that": [
                       "hostvars[inventory_hostname][item.key] | string == item.value | string"]},
                   "loop": "{{ expected_transport | dict2items }}"},
+                 {"name": "Change only the multiplexing options of the strict command",
+                  "ansible.builtin.assert": {"that": [
+                      "ansible_ssh_args.startswith(before)", "ansible_ssh_args.endswith(after)",
+                      "ansible_ssh_args[before | length:ansible_ssh_args | length - after | length] is "
+                      "match('^-o ControlPath=/[^ ]*/vb-ssh-[^ /]+/%C -o ControlMaster=auto -o ControlPersist=300$')"]}},
                  {"name": "Run the real source validator on the controller",
                   "ansible.builtin.command": {
                       "argv": [sys.executable, str(ROOT / "scripts/tailnet-validate-sources.py")],
@@ -1012,3 +1023,44 @@ def test_foundation_refuses_invalid_observer_firewall(controller, observer):
 
     with pytest.raises(domain.Refusal, match="observer-firewall-invalid"):
         firewall.foundation(FOUNDATION_BINDING, observer)
+
+
+@pytest.mark.parametrize("status", [0, 2, "interrupted"])
+def test_installer_master_is_closed_before_the_first_strict_login(controller, inputs, monkeypatch, status):
+    import bootstrap_readiness
+    selected = load(controller, inputs, monkeypatch)
+    events = []
+
+    def installer(command, **kwargs):
+        inventory = Path(command[command.index("-i") + 1]).read_text()
+        arguments = next(line for line in inventory.splitlines() if line.startswith("ansible_ssh_args="))
+        socket = Path(next(word for word in arguments.split() if word.startswith("ControlPath=")).split("=", 1)[1])
+        assert socket.name == "%C" and socket.parent.stat().st_mode & 0o777 == 0o700
+        events.append(("playbook", socket.parent))
+        if status == "interrupted":
+            raise TimeoutError("fixture")
+        return status, b""
+
+    def close(command):
+        assert "ControlMaster=auto" in command and command[-2] == selected.host["transport"]
+        events.append(("close", Path(next(word for word in command if word.startswith("ControlPath="))
+                                     .split("=", 1)[1]).parent))
+
+    def installed(current):
+        assert {"ControlPath=none", "ControlMaster=no", "ControlPersist=no"} <= set(current.ssh)
+        events.append(("strict", events[0][1].exists()))
+        return "ready"
+
+    monkeypatch.setattr(bootstrap_readiness, "run_command", installer)
+    monkeypatch.setattr(controller.deploy, "close_master", close)
+    monkeypatch.setattr(controller, "_installed", installed)
+    if status:
+        with pytest.raises(TimeoutError if status == "interrupted" else controller.BootstrapError):
+            controller._install(selected)
+    else:
+        controller._install(selected)
+    directory = events[0][1]
+    assert events[:2] == [("playbook", directory), ("close", directory)]
+    # A failed playbook stops before the status call; a passed one proves a fresh login after the socket is gone.
+    assert events[2:] == ([] if status else [("strict", False)])
+    assert not directory.exists()
