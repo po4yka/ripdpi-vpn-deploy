@@ -422,11 +422,12 @@ def test_family_scope_sends_recipient_and_device_egress_only_through_b(tmp_path)
         log = tmp_path / f"{node}-{port}.log"
         ready = tmp_path / f"{node}-{port}.ready"
         script = """
-import http.server,sys
+import http.server,socket,sys
 address,port,log,ready=sys.argv[1:]
 class H(http.server.BaseHTTPRequestHandler):
  def do_GET(self):
   open(log,'a').write(self.client_address[0]+'\\n')
+  open(log+'.mss','a').write(str(self.connection.getsockopt(socket.IPPROTO_TCP,socket.TCP_MAXSEG))+'\\n')
   self.send_response(200);self.end_headers();self.wfile.write(self.client_address[0].encode())
  def log_message(self,*a):pass
 s=http.server.HTTPServer((address,int(port)),H);open(ready,'w').close();s.serve_forever()
@@ -524,6 +525,11 @@ s=http.server.HTTPServer((address,int(port)),H);open(ready,'w').close();s.serve_
         # Unowned host users keep A's ordinary uplink.
         assert request("a", "http://203.0.113.2:18090/", other_uid).stdout == "198.51.100.1"
         assert recipient.read_text().splitlines() == ["203.0.113.1"] * 3
+        # Gateway SYNs chose their MSS from the 1500-byte uplink route, and the device from its
+        # own link; both must be clamped to the tunnel route instead.
+        tunnel_mss = int(ns("a", "cat", "/sys/class/net/shop0/mtu")) - 40
+        mss = [int(value) for value in (tmp_path / "e-18090.log.mss").read_text().split()]
+        assert len(mss) == 3 and all(0 < value <= tunnel_mss for value in mss), (mss, tunnel_mss)
 
         ns("a", "sh", "-c", hooks["PostDown"])
         ns("a", "ip", "link", "set", "shop0", "down")

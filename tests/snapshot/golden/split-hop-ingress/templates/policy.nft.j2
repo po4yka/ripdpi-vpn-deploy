@@ -7,12 +7,17 @@ table inet split_hop_ingress {
     # Replies and ICMP errors A sends for marked flows keep the ordinary route.
     ct direction original ct mark 1 meta mark set ct mark
   }
+  chain mss_clamp {
+    # Rerouted sockets chose their MSS from the public route; fit the tunnel MTU.
+    # The output route chain has already rerouted marked packets. Keep this
+    # mutation out of POSTROUTING: the transport-egress kernel audit refuses it there.
+    type filter hook output priority filter; policy accept;
+    ct direction original ct mark 1 oifname != "lo" tcp flags syn tcp option maxseg size set rt mtu
+  }
   chain egress_guard {
     # OUTPUT retains its original interface after marking; check final egress here.
     type filter hook postrouting priority 0; policy accept;
     meta nfproto ipv4 ct direction original meta skuid { 971, 972 } oifname != { "lo", "shop0" } drop
-    # Rerouted sockets chose their MSS from the public route; fit the tunnel MTU.
-    oifname "shop0" tcp flags syn tcp option maxseg size set rt mtu
   }
   chain postrouting {
     type nat hook postrouting priority srcnat; policy accept;

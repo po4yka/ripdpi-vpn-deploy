@@ -19,3 +19,32 @@
           - (ingress_policy.content | b64decode) is search('ct state new ct direction original')
           - (ingress_policy.content | b64decode) is search('meta skuid')
           - (ingress_policy.content | b64decode) is search('meta mark set ct mark')
+    - name: Render the family boundary beside the converged ingress boundary
+      ansible.builtin.template:
+        src: "{{ playbook_dir | dirname | dirname }}/templates/policy.nft.j2"
+        dest: /tmp/split-hop-family.nft
+        mode: '0600'
+      vars:
+        vpn: {split_hop_family_egress: true}
+        probe_matrix_runtime_users: {xray_uid: 971, mtg_uid: 972}
+        split_hop_ingress_family_uids: [996, 999]
+        split_hop_ingress_family_interfaces: [awg0]
+        split_hop_ingress: {wg_interface: shop0, fwmark: 51821, node_a_address: 10.200.0.1/30}
+    - name: Install the transport-egress kernel audit
+      ansible.builtin.copy:
+        src: '{{ playbook_dir }}/../../../../../scripts/{{ item }}'
+        dest: /tmp/{{ item }}
+        mode: '0600'
+      loop: [transport_egress_kernel.py, transport_destination_policy.py]
+    - name: Admit each loaded boundary to the transport-egress kernel audit
+      # A refused boundary blocks every transport-egress apply, verify and rollback on the node.
+      ansible.builtin.shell: |
+        set -euo pipefail
+        nft -f {{ item }}
+        nft -j list ruleset > /tmp/ruleset.json
+        python3 -I -c 'import json, sys; sys.path.insert(0, "/tmp"); import transport_egress_kernel as k
+        k.audit_authority(json.load(open("/tmp/ruleset.json")))'
+      args:
+        executable: /bin/bash
+      loop: [/etc/wireguard/split-hop-ingress.nft, /tmp/split-hop-family.nft]
+      changed_when: false
