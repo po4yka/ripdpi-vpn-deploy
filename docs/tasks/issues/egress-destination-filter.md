@@ -2,7 +2,7 @@
 id: SEC-1794156917837664
 title: Block unsafe recipient destinations at the egress boundary
 kind: feature
-status: doing
+status: review
 area: security
 priority: medium
 risk: high
