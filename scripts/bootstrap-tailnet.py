@@ -397,7 +397,26 @@ def _install(inputs):
     install_ssh = list(inputs.ssh)
     # Match SSH recovery's bounded connection setup, without replaying commands.
     install_ssh[install_ssh.index('ConnectionAttempts=1')] = 'ConnectionAttempts=3'
-    transport = deploy.transport_variables(inputs.host, install_ssh)
+    # About 60 fresh logins made this playbook most of a bootstrap. Its tasks
+    # share one run-owned master, closed before any strict call below can prove
+    # a fresh login. Control sockets need a short /tmp path (104 bytes on macOS).
+    with tempfile.TemporaryDirectory(prefix="vb-ssh-", dir="/tmp") as control:
+        shared = deploy.multiplexed(install_ssh, Path(control).resolve())
+        status, output = _run_installer(inputs, shared, run_command)
+    if status:
+        # Ansible receives only public bootstrap inputs and keeps sensitive
+        # status tasks under no_log. Preserve its failure context on stderr
+        # without changing the controller's structured stdout contract.
+        import sys
+        sys.stderr.buffer.write(output)
+        sys.stderr.buffer.flush()
+    # This strict status call is the first fresh login after the master closed.
+    if status or _installed(inputs) != "ready":
+        raise BootstrapError("bootstrap-installation-failed")
+
+
+def _run_installer(inputs, shared, run_command):
+    transport = deploy.transport_variables(inputs.host, shared)
     if any(any(char in str(value) for char in "\r\n\x00") for value in transport.values()):
         raise BootstrapError("bootstrap-transport-invalid")
     inventory = "[vpn]\n" + inputs.host["name"] + "\n\n[vpn:vars]\n"
@@ -421,17 +440,11 @@ def _install(inputs):
     # Preserve both child streams in the bounded stdout capture. The fixed
     # shell forwards argv as separate arguments; it never evaluates path data.
     command = ["/bin/sh", "-c", 'exec "$@" 2>&1', "bootstrap-installer", *command]
-    status, output = run_command(command, timeout=timeout, environment=inputs.environment,
-                                 cwd=inputs.directory, capture=True, output_limit=1_048_576)
-    if status:
-        # Ansible receives only public bootstrap inputs and keeps sensitive
-        # status tasks under no_log. Preserve its failure context on stderr
-        # without changing the controller's structured stdout contract.
-        import sys
-        sys.stderr.buffer.write(output)
-        sys.stderr.buffer.flush()
-    if status or _installed(inputs) != "ready":
-        raise BootstrapError("bootstrap-installation-failed")
+    try:
+        return run_command(command, timeout=timeout, environment=inputs.environment,
+                           cwd=inputs.directory, capture=True, output_limit=1_048_576)
+    finally:
+        deploy.close_master(shared)
 
 
 def _rpc(inputs, action, **values):

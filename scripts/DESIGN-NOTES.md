@@ -329,6 +329,18 @@ change, follow the shared implementation before adding wrapper logic:
 | [bootstrap-tailnet.py](bootstrap-tailnet.py) owns input validation, installation, enrollment and pinned `_remote` / `_sftp` calls. | [staging-tailnet-recovery.py](staging-tailnet-recovery.py) loads that module and reuses its `deploy` and `tailnet` modules for the two fixed recovery scenarios. | [test_staging_tailnet_recovery.py](../tests/unit/test_staging_tailnet_recovery.py), [test_staging_tailnet_recovery_make.py](../tests/unit/test_staging_tailnet_recovery_make.py). |
 | [bootstrap_readiness.py](bootstrap_readiness.py) owns bounded command/readiness execution and transport error types; [deploy-controller.py](deploy-controller.py) owns `require_recovery_foundation`. | Bootstrap and staging recovery consume both; transport failures and semantic refusals must retain their distinct types across these calls. | [test_bootstrap_readiness_io.py](../tests/unit/test_bootstrap_readiness_io.py), [test_staging_tailnet_recovery.py](../tests/unit/test_staging_tailnet_recovery.py): `_remote`, `_sftp`, foundation and reboot retry cases. |
 
+**In a bootstrap, only the installation playbook shares an SSH master** — by
+task count it opened about 60 fresh strict logins, estimated as most of a
+bootstrap of about 7.5 minutes. `_install` gives Ansible `deploy.multiplexed`
+options with a `%C` socket in a private 0700 directory under `/tmp`, and
+`_run_installer` closes the master in a `finally` block. Unlike the SSH recovery installation, this playbook can
+change the firewall: it installs nftables and runs the firewall recovery gate.
+The fresh-login proof is therefore the strict `_installed` status call that
+`_install` makes after the master is closed, then
+`require_recovery_foundation`, both before enrollment. Readiness, enrollment,
+status, rollback and every `_proofs` call keep the strict `inputs.ssh` command.
+Never keep the master open across enrollment.
+
 **Recovery waits for backend initialization, not merely daemon readiness** —
 the vendor service can notify readiness while its backend remains `NoState`.
 Only recovery polls `NoState`/`Starting`, with one 30-second monotonic budget
