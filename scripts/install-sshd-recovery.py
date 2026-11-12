@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import shlex
+import subprocess
 import tempfile
 
 import fleet_inspection as inspection
@@ -59,11 +60,12 @@ def build_invocation(environment):
     hosts = inspection.select_hosts(inventory, [target], primary_section=section)
     host = hosts[0]
     # Reuse the established strict SSH identity boundary, including custom-port
-    # aliases, no agent, no inherited proxy, and no multiplexed connection.
+    # aliases, no agent and no inherited proxy. main() swaps only the three
+    # multiplexing options for one run-owned master.
     ssh = inspection.ssh_command(host, known_hosts)
     # A disposable node can transiently drop a TCP SYN while Ansible opens its
-    # many independent SSH sessions. Retry transport establishment only; every
-    # attempt still uses the same pinned identity and non-multiplexed session.
+    # SSH session. Retry transport establishment only; every attempt still
+    # uses the same pinned identity.
     ssh[ssh.index('ConnectionAttempts=1')] = 'ConnectionAttempts=3'
     generation, manifest = bundle_manifest()
     extra_vars = {
@@ -86,6 +88,37 @@ def build_invocation(environment):
     return argv, child, '[vpn]\n' + target + '\n'
 
 
+MULTIPLEX_OPTIONS = ('ControlPath=none', 'ControlMaster=no', 'ControlPersist=no')
+
+
+def shared_master_arguments(arguments, sockets):
+    """Share one run-owned master across this playbook's tasks.
+
+    The playbook installs recovery code and starts its recovery units, which do
+    nothing without an open transaction. It never changes sshd or the firewall,
+    so a master cannot hide a refused login. Every other strict option stays.
+    """
+    words = shlex.split(arguments)
+    if any(words.count(option) != 1 for option in MULTIPLEX_OPTIONS):
+        raise InstallError('unsupported-ssh-option')
+    replaced = dict(zip(MULTIPLEX_OPTIONS, ('ControlPath=' + str(sockets / '%C'), 'ControlMaster=auto',
+                                            'ControlPersist=60')))
+    return shlex.join(replaced.get(word, word) for word in words)
+
+
+def close_master(arguments, host, sockets, environment):
+    # Called while another error may propagate: never raise.
+    try:
+        if any(sockets.iterdir()):
+            # The same PATH as Ansible, so the same ssh resolves the same %C socket.
+            subprocess.run(['ssh', *shlex.split(arguments), '-O', 'exit', host], env=environment,
+                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
+        # Best effort: ControlPersist still ends an unclosed master, and the run removes its socket.
+        pass
+
+
 def _clean_source(environment):
     dirty = inspection.bounded_command(['git', '-C', str(ROOT), 'status', '--porcelain', '--untracked-files=normal'],
                                        timeout=10, environment=environment)
@@ -106,13 +139,22 @@ def main():
         # Ansible's own debug internals. An uncertain install stays journaled.
         # Never let Ansible discover unvalidated sibling host_vars/group_vars
         # beside the operator's original inventory.
-        with tempfile.TemporaryDirectory(prefix='vpn-sshd-install-') as directory:
+        # Control sockets live under a short 0700 /tmp path: macOS limits socket paths to 104 bytes.
+        with tempfile.TemporaryDirectory(prefix='vpn-sshd-install-') as directory, \
+                tempfile.TemporaryDirectory(prefix='vs-ssh-', dir='/tmp') as control:
             path = Path(directory) / 'inventory.ini'
             fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             with os.fdopen(fd, 'w') as stream:
                 stream.write(inventory)
             argv[argv.index('-i') + 1] = str(path)
-            inspection.bounded_command(argv, timeout=600, limit=1024*1024, environment=environment)
+            sockets = Path(control).resolve()
+            shared = shared_master_arguments(environment['ANSIBLE_SSH_ARGS'], sockets)
+            environment['ANSIBLE_SSH_ARGS'] = shared
+            host = json.loads(argv[argv.index('--extra-vars') + 1])['ansible_host']
+            try:
+                inspection.bounded_command(argv, timeout=600, limit=1024*1024, environment=environment)
+            finally:
+                close_master(shared, host, sockets, environment)
         print(json.dumps({'status':'installed', 'migration':'not-applied'}))
         return 0
     except (InstallError, BundleSourceError, inspection.InspectionError, OSError, ValueError):

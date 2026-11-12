@@ -441,6 +441,17 @@ host/group vars, allows only tool/home/locale environment inheritance, and uses
 portable strict SSH options for transfers. Caller fields remain literal data
 through Make and argv; no general site/backup task runs during installation.
 
+**The installation playbook shares one run-owned SSH master** — its 16 remote
+steps opened about 33 fresh strict logins, which took about 4 minutes on a
+disposable node. `main()` swaps only the three multiplexing options, as the
+deploy controller does: `ControlMaster=auto`, `ControlPersist=60` and a `%C`
+socket in a private 0700 directory under `/tmp`. The playbook installs recovery
+code and starts its recovery units, which do nothing without an open
+transaction. It never changes sshd or the firewall, so a master cannot hide a
+refused login and no fresh-login proof is needed. The master is closed with
+`ssh -O exit` in a `finally` block and the directory is removed with the run.
+Do not copy this to a playbook that changes SSH access without such a proof.
+
 **Fresh-node ownership is a separate operator transaction** —
 Schema 3 requires an explicit intent. `ownership` preserves policy;
 `observer-dashboard` selects the source-owned observer baseline and is refused
