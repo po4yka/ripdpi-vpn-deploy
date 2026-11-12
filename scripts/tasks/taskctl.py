@@ -2522,6 +2522,7 @@ def build_terminal_history_index(
     all_revisions = dict.fromkeys(
         revision for timeline in (revisions, *merged_lanes) for revision in timeline
     )
+    prime_issue_trees(root, list(all_revisions))
     with tempfile.TemporaryDirectory(prefix="taskctl-terminal-history-") as directory:
         scratch = Path(directory)
         by_revision = {
@@ -3325,6 +3326,27 @@ def validate_generated_assets(root: Path) -> None:
 _BLOB_TEXT: dict[str, str] = {}
 # Snapshots are read-only, so revisions with an identical listing share one.
 _TREE_SNAPSHOTS: dict[str, dict[str, HistoricalTaskSnapshot]] = {}
+_ISSUE_TREES: dict[str, str] = {}
+
+
+def prime_issue_trees(root: Path, refs: Sequence[str]) -> None:
+    """Resolve each revision's task-record tree in one process; a miss keeps ls-tree."""
+    result = subprocess.run(
+        ("git", "cat-file", "--batch-check"),
+        cwd=root,
+        input="".join(f"{ref}:docs/tasks/issues\n" for ref in refs),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    lines = (result.stdout or "").splitlines()
+    if result.returncode != 0 or len(lines) != len(refs):
+        return
+    for ref, line in zip(refs, lines):
+        fields = line.split()
+        if len(fields) == 3 and fields[1] == "tree":
+            _ISSUE_TREES[ref] = fields[0]
 
 
 def load_blob_texts(root: Path, blobs: Iterable[str]) -> bool:
@@ -3360,6 +3382,9 @@ def historical_task_snapshots(
     ref: str,
     scratch: Path,
 ) -> dict[str, HistoricalTaskSnapshot]:
+    tree_id = _ISSUE_TREES.get(ref)
+    if tree_id in _TREE_SNAPSHOTS:
+        return _TREE_SNAPSHOTS[tree_id]
     tree = run_command(
         ("git", "ls-tree", "-r", ref, "--", "docs/tasks/issues"),
         root=root,
@@ -3398,6 +3423,8 @@ def historical_task_snapshots(
             text=shown_text,
         )
     _TREE_SNAPSHOTS[listing] = snapshots
+    if tree_id:
+        _TREE_SNAPSHOTS[tree_id] = snapshots
     return snapshots
 
 
