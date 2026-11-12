@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shlex
 import stat
 import subprocess
 import sys
@@ -155,7 +156,6 @@ def test_inherited_environment_cannot_skip_install_or_override_git_and_plugins(c
 
 
 def test_strict_arguments_are_also_valid_for_sftp_and_scp(controller, monkeypatch):
-    import shlex
     host = dict(name='vpn-fixture',transport='192.0.2.1',address='192.0.2.1',alias='192.0.2.1',port=2222,user='deploy',key='/keys/private key')
     monkeypatch.setattr(controller.inspection,'select_hosts',lambda *_, **kw:[host])
     monkeypatch.setattr(controller.inspection,'_local_file',lambda path,**kwargs:str(path))
@@ -229,8 +229,9 @@ def test_real_ansible_cannot_load_external_host_vars(controller, monkeypatch, tm
 
 
 def test_private_inventory_is_removed_on_uncertain_install(controller, monkeypatch):
-    argv = ['ansible-playbook', '-i', '<private-inventory>']
-    monkeypatch.setattr(controller, 'build_invocation', lambda _: (argv, {}, '[vpn]\nvpn-fixture\n'))
+    argv = ['ansible-playbook', '-i', '<private-inventory>', '--extra-vars', '{"ansible_host": "192.0.2.1"}']
+    strict = {'ANSIBLE_SSH_ARGS': '-o ControlPath=none -o ControlMaster=no -o ControlPersist=no'}
+    monkeypatch.setattr(controller, 'build_invocation', lambda _: (argv, strict, '[vpn]\nvpn-fixture\n'))
     monkeypatch.setattr(controller, '_clean_source', lambda _: None)
     observed = []
 
@@ -241,3 +242,39 @@ def test_private_inventory_is_removed_on_uncertain_install(controller, monkeypat
     monkeypatch.setattr(controller.inspection, 'bounded_command', fail_install)
     assert controller.main() == 1
     assert len(observed) == 1 and not observed[0].parent.exists()
+
+
+@pytest.mark.parametrize('outcome', ['installed', 'uncertain'])
+def test_install_shares_one_run_owned_master_and_closes_it(controller, monkeypatch, outcome):
+    host = dict(name='vpn-fixture', transport='192.0.2.1', address='192.0.2.1', alias='192.0.2.1',
+                port=2222, user='deploy', key='/keys/private key')
+    monkeypatch.setattr(controller.inspection, 'select_hosts', lambda *_, **kw: [host])
+    monkeypatch.setattr(controller.inspection, '_local_file', lambda path, **kwargs: str(path))
+    monkeypatch.setattr(controller, '_clean_source', lambda _: None)
+    for name, value in (('SSH_RECOVERY_TARGET', 'vpn-fixture'), ('SSH_RECOVERY_WINDOW', '1'),
+                        ('SSH_RECOVERY_INVENTORY_SECTION', 'vpn')):
+        monkeypatch.setenv(name, value)
+    strict = shlex.split(controller.build_invocation(dict(os.environ))[1]['ANSIBLE_SSH_ARGS'])
+    seen = {}
+
+    def ansible(argv, *, environment, **kwargs):
+        seen['options'] = shlex.split(environment['ANSIBLE_SSH_ARGS'])
+        socket = Path(next(word for word in seen['options'] if word.startswith('ControlPath=')).split('=', 1)[1])
+        seen['directory'] = socket.parent
+        assert socket.name == '%C' and stat.S_IMODE(socket.parent.stat().st_mode) == 0o700
+        (socket.parent / 'master').touch()  # ssh creates the socket on first use
+        if outcome == 'uncertain':
+            raise controller.inspection.InspectionError('uncertain')
+        return b''
+
+    closed = []
+    monkeypatch.setattr(controller.inspection, 'bounded_command', ansible)
+    monkeypatch.setattr(controller.subprocess, 'run', lambda command, **kwargs: closed.append(command))
+    assert controller.main() == (0 if outcome == 'installed' else 1)
+    changed = {'ControlPath=none', 'ControlMaster=no', 'ControlPersist=no'}
+    assert [word for word in seen['options'] if not word.startswith('Control')] == [
+        word for word in strict if word not in changed]
+    assert {'ControlMaster=auto', 'ControlPersist=60'} <= set(seen['options'])
+    assert not changed & set(seen['options'])
+    assert closed == [['ssh', *seen['options'], '-O', 'exit', '192.0.2.1']]
+    assert not seen['directory'].exists()
