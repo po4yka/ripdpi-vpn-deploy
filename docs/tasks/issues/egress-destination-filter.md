@@ -2,17 +2,17 @@
 id: SEC-1794156917837664
 title: Block unsafe recipient destinations at the egress boundary
 kind: feature
-status: backlog
+status: doing
 area: security
 priority: medium
 risk: high
-owner: unassigned
+owner: Operator
 parent: null
 blocked_by: []
 spec_mode: required
 openspec_change: sec-1794156917837664-egress-destination-filter
 created: 2026-11-08
-updated: 2026-11-08
+updated: 2026-11-12
 related_tasks: []
 ---
 
