@@ -228,6 +228,8 @@ def test_installer_real_ansible_preserves_local_delegation(controller, inputs, m
     option = "-o ControlPath=none -o ControlMaster=no -o ControlPersist=no"
     assert strict_arguments.count(option) == 1
     before, after = strict_arguments.split(option)
+    replaced = ("ansible_ssh_args[before | length:ansible_ssh_args | length - after | length] is "
+                + "match('^-o ControlPath=/[^ ]*/vb-ssh-[^ /]+/%C -o ControlMaster=auto -o ControlPersist=300$')")
     play = [{"hosts": "vpn", "gather_facts": False,
              "vars": {"expected_transport": transport, "before": before, "after": after},
              "tasks": [
@@ -237,9 +239,7 @@ def test_installer_real_ansible_preserves_local_delegation(controller, inputs, m
                   "loop": "{{ expected_transport | dict2items }}"},
                  {"name": "Change only the multiplexing options of the strict command",
                   "ansible.builtin.assert": {"that": [
-                      "ansible_ssh_args.startswith(before)", "ansible_ssh_args.endswith(after)",
-                      "ansible_ssh_args[before | length:ansible_ssh_args | length - after | length] is "
-                      "match('^-o ControlPath=/[^ ]*/vb-ssh-[^ /]+/%C -o ControlMaster=auto -o ControlPersist=300$')"]}},
+                      "ansible_ssh_args.startswith(before)", "ansible_ssh_args.endswith(after)", replaced]}},
                  {"name": "Run the real source validator on the controller",
                   "ansible.builtin.command": {
                       "argv": [sys.executable, str(ROOT / "scripts/tailnet-validate-sources.py")],
