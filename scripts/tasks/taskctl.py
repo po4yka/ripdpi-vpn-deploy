@@ -7,6 +7,7 @@ import argparse
 import ast
 import fcntl
 import hashlib
+import io
 import json
 import os
 import random
@@ -3320,29 +3321,71 @@ def validate_generated_assets(root: Path) -> None:
                 fail(f"generated skill alias target missing: {alias.relative_to(root)}")
 
 
+# Most revisions leave most task records unchanged, so blob text is read once.
+_BLOB_TEXT: dict[str, str] = {}
+# Snapshots are read-only, so revisions with an identical listing share one.
+_TREE_SNAPSHOTS: dict[str, dict[str, HistoricalTaskSnapshot]] = {}
+
+
+def load_blob_texts(root: Path, blobs: Iterable[str]) -> bool:
+    missing = [blob for blob in dict.fromkeys(blobs) if blob not in _BLOB_TEXT]
+    if not missing:
+        return True
+    result = subprocess.run(
+        ("git", "cat-file", "--batch"),
+        cwd=root,
+        input="".join(f"{blob}\n" for blob in missing).encode(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    data, offset, texts = result.stdout, 0, {}
+    for blob in missing:
+        end = data.find(b"\n", offset)
+        header = data[offset:end].split() if end >= 0 else []
+        if len(header) != 3 or header[:2] != [blob.encode(), b"blob"]:
+            return False
+        start, size = end + 1, int(header[2])
+        # Decode as run_command's text mode does: locale codec, universal newlines.
+        texts[blob] = io.TextIOWrapper(io.BytesIO(data[start : start + size])).read()
+        offset = start + size + 1
+    if result.returncode != 0:
+        return False
+    _BLOB_TEXT.update(texts)
+    return True
+
+
 def historical_task_snapshots(
     root: Path,
     ref: str,
     scratch: Path,
 ) -> dict[str, HistoricalTaskSnapshot]:
     tree = run_command(
-        ("git", "ls-tree", "-r", "--name-only", ref, "--", "docs/tasks/issues"),
+        ("git", "ls-tree", "-r", ref, "--", "docs/tasks/issues"),
         root=root,
     )
     if tree.returncode != 0:
         fail(f"cannot inspect task records at {ref}: {(tree.stdout or '').rstrip()}")
+    listing = tree.stdout or ""
+    if listing in _TREE_SNAPSHOTS:
+        return _TREE_SNAPSHOTS[listing]
+    records = [
+        (meta.split()[2], relative)
+        for meta, _, relative in (
+            line.partition("\t") for line in (tree.stdout or "").splitlines()
+        )
+        if relative.endswith(".md")
+    ]
+    if not load_blob_texts(root, (blob for blob, _ in records)):
+        fail(f"cannot read task records at {ref}")
     snapshots: dict[str, HistoricalTaskSnapshot] = {}
-    for index, relative in enumerate(
-        item for item in (tree.stdout or "").splitlines() if item.endswith(".md")
-    ):
-        shown = run_command(("git", "show", f"{ref}:{relative}"), root=root)
-        if shown.returncode != 0:
-            fail(f"cannot read task record {relative} at {ref}")
+    for index, (blob, relative) in enumerate(records):
+        shown_text = _BLOB_TEXT[blob]
         issue = (
             scratch
             / f"issue-{hashlib.sha256(ref.encode()).hexdigest()[:12]}-{index}.md"
         )
-        issue.write_text(shown.stdout or "", encoding="utf-8")
+        issue.write_text(shown_text, encoding="utf-8")
         document = read_document(issue)
         task_id = document.values.get("id")
         if not isinstance(task_id, str) or ID_RE.fullmatch(task_id) is None:
@@ -3352,8 +3395,9 @@ def historical_task_snapshots(
         snapshots[task_id] = HistoricalTaskSnapshot(
             relative=relative,
             document=document,
-            text=shown.stdout or "",
+            text=shown_text,
         )
+    _TREE_SNAPSHOTS[listing] = snapshots
     return snapshots
 
 
