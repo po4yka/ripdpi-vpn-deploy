@@ -1,0 +1,11 @@
+{
+  "change": "sec-1794156917837664-egress-destination-filter",
+  "evidence_summary": "Production enabled on node-a (P0), node-b (P1) and node-c (Hysteria2) at 6aa18fe9 with passing dry-run, deploy, verify, source-drift, security-verify, smoke-test and protocol-liveness; device client accepted P0 and P1; Hysteria2 device traffic not evaluable on the available paths, covered by staging client denial and production liveness. Evidence in the archived verification.md.",
+  "execution_sha256": "0b7c70bc0b97a6c226e56b7d6b78434719a5d356cc1a58f02551bad738247d93",
+  "issue_sha256": "0ce350729a0af7d5ac5fe71554ecb43ee0fec8c3217a0270093067820a08aab1",
+  "outcome": "done",
+  "prepared_at": "2026-11-12T12:55:23Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SEC-1794156917837664"
+}

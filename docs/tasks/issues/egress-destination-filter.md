@@ -2,7 +2,7 @@
 id: SEC-1794156917837664
 title: Block unsafe recipient destinations at the egress boundary
 kind: feature
-status: review
+status: done
 area: security
 priority: medium
 risk: high
@@ -14,6 +14,9 @@ openspec_change: sec-1794156917837664-egress-destination-filter
 created: 2026-11-08
 updated: 2026-11-12
 related_tasks: []
+closed_at: "2026-11-12T12:55:23Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Production enabled on node-a (P0), node-b (P1) and node-c (Hysteria2) at 6aa18fe9 with passing dry-run, deploy, verify, source-drift, security-verify, smoke-test and protocol-liveness; device client accepted P0 and P1; Hysteria2 device traffic not evaluable on the available paths, covered by staging client denial and production liveness. Evidence in the archived verification.md.
 ---
 
 ## Goal
