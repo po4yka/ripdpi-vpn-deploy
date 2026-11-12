@@ -1,21 +1,21 @@
 ---
 task_id: SEC-1794156917837664
 change: sec-1794156917837664-egress-destination-filter
-commit_sha: null
-local: required
-local_evidence: null
-remote_ci: required
-remote_ci_evidence: null
-dry_run: required
-dry_run_evidence: null
-staging: required
-staging_evidence: null
-live: required
-live_evidence: null
-client: required
-client_evidence: null
-artifact: required
-artifact_evidence: null
+commit_sha: 6aa18fe98893f1704d98bb131622adfe0ab18f0e
+local: passed
+local_evidence: "tests/unit/test_transport_destination_boundary.py and tests/unit/test_transport_egress_role.py, make snapshot-check and make check passed locally for the requirement rows below."
+remote_ci: passed
+remote_ci_evidence: "Protected-main ci run 43005651130 succeeded on exact source 6aa18fe98893f1704d98bb131622adfe0ab18f0e; codeql, scorecard and REALITY target validation also succeeded on that push. The transport-egress Molecule scenario passed in CI on PR 541."
+dry_run: passed
+dry_run_evidence: "make dry-run exited 0 on node-a, node-b and node-c at 6aa18fe98893f1704d98bb131622adfe0ab18f0e before each deploy; each preview passed a changed-task allowlist and an owner-approved review bound to the preview hash. Encrypted logs and receipts are in the private operator kit."
+staging: passed
+staging_evidence: "Staging run 2026-11-09 below: denial of a listed name, its subdomain and a listed address on P0, P1 and Hysteria2, a one-hour soak with 180 of 180 denials, memory bounds and a forced rollback. It used a direct site.yml run with the deviations listed below; deployment-controller acceptance is the live row."
+live: passed
+live_evidence: "2026-11-11 production rollout at 6aa18fe98893f1704d98bb131622adfe0ab18f0e with the filter enabled: node-a (P0), node-b (P1) and node-c (Hysteria2) each passed make deploy, verify, source-drift, security-verify, smoke-test and protocol-liveness with exit 0."
+client: passed
+client_evidence: "Authenticated device client (Pixel 8 Pro, INCY) on production: P0 via node-a and P1 via node-b exited through the node, example.com answered HTTP 200, and list entries closed with 0 bytes while the same name answered HTTP 200 without the tunnel. Hysteria2 device traffic could not be evaluated: both device paths tried (Wi-Fi on 2026-11-11, mobile data on 2026-11-12) deliver only 26-373 byte datagrams to node-c UDP/443 and no full-size QUIC Initial. Hysteria2 denial with an authenticated client is covered by the staging run, and production Hysteria2 liveness passed from the external vantage."
+artifact: passed
+artifact_evidence: "Deny data pinned to hagezi/dns-blocklists commit 5c992c35301e6f3e4c84181b1dfd51873ca35a21 with the SHA-256 values below; 363,724 names delivered on every node. Rendered templates match the committed golden snapshots."
 ---
 
 # Verification
@@ -36,7 +36,7 @@ artifact_evidence: null
 
 ## Staging run 2026-11-09
 
-This run proves the filter on a live node. It is not deployment acceptance, so `staging_evidence` stays empty.
+This run proves the filter on a live node. It is not deployment acceptance; the 2026-11-11 production rollout recorded in `live_evidence` supplies that.
 
 Deviations from the canonical path:
 
