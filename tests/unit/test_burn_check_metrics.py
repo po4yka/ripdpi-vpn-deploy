@@ -31,6 +31,8 @@ def _run_burn_check(tmp_path: pathlib.Path, curl_script: str) -> subprocess.Comp
         "esac\n",
     )
     _write_executable(bin_dir / "curl", curl_script)
+    # The poll loop waits on real time; the stubbed service answers at once.
+    _write_executable(bin_dir / "sleep", "#!/bin/sh\nexit 0\n")
 
     env = os.environ.copy()
     env.update(

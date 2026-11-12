@@ -6,6 +6,7 @@ import re
 import shlex
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -244,12 +245,14 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
         *[[*baseline_selection, '--splits', '2', '--group', str(group), '--splitting-algorithm', 'least_duration',
            '--durations-path', 'tests/native/native-runtime-durations.json'] for group in (1, 2)],
     ]
-    selected = []
-    for arguments in commands:
+    def collect(arguments):
         result = subprocess.run([sys.executable, '-m', 'pytest', *arguments, '--collect-only', '-q'],
             cwd=ROOT, text=True, capture_output=True, check=True, timeout=180)  # Hang guard beside xdist workers.
-        selected.append({line for line in result.stdout.splitlines()
-                         if line.startswith('tests/unit/') and '::' in line})
+        return {line for line in result.stdout.splitlines()
+                if line.startswith('tests/unit/') and '::' in line}
+    # Four of these collect the whole tree; they are independent read-only processes.
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        selected = list(pool.map(collect, commands))
     all_native, existing, transactions, endpoint_cases, awg_cases, ech_cases = selected[:6]
     topology_cases, dualstack_cases, reality_cases, *partitions = selected[6:]
     rta_groups, runtime_groups = partitions[:4], partitions[4:]
