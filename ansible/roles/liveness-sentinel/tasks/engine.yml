@@ -58,10 +58,10 @@
         owner: root
         group: root
         mode: "0600"
-        timeout: 120
+        timeout: 60
       register: _le_download
-      retries: 3
-      delay: 5
+      retries: 5
+      delay: 10
       until: _le_download is succeeded
       changed_when: false
 
