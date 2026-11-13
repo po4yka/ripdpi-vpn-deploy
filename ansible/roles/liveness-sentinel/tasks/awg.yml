@@ -99,7 +99,8 @@
       environment:
         PATH: "{{ liveness_sentinel_go_bin }}:/usr/sbin:/usr/bin:/sbin:/bin"
       register: _le_awg_build
-      changed_when: (_le_awg_build.stdout | from_json).changed | bool
+      # Parse the installer result only on success so a failure keeps its own error.
+      changed_when: _le_awg_build.rc == 0 and (_le_awg_build.stdout | from_json).changed | bool
   always:
     - name: Remove private staging
       ansible.builtin.file:
