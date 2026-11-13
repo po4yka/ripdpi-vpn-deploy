@@ -149,7 +149,7 @@ Store only redacted evidence. Do not commit endpoints, provider account data, ke
 
 ## 6. Family egress scope
 
-Family scope sends recipient traffic of every family transport on Node A through Node B: the `transport-normalizer` and `transport-gateway` users (all Xray and Hysteria recipient egress, including DoH lookups) and forwarded AmneziaWG originals. Node B needs no change. Enable it on Node A only, after steps 1-4 pass. For disposable staging, render Node A with the `vpn-split-hop-family-egress-staging` cohort. A lab cohort sets:
+Family scope sends recipient traffic of every family transport on Node A through Node B: the `transport-normalizer` and `transport-gateway` users (all Xray and Hysteria recipient egress, including DoH lookups) and forwarded AmneziaWG originals. Node B needs no change. Enable it on Node A only, after steps 1-4 pass. For disposable staging, render Node A with the `vpn-split-hop-family-egress-staging` cohort. A long-lived live research pair uses the `vpn-split-hop-*-live` cohorts instead: they keep monitoring, watchdog and backup on Node A and stay outside the family profiles, and the liveness policy for Node A sets `awg_ipv6: ipv4-only`. A lab cohort sets:
 
 ```yaml
 vpn:

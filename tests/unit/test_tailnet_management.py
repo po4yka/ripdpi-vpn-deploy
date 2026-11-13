@@ -69,6 +69,9 @@ def test_live_fleet_profiles_enable_only_reviewed_tailnet_management_sources() -
         "vpn-split-hop-egress-staging.yml",
         "vpn-split-hop-ingress-staging.yml",
         "vpn-split-hop-family-egress-staging.yml",
+        "vpn-split-hop-egress-live.yml",
+        "vpn-split-hop-ingress-live.yml",
+        "vpn-split-hop-family-egress-live.yml",
         "vpn-ci-p0.yml",
         "vpn-ci-p0p1.yml",
         "vpn-ci-p0p1p2.yml",
@@ -96,6 +99,30 @@ def test_split_hop_node_a_profiles_keep_the_staging_transports(name, toggles) ->
     origin = yaml.safe_load((group_vars / "vpn-device-full-staging.yml").read_text())["public_site_canonical_url"]
     assert document == {"allow_research_roles": ["split-hop-ingress"], "public_site_canonical_url": origin,
                         "vpn": {**staging, **toggles}}
+
+
+@pytest.mark.parametrize(("name", "toggles"), [
+    ("vpn-split-hop-ingress-live.yml", {"enable_split_hop_ingress": True}),
+    ("vpn-split-hop-family-egress-live.yml",
+     {"enable_split_hop_ingress": True, "split_hop_family_egress": True}),
+])
+def test_split_hop_live_node_a_keeps_the_production_device_transports(name, toggles) -> None:
+    # A live Node A serves real devices, so it keeps device-full-tailnet transports, monitoring and backup.
+    group_vars = ROOT / "ansible" / "group_vars"
+    baseline = yaml.safe_load((group_vars / "all.yml").read_text())["vpn"]
+    device = yaml.safe_load((group_vars / "vpn-device-full-tailnet.yml").read_text())["vpn"]
+    staging = yaml.safe_load((group_vars / "vpn-split-hop-ingress-staging.yml").read_text())["vpn"]
+    document = yaml.safe_load((group_vars / name).read_text())
+    expected = {**baseline, **device, **toggles}
+    assert document == {"allow_research_roles": ["split-hop-ingress"],
+                        "vpn": {key: expected[key] for key in staging}}
+    assert all(document["vpn"][key] for key in ("enable_monitoring", "enable_watchdog", "enable_backup"))
+
+
+def test_split_hop_live_node_b_matches_the_listener_free_staging_node_b() -> None:
+    group_vars = ROOT / "ansible" / "group_vars"
+    staging = yaml.safe_load((group_vars / "vpn-split-hop-egress-staging.yml").read_text())
+    assert yaml.safe_load((group_vars / "vpn-split-hop-egress-live.yml").read_text()) == staging
 
 
 def test_staging_profile_preserves_transports_and_limits_rehearsal_services(
