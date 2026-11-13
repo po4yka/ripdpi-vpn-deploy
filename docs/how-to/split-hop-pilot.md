@@ -159,6 +159,8 @@ vpn:
 
 `site.yml` refuses the selector without the ingress responder and while Naive, Snell, DNS-Morph, Hysteria realm, WARP outbound or split-hop egress is enabled on Node A, because those transports open recipient sockets outside the guarded users. Converge Node A with the usual `make dry-run` and `make deploy`; the first family converge needs transport-egress users to exist, which a normal site run creates before the split-hop role.
 
+Converge the ingress cohort first and confirm a fresh `shop0` handshake before the first family converge. The family guard sends deploy readiness checks, the transport canary and the liveness proof through the tunnel, so a family converge without a live tunnel cannot complete. The split-hop policy must also pass the transport-egress kernel audit, which refuses any packet change in a chain that POSTROUTING reaches; otherwise every transport-egress apply, verify and rollback on Node A fails. For a disposable staging pair, plan the whole sequence in one executor window ([run limits](../reference/protocol-liveness.md#disposable-staging-run-limits)).
+
 Behaviour to accept before any family use:
 
 - The recipient sees Node B's address for P0, P1, Hysteria2 and AmneziaWG traffic, while clients keep connecting to Node A.
