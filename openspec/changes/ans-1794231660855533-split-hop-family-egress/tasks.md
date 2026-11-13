@@ -22,3 +22,4 @@ Single serialized lane. Ansible: `roles/split-hop-ingress/` (policy, configurati
 - Remote: PR CI on the exact head SHA, including the native lane that runs the WireGuard family test.
 - Dry-run, staging, live and client: deferred to a separately authorized Node A/Node B dry-run and staging converge; this change does not run them.
 - [x] ANS-1794550099725815 Keep the MSS clamp out of POSTROUTING so the transport-egress kernel audit admits the split-hop boundary #bug !high @item:ANS-1794231660855533
+- [x] ANS-1794558129615458 Let protocol liveness accept the family IPv6 refusal under an IPv4-only AWG policy #bug !high @item:ANS-1794231660855533

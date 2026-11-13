@@ -18,10 +18,23 @@ When `vpn.enable_split_hop_ingress` and `vpn.split_hop_family_egress` are true, 
 - **WHEN** baseline sets `net.ipv4.conf.all.rp_filter=1`
 - **THEN** tunnel replies with recipient source addresses are still delivered, because the tunnel interface uses loose mode.
 
+### Requirement: REQ-SHF-COEXIST — The boundary coexists with transport-egress
+
+The ingress-only and family split-hop policies MUST pass the transport-egress kernel audit, so the policy MUST NOT mutate packets in any chain reachable from POSTROUTING, while tunnel SYNs from rerouted users and forwarded devices keep an MSS that fits the tunnel MTU.
+
 #### Scenario: Coexistence with the transport-egress boundary
 
 - **WHEN** the ingress-only or family split-hop policy is loaded and transport-egress applies, verifies or rolls back its host policy
-- **THEN** the transport-egress kernel audit admits the ruleset, because the policy mutates no packet in a chain reachable from POSTROUTING, and tunnel SYNs from rerouted users and forwarded devices still carry an MSS that fits the tunnel MTU.
+- **THEN** the transport-egress kernel audit admits the ruleset, and the recipient observes a tunnel-sized MSS for gateway and device flows.
+
+### Requirement: REQ-SHF-LIVENESS — Liveness proves IPv4-only AWG on a family host
+
+A protocol-liveness policy with `awg_ipv6: ipv4-only` MUST accept the AWG profile when IPv4 delivers through the tunnel with a fresh handshake and every IPv6 attempt is refused by the server's ICMPv6 administratively-prohibited reply. Any other IPv6 failure, and any IPv6 refusal under the default `dualstack` policy, MUST stay a failure.
+
+#### Scenario: Family host refuses device IPv6
+
+- **WHEN** a family-scope Node A rejects forwarded AWG IPv6 and IPv4 succeeds through the tunnel
+- **THEN** the runner reports the IPv6 leg as `policy_refused`, an `ipv4-only` policy counts the AWG profile alive, and a `dualstack` policy counts it blocked.
 
 ### Requirement: REQ-SHF-FAIL-CLOSED — No uplink fallback
 
