@@ -1,0 +1,46 @@
+---
+# Run the engine installer with one bad pin and prove it refuses and leaves the installed binary alone.
+- name: Hash the installed engine before the refused install
+  ansible.builtin.stat:
+    path: /opt/ripdpi-liveness-sentinel/bin/xray
+    checksum_algorithm: sha256
+  register: _before
+
+- name: Attempt the install with a bad pin
+  block:
+    - name: Install with the bad pin
+      ansible.builtin.include_role:
+        name: liveness-sentinel
+        tasks_from: engine.yml
+      vars:
+        _liveness_sentinel_arch: "{{ _case.arch }}"
+        liveness_sentinel_expected_runtime: {}
+        _liveness_engine:
+          key: xray
+          value: "{{ _case.pin }}"
+    - name: Fail when the bad pin was accepted
+      ansible.builtin.fail:
+        msg: "bad pin {{ _case.name }} was accepted"
+  rescue:
+    - name: Require the refusal to come from the pin check
+      ansible.builtin.assert:
+        that:
+          - "'was accepted' not in (ansible_failed_result.msg | default(''))"
+
+- name: Hash the installed engine after the refusal
+  ansible.builtin.stat:
+    path: /opt/ripdpi-liveness-sentinel/bin/xray
+    checksum_algorithm: sha256
+  register: _after
+
+- name: Require the previous binary and an empty staging area
+  ansible.builtin.find:
+    paths: /opt/ripdpi-liveness-sentinel/staging
+    file_type: any
+  register: _staging
+
+- name: Assert nothing changed
+  ansible.builtin.assert:
+    that:
+      - _after.stat.checksum == _before.stat.checksum
+      - _staging.matched == 0

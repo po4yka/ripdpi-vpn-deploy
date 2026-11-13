@@ -1,0 +1,82 @@
+---
+- name: Verify the liveness sentinel prefix, refusals and absence of listeners
+  hosts: all
+  become: true
+  tasks:
+    - name: Read the fixture pins and the published expected_runtime
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - /var/tmp/ls-fixture/pins.json
+        - /opt/ripdpi-liveness-sentinel/expected-runtime.json
+      register: _docs
+
+    - name: Find the installed engines and state
+      ansible.builtin.find:
+        paths: /opt/ripdpi-liveness-sentinel
+        recurse: true
+        file_type: file
+      register: _tree
+
+    - name: Assert the prefix layout, ownership and published pins
+      ansible.builtin.assert:
+        that:
+          - (_docs.results[1].content | b64decode | from_json) == _expected_runtime
+          - (_tree.files | map(attribute='path') | sort) == _expected_files
+          - _tree.files | selectattr('path', 'search', '/bin/') | map(attribute='mode') | unique | list == ['0755']
+          - _tree.files | map(attribute='uid') | unique | list == [0]
+      vars:
+        _expected_runtime: {sing_box: 1.14.3, xray: 26.10.31}
+        _expected_files:
+          - /opt/ripdpi-liveness-sentinel/bin/sing-box
+          - /opt/ripdpi-liveness-sentinel/bin/xray
+          - /opt/ripdpi-liveness-sentinel/expected-runtime.json
+          - /opt/ripdpi-liveness-sentinel/state/sing-box.json
+          - /opt/ripdpi-liveness-sentinel/state/xray.json
+
+    - name: Inspect the foreign public xray link
+      ansible.builtin.stat:
+        path: /usr/local/bin/xray
+        follow: false
+      register: _public
+
+    - name: Assert the role never touched a path another role owns
+      ansible.builtin.assert:
+        that:
+          - _public.stat.islnk
+          - _public.stat.lnk_target == '/bin/true'
+
+    - name: List listeners and sentinel units
+      ansible.builtin.command:
+        argv: [ss, -H, -lntup]
+      register: _listeners
+      changed_when: false
+
+    - name: Find sentinel systemd units
+      ansible.builtin.find:
+        paths: /etc/systemd/system
+        patterns: "*liveness-sentinel*"
+      register: _units
+
+    - name: Assert no service and no listener from the prefix
+      ansible.builtin.assert:
+        that:
+          - "'ripdpi-liveness-sentinel' not in _listeners.stdout"
+          - _units.matched == 0
+
+    - name: Refuse a wrong archive digest and a wrong staged version
+      ansible.builtin.include_tasks: tasks/refuse.yml
+      vars:
+        _good: "{{ (_docs.results[0].content | b64decode | from_json).engines.xray }}"
+        _arch: "{{ 'amd64' if ansible_facts['architecture'] == 'x86_64' else 'arm64' }}"
+        _cases:
+          - name: digest
+            arch: "{{ _arch }}"
+            pin: "{{ _good | combine({'archives': {_arch: _good.archives[_arch] | combine({'sha256': 'f' * 64})}}) }}"
+          - name: version
+            arch: "{{ _arch }}"
+            pin: "{{ _good | combine({'version': '26.10.32'}) }}"
+      loop: "{{ _cases }}"
+      loop_control:
+        loop_var: _case
+        label: "{{ _case.name }}"

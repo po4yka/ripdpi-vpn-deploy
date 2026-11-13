@@ -31,6 +31,7 @@ vpn:
   enable_split_hop_ingress: true
   split_hop_family_egress: true
   enable_probe_matrix_target: false
+  enable_liveness_sentinel: false
   enable_snell: false
   enable_cascade_ingress: false
   enable_cascade_egress: false

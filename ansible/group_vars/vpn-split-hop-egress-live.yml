@@ -2,7 +2,7 @@
 # Long-lived split-hop Node B for a live research pair: WireGuard initiator and NAT egress, no client listener.
 # Same map as the staging Node B; every listener toggle is explicitly false for the no-public-listener SSH promotion kind.
 # Complete map because the deployment controller replaces canonical vpn maps.
-allow_research_roles: [split-hop-egress]
+allow_research_roles: [split-hop-egress, liveness-sentinel]
 
 vpn:
   enable_transport_egress: false
@@ -30,6 +30,7 @@ vpn:
   enable_split_hop_ingress: false
   split_hop_family_egress: false
   enable_probe_matrix_target: false
+  enable_liveness_sentinel: true
   enable_snell: false
   enable_cascade_ingress: false
   enable_cascade_egress: false

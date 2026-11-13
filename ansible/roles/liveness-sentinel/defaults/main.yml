@@ -1,0 +1,41 @@
+---
+# Default-on for direct calls; site.yml passes vpn.enable_liveness_sentinel. Disabling never uninstalls: nodes are disposable.
+liveness_sentinel_role_enabled: true
+
+# Role-owned prefix. Nothing here is on PATH; the native probe reads ENGINE_BIN in scripts/vpn-protocol-liveness.py.
+liveness_sentinel_prefix: /opt/ripdpi-liveness-sentinel
+
+# One canonical pin file shared with scripts/provision-disposable-liveness-runtime.py.
+liveness_sentinel_pins_file: "{{ role_path }}/../../../contract/liveness-runtime-pins.json"
+liveness_sentinel_pins: "{{ lookup('ansible.builtin.file', liveness_sentinel_pins_file) | from_json }}"
+liveness_sentinel_engines: "{{ liveness_sentinel_pins.engines }}"
+liveness_sentinel_go_package: "{{ liveness_sentinel_pins.go_package }}"
+liveness_sentinel_go_bin: "{{ liveness_sentinel_pins.go_bin }}"
+
+liveness_sentinel_packages:
+  - curl
+  - iproute2
+  - python3
+  - unzip
+
+# AWG client toolchain, built offline by the shared installer from controller-side inputs
+# (same variables and build prerequisites as real-vps-awg-nat's sentinel mode).
+liveness_sentinel_install_awg: true
+liveness_sentinel_awg_build_packages:
+  - build-essential
+  - git
+  - libmnl-dev
+  - make
+  - openssl
+  - pkg-config
+  - util-linux
+liveness_sentinel_awg_pins: "{{ lookup('ansible.builtin.file', role_path ~ '/../real-vps-awg-nat/defaults/main.yml') | from_yaml }}"
+liveness_sentinel_awg_go_commit: "{{ liveness_sentinel_awg_pins.real_vps_awg_nat_awg_go_commit }}"
+liveness_sentinel_awg_tools_commit: "{{ liveness_sentinel_awg_pins.real_vps_awg_nat_awg_tools_commit }}"
+# Private controller-side inputs; supply them as extra vars, never commit them.
+liveness_sentinel_awg_go_source_bundle: ""
+liveness_sentinel_awg_go_source_bundle_sha256: ""
+liveness_sentinel_awg_tools_source_bundle: ""
+liveness_sentinel_awg_tools_source_bundle_sha256: ""
+liveness_sentinel_awg_go_vendor_archive: ""
+liveness_sentinel_awg_go_vendor_archive_sha256: ""

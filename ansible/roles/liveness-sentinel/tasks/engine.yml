@@ -1,0 +1,157 @@
+---
+# Install one pinned engine (_liveness_engine = {key: name, value: pin}) into the role prefix.
+# Order: verify the archive digest in private staging, verify the staged binary's version,
+# then rename into place. A failure before the copy leaves the previous binary untouched.
+- name: Resolve engine paths and pins
+  ansible.builtin.set_fact:
+    _le_name: "{{ _liveness_engine.key }}"
+    _le_pin: "{{ _liveness_engine.value }}"
+    _le_archive: "{{ _liveness_engine.value.archives[_liveness_sentinel_arch] }}"
+    _le_dest: "{{ liveness_sentinel_prefix }}/bin/{{ _liveness_engine.key }}"
+    _le_record: "{{ liveness_sentinel_prefix }}/state/{{ _liveness_engine.key }}.json"
+
+- name: Inspect the installed engine and its install record
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+    checksum_algorithm: sha256
+  loop:
+    - "{{ _le_dest }}"
+    - "{{ _le_record }}"
+  register: _le_stats
+
+- name: Read the install record
+  ansible.builtin.slurp:
+    src: "{{ _le_record }}"
+  register: _le_record_raw
+  when: _le_stats.results[1].stat.exists
+
+- name: Decide whether the pinned engine is already installed
+  ansible.builtin.set_fact:
+    _le_recorded: "{{ (_le_record_raw.content | b64decode | from_json) if _le_stats.results[1].stat.exists else {} }}"
+
+- name: Compare the install record with the pin and the installed bytes
+  ansible.builtin.set_fact:
+    _le_current: >-
+      {{ _le_stats.results[0].stat.exists
+         and _le_recorded.archive_sha256 | default('') == _le_archive.sha256
+         and _le_recorded.version | default('') == _le_pin.version
+         and _le_recorded.binary_sha256 | default('') == _le_stats.results[0].stat.checksum | default('') }}
+    _le_expected_sha: "{{ _le_recorded.binary_sha256 | default('') }}"
+
+- name: Stage, verify and install the engine
+  when: not (_le_current | bool)
+  block:
+    - name: Create private staging
+      ansible.builtin.tempfile:
+        state: directory
+        path: "{{ liveness_sentinel_prefix }}/staging"
+        prefix: "{{ _le_name }}-"
+      register: _le_staging
+      changed_when: false
+
+    - name: Download the archive and verify its pinned digest
+      ansible.builtin.get_url:
+        url: "{{ _le_pin.url | replace('{version}', _le_pin.version) | replace('{archive}', _le_archive.name) }}"
+        dest: "{{ _le_staging.path }}/{{ _le_archive.name }}"
+        checksum: "sha256:{{ _le_archive.sha256 }}"
+        owner: root
+        group: root
+        mode: "0600"
+        timeout: 120
+      register: _le_download
+      retries: 3
+      delay: 5
+      until: _le_download is succeeded
+      changed_when: false
+
+    - name: Extract only the engine member
+      ansible.builtin.unarchive:
+        src: "{{ _le_staging.path }}/{{ _le_archive.name }}"
+        dest: "{{ _le_staging.path }}"
+        remote_src: true
+        include: ["{{ _le_pin.member | replace('{arch}', _liveness_sentinel_arch) }}"]
+      changed_when: false
+
+    - name: Make the staged binary executable by root only
+      ansible.builtin.file:
+        path: "{{ _le_staging.path }}/{{ _le_pin.member | replace('{arch}', _liveness_sentinel_arch) }}"
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Inspect the staged binary
+      ansible.builtin.stat:
+        path: "{{ _le_staging.path }}/{{ _le_pin.member | replace('{arch}', _liveness_sentinel_arch) }}"
+        checksum_algorithm: sha256
+      register: _le_staged
+
+    - name: Verify the staged binary version before installation
+      ansible.builtin.command:
+        argv:
+          - "{{ _le_staged.stat.path }}"
+          - version
+      register: _le_staged_version
+      changed_when: false
+
+    - name: Refuse a staged binary whose version differs from the pin
+      ansible.builtin.assert:
+        that:
+          - _le_staged_version.stdout | regex_findall('(\\d+\\.\\d+\\.\\d+)') | first == _le_pin.version
+        fail_msg: "{{ _le_name }} archive does not contain pinned version {{ _le_pin.version }}"
+
+    - name: Rename the verified binary into place atomically
+      ansible.builtin.copy:
+        src: "{{ _le_staged.stat.path }}"
+        dest: "{{ _le_dest }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Record the verified install
+      ansible.builtin.copy:
+        content: >-
+          {{ {'archive_sha256': _le_archive.sha256, 'binary_sha256': _le_staged.stat.checksum,
+              'version': _le_pin.version} | to_nice_json(sort_keys=True) }}
+        dest: "{{ _le_record }}"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Remember the verified digest
+      ansible.builtin.set_fact:
+        _le_expected_sha: "{{ _le_staged.stat.checksum }}"
+  always:
+    - name: Remove private staging
+      ansible.builtin.file:
+        path: "{{ _le_staging.path }}"
+        state: absent
+      when: _le_staging.path is defined
+      changed_when: false
+
+- name: Re-inspect the exact installed path
+  ansible.builtin.stat:
+    path: "{{ _le_dest }}"
+    follow: false
+    checksum_algorithm: sha256
+  register: _le_installed
+
+- name: Run the exact installed path for its version
+  ansible.builtin.command:
+    argv:
+      - "{{ _le_dest }}"
+      - version
+  register: _le_installed_version
+  changed_when: false
+
+- name: Verify hash and version of the installed path
+  ansible.builtin.assert:
+    that:
+      - _le_installed.stat.checksum == _le_expected_sha
+      - _le_installed_version.stdout | regex_findall('(\\d+\\.\\d+\\.\\d+)') | first == _le_pin.version
+
+- name: Record the installed version for expected_runtime
+  ansible.builtin.set_fact:
+    liveness_sentinel_expected_runtime: >-
+      {{ liveness_sentinel_expected_runtime | combine({_le_name | replace('-', '_'): _le_pin.version}) }}

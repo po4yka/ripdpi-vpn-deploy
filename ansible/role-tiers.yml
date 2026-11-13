@@ -71,6 +71,7 @@ tiers:
   split-hop-ingress: research # Node A responder for topology comparison
   snell: research              # staged random-stream transport evaluation
   real-vps-awg-nat: research   # three-host physical evidence lane; never a family role
+  liveness-sentinel: research  # measurement-only pinned probe engines for a cloud sentinel; no listener
 
   # EXCEPTION — implemented but inert; requires per-host allowlist and fresh attestation
   cascade-ingress: exception   # client termination integration + tri-state classifier
@@ -106,6 +107,7 @@ toggle_role_map:
   enable_snell: snell
   enable_cascade_ingress: cascade-ingress
   enable_cascade_egress: cascade-egress
+  enable_liveness_sentinel: liveness-sentinel
 
 # Profiles that constitute a "family" deploy. The lint forbids any research
 # role from being enabled (directly or by inheriting all.yml) in these, and

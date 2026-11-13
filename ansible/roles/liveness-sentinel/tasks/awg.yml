@@ -1,0 +1,160 @@
+---
+# Build the immutable AWG client toolchain with the shared offline installer.
+# The installer verifies every bundle digest before it builds and owns /opt/ripdpi-real-vps-awg-nat/toolchains.
+- name: Require private controller-side AWG inputs
+  ansible.builtin.assert:
+    that:
+      - liveness_sentinel_awg_go_source_bundle | length > 0
+      - liveness_sentinel_awg_tools_source_bundle | length > 0
+      - liveness_sentinel_awg_go_vendor_archive | length > 0
+      - liveness_sentinel_awg_go_source_bundle_sha256 is match('^[0-9a-f]{64}$')
+      - liveness_sentinel_awg_tools_source_bundle_sha256 is match('^[0-9a-f]{64}$')
+      - liveness_sentinel_awg_go_vendor_archive_sha256 is match('^[0-9a-f]{64}$')
+      - liveness_sentinel_awg_go_commit is match('^[0-9a-f]{40}$')
+      - liveness_sentinel_awg_tools_commit is match('^[0-9a-f]{40}$')
+    fail_msg: >-
+      Supply the AWG source bundles, vendor archive and their sha256 values as private
+      extra vars (see scripts/build-real-vps-awg-nat-source-bundle.sh), or set liveness_sentinel_install_awg=false.
+  no_log: true
+
+- name: Resolve the reviewed AWG source correction before mutation
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - -Es
+      - "{{ role_path }}/../amneziawg/files/awg_source_correction.py"
+      - describe
+      - --commit
+      - "{{ liveness_sentinel_awg_go_commit }}"
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+  register: _le_correction_description
+
+- name: Select the exact AWG source correction
+  ansible.builtin.set_fact:
+    _le_correction: "{{ _le_correction_description.stdout | from_json }}"
+    _le_correction_dir: >-
+      /usr/local/libexec/ripdpi/awg-source-{{ (_le_correction_description.stdout | from_json).digest }}
+
+- name: Require an upstream AWG source correction profile
+  ansible.builtin.assert:
+    that:
+      - _le_correction.profile == 'upstream'
+
+- name: Create the content-addressed correction directory the installer requires
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /usr/local/libexec/ripdpi
+    - "{{ _le_correction_dir }}"
+
+- name: Install the exact AWG source correction assets
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../amneziawg/files/{{ item }}"
+    dest: "{{ _le_correction_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - awg_source_correction.py
+    - awg-source-correction.json
+    - awg-udp-checksum-zero.patch.json
+
+- name: Install the offline AWG installer inside the role prefix
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../../scripts/install-real-vps-awg-client-tools.py"
+    dest: "{{ liveness_sentinel_prefix }}/install-real-vps-awg-client-tools"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create the shared AWG installer lock directory
+  ansible.builtin.file:
+    path: /run/lock/ripdpi-real-vps-awg-nat
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Build and install the AWG toolchain from private staging
+  block:
+    - name: Create private staging
+      ansible.builtin.tempfile:
+        state: directory
+        path: "{{ liveness_sentinel_prefix }}/staging"
+        prefix: awg-
+      register: _le_awg_staging
+      changed_when: false
+
+    - name: Copy the offline AWG inputs
+      ansible.builtin.copy:
+        src: "{{ item.source }}"
+        dest: "{{ _le_awg_staging.path }}/{{ item.name }}"
+        owner: root
+        group: root
+        mode: "0600"
+      loop:
+        - {source: "{{ liveness_sentinel_awg_go_source_bundle }}", name: amneziawg-go.bundle}
+        - {source: "{{ liveness_sentinel_awg_tools_source_bundle }}", name: amneziawg-tools.bundle}
+        - {source: "{{ liveness_sentinel_awg_go_vendor_archive }}", name: amneziawg-go-vendor.tar}
+      loop_control:
+        label: "{{ item.name }}"
+      changed_when: false
+
+    - name: Run the immutable offline AWG installer
+      ansible.builtin.command:
+        argv:
+          - "{{ liveness_sentinel_prefix }}/install-real-vps-awg-client-tools"
+          - --go-bundle
+          - "{{ _le_awg_staging.path }}/amneziawg-go.bundle"
+          - --go-bundle-sha256
+          - "{{ liveness_sentinel_awg_go_source_bundle_sha256 }}"
+          - --go-commit
+          - "{{ liveness_sentinel_awg_go_commit }}"
+          - --tools-bundle
+          - "{{ _le_awg_staging.path }}/amneziawg-tools.bundle"
+          - --tools-bundle-sha256
+          - "{{ liveness_sentinel_awg_tools_source_bundle_sha256 }}"
+          - --tools-commit
+          - "{{ liveness_sentinel_awg_tools_commit }}"
+          - --vendor-archive
+          - "{{ _le_awg_staging.path }}/amneziawg-go-vendor.tar"
+          - --vendor-sha256
+          - "{{ liveness_sentinel_awg_go_vendor_archive_sha256 }}"
+          - --correction-directory
+          - "{{ _le_correction_dir }}"
+          - --correction-digest
+          - "{{ _le_correction.digest }}"
+      environment:
+        PATH: "{{ liveness_sentinel_go_bin }}:/usr/sbin:/usr/bin:/sbin:/bin"
+      register: _le_awg_build
+      changed_when: (_le_awg_build.stdout | from_json).changed | bool
+  always:
+    - name: Remove private staging
+      ansible.builtin.file:
+        path: "{{ _le_awg_staging.path }}"
+        state: absent
+      when: _le_awg_staging.path is defined
+      changed_when: false
+
+- name: Verify the installed AWG toolchain path
+  ansible.builtin.command:
+    argv:
+      - "/opt/ripdpi-real-vps-awg-nat/toolchains/{{ (_le_awg_build.stdout | from_json).toolchainId }}/bin/awg"
+      - --version
+  register: _le_awg_version
+  changed_when: false
+
+- name: Record the AWG pins for expected_runtime
+  ansible.builtin.set_fact:
+    liveness_sentinel_expected_runtime: >-
+      {{ liveness_sentinel_expected_runtime | combine({
+           'awg': _le_awg_version.stdout | regex_findall('(\\d+\\.\\d+\\.\\d+(?:[-+][A-Za-z0-9.-]+)?)') | first,
+           'awg_toolchain': (_le_awg_build.stdout | from_json).toolchainId}) }}
+  failed_when: (_le_awg_build.stdout | from_json).toolchainId is not match('^[0-9a-f]{64}$')
