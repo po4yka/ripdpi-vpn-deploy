@@ -96,6 +96,7 @@ def _setup(
     blocked_delay_seconds: float = 0,
     awg_curl_fails: bool = False,
     awg_ipv6_fails: bool = False,
+    awg_ipv6_stderr: str | None = None,
     awg_curl_sleeps: bool = False,
     sing_curl_sleeps: bool = False,
     sing_auth_fails: bool = False,
@@ -136,6 +137,10 @@ if os.environ.get("IN_AWG_NETNS") == "1":
         time.sleep(30)
     if {awg_curl_fails!r} or ({awg_ipv6_fails!r} and "--ipv6" in args):
         raise SystemExit(28)
+    ipv6_stderr = {awg_ipv6_stderr!r}
+    if ipv6_stderr is not None and "--ipv6" in args:
+        print(ipv6_stderr, file=sys.stderr)
+        raise SystemExit(7)
 print("204 0.040000", end="")
 """,
     )
@@ -1167,3 +1172,30 @@ def test_ipv4_success_cannot_hide_failed_ipv6_delivery(tmp_path):
     assert awg["family_results"]["ipv4"]["verdict"] == "ok"
     assert awg["family_results"]["ipv6"]["verdict"] == "blocked"
     assert awg["authenticated_handshake"] is False and awg["dns_through_tunnel"] is False
+
+
+_REFUSED = "* connect to 2001:db8::1 port 443 from fd42:42:42::2 port 40000 failed: Permission denied"
+_RESET = "* connect to 2001:db8::2 port 443 from fd42:42:42::2 port 40001 failed: Connection refused"
+
+
+@pytest.mark.parametrize(("attempts", "error_kind", "proven"), [
+    ([_REFUSED, _REFUSED.replace("::1", "::2")], "policy_refused", True),
+    ([_REFUSED, _RESET], "network", False),
+])
+def test_awg_ipv6_policy_refusal_is_distinct_from_network_failure(tmp_path, attempts, error_kind, proven):
+    stderr = "\n".join([*attempts, "* Certificate issuer: Example Certification Authority",
+                        "curl: (7) Failed to connect to dual-stack.fixture port 443: Couldn't connect to server"])
+    config, env = _setup(tmp_path, awg_ipv6_stderr=stderr)
+
+    result = _run(config, env)
+
+    assert result.returncode == 0, result.stderr
+    calls = (tmp_path / "calls.log").read_text().splitlines()
+    awg_calls = [line.split() for line in calls if line.startswith("ip netns exec vpn-live-") and " curl " in line]
+    assert {("-v" in call, "--ipv6" in call) for call in awg_calls} == {(False, False), (True, True)}
+    awg = next(item for item in json.loads(result.stdout)["profiles"] if item["profile"] == "p2-amneziawg")
+    assert awg["verdict"] == "blocked" and awg["error_kind"] == error_kind
+    assert awg["family_results"]["ipv4"]["verdict"] == "ok"
+    assert awg["family_results"]["ipv6"]["error_kind"] == error_kind
+    assert (awg.get("fresh_handshake"), awg["dns_through_tunnel"], awg["authenticated_handshake"]) == (
+        (True, True, True) if proven else (None, False, False))

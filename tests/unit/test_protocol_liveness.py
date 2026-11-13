@@ -80,7 +80,7 @@ def _report(sentinel: str, verdicts: dict[str, str], *, control: str = "ok", age
     }
 
 
-def _config(tmp_path: Path, *, quorum: int = 2) -> Path:
+def _config(tmp_path: Path, *, quorum: int = 2, awg_ipv6: str | None = None) -> Path:
     path = tmp_path / "liveness.yaml"
     path.write_text(
         yaml.safe_dump(
@@ -99,6 +99,7 @@ def _config(tmp_path: Path, *, quorum: int = 2) -> Path:
                         "id": "fullstack",
                         "required_profiles": PROFILES,
                         "min_failed_vantages": quorum,
+                        **({"awg_ipv6": awg_ipv6} if awg_ipv6 else {}),
                     }
                 ],
                 "sentinels": [
@@ -847,3 +848,40 @@ def test_working_alternate_retains_degraded_primary_without_rotation(tmp_path, p
         assert evidence["profiles"]["p1-xhttp"] == "ok"
         assert evidence["endpoint_variants"]["p1-xhttp"] == [
             {"variant": 1, "verdict": primary}, {"variant": 2, "verdict": "ok"}]
+
+
+def _ipv6_refused(report: dict, *, ipv4: str = "ok", ipv6_kind: str = "policy_refused") -> dict:
+    awg = report["profiles"][-1]
+    awg.update({"verdict": "blocked", "error_kind": "policy_refused", "fresh_handshake": True,
+                "dns_through_tunnel": True, "authenticated_handshake": True})
+    awg["family_results"]["ipv4"]["verdict"] = ipv4
+    awg["family_results"]["ipv6"] = {"verdict": "blocked", "duration_ms": 40, "payload_transport": "tcp-https",
+                                     "error_kind": ipv6_kind}
+    return report
+
+
+@pytest.mark.parametrize(("policy", "ipv4", "ipv6_kind", "expected"), [
+    ("ipv4-only", "ok", "policy_refused", "ok"),
+    ("ipv4-only", "throttled", "policy_refused", "throttled"),
+    (None, "ok", "policy_refused", "blocked"),
+    ("dualstack", "ok", "policy_refused", "blocked"),
+    ("ipv4-only", "ok", "network", "invalid"),
+    ("ipv4-only", "blocked", "policy_refused", "invalid"),
+])
+def test_awg_ipv6_refusal_counts_only_under_an_ipv4_only_policy(tmp_path, policy, ipv4, ipv6_kind, expected):
+    module = runpy.run_path(str(SCRIPT))
+    config = yaml.safe_load(_config(tmp_path, awg_ipv6=policy).read_text())
+    report = _ipv6_refused(_report("tls-freeze-a", _all("ok")), ipv4=ipv4, ipv6_kind=ipv6_kind)
+    valid, error = module["validate_report"](json.dumps(report), config["sentinels"][0], config, int(time.time()))
+    if expected == "invalid":
+        assert valid is None and "IPv6 refusal evidence" in error
+    else:
+        awg = next(item for item in valid["profiles"] if item["profile"] == "p2-amneziawg")
+        assert awg["verdict"] == expected
+
+
+def test_schema_rejects_an_unknown_awg_ipv6_mode(tmp_path):
+    module = runpy.run_path(str(SCRIPT))
+    config = yaml.safe_load(_config(tmp_path, awg_ipv6="ipv6-only").read_text())
+    with pytest.raises(module["ConfigError"], match="awg_ipv6"):
+        module["validate_config"](config)
