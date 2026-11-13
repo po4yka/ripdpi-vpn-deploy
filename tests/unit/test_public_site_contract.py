@@ -854,7 +854,8 @@ def _neutral_committed_origin(profile: str, url: str) -> bool:
     from transport_semantics import PUBLIC_ORIGIN_TEMPLATE
     return url == ("https://vpn.example.com:8443" if profile == "all.yml" else "https://vpn.example.com") or (
         profile in {"vpn-ci-p0p1p2.yml", "vpn-device-full-staging.yml", "vpn-split-hop-ingress-staging.yml",
-                    "vpn-split-hop-family-egress-staging.yml"}
+                    "vpn-split-hop-family-egress-staging.yml", "vpn-split-hop-ingress-live.yml",
+                    "vpn-split-hop-family-egress-live.yml"}
         and url == PUBLIC_ORIGIN_TEMPLATE
     )
 
