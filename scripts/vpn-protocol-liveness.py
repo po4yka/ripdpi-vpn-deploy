@@ -35,6 +35,13 @@ AUTH_ERROR = re.compile(r"auth|credential|invalid user|rejected|bad certificate"
 # curl -v trace lines; certificate "Authority" text in them must not read as an authentication error.
 CURL_TRACE_PREFIXES = ("* ", "> ", "< ", "{ ", "} ")
 AWG_TOOLCHAIN_BASE = Path("/opt/ripdpi-real-vps-awg-nat/toolchains")
+# The liveness-sentinel role installs sing-box and Xray here; other sentinels keep PATH lookup.
+ENGINE_BIN = Path("/opt/ripdpi-liveness-sentinel/bin")
+
+
+def engine(name: str) -> str:
+    candidate = ENGINE_BIN / name
+    return str(candidate) if candidate.is_file() and os.access(candidate, os.X_OK) else name
 AWG_TOOLCHAIN_UID = 0
 AWG_TOOLCHAIN_GID = 0
 AWG_CORRECTION_BASE = Path("/usr/local/libexec/ripdpi")
@@ -263,7 +270,7 @@ def command_version(command: list[str]) -> str:
 def xray_version() -> str:
     for attempt in range(2):
         try:
-            result = subprocess.run(["xray", "version"], text=True, capture_output=True, timeout=5, check=False)
+            result = subprocess.run([engine("xray"), "version"], text=True, capture_output=True, timeout=5, check=False)
         except (OSError, subprocess.TimeoutExpired):
             if attempt == 0:
                 time.sleep(0.1)
@@ -497,10 +504,10 @@ def probe_runtime_profiles(runtime: str, settings: dict, config: dict, control_a
     log_path = Path(log_name)
     process: subprocess.Popen[str] | None = None
     try:
-        command = [runtime, "run", "-config" if runtime == "xray" else "-c", settings["config"]]
+        command = [engine(runtime), "run", "-config" if runtime == "xray" else "-c", settings["config"]]
         if runtime == "xray":
             validated = subprocess.run(
-                [runtime, "run", "-test", "-config", settings["config"]],
+                [engine(runtime), "run", "-test", "-config", settings["config"]],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5, check=False,
             )
             if validated.returncode:
@@ -818,7 +825,7 @@ def main() -> int:
         control_alive = control["verdict"] in {"ok", "throttled"}
         runtime = {}
         if "sing_box" in config:
-            runtime["sing_box"] = command_version(["sing-box", "version"])
+            runtime["sing_box"] = command_version([engine("sing-box"), "version"])
         if "xray" in config:
             runtime["xray"] = xray_version()
         if toolchain is not None:

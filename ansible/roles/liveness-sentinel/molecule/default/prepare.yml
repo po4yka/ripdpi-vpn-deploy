@@ -1,0 +1,73 @@
+---
+- name: Prepare offline engine archives and a foreign public xray link
+  hosts: all
+  become: true
+  tasks:
+    - name: Select the fixture architecture
+      ansible.builtin.set_fact:
+        _arch: "{{ 'amd64' if ansible_facts['architecture'] == 'x86_64' else 'arm64' }}"
+
+    - name: Create fixture directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - /var/tmp/ls-fixture
+        - "/var/tmp/ls-fixture/sing-box-1.14.3-linux-{{ _arch }}"
+
+    - name: Install engine stubs that print the real version banners
+      ansible.builtin.copy:
+        dest: "{{ item.path }}"
+        mode: "0755"
+        content: "#!/bin/sh\necho '{{ item.banner }}'\n"
+      loop:
+        - {path: "/var/tmp/ls-fixture/sing-box-1.14.3-linux-{{ _arch }}/sing-box", banner: "sing-box version 1.14.3"}
+        - {path: /var/tmp/ls-fixture/xray, banner: "Xray 26.10.31 (Xray, Penetrates Everything.)"}
+
+    - name: Build the fixture archives
+      ansible.builtin.command:
+        argv: "{{ item.argv }}"
+        chdir: /var/tmp/ls-fixture
+        creates: "/var/tmp/ls-fixture/{{ item.archive }}"
+      loop:
+        - archive: "sing-box-1.14.3-linux-{{ _arch }}.tar.gz"
+          argv:
+            - tar
+            - -czf
+            - "sing-box-1.14.3-linux-{{ _arch }}.tar.gz"
+            - "sing-box-1.14.3-linux-{{ _arch }}/sing-box"
+        - {archive: Xray-linux-64.zip, argv: [python3, -m, zipfile, -c, Xray-linux-64.zip, xray]}
+
+    - name: Hash the fixture archives
+      ansible.builtin.stat:
+        path: "/var/tmp/ls-fixture/{{ item }}"
+        checksum_algorithm: sha256
+      loop:
+        - "sing-box-1.14.3-linux-{{ _arch }}.tar.gz"
+        - Xray-linux-64.zip
+      register: _hashes
+
+    - name: Publish the fixture pin document
+      ansible.builtin.copy:
+        dest: /var/tmp/ls-fixture/pins.json
+        mode: "0644"
+        content: "{{ {'engines': _engines} | to_nice_json }}"
+      vars:
+        _engines:
+          sing-box:
+            version: 1.14.3
+            url: "file:///var/tmp/ls-fixture/{archive}"
+            archives: "{{ {_arch: {'name': 'sing-box-1.14.3-linux-' ~ _arch ~ '.tar.gz', 'sha256': _hashes.results[0].stat.checksum}} }}"
+            member: "sing-box-1.14.3-linux-{arch}/sing-box"
+          xray:
+            version: 26.10.31
+            url: "file:///var/tmp/ls-fixture/{archive}"
+            archives: "{{ {_arch: {'name': 'Xray-linux-64.zip', 'sha256': _hashes.results[1].stat.checksum}} }}"
+            member: xray
+
+    - name: Plant a family-style public xray link the role must never touch
+      ansible.builtin.file:
+        src: /bin/true
+        dest: /usr/local/bin/xray
+        state: link

@@ -49,37 +49,17 @@ INSTALLER = ROOT / "scripts/install-real-vps-awg-client-tools.py"
 BUNDLER = ROOT / "scripts/build-real-vps-awg-nat-source-bundle.sh"
 ARCHITECTURES = {"aarch64": "arm64", "x86_64": "amd64"}
 # Update a version and all of its archive digests together after upstream
-# release review. The amd64 digests are the CI pins of the same releases.
+# release review. The liveness-sentinel role reads the same file.
+PINS = json.loads((ROOT / "contract/liveness-runtime-pins.json").read_text())
 ENGINES = {
-    "sing-box": {
-        "version": "1.14.3",
-        "url": "https://github.com/SagerNet/sing-box/releases/download/v{version}/{archive}",
-        "archives": {
-            "amd64": ("sing-box-1.14.3-linux-amd64.tar.gz",
-                      "e2bdf179c15a3652955dc44867e33ca0965c9c9b91b34267dcc5a5d639a5feee"),
-            "arm64": ("sing-box-1.14.3-linux-arm64.tar.gz",
-                      "29dae24d76bea3bc62d07dd3e60cfc12003de7debbd6b768df9be9c68360174e"),
-        },
-        "member": "sing-box-1.14.3-linux-{arch}/sing-box",
-    },
-    "xray": {
-        "version": "26.10.31",
-        "url": "https://github.com/XTLS/Xray-core/releases/download/v{version}/{archive}",
-        "archives": {
-            "amd64": ("Xray-linux-64.zip", "e4bd9119f50ae7c41658b1abd0679ae06f98bd864a2907ff33f2f2cf7081b214"),
-            "arm64": ("Xray-linux-arm64-v8a.zip", "1811c8f1da0c3b6dc707ebaf1c8390e987ba39859a8f0a7aadd8526157f2ec8d"),
-        },
-        "member": "xray",
-    },
+    name: {**engine, "archives": {arch: (item["name"], item["sha256"]) for arch, item in engine["archives"].items()}}
+    for name, engine in PINS["engines"].items()
 }
-AWG_REPOSITORIES = {
-    "go": "https://github.com/amnezia-vpn/amneziawg-go",
-    "tools": "https://github.com/amnezia-vpn/amneziawg-tools",
-}
+AWG_REPOSITORIES = PINS["awg_repositories"]
 # Ubuntu 24.04's default golang (1.22.2) is older than amneziawg-go's go.mod
 # floor; the builder runs with GOTOOLCHAIN=local, so it needs this package.
-GO_PACKAGE = "golang-1.24-go"
-GO_BIN = "/usr/lib/go-1.24/bin"
+GO_PACKAGE = PINS["go_package"]
+GO_BIN = PINS["go_bin"]
 VM_INPUTS = "/var/tmp/ripdpi-liveness-runtime"
 MAX_DOWNLOAD = 128 * 1024 * 1024
 

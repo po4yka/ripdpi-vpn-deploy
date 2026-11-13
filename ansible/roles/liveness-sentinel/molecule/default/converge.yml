@@ -1,0 +1,18 @@
+---
+- name: Converge the liveness sentinel from offline fixtures
+  hosts: all
+  become: true
+  pre_tasks:
+    - name: Read the fixture pins from the node
+      ansible.builtin.slurp:
+        src: /var/tmp/ls-fixture/pins.json
+      register: _pins
+
+    - name: Pin the role to the fixture engines
+      ansible.builtin.set_fact:
+        liveness_sentinel_engines: "{{ (_pins.content | b64decode | from_json).engines }}"
+  roles:
+    - role: liveness-sentinel
+      vars:
+        # The AWG build needs real source bundles; the shared installer has its own unit tests.
+        liveness_sentinel_install_awg: false

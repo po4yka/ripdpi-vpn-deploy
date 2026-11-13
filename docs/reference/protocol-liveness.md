@@ -109,6 +109,16 @@ Create a unique client with `scripts/new-client.sh` for each sentinel. Do not re
 
 From a clean committed checkout, explicitly supply the target mapping, for example `make install-liveness-sentinel HOSTS=vultr:prod COHORTS=fullstack LIVENESS_CONFIG=~/.config/vpn-provision/liveness.yaml SENTINEL=tls-freeze-a CLIENT=liveness-a`. Supply the one-time AWG private key on stdin. Interactive input is prompted only after terminal echo is disabled; a pipe or redirected private file needs no prompt. Terminal settings are restored after a read error or Ctrl-C, and unavailable echo control refuses input. Onboarding decrypts once into a private temporary directory, invokes only the canonical client formats required by the selected profiles, matches the supplied key to the selected peer, and validates generated profiles with real local parsers before any remote writes. REALITY and XHTTP use Xray; Hysteria2 uses sing-box. Xray supplies the hybrid REALITY ClientHello required by the current server. Existing P0 sentinels must regenerate their profiles; P0 configurations assigned to sing-box are refused. XHTTP retains verified TLS. No full secrets document, server private key or another client's credentials reach the sentinel.
 
+### Prepare a cloud sentinel's runtime with the `liveness-sentinel` role
+
+A permanent cloud sentinel gets its probe engines from the Ansible role `liveness-sentinel`, enabled by `vpn.enable_liveness_sentinel` (research tier; the host needs `allow_research_roles: [liveness-sentinel]`, as in `vpn-split-hop-egress-live.yml`). The role installs the pinned sing-box and Xray into `/opt/ripdpi-liveness-sentinel/bin` after digest and version checks, never touching `/usr/local/bin/xray`, and builds the AWG toolchain under `/opt/ripdpi-real-vps-awg-nat/toolchains/<digest>` with `scripts/install-real-vps-awg-client-tools.py`. It starts no service and opens no listener. Engine versions and digests come from `contract/liveness-runtime-pins.json`, which the disposable executor flow reads too. The AWG source bundles, vendor archive and digests are private controller-side extra vars (`liveness_sentinel_awg_*`, built as for `real-vps-awg-nat`). The native probe prefers the role prefix and falls back to PATH. After converge, fetch the pins and copy them into the liveness configuration's `expected_runtime`:
+
+```sh
+ansible <node> -b -m ansible.builtin.fetch -a 'src=/opt/ripdpi-liveness-sentinel/expected-runtime.json dest=<private-dir>/expected-runtime.json flat=yes'
+```
+
+The file holds `awg`, `awg_toolchain`, `sing_box` and `xray`. The role runs only through an authorized deploy of that node.
+
 ### Disposable consumer-uplink executor
 
 The retired Raspberry Pi is replaced for one-shot acceptance by an exact, non-default Colima profile. `prepare-disposable-liveness` starts it only through the machine build gate with `autoActivate=false`, no host mounts, no reachable VM address, no port forwarder, and no generated SSH config. The controller requires PID 1 to be systemd, passwordless local sudo, an unchanged Docker context, a private mode-0600 Colima config, and a root-owned executor UUID marker. It writes an owner-private manifest with a maximum six-hour lifetime; failure before that manifest exists stops and deletes the exact profile.

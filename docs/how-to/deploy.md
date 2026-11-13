@@ -276,6 +276,8 @@ Initial firewall convergence retains the accepted AWG peer policy. New AWG polic
 
 For a fresh deployment with no local VPN probe, use `cloud-promotion-intent` in the exact-alias `DEPLOY_PROMOTION_CONFIG_FILE` mapping. `make deploy` freezes the intent before runtime writes and installs the standard native SSH sentinel after transport convergence. The policy must require exactly the transports enabled by the selected cohort. Full staging requires all four profiles; the separate P0, P1 and P2 nodes require their own subsets.
 
+A permanent cloud node becomes that sentinel by enabling the `liveness-sentinel` role (`vpn.enable_liveness_sentinel`, research tier, allowlisted per host): it installs the pinned probe engines into a role-owned prefix and publishes the `expected_runtime` pins to copy into the liveness configuration. See [Prepare a cloud sentinel's runtime](../reference/protocol-liveness.md#prepare-a-cloud-sentinels-runtime-with-the-liveness-sentinel-role). The long-lived split-hop Node B (`vpn-split-hop-egress-live`) enables it for its Node A.
+
 The schema-1 intent has `kind`, `target_identity`, `host`, `cohort`, `client`, `liveness` and `inputs`, plus `schema_version`. Use the normal liveness document without `applied_at`; the controller creates that epoch. `inputs` contains `provisioning_manifest`, `sops_file`, `age_key_file` and `awg_key_file`. The AWG path is required only for an enabled AWG profile; otherwise use JSON `null`.
 
 Prepare one private schema-1 provisioning manifest with these fields:

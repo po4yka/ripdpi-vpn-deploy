@@ -661,6 +661,14 @@
           {{ (vpn.enable_probe_matrix_target | default(false)) and not (vpn_subscription_only | default(false))
           }}
       tags: [probe-matrix-target, measurement, research]
+    - name: Reconcile liveness-sentinel runtime
+      ansible.builtin.import_role:
+        name: liveness-sentinel
+        public: true
+      vars:
+        liveness_sentinel_role_enabled: >-
+          {{ (vpn.enable_liveness_sentinel | default(false)) and not (vpn_subscription_only | default(false)) }}
+      tags: [liveness-sentinel, measurement, research]
     - name: Reconcile monitoring runtime
       ansible.builtin.import_role:
         name: monitoring

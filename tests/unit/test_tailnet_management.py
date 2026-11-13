@@ -122,7 +122,11 @@ def test_split_hop_live_node_a_keeps_the_production_device_transports(name, togg
 def test_split_hop_live_node_b_matches_the_listener_free_staging_node_b() -> None:
     group_vars = ROOT / "ansible" / "group_vars"
     staging = yaml.safe_load((group_vars / "vpn-split-hop-egress-staging.yml").read_text())
-    assert yaml.safe_load((group_vars / "vpn-split-hop-egress-live.yml").read_text()) == staging
+    live = yaml.safe_load((group_vars / "vpn-split-hop-egress-live.yml").read_text())
+    # The live node is the sentinel for its Node A: exactly one extra toggle and its allowlist entry.
+    staging["vpn"]["enable_liveness_sentinel"] = True
+    staging["allow_research_roles"] = [*staging["allow_research_roles"], "liveness-sentinel"]
+    assert live == staging
 
 
 def test_staging_profile_preserves_transports_and_limits_rehearsal_services(
