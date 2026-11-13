@@ -46,11 +46,23 @@
           - _public.stat.islnk
           - _public.stat.lnk_target == '/bin/true'
 
-    - name: List listeners and sentinel units
+    - name: List listeners after the role ran
+      ansible.builtin.shell:
+        cmd: set -o pipefail; ss -H -lntu | awk '{print $1, $5}' | sort
+        executable: /bin/bash
+      register: _listeners_after
+      changed_when: false
+
+    - name: List listening processes
       ansible.builtin.command:
         argv: [ss, -H, -lntup]
-      register: _listeners
+      register: _listening_processes
       changed_when: false
+
+    - name: Read the listener baseline
+      ansible.builtin.slurp:
+        src: /var/tmp/ls-fixture/listeners-before.txt
+      register: _listeners_before
 
     - name: Find sentinel systemd units
       ansible.builtin.find:
@@ -61,7 +73,9 @@
     - name: Assert no service and no listener from the prefix
       ansible.builtin.assert:
         that:
-          - "'ripdpi-liveness-sentinel' not in _listeners.stdout"
+          - _listeners_after.stdout == (_listeners_before.content | b64decode | trim)
+          - "'xray' not in _listening_processes.stdout"
+          - "'sing-box' not in _listening_processes.stdout"
           - _units.matched == 0
 
     - name: Refuse a wrong archive digest and a wrong staged version
@@ -77,6 +91,15 @@
             arch: "{{ _arch }}"
             pin: "{{ _good | combine({'version': '26.10.32'}) }}"
       loop: "{{ _cases }}"
+      loop_control:
+        loop_var: _case
+        label: "{{ _case.name }}"
+
+    - name: Refuse unsafe AWG configurations before any host change
+      ansible.builtin.include_tasks: tasks/preflight.yml
+      loop:
+        - {name: family-amneziawg, expect: amneziawg, vpn: {}}
+        - {name: missing-inputs, expect: Supply the AWG source bundles, vpn: {enable_amneziawg: false}}
       loop_control:
         loop_var: _case
         label: "{{ _case.name }}"

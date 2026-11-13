@@ -1,0 +1,30 @@
+---
+# Run the role with AWG enabled and unusable inputs; it must refuse before it creates its prefix.
+- name: Attempt the role with a refused AWG configuration
+  block:
+    - name: Include the role with a throwaway prefix
+      ansible.builtin.include_role:
+        name: liveness-sentinel
+      vars:
+        liveness_sentinel_install_awg: true
+        liveness_sentinel_prefix: /opt/ls-refused
+        vpn: "{{ _case.vpn }}"
+    - name: Fail when the configuration was accepted
+      ansible.builtin.fail:
+        msg: "case {{ _case.name }} was accepted"
+  rescue:
+    - name: Require the refusal to name the cause
+      ansible.builtin.assert:
+        that:
+          - "'was accepted' not in ansible_failed_result.msg"
+          - _case.expect in ansible_failed_result.msg
+
+- name: Inspect the throwaway prefix
+  ansible.builtin.stat:
+    path: /opt/ls-refused
+  register: _refused_prefix
+
+- name: Require that nothing was created
+  ansible.builtin.assert:
+    that:
+      - not _refused_prefix.stat.exists

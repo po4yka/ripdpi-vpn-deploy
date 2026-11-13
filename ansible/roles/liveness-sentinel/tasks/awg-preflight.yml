@@ -1,0 +1,43 @@
+---
+# Controller-side admission for the AWG toolchain. Runs before any host change and in check mode.
+- name: Require private controller-side AWG inputs
+  ansible.builtin.assert:
+    that:
+      - liveness_sentinel_awg_go_source_bundle | length > 0
+      - liveness_sentinel_awg_tools_source_bundle | length > 0
+      - liveness_sentinel_awg_go_vendor_archive | length > 0
+      - liveness_sentinel_awg_go_source_bundle_sha256 is match('^[0-9a-f]{64}$')
+      - liveness_sentinel_awg_tools_source_bundle_sha256 is match('^[0-9a-f]{64}$')
+      - liveness_sentinel_awg_go_vendor_archive_sha256 is match('^[0-9a-f]{64}$')
+      - liveness_sentinel_awg_go_commit is match('^[0-9a-f]{40}$')
+      - liveness_sentinel_awg_tools_commit is match('^[0-9a-f]{40}$')
+    fail_msg: >-
+      Supply the AWG source bundles, vendor archive and their sha256 values as private
+      extra vars (see scripts/build-real-vps-awg-nat-source-bundle.sh), or set liveness_sentinel_install_awg=false.
+
+- name: Resolve the reviewed AWG source correction before mutation
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - -Es
+      - "{{ role_path }}/../amneziawg/files/awg_source_correction.py"
+      - describe
+      - --commit
+      - "{{ liveness_sentinel_awg_go_commit }}"
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+  register: _le_correction_description
+
+- name: Select the exact AWG source correction
+  ansible.builtin.set_fact:
+    _le_correction: "{{ _le_correction_description.stdout | from_json }}"
+    _le_correction_dir: >-
+      /usr/local/libexec/ripdpi/awg-source-{{ (_le_correction_description.stdout | from_json).digest }}
+
+- name: Require an upstream AWG source correction profile
+  ansible.builtin.assert:
+    that:
+      - _le_correction.profile == 'upstream'
+      - _le_correction.digest is match('^[0-9a-f]{64}$')

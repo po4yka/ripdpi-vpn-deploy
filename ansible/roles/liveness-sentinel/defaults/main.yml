@@ -12,6 +12,9 @@ liveness_sentinel_engines: "{{ liveness_sentinel_pins.engines }}"
 liveness_sentinel_go_package: "{{ liveness_sentinel_pins.go_package }}"
 liveness_sentinel_go_bin: "{{ liveness_sentinel_pins.go_bin }}"
 
+# First semantic version in an engine's version banner.
+liveness_sentinel_version_pattern: '(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)'
+
 liveness_sentinel_packages:
   - curl
   - iproute2

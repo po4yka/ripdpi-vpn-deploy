@@ -1,0 +1,6 @@
+---
+# Disabling never uninstalls: nodes are disposable, so recreate the node to retire the sentinel runtime.
+- name: Note that a disabled liveness sentinel leaves installed engines in place
+  ansible.builtin.debug:
+    msg: liveness-sentinel is disabled; no engine or toolchain is installed or removed.
+    verbosity: 1

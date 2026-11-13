@@ -4,20 +4,22 @@
 
 **Measurement-only research role, no service and no listener** — it installs the pinned sing-box and Xray plus the immutable AWG client toolchain so a native Linux protocol-liveness sentinel can probe. `ansible/role-tiers.yml` classifies it `research` (toggle `vpn.enable_liveness_sentinel`) because it exists only to measure and must never reach a family profile; a host needs `allow_research_roles: [liveness-sentinel]`. The first consumer is the long-lived split-hop Node B (`group_vars/vpn-split-hop-egress-live.yml`), which stays listener-free.
 
-**Role-owned prefix, never a PATH directory** — engines live in `/opt/ripdpi-liveness-sentinel/bin`. `scripts/vpn-protocol-liveness.py` (`ENGINE_BIN`) prefers that path and falls back to PATH for older sentinels. The role must never write `/usr/local/bin/xray`, which `xray-runtime` owns as a public symlink on fleet nodes.
+**Role-owned prefix, never a PATH directory** — engines live in `/opt/ripdpi-liveness-sentinel/bin`. `scripts/vpn-protocol-liveness.py` (`ENGINE_BIN`) is authoritative whenever that directory exists: a missing engine reads as `missing` and fails the `expected_runtime` comparison, never another PATH binary. Sentinels without the directory keep PATH lookup. The role must never write `/usr/local/bin/xray`, which `xray-runtime` owns as a public symlink on fleet nodes.
 
 **One pin file** — `contract/liveness-runtime-pins.json` holds engine versions, archive names and sha256 digests, the AWG repositories and the Go package. This role and `scripts/provision-disposable-liveness-runtime.py` both read it; never copy a digest elsewhere. AWG commits come from `real-vps-awg-nat` defaults.
 
-**Verify, then install** — `tasks/engine.yml` downloads into a root-private `staging/` directory, checks the archive digest (`get_url` checksum), extracts one member, runs the staged binary for its version and only then renames it into place with an atomic `copy remote_src`. A failure leaves the previous binary. After install it re-hashes and runs the exact installed path. `state/<engine>.json` records archive and binary digests so an unchanged converge downloads nothing.
+**Verify, then install** — `tasks/engine.yml` downloads into a root-private `staging/` directory, checks the archive digest in a separate, unretried task (the download alone retries on transport errors), extracts one member, runs the staged binary for its version and only then renames it into place with an atomic `copy remote_src`. A failure leaves the previous binary. After install it re-hashes and runs the exact installed path. `state/<engine>.json` records archive and binary digests so an unchanged converge downloads nothing.
 
 **AWG uses the shared offline installer** — controller-side bundles, vendor archive and digests are private extra vars (same as the `real-vps-awg-nat` sentinel mode). The installer verifies them before it builds and owns `/opt/ripdpi-real-vps-awg-nat/toolchains/<digest>`. It also links `awg`, `awg-quick` and `amneziawg-go` into `/usr/local/bin` and requires its correction directory at `/usr/local/libexec/ripdpi/awg-source-<digest>` (content-addressed); the role refuses to run beside the family `amneziawg` role for that reason.
+
+**Admission precedes mutation** — `tasks/main.yml` dispatches `enable.yml` or `disable.yml`. `enable.yml` validates the AWG inputs and resolves the controller-side source correction (`awg-preflight.yml`, also in check mode) before packages, prefix or engines change. The family `amneziawg` guard uses the same enabled-by-default predicate as `site.yml`; the correction directory is admitted through `runtime-release/tasks/consumer-authority.yml`.
 
 **Operator output** — `/opt/ripdpi-liveness-sentinel/expected-runtime.json` holds `{awg, awg_toolchain, sing_box, xray}` (AWG keys only when AWG is installed). Fetch it after converge with `ansible <host> -b -m ansible.builtin.fetch -a 'src=/opt/ripdpi-liveness-sentinel/expected-runtime.json dest=<private dir>/ flat=yes'` and copy the values into the liveness configuration's `expected_runtime`.
 
 ## What's done well
 
 - Prefix, staging and state are root-owned; staging is mode `0700` and emptied on every path.
-- Packages use `state: present`, so installed packages are never upgraded.
+- Packages use `state: present`, so installed packages are never upgraded. The pinned `golang-1.24-go` and `/usr/lib/go-1.24/bin` exist on Ubuntu 24.04 (1.24.13) and Debian 13 (1.24.4).
 - Molecule proves digest and version refusal keep the previous binary, and that a planted `/usr/local/bin/xray` link is untouched.
 
 ## Pitfalls

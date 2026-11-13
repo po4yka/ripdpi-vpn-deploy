@@ -71,3 +71,9 @@
         src: /bin/true
         dest: /usr/local/bin/xray
         state: link
+
+    - name: Capture the listener baseline before the role runs
+      ansible.builtin.shell:
+        cmd: set -o pipefail; ss -H -lntu | awk '{print $1, $5}' | sort > /var/tmp/ls-fixture/listeners-before.txt
+        executable: /bin/bash
+        creates: /var/tmp/ls-fixture/listeners-before.txt
