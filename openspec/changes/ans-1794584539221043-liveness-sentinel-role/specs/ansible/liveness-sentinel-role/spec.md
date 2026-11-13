@@ -45,6 +45,15 @@ When AWG is enabled the role MUST build the toolchain with `scripts/install-real
 - **WHEN** a bundle, vendor archive or digest is not supplied
 - **THEN** the role refuses before changing the node.
 
+### Requirement: REQ-LSR-INPUTS — The deploy controller admits the AWG inputs
+
+The deployment controller's extra-vars validator MUST admit the six `liveness_sentinel_awg_*` keys only as one complete set, each path absolute and existing on the controller, each digest a lowercase SHA-256 equal to the file's actual digest, so `make deploy` can converge the role's AWG build.
+
+#### Scenario: Incomplete or mismatched AWG inputs
+
+- **WHEN** the extra-vars file omits one AWG input, gives a relative or missing path, or a digest that is malformed or differs from the file
+- **THEN** the validator refuses the file before Ansible runs, and a complete verified set is accepted.
+
 ### Requirement: REQ-LSR-GATING — Research tier, no listener, live Node B only
 
 The role MUST be classified research with toggle `vpn.enable_liveness_sentinel`, default false, MUST open no listener or service, and only `vpn-split-hop-egress-live` MUST enable it with `liveness-sentinel` in its allowlist, still admitted by the no-public-listener promotion kind.

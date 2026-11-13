@@ -334,3 +334,43 @@ def test_awg_ipv6_uplink_override_is_one_safe_interface_name(tmp_path, value, ac
     else:
         with pytest.raises(ValueError, match="safe Linux interface name"):
             validator.validate(path)
+
+
+def _sentinel_awg_inputs(tmp_path: Path) -> dict[str, str]:
+    import hashlib
+    document = {}
+    for name in ("go_source_bundle", "tools_source_bundle", "go_vendor_archive"):
+        source = tmp_path / f"{name}.bin"
+        source.write_bytes(name.encode())
+        document[f"liveness_sentinel_awg_{name}"] = str(source)
+        document[f"liveness_sentinel_awg_{name}_sha256"] = hashlib.sha256(name.encode()).hexdigest()
+    return document
+
+
+@pytest.mark.parametrize(("mutation", "accepted"), [
+    ("complete", True),
+    ("partial", False),
+    ("relative", False),
+    ("missing-file", False),
+    ("uppercase-digest", False),
+    ("digest-mismatch", False),
+])
+def test_liveness_sentinel_awg_inputs_arrive_as_one_verified_set(tmp_path, mutation, accepted):
+    document = _sentinel_awg_inputs(tmp_path)
+    key = "liveness_sentinel_awg_go_source_bundle"
+    if mutation == "partial":
+        del document["liveness_sentinel_awg_tools_source_bundle"]
+    elif mutation == "relative":
+        document[key] = "go_source_bundle.bin"
+    elif mutation == "missing-file":
+        document[key] = str(tmp_path / "absent.bin")
+    elif mutation == "uppercase-digest":
+        document[key + "_sha256"] = document[key + "_sha256"].upper()
+    elif mutation == "digest-mismatch":
+        document[key + "_sha256"] = "0" * 64
+    path = write_yaml(tmp_path, document)
+    if accepted:
+        validator.validate(path)
+    else:
+        with pytest.raises(ValueError, match="liveness-sentinel AWG"):
+            validator.validate(path)
