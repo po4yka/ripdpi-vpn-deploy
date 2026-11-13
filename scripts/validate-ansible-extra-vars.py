@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import ipaddress
 import re
 from pathlib import Path
@@ -28,6 +29,13 @@ ALLOWED_KEYS = {
     "hysteria_acme_restore_root",
     "hysteria_acme_restore_snapshot_id",
 }
+# Controller-side AWG inputs of the liveness-sentinel role; they arrive only as one complete, verified set.
+LIVENESS_SENTINEL_AWG_FILES = {
+    "liveness_sentinel_awg_go_source_bundle",
+    "liveness_sentinel_awg_tools_source_bundle",
+    "liveness_sentinel_awg_go_vendor_archive",
+}
+ALLOWED_KEYS |= LIVENESS_SENTINEL_AWG_FILES | {f"{name}_sha256" for name in LIVENESS_SENTINEL_AWG_FILES}
 DNS_NAME = re.compile(
     r"(?=^.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*"
     r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
@@ -108,6 +116,19 @@ def validate(path: Path) -> None:
     unknown = sorted(set(document) - ALLOWED_KEYS)
     if unknown:
         raise ValueError("extra-vars document contains a non-allowlisted key")
+
+    sentinel_keys = LIVENESS_SENTINEL_AWG_FILES | {f"{name}_sha256" for name in LIVENESS_SENTINEL_AWG_FILES}
+    if sentinel_keys & set(document):
+        if not sentinel_keys <= set(document):
+            raise ValueError("liveness-sentinel AWG inputs must be supplied as one complete set")
+        for name in sorted(LIVENESS_SENTINEL_AWG_FILES):
+            source, digest = document[name], document[f"{name}_sha256"]
+            if not isinstance(digest, str) or SHA256.fullmatch(digest) is None:
+                raise ValueError("liveness-sentinel AWG digests must be lowercase SHA-256 values")
+            if not isinstance(source, str) or not Path(source).is_absolute() or not Path(source).is_file():
+                raise ValueError("liveness-sentinel AWG inputs must be existing absolute files")
+            if hashlib.sha256(Path(source).read_bytes()).hexdigest() != digest:
+                raise ValueError("liveness-sentinel AWG input does not match its digest")
 
     recovery_keys = {"hysteria_acme_restore_root", "hysteria_acme_restore_snapshot_id"}
     if recovery_keys & set(document):
