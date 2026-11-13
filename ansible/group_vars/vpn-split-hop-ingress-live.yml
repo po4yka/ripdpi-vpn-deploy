@@ -5,6 +5,9 @@
 # Only probe-matrix runtime users are policy-routed; the family-egress profile extends the scope.
 allow_research_roles: [split-hop-ingress]
 
+# Served XHTTP origin; the live pair's bootstrap-secrets run sets hysteria.masquerade_url to the same origin.
+public_site_canonical_url: >-
+  https://{{ nginx_xhttp.server_name }}{{ ':' ~ nginx_xhttp_public_port if nginx_xhttp_public_port | int != 443 else '' }}
 vpn:
   enable_transport_egress: true
   enable_destination_filter: false

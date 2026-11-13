@@ -475,7 +475,8 @@ def test_bootstrap_publishes_current_ownership_documents(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("profile", ["vpn-device-full-staging.yml", "vpn-split-hop-ingress-staging.yml",
-                                     "vpn-split-hop-family-egress-staging.yml"])
+                                     "vpn-split-hop-family-egress-staging.yml", "vpn-split-hop-ingress-live.yml",
+                                     "vpn-split-hop-family-egress-live.yml"])
 @pytest.mark.parametrize("port,expected", [(8443, "https://vpn-ci-staging-x.ci.test:8443"),
                                            (443, "https://vpn-ci-staging-x.ci.test")])
 def test_disposable_staging_profiles_serve_the_generated_masquerade_origin(profile, port, expected):
