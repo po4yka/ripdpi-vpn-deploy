@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-11-13
+goal: ANS-1794584539221043 Prepare a cloud liveness sentinel through an Ansible role
