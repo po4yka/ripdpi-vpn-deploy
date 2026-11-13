@@ -18,6 +18,11 @@ When `vpn.enable_split_hop_ingress` and `vpn.split_hop_family_egress` are true, 
 - **WHEN** baseline sets `net.ipv4.conf.all.rp_filter=1`
 - **THEN** tunnel replies with recipient source addresses are still delivered, because the tunnel interface uses loose mode.
 
+#### Scenario: Coexistence with the transport-egress boundary
+
+- **WHEN** the ingress-only or family split-hop policy is loaded and transport-egress applies, verifies or rolls back its host policy
+- **THEN** the transport-egress kernel audit admits the ruleset, because the policy mutates no packet in a chain reachable from POSTROUTING, and tunnel SYNs from rerouted users and forwarded devices still carry an MSS that fits the tunnel MTU.
+
 ### Requirement: REQ-SHF-FAIL-CLOSED — No uplink fallback
 
 Family recipient originals MUST NOT leave through any interface other than loopback or the tunnel, including while the tunnel is down or its routes are removed. IPv6 originals from the family users and forwarded IPv6 from AmneziaWG interfaces MUST be refused with an administrative-prohibition reply. The canonical firewall MUST enforce the same boundary independently of the split-hop table once the family users exist.
