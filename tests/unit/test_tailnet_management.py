@@ -111,11 +111,13 @@ def test_split_hop_live_node_a_keeps_the_production_device_transports(name, togg
     group_vars = ROOT / "ansible" / "group_vars"
     baseline = yaml.safe_load((group_vars / "all.yml").read_text())["vpn"]
     device = yaml.safe_load((group_vars / "vpn-device-full-tailnet.yml").read_text())["vpn"]
-    staging = yaml.safe_load((group_vars / "vpn-split-hop-ingress-staging.yml").read_text())["vpn"]
+    staging = yaml.safe_load((group_vars / "vpn-split-hop-ingress-staging.yml").read_text())
     document = yaml.safe_load((group_vars / name).read_text())
     expected = {**baseline, **device, **toggles}
+    # The served origin, not the all.yml placeholder, or the transport preflight refuses the masquerade URL.
     assert document == {"allow_research_roles": ["split-hop-ingress"],
-                        "vpn": {key: expected[key] for key in staging}}
+                        "public_site_canonical_url": staging["public_site_canonical_url"],
+                        "vpn": {key: expected[key] for key in staging["vpn"]}}
     assert all(document["vpn"][key] for key in ("enable_monitoring", "enable_watchdog", "enable_backup"))
 
 
