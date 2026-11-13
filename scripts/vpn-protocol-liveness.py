@@ -35,13 +35,16 @@ AUTH_ERROR = re.compile(r"auth|credential|invalid user|rejected|bad certificate"
 # curl -v trace lines; certificate "Authority" text in them must not read as an authentication error.
 CURL_TRACE_PREFIXES = ("* ", "> ", "< ", "{ ", "} ")
 AWG_TOOLCHAIN_BASE = Path("/opt/ripdpi-real-vps-awg-nat/toolchains")
-# The liveness-sentinel role installs sing-box and Xray here; other sentinels keep PATH lookup.
+# The liveness-sentinel role installs sing-box and Xray here. Where the directory exists it is authoritative:
+# a missing engine reads as "missing" (runtime mismatch) instead of silently running another PATH binary, so the
+# version check and the execution always name the same file. Sentinels without the directory keep PATH lookup.
 ENGINE_BIN = Path("/opt/ripdpi-liveness-sentinel/bin")
 
 
 def engine(name: str) -> str:
-    candidate = ENGINE_BIN / name
-    return str(candidate) if candidate.is_file() and os.access(candidate, os.X_OK) else name
+    return str(ENGINE_BIN / name) if ENGINE_BIN.is_dir() else name
+
+
 AWG_TOOLCHAIN_UID = 0
 AWG_TOOLCHAIN_GID = 0
 AWG_CORRECTION_BASE = Path("/usr/local/libexec/ripdpi")
@@ -838,7 +841,7 @@ def main() -> int:
             profiles = probe_runtime_profiles("sing-box", sing_box, config, control_alive) if sing_box["profiles"] else []
             if "xray" in config:
                 profiles.extend(probe_runtime_profiles("xray", config["xray"], config, control_alive))
-            if "amneziawg" in config:
+            if toolchain is not None:  # set exactly when "amneziawg" is configured (verified above)
                 profiles.append(probe_awg(config, control_alive, toolchain))
         payload = {
             "schema_version": 2,
