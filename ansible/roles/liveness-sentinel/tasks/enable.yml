@@ -8,18 +8,25 @@
   ansible.builtin.assert:
     that:
       - _liveness_sentinel_arch | length > 0
-      - liveness_sentinel_prefix is match('^/opt/[a-z0-9-]+$')
       # The offline AWG installer links awg commands into /usr/local/bin, which the family amneziawg role owns.
       # Same predicate as the amneziawg import in playbooks/site.yml (enabled unless the toggle says otherwise).
       - >-
         not (liveness_sentinel_install_awg | bool
         and (vpn.enable_amneziawg | default(true)) and not (vpn_subscription_only | default(false)))
-    fail_msg: liveness-sentinel needs a supported architecture, an /opt prefix and no family amneziawg on the same node.
+    fail_msg: liveness-sentinel needs a supported architecture and no family amneziawg on the same node.
 
 # Every controller-side AWG input is validated before the first host change, in check mode too.
 - name: Validate the AWG inputs and resolve the source correction
   ansible.builtin.include_tasks: awg-preflight.yml
   when: liveness_sentinel_install_awg | bool
+
+# The native probe reads engines only from this fixed directory (scripts/vpn-protocol-liveness.py ENGINE_BIN);
+# another prefix would leave the probe on PATH binaries.
+- name: Require the prefix the native probe reads
+  ansible.builtin.assert:
+    that:
+      - liveness_sentinel_prefix == '/opt/ripdpi-liveness-sentinel'
+    fail_msg: liveness-sentinel installs engines only under /opt/ripdpi-liveness-sentinel, where the native probe reads them.
 
 - name: Install sentinel prerequisites without upgrading unrelated packages
   ansible.builtin.apt:
