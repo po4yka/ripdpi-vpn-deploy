@@ -1,6 +1,7 @@
 """Portable authority and rendering checks; packet proofs live in native tests."""
 import json
 from pathlib import Path
+import subprocess
 import sys
 import pytest
 
@@ -269,3 +270,14 @@ def test_loopback_forwarder_admits_only_gateway_dns_replies():
     plaintext = build(morph)
     assert plaintext['normalizer']['resolver']['nameservers'] == ['1.1.1.1', '8.8.8.8']
     assert 'sport 53' not in kernel.render(plaintext['policy'])
+
+
+@pytest.mark.parametrize(('config', 'data', 'expected'), [
+    ('-', b'x' * (kernel.MAX_INPUT + 1), 'transport-egress-boundary-refused: oversized-policy'),
+    ('/nonexistent/private-policy.json', b'', 'transport-egress-boundary-refused: FileNotFoundError'),
+])
+def test_loader_refusal_names_its_code_without_private_values(config, data, expected):
+    result = subprocess.run([sys.executable, str(ROOT/'scripts/transport_egress_kernel.py'), 'verify', '--config', config],
+                            input=data, capture_output=True, timeout=30)
+    assert result.returncode == 1
+    assert result.stderr.decode().strip() == expected
