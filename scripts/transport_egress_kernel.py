@@ -497,8 +497,12 @@ def main():
         raw = parse_json(data) if data is not None else private_read(args.config)
         sys.stdout.write(run(args.mode, raw, args.namespace is not None))
         return 0
-    except (BoundaryError, ValueError, OSError, subprocess.SubprocessError):
-        print('transport-egress-boundary-refused', file=sys.stderr)
+    except BoundaryError as error:
+        # Codes are fixed literals, never addresses or paths, so operators can act on them.
+        print(f'transport-egress-boundary-refused: {error.args[0]}', file=sys.stderr)
+        return 1
+    except (ValueError, OSError, subprocess.SubprocessError) as error:
+        print(f'transport-egress-boundary-refused: {type(error).__name__}', file=sys.stderr)
         return 1
 
 
