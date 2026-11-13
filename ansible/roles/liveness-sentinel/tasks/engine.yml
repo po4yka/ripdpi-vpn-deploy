@@ -50,11 +50,10 @@
       register: _le_staging
       changed_when: false
 
-    - name: Download the archive and verify its pinned digest
+    - name: Download the archive
       ansible.builtin.get_url:
         url: "{{ _le_pin.url | replace('{version}', _le_pin.version) | replace('{archive}', _le_archive.name) }}"
         dest: "{{ _le_staging.path }}/{{ _le_archive.name }}"
-        checksum: "sha256:{{ _le_archive.sha256 }}"
         owner: root
         group: root
         mode: "0600"
@@ -64,6 +63,19 @@
       delay: 10
       until: _le_download is succeeded
       changed_when: false
+
+    # Verified after the retried transport step so a deterministic digest mismatch fails at once, not after five retries.
+    - name: Hash the downloaded archive
+      ansible.builtin.stat:
+        path: "{{ _le_staging.path }}/{{ _le_archive.name }}"
+        checksum_algorithm: sha256
+      register: _le_archive_stat
+
+    - name: Refuse an archive that differs from its pinned digest
+      ansible.builtin.assert:
+        that:
+          - _le_archive_stat.stat.checksum == _le_archive.sha256
+        fail_msg: "{{ _le_name }} archive digest does not match its pin"
 
     - name: Extract only the engine member
       ansible.builtin.unarchive:
@@ -97,7 +109,8 @@
     - name: Refuse a staged binary whose version differs from the pin
       ansible.builtin.assert:
         that:
-          - _le_staged_version.stdout | regex_findall('(\\d+\\.\\d+\\.\\d+)') | first == _le_pin.version
+          - _le_staged_version.stdout | regex_findall(liveness_sentinel_version_pattern) | length > 0
+          - (_le_staged_version.stdout | regex_findall(liveness_sentinel_version_pattern))[0] == _le_pin.version
         fail_msg: "{{ _le_name }} archive does not contain pinned version {{ _le_pin.version }}"
 
     - name: Rename the verified binary into place atomically
@@ -149,7 +162,9 @@
   ansible.builtin.assert:
     that:
       - _le_installed.stat.checksum == _le_expected_sha
-      - _le_installed_version.stdout | regex_findall('(\\d+\\.\\d+\\.\\d+)') | first == _le_pin.version
+      - _le_installed_version.stdout | regex_findall(liveness_sentinel_version_pattern) | length > 0
+      - (_le_installed_version.stdout | regex_findall(liveness_sentinel_version_pattern))[0] == _le_pin.version
+    fail_msg: "installed {{ _le_name }} failed its hash or version check"
 
 - name: Record the installed version for expected_runtime
   ansible.builtin.set_fact:

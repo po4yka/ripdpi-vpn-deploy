@@ -1,47 +1,12 @@
 ---
 # Build the immutable AWG client toolchain with the shared offline installer.
+# Inputs and the source correction are admitted earlier by awg-preflight.yml.
 # The installer verifies every bundle digest before it builds and owns /opt/ripdpi-real-vps-awg-nat/toolchains.
-- name: Require private controller-side AWG inputs
-  ansible.builtin.assert:
-    that:
-      - liveness_sentinel_awg_go_source_bundle | length > 0
-      - liveness_sentinel_awg_tools_source_bundle | length > 0
-      - liveness_sentinel_awg_go_vendor_archive | length > 0
-      - liveness_sentinel_awg_go_source_bundle_sha256 is match('^[0-9a-f]{64}$')
-      - liveness_sentinel_awg_tools_source_bundle_sha256 is match('^[0-9a-f]{64}$')
-      - liveness_sentinel_awg_go_vendor_archive_sha256 is match('^[0-9a-f]{64}$')
-      - liveness_sentinel_awg_go_commit is match('^[0-9a-f]{40}$')
-      - liveness_sentinel_awg_tools_commit is match('^[0-9a-f]{40}$')
-    fail_msg: >-
-      Supply the AWG source bundles, vendor archive and their sha256 values as private
-      extra vars (see scripts/build-real-vps-awg-nat-source-bundle.sh), or set liveness_sentinel_install_awg=false.
-  no_log: true
-
-- name: Resolve the reviewed AWG source correction before mutation
-  ansible.builtin.command:
-    argv:
-      - "{{ ansible_playbook_python }}"
-      - -Es
-      - "{{ role_path }}/../amneziawg/files/awg_source_correction.py"
-      - describe
-      - --commit
-      - "{{ liveness_sentinel_awg_go_commit }}"
-  delegate_to: localhost
-  become: false
-  check_mode: false
-  changed_when: false
-  register: _le_correction_description
-
-- name: Select the exact AWG source correction
-  ansible.builtin.set_fact:
-    _le_correction: "{{ _le_correction_description.stdout | from_json }}"
-    _le_correction_dir: >-
-      /usr/local/libexec/ripdpi/awg-source-{{ (_le_correction_description.stdout | from_json).digest }}
-
-- name: Require an upstream AWG source correction profile
-  ansible.builtin.assert:
-    that:
-      - _le_correction.profile == 'upstream'
+- name: Admit immutable AWG correction ancestry before convergence
+  ansible.builtin.import_tasks: "{{ role_path }}/../runtime-release/tasks/consumer-authority.yml"
+  vars:
+    consumer_guard_directories:
+      - "{{ _le_correction_dir }}"
 
 - name: Create the content-addressed correction directory the installer requires
   ansible.builtin.file:
@@ -143,18 +108,37 @@
       when: _le_awg_staging.path is defined
       changed_when: false
 
+- name: Parse the installer result and validate the toolchain id before using it in a path
+  ansible.builtin.set_fact:
+    _le_awg_result: "{{ _le_awg_build.stdout | from_json }}"
+
+- name: Require a well-formed toolchain id
+  ansible.builtin.assert:
+    that:
+      - _le_awg_result.toolchainId | default('') is match('^[0-9a-f]{64}$')
+    fail_msg: The AWG installer returned no valid toolchain id.
+
 - name: Verify the installed AWG toolchain path
   ansible.builtin.command:
     argv:
-      - "/opt/ripdpi-real-vps-awg-nat/toolchains/{{ (_le_awg_build.stdout | from_json).toolchainId }}/bin/awg"
+      - "/opt/ripdpi-real-vps-awg-nat/toolchains/{{ _le_awg_result.toolchainId }}/bin/awg"
       - --version
   register: _le_awg_version
   changed_when: false
+
+- name: Require a parsable AWG version
+  ansible.builtin.assert:
+    that:
+      - _le_awg_version.stdout | regex_findall(liveness_sentinel_version_pattern) | length > 0
+    fail_msg: The installed awg printed no version.
+  vars:
+    liveness_sentinel_version_pattern: '(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)'
 
 - name: Record the AWG pins for expected_runtime
   ansible.builtin.set_fact:
     liveness_sentinel_expected_runtime: >-
       {{ liveness_sentinel_expected_runtime | combine({
-           'awg': _le_awg_version.stdout | regex_findall('(\\d+\\.\\d+\\.\\d+(?:[-+][A-Za-z0-9.-]+)?)') | first,
-           'awg_toolchain': (_le_awg_build.stdout | from_json).toolchainId}) }}
-  failed_when: (_le_awg_build.stdout | from_json).toolchainId is not match('^[0-9a-f]{64}$')
+           'awg': (_le_awg_version.stdout | regex_findall(liveness_sentinel_version_pattern))[0],
+           'awg_toolchain': _le_awg_result.toolchainId}) }}
+  vars:
+    liveness_sentinel_version_pattern: '(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?)'
