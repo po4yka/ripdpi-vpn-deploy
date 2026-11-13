@@ -32,6 +32,8 @@ DEFAULT_CONFIG = Path("/etc/vpn-liveness/config.json")
 DEFAULT_LOCK = Path("/run/lock/vpn-protocol-liveness.lock")
 NETWORK_FAILURE_CODES = {7, 28, 35, 52, 56}
 AUTH_ERROR = re.compile(r"auth|credential|invalid user|rejected|bad certificate", re.IGNORECASE)
+# curl -v trace lines; certificate "Authority" text in them must not read as an authentication error.
+CURL_TRACE_PREFIXES = ("* ", "> ", "< ", "{ ", "} ")
 AWG_TOOLCHAIN_BASE = Path("/opt/ripdpi-real-vps-awg-nat/toolchains")
 AWG_TOOLCHAIN_UID = 0
 AWG_TOOLCHAIN_GID = 0
@@ -286,7 +288,13 @@ def classify_curl(result: subprocess.CompletedProcess[str], config: dict) -> dic
     if result.returncode == 0 and status == config["expected_status"] and duration_ms is not None:
         verdict = "throttled" if duration_ms > config["degraded_after_ms"] else "ok"
         return {"verdict": verdict, "duration_ms": duration_ms, "http_status": status, "payload_transport": "tcp-https"}
-    if AUTH_ERROR.search(result.stderr):
+    lines = result.stderr.splitlines()
+    attempts = [line for line in lines if line.startswith("* connect to ") and " failed: " in line]
+    # EACCES on every attempt is an ICMP administratively-prohibited reply: a server policy refusal
+    # that arrived through the tunnel, not a censor timeout or a broken route.
+    if result.returncode == 7 and attempts and all(line.endswith(" failed: Permission denied") for line in attempts):
+        return {"verdict": "blocked", "duration_ms": duration_ms, "error_kind": "policy_refused", "payload_transport": "tcp-https"}
+    if AUTH_ERROR.search("\n".join(line for line in lines if not line.startswith(CURL_TRACE_PREFIXES))):
         return {"verdict": "error", "duration_ms": duration_ms, "error_kind": "authentication", "payload_transport": "tcp-https"}
     if result.returncode in NETWORK_FAILURE_CODES:
         return {"verdict": "blocked", "duration_ms": duration_ms, "error_kind": "network", "payload_transport": "tcp-https"}
@@ -678,7 +686,7 @@ def probe_awg(config: dict, control_alive: bool, toolchain: dict) -> dict:
         subprocess.run(["ip", "-n", namespace, "-6", "route", "add", "default", "dev", interface], timeout=5, check=True, capture_output=True)
         started = int(time.time())
         result = aggregate_awg_families(parallel_curl_probes(
-            config, [["--ipv4"], ["--ipv6"]], ["ip", "netns", "exec", namespace]))
+            config, [["--ipv4"], ["--ipv6", "-v"]], ["ip", "netns", "exec", namespace]))
         address_family = "dualstack"
         handshake = subprocess.run(
             ["ip", "netns", "exec", namespace, toolchain["binaries"]["awg"], "show", interface, "latest-handshakes"],
@@ -690,9 +698,13 @@ def probe_awg(config: dict, control_alive: bool, toolchain: dict) -> dict:
         fields = [line.split() for line in handshake.stdout.splitlines() if line.strip()]
         fresh = (handshake.returncode == 0 and len(fields) == 1 and len(fields[0]) == 2
                  and fields[0][1].isdigit() and started - 5 <= int(fields[0][1]) <= int(time.time()))
-        if result["verdict"] in {"ok", "throttled"} and not fresh:
+        # IPv4 delivered and the server refused IPv6 by policy: the tunnel is proven; the evaluator
+        # accepts this only for a policy that declares IPv4-only AWG.
+        refused = (result["verdict"] == "blocked" and result.get("error_kind") == "policy_refused"
+                   and result["family_results"]["ipv4"]["verdict"] in {"ok", "throttled"})
+        if (result["verdict"] in {"ok", "throttled"} or refused) and not fresh:
             result = {**result, "verdict": "error", "error_kind": "no_fresh_handshake"}
-        elif result["verdict"] in {"ok", "throttled"}:
+        elif result["verdict"] in {"ok", "throttled"} or refused:
             result["fresh_handshake"] = True
             result["dns_through_tunnel"] = True
             result["authenticated_handshake"] = True

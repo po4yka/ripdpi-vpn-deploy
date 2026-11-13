@@ -275,13 +275,29 @@ def validate_report(raw: str, sentinel: dict, config: dict, now: int) -> tuple[d
             return None, f"{sentinel['id']}: invalid target address family evidence"
         if type(profile.get("dns_through_tunnel")) is not bool or type(profile.get("authenticated_handshake")) is not bool:
             return None, f"{sentinel['id']}: invalid positive proof evidence"
+        if (name == "p2-amneziawg" and policy.get("awg_ipv6") == "ipv4-only"
+                and verdict == "blocked" and profile.get("error_kind") == "policy_refused"):
+            # An IPv4-only policy accepts the server's explicit IPv6 refusal, never a timeout or other failure.
+            families = profile.get("family_results")
+            ipv4, ipv6 = (families.get("ipv4"), families.get("ipv6")) if isinstance(families, dict) else (None, None)
+            if (family != "dualstack" or not isinstance(families, dict) or set(families) != {"ipv4", "ipv6"}
+                    or not isinstance(ipv4, dict) or ipv4.get("verdict") not in ALIVE
+                    or ipv4.get("payload_transport") != "tcp-https"
+                    or not isinstance(ipv6, dict) or ipv6.get("verdict") != "blocked"
+                    or ipv6.get("error_kind") != "policy_refused"):
+                return None, f"{sentinel['id']}: invalid IPv6 refusal evidence"
+            verdict = profile["verdict"] = ipv4["verdict"]
+            del profile["error_kind"]
         if verdict in ALIVE and (profile["dns_through_tunnel"] is not True or profile["authenticated_handshake"] is not True):
             return None, f"{sentinel['id']}: missing positive proof evidence"
         if name == "p2-amneziawg" and verdict in ALIVE:
             families = profile.get("family_results")
+            ipv6 = families.get("ipv6") if isinstance(families, dict) else None
+            refused_ipv6 = (policy.get("awg_ipv6") == "ipv4-only" and isinstance(ipv6, dict)
+                            and ipv6.get("verdict") == "blocked" and ipv6.get("error_kind") == "policy_refused")
             if (family != "dualstack" or not isinstance(families, dict) or set(families) != {"ipv4", "ipv6"}
-                    or any(not isinstance(item, dict) or item.get("verdict") not in ALIVE
-                           or item.get("payload_transport") != "tcp-https" for item in families.values())):
+                    or any(not isinstance(item, dict) or (item.get("verdict") not in ALIVE and not (key == "ipv6" and refused_ipv6))
+                           or item.get("payload_transport") != "tcp-https" for key, item in families.items())):
                 return None, f"{sentinel['id']}: missing dual-stack family proof"
         if "fresh_handshake" in profile and (name != "p2-amneziawg" or type(profile["fresh_handshake"]) is not bool):
             return None, f"{sentinel['id']}: invalid handshake evidence"
