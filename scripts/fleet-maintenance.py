@@ -388,6 +388,9 @@ def execute(plan, action, approval, *, ready_fd=None):
         state = journal.state['observed']['maintenance']
         if state['status'] in {'complete', 'checked'}:
             raise MaintenanceError('operation-already-complete')
+        # Check is terminal; it must never close a previewed or interrupted deployment.
+        if action == 'check' and state['status'] != 'prepared':
+            raise MaintenanceError('check-requires-fresh-plan')
         if action not in {'preview', 'check'}:
             expected = state.get('review_sha256')
             if (not isinstance(expected, str) or not re.fullmatch('[0-9a-f]{64}', expected)
@@ -399,6 +402,10 @@ def execute(plan, action, approval, *, ready_fd=None):
                 raise MaintenanceError('use-resume-for-interrupted-operation')
         cleanup_retained(plan, journal)
         recheck(plan)
+        if action != 'check':
+            # A conflict found only after deploy could never be published by this plan.
+            maintenance_catalog.require_baseline(
+                plan, [node for node in plan['nodes'] if node['host'] not in state['accepted_nodes']])
         if ready_fd is not None:
             os.write(ready_fd, b'ready');os.close(ready_fd)
         state = {**state, 'status': 'running', 'action': action}
@@ -565,7 +572,7 @@ def main():
         print(f'maintenance: operation refused ({error}); inspect private journal and encrypted diagnostics',
               file=sys.stderr)
         return 1
-    except (OSError, ValueError, KeyError, ReadinessError, RecoveryError, RotationError,
+    except (OSError, ValueError, TypeError, KeyError, ReadinessError, RecoveryError, RotationError,
             yaml.YAMLError, fleet_inspection.InspectionError):
         print('maintenance: operation refused; inspect private journal and encrypted diagnostics', file=sys.stderr)
         return 1

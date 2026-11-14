@@ -25,6 +25,13 @@ def baseline(catalog_path, nodes):
     return {node['host']: core_state(catalog, node['host']) for node in nodes}
 
 
+def require_baseline(plan, nodes):
+    catalog = document(Path(plan['catalog']))
+    for node in nodes:
+        if core_state(catalog, node['host']) != plan['catalog_baseline'][node['host']]:
+            raise MaintenanceError('catalog-core-conflict')
+
+
 def generate(request_path, output, fleet):
     request = document(request_path)
     if (set(request) != {'schema_version', 'catalog', 'id', 'expires_at', 'state_directory',

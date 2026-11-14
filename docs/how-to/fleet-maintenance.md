@@ -107,7 +107,10 @@ immutable acceptance receipt and updates only these fields under
 - `current_operation_receipt` and `current_operation_receipt_sha256`.
 
 Monitoring records and unrelated catalog entries remain intact. The receipt is
-historical evidence, not a live status check. A competing core update refuses
+historical evidence, not a live status check. Preview, start and resume refuse
+before any host mutation when a node not yet accepted by this plan no longer has
+the core fields bound at preparation; prepare a new plan from the current catalog.
+A competing core update during the run refuses
 publication and stops before the next node. Review that conflict before resume.
 An accepted node whose catalog write failed remains accepted in the journal;
 resume retries its publication without deploying it again. Do not edit the frozen
@@ -125,6 +128,10 @@ deploy, repair drift or update accepted deployment state. A controller-owned cal
 failed or unreachable task refuses a clean drift result. Missing statistics also
 refuse. Encrypted dry-run logs retain configuration differences for review.
 Cloud resource drift remains a separate Terraform plan operation.
+`ACTION=check` is terminal for its plan, so it accepts only a freshly prepared
+plan and refuses one that was previewed, started or already checked. At
+`timeout_seconds` the drift child cancels its running stage and cleans node
+plaintext; the scheduler allows 300 seconds for that cleanup before it stops the child.
 
 Create a private schedule configuration:
 
