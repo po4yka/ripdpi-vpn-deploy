@@ -26,7 +26,7 @@ def main():
             elif args.command == 'prepare':
                 result = operation.prepare(args.approve)
             elif args.command in ('run', 'resume'):
-                result = operation.run()
+                result = operation.run(args.approve)
             else:
                 result = operation.status()
         print(json.dumps(result, sort_keys=True))
