@@ -330,7 +330,8 @@ def check_statistics_environment(root, directory, environment):
     (plugins / 'ripdpi_check_statistics.py').write_bytes(
         read_input(root / 'scripts/ansible_check_statistics.py'))
     return {**environment, 'ANSIBLE_CALLBACK_PLUGINS': str(plugins),
-            'ANSIBLE_CALLBACKS_ENABLED': 'ripdpi_check_statistics',
+            'ANSIBLE_CALLBACKS_ENABLED': ','.join(filter(None, (
+                environment.get('ANSIBLE_CALLBACKS_ENABLED'), 'ripdpi_check_statistics'))),
             'RIPDPI_CHECK_STATS_FILE': str(directory / 'check-statistics.json')}
 
 

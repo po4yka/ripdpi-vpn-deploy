@@ -353,6 +353,10 @@ secret=pathlib.Path(os.environ['SECRETS_FILE'])
 if goal=='decrypt':secret.write_text('synthetic-credential');secret.chmod(0o600)
 if goal=='clean':secret.unlink(missing_ok=True)
 if (root/'delay').exists() and goal=='deploy':time.sleep(.5)
+if (root/'hang').exists() and (root/'hang').read_text()==goal:(root/'hang.pid').write_text(str(os.getpid()));time.sleep(60)
+if (root/'catalog-race').exists() and goal=='deploy':
+ c=json.loads((root/'catalog.json').read_bytes());c['current_actual_configuration'].setdefault(host,{})['core_source_revision']='a'*40
+ (root/'catalog.json').write_text(json.dumps(c))
 if (root/'fail').exists() and (root/'fail').read_text()==host+':'+goal:sys.exit(9)
 if goal=='deploy':
  rev,gen=subprocess.check_output(['bash','scripts/deploy-source-identity.sh'],text=True).split()
@@ -1004,12 +1008,20 @@ def test_catalog_reconciles_only_accepted_core_and_resumes_publication(maintenan
     catalog = {'unrelated': 'preserve', 'current_actual_configuration': {
         'node-a': {'core_source_revision': 'a' * 40, 'monitoring_source_revision': 'b' * 40}}}
     write(kit / 'catalog.json', json.dumps(catalog))
+    # A core change after preparation refuses before any host mutation.
+    assert command('start', '--approval', approval).returncode == 1
+    assert finish()['status'] == 'previewed'
+    assert not (kit / 'calls').read_text().count(':deploy')
+    catalog['current_actual_configuration']['node-a'].pop('core_source_revision')
+    write(kit / 'catalog.json', json.dumps(catalog))
+    # A competing writer during deploy is found at publication, after acceptance.
+    write(kit / 'catalog-race', '')
     assert command('start', '--approval', approval).returncode == 0
     interrupted = finish()
+    (kit / 'catalog-race').unlink()
     assert interrupted['accepted_nodes'] == ['node-a']
     assert interrupted['status'] == 'reconciliation-required'
     assert 'node-b:deploy' not in (kit / 'calls').read_text()
-    catalog['current_actual_configuration']['node-a'].pop('core_source_revision')
     write(kit / 'catalog.json', json.dumps(catalog))
     assert command('resume', '--approval', approval).returncode == 0
     assert finish()['status'] == 'complete'
@@ -1071,6 +1083,16 @@ def test_check_verifies_without_deploy_or_catalog_reconciliation(maintenance):
                      for goal in ('decrypt', 'dry-run', 'verify', 'security-verify', 'clean')]
     assert (kit / 'catalog.json').read_bytes() == before
     assert not list((kit / 'runtime').iterdir())
+    assert command('check').returncode == 1
+
+
+def test_check_cannot_close_a_previewed_deployment(maintenance):
+    _, _, _, command, finish = maintenance
+    approval = preview(maintenance)
+    assert command('check').returncode == 1
+    assert finish()['status'] == 'previewed'
+    assert command('start', '--approval', approval).returncode == 0
+    assert finish()['status'] == 'complete'
 
 
 def test_scheduler_render_preserves_argv_and_reports_overdue(authority):
@@ -1160,7 +1182,9 @@ def test_scheduled_backup_requires_real_canonical_receipt(authority, monkeypatch
 def test_actual_ansible_check_counts_refuse_configuration_drift(authority, changed):
     directory, _, _ = authority
     controller = load('deploy-controller')
-    environment = controller.check_statistics_environment(ROOT, directory, private.command_environment())
+    # An already enabled controller callback keeps running beside the statistics callback.
+    environment = controller.check_statistics_environment(ROOT, directory, private.command_environment(
+        {'ANSIBLE_CALLBACKS_ENABLED': 'ansible.builtin.junit', 'JUNIT_OUTPUT_DIR': str(directory / 'junit')}))
     # Real check-mode execution, including a change that leaves the live file untouched.
     target = write(directory / 'managed.txt', 'old')
     play = write(directory / 'check.yml', yaml.safe_dump([{'hosts': 'localhost', 'gather_facts': False,
@@ -1180,6 +1204,7 @@ def test_actual_ansible_check_counts_refuse_configuration_drift(authority, chang
         controller.require_no_check_changes(directory / 'check-statistics.json')
     counts = json.loads((directory / 'check-statistics.json').read_bytes())
     assert counts == {'hosts': 1, 'changed': int(changed), 'failures': 0, 'unreachable': 0}
+    assert list((directory / 'junit').glob('*.xml'))
 
 
 def test_scheduler_prepare_and_real_drift_child(maintenance):
@@ -1219,6 +1244,30 @@ def test_scheduler_prepare_and_real_drift_child(maintenance):
     assert status['jobs']['drift']['phase'] == 'failed'
     assert status['jobs']['drift']['last_success_at']
     assert not any(':deploy' in line for line in (kit / 'calls').read_text().splitlines())
+    # A stage that outlives the drift budget is cancelled in its own session and the
+    # node plaintext is cleaned before the child exits, not left for the next run.
+    (kit / 'fail').unlink()
+    write(kit / 'hang', 'dry-run')
+    plan['jobs']['drift']['timeout_seconds'] = 3
+    short = write(kit / 'schedule-short.json', json.dumps(plan))
+    output = kit / 'runtime/scheduler/drift-short'
+    output.mkdir(mode=0o700)
+    started = time.monotonic()
+    result = command('_drift', '--config', str(short), '--output', str(output))
+    assert result.returncode != 0
+    assert time.monotonic() - started < 25
+    assert (kit / 'calls').read_text().splitlines()[-2:] == ['node-a:dry-run', 'node-a:clean']
+    assert not list((kit / 'runtime').glob('maintenance-*'))
+    hung = int((kit / 'hang.pid').read_text())
+    end = time.monotonic() + 5
+    while time.monotonic() < end:
+        try:
+            os.kill(hung, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(.05)
+    else:
+        raise AssertionError('timed-out stage outlived the drift child')
 
 
 @pytest.mark.parametrize('system', ['Linux', 'Darwin'])

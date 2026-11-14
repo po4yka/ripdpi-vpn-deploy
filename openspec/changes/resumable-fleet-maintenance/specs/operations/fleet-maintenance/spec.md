@@ -148,6 +148,11 @@ core updates, and retain a receipt with time, source and evidence binding.
 - **WHEN** a node passes acceptance but catalog publication fails
 - **THEN** resume reconciles its retained receipt before continuing and does not deploy it again.
 
+#### Scenario: Catalog core changed after preparation
+
+- **WHEN** a node not yet accepted by the plan no longer has its prepared core fields
+- **THEN** preview, start and resume refuse before any host mutation.
+
 ### Requirement: REQ-MAINT-GENERATE — Generate exact maintenance inputs
 
 The controller MUST generate schema-2 maintenance configuration from exact catalog
@@ -177,3 +182,8 @@ and publish private status that distinguishes failure, running and overdue evide
 
 - **WHEN** the last successful run exceeds the configured freshness window
 - **THEN** status reports overdue rather than healthy.
+
+#### Scenario: Drift check exceeds its timeout
+
+- **WHEN** a scheduled drift stage runs past the job timeout
+- **THEN** the drift child cancels that stage and removes node plaintext before it exits.

@@ -12,19 +12,22 @@ from pathlib import Path
 import plistlib
 import re
 import shlex
+import signal
 import subprocess
 import sys
 import tempfile
 
 from bootstrap_readiness import ReadinessError, cancellation
 from operator_maintenance_io import (MaintenanceError, ROOT, command_environment, digest_file,
-                                    encrypted_command, private_directory, private_lock,
+                                    encrypted_command, new_file, private_directory, private_lock,
                                     read_bytes, update_document, write_document)
 from recovery_io import document, module, digest, Journal, unique
 
 JOBS = ('drift', 'backup')
 FIELDS = {'schema_version', 'id', 'expires_at', 'state_directory', 'maintenance_config',
           'backup_config', 'backup_profile', 'jobs'}
+# Time for the drift child to finish deferred plaintext cleanup after its own deadline.
+CLEANUP_GRACE_SECONDS = 300
 
 
 def now():
@@ -36,6 +39,13 @@ def stamp(value):
     if parsed.tzinfo is None:
         raise MaintenanceError('timezone-required')
     return parsed.timestamp()
+
+
+def budget(plan, job):
+    remaining = stamp(plan['expires_at']) - datetime.now(timezone.utc).timestamp()
+    if remaining <= 0:
+        raise MaintenanceError('authorization-expired-before-command')
+    return min(plan['jobs'][job]['timeout_seconds'], remaining)
 
 
 def cron_interval(seconds):
@@ -193,7 +203,6 @@ def run(plan, config_path, job):
                     if hashlib.sha256(raw).hexdigest() != plan['inputs'][original]['sha256']:
                         raise MaintenanceError('frozen-input-changed')
                     destination = directory / name
-                    from operator_maintenance_io import new_file
                     with new_file(destination) as stream:
                         stream.write(raw)
                     return destination
@@ -205,12 +214,13 @@ def run(plan, config_path, job):
                 profile = copy_input(plan['backup_profile'], 'profile.sops.json')
                 command = ['make', 'routine-backup', 'PROFILE=' + str(profile),
                            'CONFIG=' + str(directory / 'backup-config.json'), 'OUTPUT=' + str(directory / 'backup.json')]
-            remaining = stamp(plan['expires_at']) - datetime.now(timezone.utc).timestamp()
-            if remaining <= 0:
-                raise MaintenanceError('authorization-expired-before-command')
+            limit = budget(plan, job)
+            if job == 'drift':
+                # The drift child cancels itself at the limit and cleans node plaintext; its
+                # stages run in separate sessions that a kill of the child would orphan.
+                limit += CLEANUP_GRACE_SECONDS
             code = encrypted_command(command, directory / 'command.log.age', plan['log_recipient'],
-                environment=command_environment({'PATH': plan['path']}), cwd=ROOT,
-                timeout=min(plan['jobs'][job]['timeout_seconds'], remaining))
+                environment=command_environment({'PATH': plan['path']}), cwd=ROOT, timeout=limit)
             if code:
                 raise MaintenanceError('scheduled-command-failed')
             if job == 'backup':
@@ -327,7 +337,10 @@ def install(plan, config_path, *, remove=False):
                     private_directory(scratch)
                     staged = Path(scratch) / filename
                     with staged.open('xb') as stream:
-                        os.chmod(staged, 0o600);stream.write(contents.encode());stream.flush();os.fsync(stream.fileno())
+                        os.chmod(staged, 0o600)
+                        stream.write(contents.encode())
+                        stream.flush()
+                        os.fsync(stream.fileno())
                     os.link(staged, destination, follow_symlinks=False)
             scheduler_command(['launchctl', 'bootstrap', domain, str(destination)])
     else:
@@ -358,7 +371,7 @@ def main():
     parser.add_argument('--plan-sha256')
     args = parser.parse_args()
     try:
-        with cancellation():
+        with cancellation(signals=(signal.SIGINT, signal.SIGTERM, signal.SIGALRM)):
             if args.action == 'prepare':
                 if args.output is None:
                     raise MaintenanceError('output-required')
@@ -380,6 +393,7 @@ def main():
                 elif args.action == '_drift':
                     if args.output is None:
                         raise MaintenanceError('output-required')
+                    signal.setitimer(signal.ITIMER_REAL, budget(plan, 'drift'))
                     drift(plan, private_directory(args.output))
                     result = {'phase': 'checked'}
                 else:
