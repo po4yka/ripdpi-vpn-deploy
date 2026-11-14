@@ -2,14 +2,14 @@
 """Pre-deploy sanity check on a decrypted secrets file.
 
 Walks the YAML tree and flags anything that would deploy as a known-bad
-value: REPLACE_WITH_* placeholders, expired or self-signed cert PEMs,
-invalid H1..H4 range strings, weak passwords, plaintext cloudflare default
-target, etc.
+value: REPLACE_WITH_* placeholders, invalid H1..H4 range strings, weak
+passwords, plaintext cloudflare default target, etc.
 
 Reads $VPN_SECRETS_FILE (set by `make decrypt`) or the path passed as
 the first argument. Exits 0 on clean; non-zero on any finding.
 
-Run via `make spot-check-secrets`.
+Run via `make spot-check-secrets`. Certificates are checked by scripts/check-certs.sh,
+which selects only the authorities the deployment enables.
 
 INVARIANT: a Finding's `msg` field MUST NEVER contain a substring of any
 value read from the decrypted secrets file. Operators redirect this
@@ -24,9 +24,7 @@ from __future__ import annotations
 
 import os
 import re
-import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -68,68 +66,6 @@ def walk_for_placeholders(data, path: str, f: Findings) -> None:
     elif isinstance(data, list):
         for i, v in enumerate(data):
             walk_for_placeholders(v, f"{path}[{i}]", f)
-
-
-def check_cert_pem(pem: str, key_pem: str | None, path: str, f: Findings) -> None:
-    if not pem or PLACEHOLDER_RE.search(pem):
-        return  # placeholder branch handled separately
-    try:
-        end_date = subprocess.run(
-            ["openssl", "x509", "-noout", "-enddate"],
-            input=pem.encode(), capture_output=True, check=True,
-        ).stdout.decode().strip()
-    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
-        f.add(path, f"openssl rejected cert_pem ({exc})")
-        return
-    m = re.search(r"notAfter=(.+)$", end_date)
-    if not m:
-        f.add(path, f"could not parse notAfter from {end_date!r}")
-        return
-    not_after = datetime.strptime(m.group(1), "%b %d %H:%M:%S %Y %Z")
-    days = (not_after.replace(tzinfo=timezone.utc) - datetime.now(tz=timezone.utc)).days
-    if days < 0:
-        f.add(path, f"cert expired {-days} days ago ({not_after.date()})")
-    elif days < 14:
-        f.add(path, f"cert expires in {days} days ({not_after.date()}) — renew now")
-
-    try:
-        issuer = subprocess.run(
-            ["openssl", "x509", "-noout", "-issuer"],
-            input=pem.encode(), capture_output=True, check=True,
-        ).stdout.decode().strip()
-        subject = subprocess.run(
-            ["openssl", "x509", "-noout", "-subject"],
-            input=pem.encode(), capture_output=True, check=True,
-        ).stdout.decode().strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        # The expiry check above already reported a diagnostic for this PEM;
-        # a second failure here must not crash the gate.
-        return
-    m_issuer = re.search(r"CN=(.+)$", issuer)
-    m_subject = re.search(r"CN=(.+)$", subject)
-    # Compare only when both sides carry a non-empty CN; a missing CN is not
-    # evidence of self-signing.
-    if m_issuer and m_subject and m_issuer.group(1).strip() == m_subject.group(1).strip():
-        f.add(path, "cert appears self-signed (issuer == subject)")
-
-    if key_pem and not PLACEHOLDER_RE.search(key_pem):
-        try:
-            cert_mod = subprocess.run(
-                ["openssl", "x509", "-noout", "-modulus"],
-                input=pem.encode(), capture_output=True, check=True,
-            ).stdout.decode().strip()
-            # RSA modulus comparison is only a heuristic; unsupported key
-            # types are accepted by the certificate parser above.
-            key_mod_cmd = ["openssl", "rsa", "-noout", "-modulus"]
-            key_mod = subprocess.run(
-                key_mod_cmd, input=key_pem.encode(),
-                capture_output=True, check=False,
-            )
-            if key_mod.returncode == 0 and key_mod.stdout.strip() != cert_mod.encode():
-                f.add(path, "RSA cert modulus does not match key modulus")
-        except subprocess.CalledProcessError:
-            # Non-RSA or unsupported pairs skip the modulus-only heuristic.
-            pass
 
 
 def main() -> int:
@@ -184,15 +120,6 @@ def main() -> int:
             kind = "non-hex" if not re.fullmatch(r"[0-9a-fA-F]*", sid) else "wrong-length"
             f.add(f"xray.clients[{index}].short_id",
                   f"{kind} (length={len(sid)}; want 2-16 hex)")
-
-    for role, key in (("nginx_xhttp", "key_pem"),
-                      ("hysteria", "key_pem"),
-                      ("naive_secrets", "key_pem")):
-        block = data.get(role) or {}
-        if role in ('nginx_xhttp', 'hysteria') and 'acme' in block:
-            continue  # Shared semantic admission checks policy; live acceptance checks the certificate.
-        check_cert_pem(block.get("cert_pem", ""), block.get(key, ""),
-                       f"{role}.cert_pem", f)
 
     for index, client in enumerate((data.get("hysteria") or {}).get("clients") or []):
         pw = client.get("password", "")

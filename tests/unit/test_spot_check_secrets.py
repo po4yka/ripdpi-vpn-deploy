@@ -30,22 +30,19 @@ def test_malformed_yaml_exits_two_with_diagnosis_not_traceback(tmp_path: Path) -
     assert "unclosed" not in result.stderr
 
 
-def test_cert_without_cn_is_not_flagged_as_self_signed(tmp_path: Path) -> None:
-    import subprocess as sp
+def test_certificates_are_left_to_the_enabled_authority_check(tmp_path: Path) -> None:
+    # Regression: a self-signed placeholder for a role the node disables failed every
+    # verify; check-certs.sh owns certificates and selects only enabled authorities.
     import textwrap
 
     key = tmp_path / "k.pem"
     cert = tmp_path / "c.pem"
-    subj = "/O=Example Org/C=US"
-    sp.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
-            "-keyout", str(key), "-out", str(cert), "-days", "3650",
-            "-subj", subj], capture_output=True, check=True)
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+                    "-keyout", str(key), "-out", str(cert), "-days", "3650",
+                    "-subj", "/CN=disabled.example.test"], capture_output=True, check=True)
     doc = tmp_path / "secrets.yaml"
-    # The role key must be one the gate actually inspects, and each PEM must
-    # be indented under its block scalar; otherwise the gate stops at YAML
-    # parsing and never reaches the certificate.
     doc.write_text(
-        "nginx_xhttp:\n"
+        "naive_secrets:\n"
         "  cert_pem: |\n"
         f"{textwrap.indent(cert.read_text().rstrip(), '    ')}\n"
         "  key_pem: |\n"
@@ -55,10 +52,7 @@ def test_cert_without_cn_is_not_flagged_as_self_signed(tmp_path: Path) -> None:
 
     result = _run(doc)
 
-    # The certificate path must actually be reached.
-    assert "invalid YAML" not in result.stderr
-    assert "openssl rejected cert_pem" not in result.stdout
-    assert "Traceback" not in result.stderr
-    # A CN-less self-signed pair carries no CN evidence, so it must not be
-    # reported as self-signed.
-    assert "self-signed" not in result.stdout
+    assert "invalid YAML" not in result.stderr and "Traceback" not in result.stderr
+    # The gate still runs its other checks on this document.
+    assert "backup.restic_password" in result.stdout
+    assert "cert_pem" not in result.stdout
