@@ -155,6 +155,61 @@ def test_awg_generation_requires_immutable_toolchain_pin(engine, root, toolchain
             engine.install_generation(root, generation, stage, probe)
 
 
+def awg_candidate(root, awg_ipv6):
+    generation, stage = candidate(root)
+    config = json.loads((stage / "config.json").read_text())
+    config["amneziawg"] = {"config": str(root / "generations" / generation / "profiles/awg.conf"), "addresses": ["10.66.66.2/32", "fd42:42:42::2/128"], "mtu": 1420}
+    config["expected_runtime"].update(awg="1.0.0", awg_toolchain="c" * 64)
+    metadata = json.loads((stage / "metadata.json").read_text())
+    metadata["required_profiles"].append("p2-amneziawg")
+    metadata["target_identity"]["required_profiles"] = sorted(metadata["required_profiles"])
+    if awg_ipv6 is not None:
+        metadata["awg_ipv6"] = awg_ipv6
+    config["target_identity"] = metadata["target_identity"]
+    (stage / "metadata.json").write_text(json.dumps(metadata))
+    (stage / "config.json").write_text(json.dumps(config))
+    (stage / "profiles/awg.conf").write_text("fixture only\n")
+    (stage / "profiles/awg.conf").chmod(0o600)
+    return generation, stage
+
+
+REFUSED_IPV6 = {"profile": "p2-amneziawg", "verdict": "blocked", "error_kind": "policy_refused",
+                "dns_through_tunnel": True, "authenticated_handshake": True, "fresh_handshake": True,
+                "family_results": {"ipv4": {"verdict": "ok", "payload_transport": "tcp-https"},
+                                   "ipv6": {"verdict": "blocked", "error_kind": "policy_refused", "payload_transport": "tcp-https"}}}
+
+
+@pytest.mark.parametrize("awg_ipv6,ipv4_verdict,committed", [
+    ("ipv4-only", "ok", True),
+    ("dualstack", "ok", False),
+    (None, "ok", False),
+    ("ipv4-only", "blocked", False),
+])
+def test_ipv4_only_awg_policy_accepts_only_an_explicit_ipv6_refusal(engine, root, awg_ipv6, ipv4_verdict, committed):
+    # Regression: a family-scope node refuses recipient IPv6, so every new generation failed its initial probe.
+    generation, stage = awg_candidate(root, awg_ipv6)
+    awg = json.loads(json.dumps(REFUSED_IPV6))
+    awg["family_results"]["ipv4"]["verdict"] = ipv4_verdict
+
+    def probe(directory):
+        report = healthy(directory)
+        report["profiles"].append(awg)
+        return report
+
+    if committed:
+        assert engine.install_generation(root, generation, stage, probe)["status"] == "committed"
+    else:
+        with pytest.raises(engine.GenerationError, match="installation-failed"):
+            engine.install_generation(root, generation, stage, probe)
+        assert not (root / "current").exists()
+
+
+def test_generation_metadata_rejects_an_unknown_awg_ipv6_policy(engine, root):
+    generation, stage = awg_candidate(root, "ipv6-only")
+    with pytest.raises(engine.GenerationError, match="candidate-metadata"):
+        engine.install_generation(root, generation, stage, lambda _p: pytest.fail("must refuse before probing"))
+
+
 def test_rollback_deletions_are_durable_before_pending_disappears(engine, root, monkeypatch):
     generation, stage = candidate(root)
     events = []

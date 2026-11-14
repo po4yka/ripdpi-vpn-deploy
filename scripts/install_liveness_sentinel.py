@@ -759,7 +759,8 @@ def install(config_path, sid, client, registry_path, *, read_awg_stdin=False, st
                              "timeout_seconds": config.get("probe_timeout_seconds", 15), "degraded_after_ms": config.get("degraded_after_ms", 3000),
                              "expected_runtime": expected, "provenance": provenance, "target_identity": target_identity, **profiles["runtime"]}
             metadata = {"generation_id": generation, "required_profiles": required, "ssh_user": user,
-                        "provenance": provenance, "target_identity": target_identity}
+                        "provenance": provenance, "target_identity": target_identity,
+                        "awg_ipv6": next(p for p in config["policies"] if p["id"] == sentinel["policy"]).get("awg_ipv6", "dualstack")}
             files = {"runner.py": runner, "config.json": json.dumps(runner_config, sort_keys=True).encode(), "metadata.json": json.dumps(metadata, sort_keys=True).encode(),
                      **{"profiles/" + name: data for name, data in rendered.items()}}
             bundle = json.dumps({"generation_id": generation, "engine": base64.b64encode(engine).decode(),
