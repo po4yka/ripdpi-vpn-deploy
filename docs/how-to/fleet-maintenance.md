@@ -16,7 +16,8 @@ Create a private JSON configuration with these fields:
 
 | Field | Value |
 |---|---|
-| `schema_version` | `1` |
+| `schema_version` | `2` |
+| `catalog` | Absolute private catalog path for accepted core-state reconciliation |
 | `id` | A stable lowercase operation name |
 | `expires_at` | An explicit timezone-aware authorization deadline |
 | `state_directory` | An existing empty private directory for this operation |
@@ -57,6 +58,128 @@ make maintenance ACTION=resume PLAN="$MAINTENANCE_PLAN" APPROVAL="$REVIEW_SHA256
 ```
 
 Resume retains accepted node boundaries. It repeats the complete canonical preview before another deploy; an interrupted stage is not inferred successful. When the failed node had already completed its deploy stage for the same plan source, and a fresh read-only probe shows that the live node manifest still reports the plan revision and deployable digest, resume skips that node's dry-run and deploy. It still runs decrypt, `verify`, `security-verify`, `smoke-test` and the protocol gate. When the probe cannot reach the node or reports another source, resume runs the complete sequence, which first discards the recorded convergence. A retained runtime transaction that refuses preview needs the separate reviewed [canonical recovery procedure](deploy.md#ordinary-re-deploy-recipe). This command does not convert a refused preview into authority to recover or deploy. Changed source, changed inputs or an expired grant require a new plan and preview. `status` reads historical local evidence; it does not refresh live acceptance. An abrupt process or machine loss can leave its owned temporary plaintext until the next admitted resume cleans that exact retained directory.
+
+## Generate maintenance configuration
+
+Configuration schema 2 requires `catalog`; schema 1 is no longer accepted. Add a
+`maintenance` mapping to the existing private catalog. Its `defaults` contains
+`age_identity`, `log_recipient`, `liveness_config` and `liveness_inputs`. Its `nodes`
+maps exact node aliases to the node fields listed above. Keep one mapping per
+node. Paths in this mapping can be absolute or relative to the catalog directory.
+Never put credential values in the catalog.
+
+Create a private generation request with `schema_version: 1`, `catalog`, `id`,
+`expires_at`, `state_directory`, `runtime_parent`, and `nodes` (an ordered list of
+exact aliases). Both directories must already exist with mode 0700. For example:
+
+```json
+{
+  "schema_version": 1,
+  "catalog": "/private/operator/catalog.json",
+  "id": "core-refresh",
+  "expires_at": "2027-01-01T12:00:00Z",
+  "state_directory": "/private/operator/receipts/core-refresh",
+  "runtime_parent": "/private/operator/runtime",
+  "nodes": ["node-a", "node-b"]
+}
+```
+
+Set the deadline to the actual authorization deadline. Generate configuration,
+then use the existing preparation and preview flow:
+
+```bash
+make maintenance ACTION=generate CONFIG="$GENERATION_REQUEST" PLAN="$MAINTENANCE_CONFIG"
+make maintenance ACTION=prepare CONFIG="$MAINTENANCE_CONFIG" PLAN="$MAINTENANCE_PLAN"
+make maintenance ACTION=preview PLAN="$MAINTENANCE_PLAN"
+```
+
+Generation checks selected private dependencies and discovered site/exposure
+inputs without contacting hosts or decrypting credentials. It does not replace
+inventory preparation, dependency review, or authorization of the preview digest.
+Missing mappings, duplicate nodes and unsafe or missing files refuse publication.
+
+After source, protocol and cleanup checks pass for a node, maintenance writes an
+immutable acceptance receipt and updates only these fields under
+`current_actual_configuration.<alias>`:
+
+- `core_source_revision` and `core_deployable_digest`;
+- `current_core_verified_at`;
+- `current_operation_receipt` and `current_operation_receipt_sha256`.
+
+Monitoring records and unrelated catalog entries remain intact. The receipt is
+historical evidence, not a live status check. A competing core update refuses
+publication and stops before the next node. Review that conflict before resume.
+An accepted node whose catalog write failed remains accepted in the journal;
+resume retries its publication without deploying it again. Do not edit the frozen
+plan or receipt to bypass a conflict.
+
+## Schedule drift checks and verified backups
+
+`operator-schedule` manages only the drift and complete-kit backup jobs. Existing
+operator watcher jobs remain under `install-operator-crons.sh`. The new command
+uses cron on Linux and launchd on macOS. It never installs a schedule implicitly.
+
+The drift job runs canonical `dry-run`, `verify` and `security-verify`, checks the
+fresh deployed source manifest, and cleans its temporary plaintext. It does not
+deploy, repair drift or update accepted deployment state. A controller-owned callback records aggregate check-mode counts. Any changed,
+failed or unreachable task refuses a clean drift result. Missing statistics also
+refuse. Encrypted dry-run logs retain configuration differences for review.
+Cloud resource drift remains a separate Terraform plan operation.
+
+Create a private schedule configuration:
+
+```json
+{
+  "schema_version": 1,
+  "id": "operator-checks",
+  "expires_at": "2027-01-01T12:00:00Z",
+  "state_directory": "/private/operator/runtime/scheduled",
+  "maintenance_config": "/private/operator/config/maintenance.json",
+  "backup_config": "/private/operator/config/kit-backup.json",
+  "backup_profile": "/private/operator/config/routine-backup.sops.json",
+  "jobs": {
+    "drift": {"interval_seconds": 86400, "timeout_seconds": 14400, "max_age_seconds": 172800},
+    "backup": {"interval_seconds": 86400, "timeout_seconds": 1200, "max_age_seconds": 172800}
+  }
+}
+```
+
+Use the approved finite deadline; it cannot exceed the maintenance deadline.
+The state directory must start empty, be private and be outside the backup selection (under
+`runtime/` when it is inside the kit). Each interval must divide an hour in whole
+minutes or divide a day in whole hours. Timeouts range from 60 to 14400 seconds.
+The freshness window must cover at least one interval plus its timeout.
+
+```bash
+make operator-schedule ACTION=prepare CONFIG="$SCHEDULE_CONFIG" OUTPUT="$SCHEDULE_PLAN"
+make operator-schedule ACTION=render CONFIG="$SCHEDULE_PLAN"
+make operator-schedule ACTION=install CONFIG="$SCHEDULE_PLAN"
+make operator-schedule ACTION=run CONFIG="$SCHEDULE_PLAN" JOB=drift
+make operator-schedule ACTION=run CONFIG="$SCHEDULE_PLAN" JOB=backup
+make operator-schedule ACTION=status CONFIG="$SCHEDULE_PLAN"
+make operator-schedule ACTION=remove CONFIG="$SCHEDULE_PLAN"
+```
+
+Preparation discovers and binds the controller revision, inventory, private
+inputs, site trees, backup configuration and routine credential profile. Installed
+jobs bind the exact schedule plan digest. Changed inputs or source require a new
+reviewed plan; remove the old schedule before installing its replacement. Keep the
+controller checkout clean and available at the recorded path. Linux daily jobs
+run at 03:00 in the scheduler's local timezone; macOS uses the configured interval.
+A sleeping or offline controller can miss checks; status reports overdue evidence.
+
+Each job has an overlap lock and atomic private status. `never-run`, `running`,
+`interrupted`, `failed`, `different-plan` and `succeeded` are distinct. `overdue` and
+`authorization_expired` are independent flags. A failed run preserves the previous
+`last_success_at`. Read status from the approved operator workflow or monitoring
+consumer; this command does not install a notification channel.
+
+Backups use the existing restricted routine credential loader and complete
+upload/download/decrypt/manifest verification. Command exit zero without the
+matching positive remote-verification receipt is a failure. Backup diagnostics
+are encrypted, and working identity copies are removed on ordinary completion or
+failure. An interrupted backup retains its owned runtime for inspection; the next
+admitted run removes the exact unchanged working identity before proceeding.
 
 ## Prepare component release inputs
 

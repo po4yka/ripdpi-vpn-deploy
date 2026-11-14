@@ -1,5 +1,6 @@
 ---
-# Stock cloud-image account fixture. It runs once before converge, so the idempotence rerun does not create the account again for the role to remove.
+# Stock cloud-image account fixture. It runs once before converge, so the
+# idempotence rerun does not create the account again for the role to remove.
 
 - name: Prepare a stock cloud-image account
   hosts: all

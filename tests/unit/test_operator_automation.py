@@ -387,7 +387,7 @@ if goal=='deploy':
                                         'trusted_key': str(kit / 'trusted.pem')}}))
     runtime, state = kit / 'runtime', kit / 'state'
     runtime.mkdir(mode=0o700);state.mkdir(mode=0o700)
-    config = {'schema_version': 1, 'id': 'test-maintenance',
+    config = {'schema_version': 2, 'id': 'test-maintenance', 'catalog': str(kit / 'catalog.json'),
               'expires_at': (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
               'state_directory': str(state), 'runtime_parent': str(runtime),
               'age_identity': str(identity), 'log_recipient': recipient, 'nodes': [],
@@ -443,6 +443,7 @@ print(json.dumps(report))
                     ['git', 'config', 'user.email', 'fixture@example.invalid'], ['git', 'add', '.'],
                     ['git', 'commit', '-qm', 'test: create maintenance fixture']):
         subprocess.run(command, cwd=root, check=True, capture_output=True)
+    write(kit / 'catalog.json', json.dumps({'current_actual_configuration': {}, 'unrelated': 'preserve'}))
     config_path = write(kit / 'config.json', json.dumps(config))
     plan = kit / 'plan.json'
     env = {**os.environ, 'PYTHONDONTWRITEBYTECODE': '1', 'PATH': str(kit / 'bin') + os.pathsep + os.environ['PATH']}
@@ -995,3 +996,257 @@ def test_opaque_sops_publication_keeps_mac_and_metadata_writer_refuses_it(author
         private.write_document(directory / 'sorted.sops.json', encrypted)
     assert target.read_bytes() == cipher
     assert not (directory / 'sorted.sops.json').exists()
+
+
+def test_catalog_reconciles_only_accepted_core_and_resumes_publication(maintenance):
+    _, kit, state, command, finish = maintenance
+    approval = preview(maintenance)
+    catalog = {'unrelated': 'preserve', 'current_actual_configuration': {
+        'node-a': {'core_source_revision': 'a' * 40, 'monitoring_source_revision': 'b' * 40}}}
+    write(kit / 'catalog.json', json.dumps(catalog))
+    assert command('start', '--approval', approval).returncode == 0
+    interrupted = finish()
+    assert interrupted['accepted_nodes'] == ['node-a']
+    assert interrupted['status'] == 'reconciliation-required'
+    assert 'node-b:deploy' not in (kit / 'calls').read_text()
+    catalog['current_actual_configuration']['node-a'].pop('core_source_revision')
+    write(kit / 'catalog.json', json.dumps(catalog))
+    assert command('resume', '--approval', approval).returncode == 0
+    assert finish()['status'] == 'complete'
+    current = json.loads((kit / 'catalog.json').read_bytes())
+    expected = json.loads((kit / 'plan.json').read_bytes())['source']
+    record = current['current_actual_configuration']['node-a']
+    assert record['core_source_revision'] == expected['revision']
+    assert record['core_deployable_digest'] == expected['deployable_digest']
+    assert record['monitoring_source_revision'] == 'b' * 40
+    receipt = kit / record['current_operation_receipt']
+    assert hashlib.sha256(receipt.read_bytes()).hexdigest() == record['current_operation_receipt_sha256']
+    assert current['unrelated'] == 'preserve'
+    assert (kit / 'calls').read_text().count('node-a:deploy') == 1
+
+
+@pytest.mark.parametrize('fault', ['none', 'missing', 'symlink', 'duplicate'])
+def test_generate_selects_catalog_nodes_and_rejects_unsafe_dependencies(maintenance, fault):
+    _, kit, _, _, _ = maintenance
+    import maintenance_catalog
+    fleet = load('fleet-maintenance')
+    existing = json.loads((kit / 'config.json').read_bytes())
+    defaults = {key: existing[key] for key in ('age_identity', 'log_recipient', 'liveness_config', 'liveness_inputs')}
+    nodes = {node['host']: node for node in existing['nodes']}
+    nodes['node-b']['sops_file'] = 'sops'
+    if fault == 'missing':
+        nodes['node-b']['sops_file'] = 'missing'
+    if fault == 'symlink':
+        (kit / 'linked').symlink_to(kit / 'sops')
+        nodes['node-b']['sops_file'] = 'linked'
+    write(kit / 'catalog.json', json.dumps({'maintenance': {'defaults': defaults, 'nodes': nodes}}))
+    request = {key: existing[key] for key in ('id', 'expires_at', 'catalog', 'state_directory', 'runtime_parent')}
+    request.update(schema_version=1, nodes=['node-b', 'node-b'] if fault == 'duplicate' else ['node-b'])
+    source = write(kit / 'request.json', json.dumps(request))
+    destination = kit / 'generated.json'
+    if fault != 'none':
+        with pytest.raises(private.MaintenanceError):
+            maintenance_catalog.generate(source, destination, fleet)
+        assert not destination.exists()
+    else:
+        result = maintenance_catalog.generate(source, destination, fleet)
+        generated = json.loads(destination.read_bytes())
+        assert result['deployment_authorized'] is False
+        assert generated['nodes'] == [{**existing['nodes'][1], 'sops_file': str(kit / 'sops')}]
+        assert generated['schema_version'] == 2
+        assert not (kit / 'calls').exists()
+
+
+def test_check_verifies_without_deploy_or_catalog_reconciliation(maintenance):
+    _, kit, _, command, finish = maintenance
+    plan = json.loads((kit / 'plan.json').read_bytes())
+    for host in ('node-a', 'node-b'):
+        write(kit / (host + '-manifest.json'), json.dumps({'schema_version': 2, 'status': 'observed',
+              'source_revision': plan['source']['revision'], 'deployable_digest': plan['source']['deployable_digest']}))
+    before = (kit / 'catalog.json').read_bytes()
+    assert command('check').returncode == 0
+    assert finish()['status'] == 'checked'
+    calls = (kit / 'calls').read_text().splitlines()
+    assert calls == [host + ':' + goal for host in ('node-a', 'node-b')
+                     for goal in ('decrypt', 'dry-run', 'verify', 'security-verify', 'clean')]
+    assert (kit / 'catalog.json').read_bytes() == before
+    assert not list((kit / 'runtime').iterdir())
+
+
+def test_scheduler_render_preserves_argv_and_reports_overdue(authority):
+    scheduler = load('operator-schedule')
+    directory, _, recipient = authority
+    plan = {'id': 'test-jobs', 'state_directory': str(directory), 'path': '/usr/bin:/bin',
+            'python': sys.executable, 'expires_at': '2099-01-01T00:00:00Z',
+            'jobs': {job: {'interval_seconds': 3600, 'timeout_seconds': 1200, 'max_age_seconds': 7200}
+                     for job in scheduler.JOBS}}
+    config = directory / 'plan with space.json'
+    rendered = scheduler.render(plan, config, 'Darwin')
+    import plistlib
+    for value in rendered.values():
+        plist = plistlib.loads(value.encode())
+        assert str(config) in plist['ProgramArguments']
+        assert plist['StartInterval'] == 3600
+        assert plist['StandardOutPath'] == '/dev/null'
+    relative = scheduler.render(plan, Path('relative-plan.json'), 'Linux')
+    assert all(str(Path('relative-plan.json').absolute()) in line for line in relative.values())
+    cron = scheduler.render(plan, config, 'Linux')
+    assert all(line.startswith('0 */1 * * * ') for line in cron.values())
+    assert all("'" + str(config) + "'" in line for line in cron.values())
+    write(directory / 'drift.json', json.dumps({'phase': 'succeeded', 'plan_sha256': scheduler.digest(plan), 'last_success_at': '2000-01-01T00:00:00Z'}))
+    report = scheduler.status(plan)
+    assert report['jobs']['drift']['overdue']
+    assert report['jobs']['backup']['phase'] == 'never-run'
+    with pytest.raises(private.MaintenanceError):
+        scheduler.render(plan, directory / 'bad%path', 'Linux')
+
+
+@pytest.mark.parametrize('outcome', ['verified', 'no-readback', 'command-failed', 'overlap', 'expiry', 'expired'])
+def test_scheduled_backup_requires_real_canonical_receipt(authority, monkeypatch, outcome):
+    scheduler = load('operator-schedule')
+    directory, identity, recipient = authority
+    state = directory / 'scheduled'
+    state.mkdir(mode=0o700)
+    config = write(directory / 'backup-config.json', json.dumps({'identity': str(identity)}))
+    profile = write(directory / 'profile.sops.json', '{"sops":{}}')
+    plan = {'expires_at': '2099-01-01T00:00:00Z', 'state_directory': str(state), 'log_recipient': recipient, 'path': os.environ['PATH'],
+            'backup_config': str(config), 'backup_profile': str(profile),
+            'inputs': {str(path): {'sha256': private.digest_file(path)} for path in (config, profile, identity)},
+            'jobs': {'backup': {'timeout_seconds': 60}}}
+    if outcome in {'expiry', 'expired'}:
+        plan['expires_at'] = (datetime.now(timezone.utc) + timedelta(seconds=0.5 if outcome == 'expiry' else -1)).isoformat()
+    # Only the external Make/storage boundary is replaced. Execute a real child,
+    # real encryption and the scheduler's receipt validation and status writes.
+    monkeypatch.setattr(scheduler, 'recheck', lambda value: None)
+    original = scheduler.encrypted_command
+    def boundary(command, destination, recipient, **kwargs):
+        output = next(value.removeprefix('OUTPUT=') for value in command if value.startswith('OUTPUT='))
+        script = 'import json,os,sys,datetime,time; from pathlib import Path; '
+        if outcome == 'expiry':
+            script += 'print("private-backup-diagnostic",flush=True); time.sleep(2); '
+        script += 'p=Path(sys.argv[1]); p.write_text(json.dumps({"phase":"offsite-download-decrypt-manifest-verified",'
+        script += '"delivery":{"remote_verified":' + ('False' if outcome == 'no-readback' else 'True') + '},'
+        script += '"files_verified":2,"manifest_sha256":"a"*64,"at":datetime.datetime.now(datetime.timezone.utc).isoformat()})); p.chmod(0o600); '
+        script += 'print("private-backup-diagnostic"); sys.exit(' + ('7' if outcome == 'command-failed' else '0') + ')'
+        return original([sys.executable, '-c', script, output], destination, recipient, **kwargs)
+    monkeypatch.setattr(scheduler, 'encrypted_command', boundary)
+    config_path = directory / 'schedule.json'
+    if outcome == 'overlap':
+        with private.private_lock(state / 'backup.lock'):
+            with pytest.raises(BlockingIOError):
+                scheduler.run(plan, config_path, 'backup')
+        assert not (state / 'backup.json').exists()
+        return
+    if outcome == 'verified':
+        assert scheduler.run(plan, config_path, 'backup')['phase'] == 'succeeded'
+    else:
+        from bootstrap_readiness import ReadinessError
+        with pytest.raises((private.MaintenanceError, ReadinessError)):
+            scheduler.run(plan, config_path, 'backup')
+    status = json.loads((state / 'backup.json').read_bytes())
+    assert bool(status['last_success_at']) == (outcome == 'verified')
+    runtime = Path(status['run_directory'])
+    assert not (runtime / 'working-age.key').exists()
+    if outcome in {'expiry', 'expired'}:
+        assert not (runtime / 'backup.json').exists()
+    if outcome == 'expired':
+        assert not (runtime / 'command.log.age').exists()
+        return
+    assert b'private-backup-diagnostic' not in (runtime / 'command.log.age').read_bytes()
+    assert b'private-backup-diagnostic' in decrypt(identity, runtime / 'command.log.age')
+
+
+@pytest.mark.parametrize('changed', [False, True])
+def test_actual_ansible_check_counts_refuse_configuration_drift(authority, changed):
+    directory, _, _ = authority
+    controller = load('deploy-controller')
+    environment = controller.check_statistics_environment(ROOT, directory, private.command_environment())
+    # Real check-mode execution, including a change that leaves the live file untouched.
+    target = write(directory / 'managed.txt', 'old')
+    play = write(directory / 'check.yml', yaml.safe_dump([{'hosts': 'localhost', 'gather_facts': False,
+        'tasks': [{'ansible.builtin.copy': {'dest': str(target), 'content': 'new' if changed else 'old'}}]}]))
+    environment.update(ANSIBLE_LOCAL_TEMP=str(directory / 'ansible-local'),
+                       ANSIBLE_REMOTE_TEMP=str(directory / 'ansible-remote'),
+                       ANSIBLE_INVENTORY_ENABLED='host_list',
+                       ANSIBLE_CONFIG=str(write(directory / 'ansible.cfg', '[defaults]\n')))
+    result = subprocess.run(['ansible-playbook', '-i', 'localhost,', '-c', 'local', '--check', str(play)],
+                            capture_output=True, env=environment, timeout=30)
+    assert result.returncode == 0, result.stderr.decode()
+    assert target.read_text() == 'old'
+    if changed:
+        with pytest.raises(controller.DeployError, match='configuration-drift-detected'):
+            controller.require_no_check_changes(directory / 'check-statistics.json')
+    else:
+        controller.require_no_check_changes(directory / 'check-statistics.json')
+    counts = json.loads((directory / 'check-statistics.json').read_bytes())
+    assert counts == {'hosts': 1, 'changed': int(changed), 'failures': 0, 'unreachable': 0}
+
+
+def test_scheduler_prepare_and_real_drift_child(maintenance):
+    root, kit, _, _, _ = maintenance
+    existing = json.loads((kit / 'config.json').read_bytes())
+    backup = write(kit / 'backup-config.json', json.dumps({'schema_version': 1,
+        'kit': str(kit), 'recipient': existing['log_recipient'], 'identity': existing['age_identity'],
+        'rclone': sys.executable, 'rclone_sha256': hashlib.sha256(Path(sys.executable).read_bytes()).hexdigest(),
+        'bucket_id': 'aabbcc', 'bucket_name': 'example-backup', 'required_paths': ['catalog.json']}))
+    profile = write(kit / 'routine.sops.json', '{"sops":{}}')
+    state = kit / 'runtime/scheduler'
+    state.mkdir(mode=0o700)
+    request = write(kit / 'schedule-request.json', json.dumps({'schema_version': 1, 'id': 'test-schedule',
+        'expires_at': existing['expires_at'], 'state_directory': str(state),
+        'maintenance_config': str(kit / 'config.json'), 'backup_config': str(backup), 'backup_profile': str(profile),
+        'jobs': {job: {'interval_seconds': 3600, 'timeout_seconds': 60, 'max_age_seconds': 7200}
+                 for job in ('drift', 'backup')}}))
+    plan_path = kit / 'schedule.json'
+    env = {**os.environ, 'PATH': str(kit / 'bin') + os.pathsep + os.environ['PATH'], 'PYTHONDONTWRITEBYTECODE': '1'}
+    def command(action, *args):
+        return subprocess.run([sys.executable, str(root / 'scripts/operator-schedule.py'), action, *args],
+                              env=env, cwd=root, capture_output=True, text=True, timeout=30)
+    result = command('prepare', '--config', str(request), '--output', str(plan_path))
+    assert result.returncode == 0, result.stderr
+    plan = json.loads(plan_path.read_bytes())
+    for host in ('node-a', 'node-b'):
+        write(kit / (host + '-manifest.json'), json.dumps({'schema_version': 2, 'status': 'observed',
+              'source_revision': plan['source']['revision'], 'deployable_digest': plan['source']['deployable_digest']}))
+    for attempt in range(2):
+        result = command('run', '--config', str(plan_path), '--job', 'drift')
+        assert result.returncode == 0, result.stderr
+        assert json.loads(result.stdout)['phase'] == 'succeeded'
+    write(kit / 'fail', 'node-a:verify')
+    result = command('run', '--config', str(plan_path), '--job', 'drift')
+    assert result.returncode == 1
+    status = json.loads(command('status', '--config', str(plan_path)).stdout)
+    assert status['jobs']['drift']['phase'] == 'failed'
+    assert status['jobs']['drift']['last_success_at']
+    assert not any(':deploy' in line for line in (kit / 'calls').read_text().splitlines())
+
+
+@pytest.mark.parametrize('system', ['Linux', 'Darwin'])
+def test_scheduler_install_remove_preserves_foreign_jobs(authority, monkeypatch, system):
+    scheduler = load('operator-schedule')
+    directory, _, _ = authority
+    plan = {'id': 'owned', 'state_directory': str(directory), 'path': os.environ['PATH'], 'python': sys.executable,
+            'jobs': {job: {'interval_seconds': 3600} for job in scheduler.JOBS}}
+    monkeypatch.setattr(scheduler.os, 'uname', lambda: type('Uname', (), {'sysname': system})())
+    monkeypatch.setattr(scheduler.Path, 'home', lambda: directory)
+    monkeypatch.setattr(scheduler, 'recheck', lambda value: None)
+    bin_path = directory / 'bin'
+    write(bin_path / 'crontab', '#!/usr/bin/env python3\nimport os,pathlib,sys\np=pathlib.Path(os.environ["HOME"])/"crontab"\nif sys.argv[1]=="-l": print(p.read_text(),end="")\nelse: p.write_text(sys.stdin.read())\n', 0o700)
+    write(bin_path / 'launchctl', '#!/usr/bin/env python3\nimport os,pathlib,sys\np=pathlib.Path(os.environ["HOME"])/"launch-calls"\nwith p.open("a") as f:f.write(" ".join(sys.argv[1:])+"\\n")\n', 0o700)
+    foreign = '17 * * * * /usr/bin/true\n'
+    write(directory / 'crontab', foreign)
+    monkeypatch.setenv('HOME', str(directory))
+    monkeypatch.setenv('PATH', str(bin_path) + os.pathsep + os.environ['PATH'])
+    config = directory / 'plan.json'
+    assert scheduler.install(plan, config)['phase'] == 'installed'
+    assert scheduler.install(plan, config)['phase'] == 'installed'
+    if system == 'Linux':
+        installed = (directory / 'crontab').read_text()
+        assert installed.count('# ripdpi-operator:owned:BEGIN') == 1
+        assert installed.startswith(foreign)
+    else:
+        assert len(list((directory / 'Library/LaunchAgents').glob('*.plist'))) == 2
+        assert (directory / 'launch-calls').read_text().count('bootstrap ') == 2
+    assert scheduler.install(plan, config, remove=True)['phase'] == 'removed'
+    assert (directory / 'crontab').read_text() == foreign
+    assert not list((directory / 'Library/LaunchAgents').glob('*.plist'))

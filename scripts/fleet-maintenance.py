@@ -19,6 +19,7 @@ import tempfile
 
 from bootstrap_readiness import ReadinessError, cancellation
 import fleet_inspection
+import maintenance_catalog
 from fleet_rotation_liveness import UniqueLoader
 from fleet_rotation_liveness import healthy_survivors, RotationError
 from public_site_inputs import read_site
@@ -29,7 +30,7 @@ from operator_maintenance_io import (MaintenanceError, ROOT, command_environment
 from recovery_io import Journal, RecoveryError, digest, unique, module, document
 
 FIELDS = {'schema_version', 'id', 'expires_at', 'state_directory', 'runtime_parent',
-          'log_recipient', 'age_identity', 'nodes', 'liveness_config', 'liveness_inputs'}
+          'log_recipient', 'age_identity', 'nodes', 'liveness_config', 'liveness_inputs', 'catalog'}
 NODE_FIELDS = {'host', 'environment', 'provider', 'sops_file', 'extra_vars', 'known_hosts',
                'ssh_contexts', 'inputs'}
 OPTIONAL = {'promotion_config', 'tailnet_handoff', 'failure_receipts'}
@@ -98,44 +99,48 @@ def known_dependencies(node, inputs, trees):
             inputs[absolute(exposure[field])] = True
 
 
+def validate_configuration(value):
+    if (set(value) != FIELDS or type(value['schema_version']) is not int or value['schema_version'] != 2
+            or not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,63}', value['id'])
+            or not re.fullmatch(r'age1[0-9a-z]{58}', value['log_recipient'])
+            or not isinstance(value['nodes'], list) or not 1 <= len(value['nodes']) <= 10
+            or not isinstance(value['liveness_inputs'], list)):
+        raise MaintenanceError('invalid-maintenance-configuration')
+    deadline(value)
+    names = set()
+    for node in value['nodes']:
+        if (not NODE_FIELDS <= set(node) or set(node) - NODE_FIELDS - OPTIONAL
+                or node['provider'] not in {'upcloud', 'scaleway', 'vultr', 'hetzner'}
+                or not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,63}', node['host'])
+                or not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,63}', node['environment'])
+                or not isinstance(node['inputs'], list) or node['host'] in names):
+            raise MaintenanceError('invalid-maintenance-node')
+        names.add(node['host'])
+
+
 def prepare(config_path, plan_path):
     if not os.path.lexists(ROOT / 'ansible/inventory/generated.ini'):
         raise MaintenanceError('generated-inventory-missing: run make inventory PROVIDER=<provider> ENV=<env>')
     value = document(config_path)
     try:
-        if (set(value) != FIELDS or value['schema_version'] != 1
-                or not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,63}', value['id'])
-                or not re.fullmatch(r'age1[0-9a-z]{58}', value['log_recipient'])
-                or not 1 <= len(value['nodes']) <= 10):
-            raise ValueError
-        deadline(value)
+        validate_configuration(value)
         for field in ('state_directory', 'runtime_parent'):
             private_directory(absolute(value[field]))
         inputs = {str(ROOT / 'ansible/inventory/generated.ini'): False,
                   absolute(value['age_identity']): True,
                   absolute(value['liveness_config']): True}
-        if not isinstance(value['liveness_inputs'], list):
-            raise ValueError
         for path in value['liveness_inputs']:
             inputs[absolute(path)] = True
         if require_success(['age-keygen', '-y', value['age_identity']]).decode().strip() != value['log_recipient']:
             raise MaintenanceError('log-recipient-identity-mismatch')
         names, trees = [], {}
         for node in value['nodes']:
-            if (not NODE_FIELDS <= set(node) or set(node) - NODE_FIELDS - OPTIONAL
-                    or node['provider'] not in {'upcloud', 'scaleway', 'vultr', 'hetzner'}
-                    or not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,63}', node['host'])
-                    or not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,63}', node['environment'])
-                    or not isinstance(node['inputs'], list)):
-                raise ValueError
             names.append(node['host'])
             for field in PATH_ENV.keys() & node.keys():
                 inputs[absolute(node[field])] = True
             for path in node['inputs']:
                 inputs[absolute(path)] = True
             known_dependencies(node, inputs, trees)
-        if len(set(names)) != len(names):
-            raise ValueError
         selected = fleet_inspection.select_hosts(ROOT / 'ansible/inventory/generated.ini', names,
                                                   include_variables=True)
         for node, host in zip(value['nodes'], selected):
@@ -145,7 +150,9 @@ def prepare(config_path, plan_path):
             inputs[str(host['key'])] = True
         frozen = {path: {'sha256': digest_file(path, private=private), 'private': private}
                   for path, private in sorted(inputs.items())}
+        catalog_baseline = maintenance_catalog.baseline(absolute(value['catalog']), value['nodes'])
         plan = {**value, 'source': source(), 'inputs': frozen, 'site_trees': trees,
+                'catalog_baseline': catalog_baseline,
                 'manual_dependency_review_required': True,
                 'resources': sorted({host['address'] for host in selected}
                                     | {str(ROOT / 'ansible/inventory/generated.ini')})}
@@ -363,14 +370,25 @@ def cleanup_node(plan, journal, node, environment, secret, runtime, state, logs)
             raise MaintenanceError('plaintext-cleanup-failed') from None
 
 
+def reconcile_accepted(plan, journal, node, state):
+    receipt = state['acceptance_receipts'][node['host']]
+    try:
+        with journal.operation('catalog-reconcile', {'host': node['host'], **receipt}):
+            maintenance_catalog.reconcile(plan, node, receipt['path'], receipt['sha256'])
+    except (MaintenanceError, OSError):
+        state['status'] = 'reconciliation-required'
+        journal.observe('maintenance', state)
+        raise
+
+
 def execute(plan, action, approval, *, ready_fd=None):
     with ExitStack() as stack:
         locks(plan, stack)
         journal = stack.enter_context(Journal(plan))
         state = journal.state['observed']['maintenance']
-        if state['status'] == 'complete':
+        if state['status'] in {'complete', 'checked'}:
             raise MaintenanceError('operation-already-complete')
-        if action != 'preview':
+        if action not in {'preview', 'check'}:
             expected = state.get('review_sha256')
             if (not isinstance(expected, str) or not re.fullmatch('[0-9a-f]{64}', expected)
                     or approval != expected or not state.get('preview_logs')
@@ -386,7 +404,8 @@ def execute(plan, action, approval, *, ready_fd=None):
         state = {**state, 'status': 'running', 'action': action}
         journal.observe('maintenance', state)
         for node in plan['nodes']:
-            if action != 'preview' and node['host'] in state['accepted_nodes']:
+            if action not in {'preview', 'check'} and node['host'] in state['accepted_nodes']:
+                reconcile_accepted(plan, journal, node, state)
                 continue
             runtime = Path(tempfile.mkdtemp(prefix='maintenance-', dir=private_directory(plan['runtime_parent'])))
             info = runtime.lstat()
@@ -394,22 +413,27 @@ def execute(plan, action, approval, *, ready_fd=None):
                                         'environment': node['environment']})
             secret = runtime / 'credentials.yaml'
             environment = node_environment(plan, node, secret)
+            if action == 'check':
+                environment['DEPLOY_REQUIRE_NO_CHANGES'] = '1'
             logs = []
             try:
                 prepare_attempt(plan, node, runtime)
                 logs.append(stage(plan, journal, node, 'decrypt', environment))
-                goals = ('dry-run',) if action == 'preview' else STAGES
+                goals = (('dry-run',) if action == 'preview' else
+                         ('dry-run', 'verify', 'security-verify') if action == 'check' else STAGES)
                 if converged_on_resume(plan, journal, node, action):
                     goals = STAGES[STAGES.index('deploy') + 1:]
                     journal.observe('resumed_at_acceptance', {'host': node['host'], 'source': plan['source']})
-                elif action != 'preview':
+                elif action not in {'preview', 'check'}:
                     # A new deploy can stop after the node manifest is written; never trust an older record.
                     journal.observe('converged', None)
                 for goal in goals:
                     logs.append(stage(plan, journal, node, goal, environment))
                     if goal == 'deploy':
                         journal.observe('converged', {'host': node['host'], 'source': plan['source']})
-                if action != 'preview':
+                if action == 'check':
+                    require_deployed_source(plan, node)
+                elif action != 'preview':
                     protocol_gate(plan, journal, node)
             finally:
                 primary = sys.exception()
@@ -421,11 +445,21 @@ def execute(plan, action, approval, *, ready_fd=None):
                     state['status'] = 'failed'
                     journal.state['intent'] = failed_intent
                     journal.observe('maintenance', state)
-            if action != 'preview':
+            if action not in {'preview', 'check'}:
+                acceptance = journal.state['observed']['protocol_acceptance']
+                receipt_path = journal.directory / f"accepted-{node['host']}-{journal.state['sequence']}.json"
+                write_document(receipt_path, {'schema_version': 1, 'plan_sha256': digest(plan),
+                    'host': node['host'], 'source': plan['source'], 'at': acceptance['at'],
+                    'accepted': True, 'cleanup': 'absent',
+                    'logs': {name: digest_file(journal.directory / name) for name in logs}})
                 state['accepted_nodes'].append(node['host'])
+                state.setdefault('acceptance_receipts', {})[node['host']] = {
+                    'path': str(receipt_path), 'sha256': digest_file(receipt_path)}
             state.setdefault('logs', []).extend(logs)
             journal.observe('maintenance', state)
-        state['status'] = 'previewed' if action == 'preview' else 'complete'
+            if action not in {'preview', 'check'}:
+                reconcile_accepted(plan, journal, node, state)
+        state['status'] = 'previewed' if action == 'preview' else 'checked' if action == 'check' else 'complete'
         if action == 'preview':
             state['preview_logs'] = list(state['logs'])
             state['review_sha256'] = digest({'plan': plan, 'logs': {
@@ -500,16 +534,20 @@ def launch(plan_path, action, approval):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('prepare', 'preview', 'start', 'resume', 'status', '_worker'))
+    parser.add_argument('action', choices=('generate', 'prepare', 'preview', 'check', 'start', 'resume', 'status', '_worker'))
     parser.add_argument('--config', type=Path)
     parser.add_argument('--plan', type=Path, required=True)
     parser.add_argument('--approval')
-    parser.add_argument('--worker-action', choices=('preview', 'start', 'resume'))
+    parser.add_argument('--worker-action', choices=('preview', 'check', 'start', 'resume'))
     parser.add_argument('--ready-fd', type=int)
     args = parser.parse_args()
     try:
         with cancellation():
-            if args.action == 'prepare':
+            if args.action == 'generate':
+                if args.config is None:
+                    raise MaintenanceError('configuration-required')
+                result = maintenance_catalog.generate(args.config, args.plan, sys.modules[__name__])
+            elif args.action == 'prepare':
                 if args.config is None:
                     raise MaintenanceError('configuration-required')
                 result = prepare(args.config, args.plan)

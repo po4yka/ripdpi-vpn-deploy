@@ -105,7 +105,7 @@ run "after_migration" {
     # make tf-test has already installed the pinned provider. Reuse only those
     # dependency binaries, with copied lock hashes still enforced, rather than
     # downloading them again. Never load ambient CLI credentials/configuration.
-    mirror = ROOT / "terraform" / "providers" / provider / ".terraform" / "providers"
+    mirror = ROOT / "terraform" / "providers" / provider / ".terraform-env" / ".validation" / "providers"
     if mirror.is_dir():
         configuration_text = f'''provider_installation {{
   filesystem_mirror {{ path = {json.dumps(str(mirror))} }}

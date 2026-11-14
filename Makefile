@@ -17,15 +17,16 @@ endif
 .PHONY: check-prereqs
 check-prereqs:
 	@python3 scripts/check-prereqs.py
-else ifneq ($(filter maintenance release-inputs operator-kit routine-backup,$(MAKECMDGOALS)),)
+else ifneq ($(filter maintenance release-inputs operator-kit routine-backup operator-schedule,$(MAKECMDGOALS)),)
 ifneq ($(words $(MAKECMDGOALS)),1)
 $(error operator automation requires exactly one goal)
 endif
-_OPERATOR_ALLOWED := ACTION CONFIG OUTPUT PLAN APPROVAL ARCHIVE PROFILE
+_OPERATOR_ALLOWED := ACTION CONFIG OUTPUT PLAN APPROVAL ARCHIVE PROFILE JOB
 _OPERATOR_COMMAND := $(foreach variable,$(.VARIABLES),$(if $(filter command line override,$(origin $(variable))),$(variable)))
 ifneq ($(strip $(filter-out $(_OPERATOR_ALLOWED),$(_OPERATOR_COMMAND))),)
 $(error operator automation accepts only its documented private paths and review digest)
 endif
+override OPERATOR_JOB_LITERAL := $(value JOB)
 override OPERATOR_ACTION_LITERAL := $(value ACTION)
 override OPERATOR_CONFIG_LITERAL := $(value CONFIG)
 override OPERATOR_OUTPUT_LITERAL := $(value OUTPUT)
@@ -35,16 +36,23 @@ override OPERATOR_ARCHIVE_LITERAL := $(value ARCHIVE)
 override OPERATOR_PROFILE_LITERAL := $(value PROFILE)
 export OPERATOR_ACTION_LITERAL OPERATOR_CONFIG_LITERAL OPERATOR_OUTPUT_LITERAL
 export OPERATOR_PLAN_LITERAL OPERATOR_APPROVAL_LITERAL OPERATOR_ARCHIVE_LITERAL
-export OPERATOR_PROFILE_LITERAL
-unexport ACTION CONFIG OUTPUT PLAN APPROVAL ARCHIVE PROFILE MAKEFILES MAKEFLAGS GNUMAKEFLAGS MFLAGS
+export OPERATOR_PROFILE_LITERAL OPERATOR_JOB_LITERAL
+unexport ACTION CONFIG OUTPUT PLAN APPROVAL ARCHIVE PROFILE JOB MAKEFILES MAKEFLAGS GNUMAKEFLAGS MFLAGS
 MAKEOVERRIDES :=
 override _OPERATOR_PYTHON := $(if $(shell command -v mise 2>/dev/null),mise exec -- python3,python3)
-.PHONY: maintenance release-inputs operator-kit routine-backup
+.PHONY: maintenance release-inputs operator-kit routine-backup operator-schedule
+operator-schedule:
+	@set -eu; \
+	  case "$${OPERATOR_ACTION_LITERAL}" in prepare|render|install|remove|run|status) ;; *) echo 'ACTION=prepare|render|install|remove|run|status required' >&2; exit 2 ;; esac; \
+	  set -- "$${OPERATOR_ACTION_LITERAL}" "--config=$${OPERATOR_CONFIG_LITERAL}"; \
+	  if test -n "$${OPERATOR_OUTPUT_LITERAL}"; then set -- "$$@" "--output=$${OPERATOR_OUTPUT_LITERAL}"; fi; \
+	  if test -n "$${OPERATOR_JOB_LITERAL}"; then set -- "$$@" "--job=$${OPERATOR_JOB_LITERAL}"; fi; \
+	  exec $(_OPERATOR_PYTHON) scripts/operator-schedule.py "$$@"
 routine-backup:
 	@exec $(_OPERATOR_PYTHON) scripts/operator-context.py "--profile=$${OPERATOR_PROFILE_LITERAL}" "--config=$${OPERATOR_CONFIG_LITERAL}" "--output=$${OPERATOR_OUTPUT_LITERAL}"
 maintenance:
 	@set -eu; \
-	  case "$${OPERATOR_ACTION_LITERAL}" in prepare|preview|start|resume|status) ;; *) echo 'ACTION=prepare|preview|start|resume|status required' >&2; exit 2 ;; esac; \
+	  case "$${OPERATOR_ACTION_LITERAL}" in generate|prepare|preview|check|start|resume|status) ;; *) echo 'ACTION=generate|prepare|preview|check|start|resume|status required' >&2; exit 2 ;; esac; \
 	  set -- "$${OPERATOR_ACTION_LITERAL}" "--plan=$${OPERATOR_PLAN_LITERAL}"; \
 	  if test -n "$${OPERATOR_CONFIG_LITERAL}"; then set -- "$$@" "--config=$${OPERATOR_CONFIG_LITERAL}"; fi; \
 	  if test -n "$${OPERATOR_APPROVAL_LITERAL}"; then set -- "$$@" "--approval=$${OPERATOR_APPROVAL_LITERAL}"; fi; \
@@ -807,9 +815,10 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         docs-reference docs-check check
 
 help:
-	@echo "  maintenance                Prepare, preview, start, resume or inspect exact existing-node maintenance"
+	@echo "  maintenance                Generate, prepare, preview, check, start, resume or inspect existing-node maintenance"
 	@echo "  release-inputs             Prepare or verify release inputs against actual checksum-pinned archives"
 	@echo "  operator-kit               Audit, seal, upload or verify encrypted private operator recovery"
+	@echo "  operator-schedule          Prepare, render, install, run or inspect scheduled drift and verified backups"
 	@echo "  routine-backup             Run verified kit backup with only its restricted SOPS credential profile"
 	@echo "vpn-deploy Makefile"
 	@echo "  repository-policy-plan     Preview managed GitHub rules, merge settings, and release integrity"
@@ -1119,6 +1128,7 @@ override DEPLOY_SSH_CONTEXTS_FILE := $(value DEPLOY_SSH_CONTEXTS_FILE)
 override DEPLOY_CI_TAILNET_HANDOFF := $(value DEPLOY_CI_TAILNET_HANDOFF)
 override DEPLOY_PROMOTION_CONFIG_FILE := $(value DEPLOY_PROMOTION_CONFIG_FILE)
 override DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE := $(value DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE)
+override DEPLOY_REQUIRE_NO_CHANGES := $(value DEPLOY_REQUIRE_NO_CHANGES)
 override TAILNET_NETWORK_CONFIG := $(value TAILNET_NETWORK_CONFIG)
 endif
 deploy dry-run deploy-canary: override DEPLOY_SOURCE_REVISION :=

@@ -136,3 +136,44 @@ reported without inventing a permission guarantee.
 
 - **WHEN** the backup publishes under its admitted operator prefix
 - **THEN** upload and readback succeed while access outside that prefix is denied.
+
+### Requirement: REQ-MAINT-CATALOG — Reconcile accepted core state
+
+The controller MUST publish accepted core state only after source, protocol and
+cleanup gates pass. It MUST preserve unrelated catalog data, refuse conflicting
+core updates, and retain a receipt with time, source and evidence binding.
+
+#### Scenario: Catalog publication fails after acceptance
+
+- **WHEN** a node passes acceptance but catalog publication fails
+- **THEN** resume reconciles its retained receipt before continuing and does not deploy it again.
+
+### Requirement: REQ-MAINT-GENERATE — Generate exact maintenance inputs
+
+The controller MUST generate schema-2 maintenance configuration from exact catalog
+node IDs, resolve private dependency paths, and reject missing or unsafe inputs.
+Generation MUST NOT create credentials, access hosts or bypass preview approval.
+
+#### Scenario: Selected mapping is incomplete
+
+- **WHEN** a selected node lacks a required private dependency
+- **THEN** generation refuses before publishing a configuration or contacting a host.
+
+### Requirement: REQ-MAINT-SCHEDULE — Schedule verified operations
+
+Explicit installation MUST support Linux cron and macOS launchd. Scheduled drift
+checks MUST run canonical read-only verification with encrypted diagnostics and
+no automatic repair. Scheduled backups MUST use the restricted routine credential
+loader and require remote download, authenticated decryption and manifest proof.
+Each job MUST enforce its deadline, frozen inputs, finite timeout and overlap lock,
+and publish private status that distinguishes failure, running and overdue evidence.
+
+#### Scenario: Remote readback fails
+
+- **WHEN** a scheduled backup uploads but cannot verify its downloaded archive
+- **THEN** the job records failure and does not advance its last successful backup time.
+
+#### Scenario: Scheduler misses a run
+
+- **WHEN** the last successful run exceeds the configured freshness window
+- **THEN** status reports overdue rather than healthy.

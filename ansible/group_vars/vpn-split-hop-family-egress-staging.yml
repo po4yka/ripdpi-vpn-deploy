@@ -1,5 +1,7 @@
 ---
-# Split-hop Node A for disposable staging with family scope: every Xray, Hysteria and AmneziaWG recipient flow leaves through Node B, fail-closed and IPv4-only.
+# Split-hop Node A for disposable staging with family scope: every Xray,
+# Hysteria and AmneziaWG recipient flow leaves through Node B, fail-closed
+# and IPv4-only.
 # Complete map because the deployment controller replaces canonical vpn maps.
 allow_research_roles: [split-hop-ingress]
 

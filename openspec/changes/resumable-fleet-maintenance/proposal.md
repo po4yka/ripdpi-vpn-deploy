@@ -37,3 +37,10 @@ Ansible changes are limited to required version/policy convergence and scheduled
 read-only checks. Terraform continues to own cloud resources and firewall rules.
 Private configuration and credentials remain outside Git. No additional
 permanent server or paid resource is required.
+
+## Operator automation extension
+
+Generate maintenance configurations from private catalog node mappings. Reconcile
+accepted core deployments into the catalog after cleanup. Run bounded recurring
+source/runtime verification and verified offsite kit backups on Linux and macOS.
+This source change does not install schedules or activate production operations.
