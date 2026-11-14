@@ -77,6 +77,18 @@ def test_revoke_commit_lost_ack_cannot_be_compensated_to_old_credentials(area):
     assert (live / 'config').read_text() == 'B'
 
 
+def test_accepted_revocation_admits_a_renewed_intent_on_a_later_generation(area):
+    state, live, _, _ = area
+    base.apply(area, 'A')
+    assert revoke(area)['status'] == 'accepted'
+    base.apply(area, 'C')
+    with pytest.raises(base.transaction.Refusal, match='revocation-candidate-changed'):
+        revoke(area, 'A')
+    renewed = {**AUTH, 'intent_sha256': 'b' * 64}
+    assert revoke(area, 'A', authority=renewed)['status'] == 'accepted'
+    assert (live / 'config').read_text() == 'A'
+
+
 def test_revoke_check_does_not_stop_or_create_authority(area):
     state, live, adapter, _ = area
     base.apply(area, 'A')
