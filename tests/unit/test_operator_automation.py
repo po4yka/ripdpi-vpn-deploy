@@ -1291,7 +1291,7 @@ def test_scheduler_install_remove_preserves_foreign_jobs(authority, monkeypatch,
     directory, _, _ = authority
     plan = {'id': 'owned', 'state_directory': str(directory), 'path': os.environ['PATH'], 'python': sys.executable,
             'jobs': {job: {'interval_seconds': 3600} for job in scheduler.JOBS}}
-    monkeypatch.setattr(scheduler.os, 'uname', lambda: type('Uname', (), {'sysname': system})())
+    monkeypatch.setattr(scheduler.os, 'uname', type('Uname', (), {'sysname': system}))
     monkeypatch.setattr(scheduler.Path, 'home', lambda: directory)
     monkeypatch.setattr(scheduler, 'recheck', lambda value: None)
     bin_path = directory / 'bin'

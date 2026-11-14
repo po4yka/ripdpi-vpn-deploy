@@ -307,6 +307,7 @@ def status(plan):
                 with private_lock(state / f'{job}.lock'):
                     result = {**result, 'phase': 'interrupted'}
             except BlockingIOError:
+                # The overlap lock is held, so the recorded run is still active.
                 pass
         last = result.get('last_success_at')
         age = datetime.now(timezone.utc).timestamp() - stamp(last) if last else None
