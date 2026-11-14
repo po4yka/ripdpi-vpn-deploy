@@ -103,6 +103,31 @@ def write_document(path, value):
 
 def update_document(path, expected_sha256, value):
     """Compare the private authority again before atomic metadata publication."""
+    with private_lock(str(path) + '.lock'):
+        _update_document(path, expected_sha256, value)
+
+
+@contextmanager
+def private_lock(path):
+    """Keep a stable lock inode across atomic document replacements."""
+    path = Path(path).absolute()
+    private_directory(path.parent)
+    fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+    try:
+        info = os.fstat(fd)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                or info.st_nlink != 1 or stat.S_IMODE(info.st_mode) != 0o600):
+            raise MaintenanceError('unsafe-lock')
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        named = path.lstat()
+        if (info.st_dev, info.st_ino) != (named.st_dev, named.st_ino):
+            raise MaintenanceError('lock-changed')
+        yield
+    finally:
+        os.close(fd)
+
+
+def _update_document(path, expected_sha256, value):
     payload = metadata_bytes(value)
     path = Path(path).absolute()
     private_directory(path.parent)

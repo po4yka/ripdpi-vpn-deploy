@@ -323,6 +323,30 @@ def tailnet_site_environment(environment, host_count, mode, *, enabled):
     return environment
 
 
+def check_statistics_environment(root, directory, environment):
+    """Install only the source-owned callback in an isolated plugin directory."""
+    plugins = directory / 'check-callback'
+    plugins.mkdir(mode=0o700)
+    (plugins / 'ripdpi_check_statistics.py').write_bytes(
+        read_input(root / 'scripts/ansible_check_statistics.py'))
+    return {**environment, 'ANSIBLE_CALLBACK_PLUGINS': str(plugins),
+            'ANSIBLE_CALLBACKS_ENABLED': 'ripdpi_check_statistics',
+            'RIPDPI_CHECK_STATS_FILE': str(directory / 'check-statistics.json')}
+
+
+def require_no_check_changes(path):
+    try:
+        value = json.loads(read_input(path, private=True), object_pairs_hook=unique_object)
+        if (set(value) != {'hosts', 'changed', 'failures', 'unreachable'}
+                or any(type(count) is not int or count < 0 for count in value.values())
+                or value['hosts'] < 1):
+            raise ValueError
+    except (ValueError, TypeError, OSError):
+        raise DeployError('check-statistics-unavailable') from None
+    if any(value[field] for field in ('changed', 'failures', 'unreachable')):
+        raise DeployError('configuration-drift-detected')
+
+
 def tailnet_enabled_for_selection(root, hosts, memberships, metadata, override_values):
     """Resolve the effective replace-semantics Tailnet toggle for selected hosts."""
     enabled = []
@@ -749,6 +773,9 @@ def controller(mode):
         raise DeployError("Ansible debug is not supported")
     if mode not in ("deploy", "dry-run"):
         raise DeployError("unsupported deployment mode")
+    strict_check = os.environ.get('DEPLOY_REQUIRE_NO_CHANGES', '0')
+    if strict_check not in {'0', '1'} or strict_check == '1' and mode != 'dry-run':
+        raise DeployError('invalid-check-statistics-mode')
     root = Path(__file__).resolve().parents[1]
     # Control sockets live under a short 0700 /tmp path: macOS limits socket paths to 104 bytes.
     with tempfile.TemporaryDirectory(prefix="vpn-deploy-") as temporary, \
@@ -897,7 +924,14 @@ def controller(mode):
                 elif os.environ.get("DEPLOY_TAGS"):
                     site += ["--tags", os.environ["DEPLOY_TAGS"]]
                 # The complete first-convergence graph can exceed one hour on small nodes.
-                checked(site, environment=site_environment, cwd=directory, timeout=7200, stream=True)
+                checked_environment = site_environment
+                if strict_check == '1':
+                    check_directory = directory / ('check-' + host['name'])
+                    check_directory.mkdir(mode=0o700)
+                    checked_environment = check_statistics_environment(root, check_directory, site_environment)
+                checked(site, environment=checked_environment, cwd=directory, timeout=7200, stream=True)
+                if strict_check == '1':
+                    require_no_check_changes(check_directory / 'check-statistics.json')
                 if mode == "deploy":
                     checked(["ansible-playbook", str(playbooks["source-drift"]), *arguments],
                             environment=environment, cwd=directory, timeout=300, stream=True)

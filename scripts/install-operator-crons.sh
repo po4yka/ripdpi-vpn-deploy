@@ -2,7 +2,8 @@
 # Install the operator-side cron jobs documented in each watcher's
 # header. Generates a single `vpn-deploy` cron block and writes it
 # via `crontab -l | rg -v '^# vpn-deploy:' ; cat block | crontab -`
-# semantics on Linux, or as a launchd plist on macOS.
+# semantics through crontab. For drift and verified kit backup jobs on Linux
+# and macOS, use make operator-schedule (cron and launchd respectively).
 #
 # Idempotent: every entry is keyed under a single # vpn-deploy marker
 # block, so re-runs replace the block rather than appending duplicates.

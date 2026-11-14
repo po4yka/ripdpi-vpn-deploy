@@ -67,3 +67,30 @@ the resulting contracts. Observe hosted checks on exact merged revisions. Apply
 only required runtime changes to existing hosts with canonical previews and
 acceptance. Refresh ignored configuration, encrypted recovery and offsite readback.
 Retain prior recovery until the new restore proof succeeds.
+
+## Catalog and scheduled operations
+
+- Maintenance configuration schema 2 requires the private catalog. Generation
+  selects exact node IDs from its maintenance mapping and resolves relative paths
+  against the kit. Missing private dependencies fail before preview. Generation
+  does not authorize deployment, decrypt credentials or invent dependency mappings.
+- Preparation binds each selected node's current core fields. Successful source,
+  protocol and cleanup gates create an immutable acceptance receipt. Reconciliation
+  updates only those core fields with compare-and-swap, preserves other metadata,
+  and refuses a competing core observation. Journaled acceptance survives a failed
+  catalog write; resume reconciles it before another node, without redeployment.
+- The new check action uses canonical dry-run, verify and security-verify plus a
+  fresh source-manifest check. It neither deploys nor updates accepted core state.
+  It retains encrypted configuration-diff diagnostics for review. A source-owned
+  callback requires zero changed tasks and positive host coverage; missing counts
+  fail closed. Callback discovery remains isolated from ambient plugins.
+- A private schedule configuration selects a clean controller revision, exact
+  maintenance configuration and restricted backup profile, deadline, intervals,
+  and private state directory. Each run rechecks its frozen dependencies. Jobs
+  use stable locks, bounded encrypted diagnostics and atomic start/result status.
+  Backup success requires the canonical remote-download/decrypt/manifest receipt.
+- Render and install use launchd on macOS and a managed crontab block on Linux.
+  Installation is explicit. Status reports never-run, running, failed and overdue
+  separately from success; a scheduler exit code cannot refresh prior evidence.
+- This extension does not complete the older live fleet, device, address-rotation
+  or notification requirements of the parent task.

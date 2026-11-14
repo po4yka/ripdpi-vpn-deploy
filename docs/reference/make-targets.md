@@ -11,9 +11,10 @@ decision boundaries. A variable shown as `$NAME` takes its value from the
 environment or from the git-ignored `.fleet.mk`.
 
 ```text
-  maintenance                Prepare, preview, start, resume or inspect exact existing-node maintenance
+  maintenance                Generate, prepare, preview, check, start, resume or inspect existing-node maintenance
   release-inputs             Prepare or verify release inputs against actual checksum-pinned archives
   operator-kit               Audit, seal, upload or verify encrypted private operator recovery
+  operator-schedule          Prepare, render, install, run or inspect scheduled drift and verified backups
   routine-backup             Run verified kit backup with only its restricted SOPS credential profile
 vpn-deploy Makefile
   repository-policy-plan     Preview managed GitHub rules, merge settings, and release integrity
