@@ -263,6 +263,45 @@ def test_source_change_on_resume_preserves_pending_intent(operation, monkeypatch
     assert operation.status()['phase'] == 'prepared'
 
 
+NEW_SOURCE = {'DEPLOY_SOURCE_REVISION': 'c'*40, 'DEPLOYABLE_SOURCE_DIGEST': 'd'*64}
+
+
+def test_reviewed_source_rebind_resumes_before_runtime_adoption(operation, monkeypatch):
+    prepare(operation)
+    prepared = operation._journal()
+    with pytest.raises(ValueError, match='source-unchanged'):
+        operation.run('0'*64)
+    monkeypatch.setattr(operation.io, 'source_identity', lambda: NEW_SOURCE)
+    approval = operation.status()['source_rebind_approval']
+    with pytest.raises(ValueError, match='source-changed'):
+        operation.run()
+    with pytest.raises(ValueError, match='exact-device-source-rebind-approval-required'):
+        operation.run('0'*64)
+    assert operation._journal() == prepared
+    assert operation.run(approval)['phase'] == 'complete'
+    journal = operation._journal()
+    assert journal['source'] == prepared['source'] and journal['resume_source'] == NEW_SOURCE
+    assert 'source_rebind_approval' not in operation.status()
+
+
+def test_status_reports_stored_evidence_without_a_clean_source(operation, monkeypatch):
+    prepare(operation)
+    def dirty():
+        raise ValueError('clean source required')
+    monkeypatch.setattr(operation.io, 'source_identity', dirty)
+    status = operation.status()
+    assert status['phase'] == 'prepared' and 'source_rebind_approval' not in status
+
+
+def test_source_rebind_refuses_after_runtime_adoption(operation, monkeypatch):
+    prepare(operation)
+    operation.run()
+    monkeypatch.setattr(operation.io, 'source_identity', lambda: NEW_SOURCE)
+    assert 'source_rebind_approval' not in operation.status()
+    with pytest.raises(ValueError, match='rebind-after-runtime-adoption'):
+        operation.run('0'*64)
+
+
 def test_forged_terminal_phase_without_evidence_is_rejected(operation):
     prepare(operation)
     def corrupt(doc):

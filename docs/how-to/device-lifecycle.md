@@ -71,6 +71,14 @@ Obtain approval for the exact device, fleet nodes, publishers, credential action
    make device-lifecycle ACTION=resume DEVICE_MANIFEST="$DEVICE_MANIFEST"
    ```
 
+   When a source defect stops the operation before any node adopted it, a source fix can resume it. Deploy the reviewed fix to every manifest node, so that runtime adoption sees no source drift. Then run `status` from the clean fix checkout and set `DEVICE_APPROVAL` to its `source_rebind_approval`. That digest binds the operation, its manifest and the previous and new source identities. Resume with the approval:
+
+   ```bash
+   make device-lifecycle ACTION=resume DEVICE_MANIFEST="$DEVICE_MANIFEST" DEVICE_APPROVAL="$DEVICE_APPROVAL"
+   ```
+
+   The encrypted intent and the revocation barrier keep the prepared source. When any node has adopted the operation, `status` reports no rebind approval and a source change still refuses.
+
 5. Inspect recorded progress without claiming a new runtime observation:
 
    ```bash
