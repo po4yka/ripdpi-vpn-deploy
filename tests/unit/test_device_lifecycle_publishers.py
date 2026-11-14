@@ -80,7 +80,9 @@ def test_timeout_reaps_actual_owned_child(tmp_path):
 def test_shipped_worker_cancellation_reaps_owned_group(tmp_path):
     pidfile = tmp_path / 'pid'
     command = tmp_path / 'systemctl'
-    command.write_text(f'#!{sys.executable}\nimport os,time\nopen({str(pidfile)!r},"w").write(str(os.getpid()))\ntime.sleep(30)\n')
+    # Publish the pid atomically: the poll below must never see the file created but still empty.
+    command.write_text(f'#!{sys.executable}\nimport os,time\nwith open({str(pidfile)!r}+".tmp","w") as f: f.write(str(os.getpid()))\n'
+                       f'os.replace({str(pidfile)!r}+".tmp",{str(pidfile)!r})\ntime.sleep(30)\n')
     command.chmod(0o700)
     invocation = f'_worker(paths={[str(tmp_path / "missing")]!r},units={UNITS!r},systemctl={str(command)!r})'
     program = publishers.worker_program().replace(b'result = _worker()', ('result = ' + invocation).encode())
