@@ -101,7 +101,7 @@ class Lifecycle:
             raise ValueError('device-operation-journal-capacity')
         self._validate_journal(journal)
         self.io.revalidate()
-        if self.io.source_identity() != journal['source']:
+        if self.io.source_identity() != self._resume_source(journal):
             raise ValueError('device-source-changed')
         def transform(document):
             allowed = {journal['before'][self.journal_host], fingerprint(journal['after'][self.journal_host])}
@@ -246,13 +246,34 @@ class Lifecycle:
                 or (journal['phase'] == 'complete' and not all(c['cleaned'] for c in journal['canaries'].values()))):
             raise ValueError('incomplete-device-operation-evidence')
 
+    @staticmethod
+    def _resume_source(journal):
+        # The revocation intent and its node barrier stay bound to the prepared source.
+        return journal.get('resume_source', journal['source'])
+
+    def _rebind_approval(self, journal, source):
+        return sha(encoded({'operation_id': self.manifest['id'], 'manifest_sha256': self.manifest_digest,
+                            'from': self._resume_source(journal), 'to': source}))
+
+    def _rebind(self, journal, approval):
+        source = self.io.source_identity()
+        if source == self._resume_source(journal):
+            raise ValueError('device-source-unchanged')
+        # A reviewed source fix may continue an operation only before any node adopted it.
+        if journal['adopted']:
+            raise ValueError('device-source-rebind-after-runtime-adoption')
+        if approval != self._rebind_approval(journal, source):
+            raise ValueError('exact-device-source-rebind-approval-required')
+        journal['resume_source'] = source
+        self._save(journal)
+
     def _runtime_hosts(self, journal):
         if self.action == 'revoke':
             return set(self.nodes)
         return {host for host in self.nodes if journal['before'][host] != fingerprint(journal['after'][host])} | set(journal['profiles'])
 
     def _fence(self, journal):
-        if self.io.source_identity() != journal['source']:
+        if self.io.source_identity() != self._resume_source(journal):
             raise ValueError('device-source-changed')
         for host, doc in self.documents().items():
             expected = {fingerprint(journal['after'][host])} if host in journal['written'] else {journal['before'][host], fingerprint(journal['after'][host])}
@@ -298,8 +319,10 @@ class Lifecycle:
                     row.get('runtime_healthy') is True or row.get('inactive_confirmed') is True)):
                 raise ValueError('device-revocation-runtime-witness-incomplete')
 
-    def run(self):
+    def run(self, approval=None):
         journal = self._journal()
+        if approval is not None:
+            self._rebind(journal, approval)
         self.io.verify_publisher_scope()
         self._fence(journal)
         for host, canary in journal['canaries'].items():
@@ -398,7 +421,14 @@ class Lifecycle:
 
     def status(self):
         journal = self._journal()
-        return {'operation_id': self.manifest['id'], 'action': self.action, 'device': self.name, 'phase': journal['phase'],
+        result = {'operation_id': self.manifest['id'], 'action': self.action, 'device': self.name, 'phase': journal['phase'],
                 'nodes_written': len(journal['written']), 'nodes_adopted': len(journal['adopted']),
                 'native_credential_profiles': sum(len(rows) for rows in journal['profiles'].values()),
                 'grants_confirmed': len(journal['published']), 'recipient_artifact': journal['artifact'] is not None and journal['phase'] == 'complete'}
+        try:
+            source = self.io.source_identity()
+        except Exception:  # noqa: BLE001 - a dirty checkout still reports stored evidence
+            return result
+        if source != self._resume_source(journal) and not journal['adopted']:
+            result['source_rebind_approval'] = self._rebind_approval(journal, source)
+        return result
