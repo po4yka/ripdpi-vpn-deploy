@@ -122,7 +122,7 @@ Variables (override on command line):
   check-killswitch BUNDLE=…  Validate the kill-switch properties of a bundle
 
 ── PRE-DEPLOY GUARDS ──────────────────────────────────────────────────
-  spot-check-secrets         Decrypted-secrets audit (placeholders, certs, …)
+  spot-check-secrets         Decrypted-secrets audit (placeholders, credentials, …)
   check-certs                selected-profile SAN / trust / validity / server purpose / key match
   audit-permissions          Local FS: age key 0600, no stray plaintext
   diff-secrets               Drift: deployed config vs current secrets

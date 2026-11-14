@@ -918,7 +918,7 @@ help:
 	@echo "  check-killswitch BUNDLE=…  Validate the kill-switch properties of a bundle"
 	@echo ""
 	@echo "── PRE-DEPLOY GUARDS ──────────────────────────────────────────────────"
-	@echo "  spot-check-secrets         Decrypted-secrets audit (placeholders, certs, …)"
+	@echo "  spot-check-secrets         Decrypted-secrets audit (placeholders, credentials, …)"
 	@echo "  check-certs                selected-profile SAN / trust / validity / server purpose / key match"
 	@echo "  audit-permissions          Local FS: age key 0600, no stray plaintext"
 	@echo "  diff-secrets               Drift: deployed config vs current secrets"
