@@ -78,6 +78,8 @@ A persistent worker rolls back an expired unconfirmed transaction. At boot, the 
 
 Both workers share the same private lock and durable rollback decision. Interrupted restoration is replayable; confirmation refuses once rollback begins. Corrupt or foreign state remains for diagnosis. Pinned inert packages may remain after rollback, but the access-changing runtime policy is restored.
 
+After `TAILNET_HANDOFFS` renders the inventory, `ansible_host` is the node's Tailnet address. `make deploy` reads the host-key pin from its SSH contexts, but plain `make verify` and `make security-verify` check `~/.ssh/known_hosts`, which has no entry for that address, so they fail with `Host key verification failed`. Point SSH at the node's verified pin file instead, keeping strict checking: export `ANSIBLE_SSH_ARGS` with the `ansible.cfg` defaults plus `-o StrictHostKeyChecking=yes -o UserKnownHostsFile=<pin file> -o HostKeyAlias=<inventory alias> -o IdentitiesOnly=yes`. Run one alias per invocation, because the alias differs per node. The Tailnet path also keeps management working after the operator's public address changes; the public SSH source and any provider API allowlist need that new address separately.
+
 ### Disposable staging recovery exercises
 
 > [!WARNING]

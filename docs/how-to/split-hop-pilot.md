@@ -161,6 +161,13 @@ vpn:
 
 Converge the ingress cohort first and confirm a fresh `shop0` handshake before the first family converge. The family guard sends deploy readiness checks, the transport canary and the liveness proof through the tunnel, so a family converge without a live tunnel cannot complete. The split-hop policy must also pass the transport-egress kernel audit, which refuses any packet change in a chain that POSTROUTING reaches; otherwise every transport-egress apply, verify and rollback on Node A fails. For a disposable staging pair, plan the whole sequence in one executor window ([run limits](../reference/protocol-liveness.md#disposable-staging-run-limits)).
 
+A live research pair has no disposable executor. Node B (`vpn-split-hop-egress-live`) enables the `liveness-sentinel` role and becomes Node A's [independent cloud sentinel](deploy.md#use-an-independent-cloud-sentinel). The first Node A deploy uses `vpn-split-hop-ingress-live` with a `cloud-promotion-intent`; later deploys, including the family converge, use the published proof. Before the first family converge on a live Node A:
+
+- Point `watchdog_secrets.reality_probe_url` at an owned origin outside Node A. `bootstrap-secrets.sh` writes Node A's own XHTTP host; family scope sends that request out through Node B, it does not return to Node A, and runtime acceptance refuses with `authenticated-traffic-refused`.
+- Add the transport probe identities described in [deploy preconditions](deploy.md#preconditions). The live cohorts enable the watchdog, so Hysteria also needs its own `watchdog` client.
+- Give P1 a hostname with both A and AAAA records for Node A. `make verify` checks that `nginx_xhttp.server_name` resolves to the node's public IPv6; a name derived from the IPv4 address (for example an `sslip.io` name) has no AAAA record and fails. Manage the records in an operator DNS zone through Terraform.
+- Plan certificate renewal. nginx owns TCP/80 on Node A, so Hysteria's native ACME cannot run there. A DNS-01 certificate issued from the controller serves both nginx and Hysteria (Hysteria uses `nginx_xhttp.server_name` when it has no `server_name`), and it needs a manual renewal before expiry.
+
 Behaviour to accept before any family use:
 
 - The recipient sees Node B's address for P0, P1, Hysteria2 and AmneziaWG traffic, while clients keep connecting to Node A.
