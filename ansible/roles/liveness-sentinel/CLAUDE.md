@@ -6,7 +6,7 @@
 
 **Role-owned prefix, never a PATH directory** — engines live in `/opt/ripdpi-liveness-sentinel/bin`. `scripts/vpn-protocol-liveness.py` (`ENGINE_BIN`) is authoritative whenever that directory exists: a missing engine reads as `missing` and fails the `expected_runtime` comparison, never another PATH binary. Sentinels without the directory keep PATH lookup. The role must never write `/usr/local/bin/xray`, which `xray-runtime` owns as a public symlink on fleet nodes.
 
-**One pin file** — `contract/liveness-runtime-pins.json` holds engine versions, archive names and sha256 digests, the AWG repositories and the Go package. This role and `scripts/provision-disposable-liveness-runtime.py` both read it; never copy a digest elsewhere. AWG commits come from `real-vps-awg-nat` defaults.
+**One pin file** — `files/runtime-pins.json` holds engine versions, archive names and sha256 digests, the AWG repositories and the Go package. This role and `scripts/provision-disposable-liveness-runtime.py` both read it; never copy a digest elsewhere. AWG commits come from `real-vps-awg-nat` defaults.
 
 **Verify, then install** — `tasks/engine.yml` downloads into a root-private `staging/` directory, checks the archive digest in a separate, unretried task (the download alone retries on transport errors), extracts one member, runs the staged binary for its version and only then renames it into place with an atomic `copy remote_src`. A failure leaves the previous binary. After install it re-hashes and runs the exact installed path. `state/<engine>.json` records archive and binary digests so an unchanged converge downloads nothing.
 
