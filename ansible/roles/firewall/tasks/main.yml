@@ -21,6 +21,24 @@
 - name: Admit private collector scope before firewall mutation
   ansible.builtin.import_tasks: collector-admission.yml
 
+# site.yml imports split-hop-ingress publicly; rotate-credentials does not, so load its interface defaults here.
+- name: Load split-hop ingress defaults when the play did not import that role
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/../split-hop-ingress/defaults/main.yml"
+    name: _firewall_split_hop_defaults
+  when:
+    - vpn.enable_split_hop_ingress | default(false) | bool
+    - split_hop_ingress_role_enabled | default(true) | bool
+    - split_hop_ingress is not defined
+
+- name: Resolve the split-hop ingress interface from the role defaults
+  ansible.builtin.set_fact:
+    split_hop_ingress: "{{ _firewall_split_hop_defaults.split_hop_ingress }}"
+  when:
+    - vpn.enable_split_hop_ingress | default(false) | bool
+    - split_hop_ingress_role_enabled | default(true) | bool
+    - split_hop_ingress is not defined
+
 - name: Admit AmneziaWG dual-stack forwarding prerequisites before mutation
   ansible.builtin.import_tasks: awg-uplink.yml
 
