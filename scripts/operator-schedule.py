@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 from contextlib import ExitStack
 from datetime import datetime, timezone
 import hashlib
@@ -103,7 +104,8 @@ def prepare(config_path, output):
     plan = {**config, 'source': prepared['source'], 'inputs': inputs,
             'maintenance_inputs': prepared['inputs'],
             'site_trees': prepared['site_trees'], 'log_recipient': maintenance['log_recipient'],
-            'path': command_environment()['PATH'], 'python': sys.executable}
+            'path': command_environment()['PATH'], 'python': sys.executable,
+            'backup_code': backup_code()}
     write_document(output, plan)
     return {'phase': 'prepared', 'jobs': list(JOBS), 'installed': False}
 
@@ -111,6 +113,42 @@ def prepare(config_path, output):
 def recheck(plan):
     fleet = module('fleet-maintenance')
     fleet.recheck(plan)
+
+
+def backup_code():
+    """Digest each repository module the scheduled backup process executes."""
+    # operator-context loads operator-kit by path; lazy loads inside functions serve drift only.
+    pending, digests = ['operator-schedule', 'operator-context', 'operator-kit'], {}
+    while pending:
+        relative = f'scripts/{pending.pop()}.py'
+        if relative in digests:
+            continue
+        raw = (ROOT / relative).read_bytes()
+        digests[relative] = hashlib.sha256(raw).hexdigest()
+        tree = ast.parse(raw)
+        names = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names += [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                names.append(node.module)
+        for statement in tree.body:
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            # A module() call at import time executes another repository script.
+            names += [node.args[0].value for node in ast.walk(statement)
+                      if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                      and node.func.id == 'module' and node.args and isinstance(node.args[0], ast.Constant)]
+        pending.extend(name for name in names
+                       if isinstance(name, str) and (ROOT / 'scripts' / (name + '.py')).is_file())
+    return dict(sorted(digests.items()))
+
+
+def recheck_backup(plan):
+    """Backups bind their own code and inputs, not the controller revision or fleet inputs."""
+    budget(plan, 'backup')
+    if backup_code() != plan['backup_code']:
+        raise MaintenanceError('backup-code-changed')
 
 
 def publish(path, value):
@@ -187,7 +225,10 @@ def run(plan, config_path, job):
         try:
             if previous.get('run_directory'):
                 cleanup_previous(plan, Path(previous['run_directory']), job)
-            recheck(plan)
+            if job == 'drift':
+                recheck(plan)
+            else:
+                recheck_backup(plan)
             directory = Path(tempfile.mkdtemp(prefix=job + '-', dir=state))
             result['run_directory'] = str(directory)
             publish(path, result)
@@ -212,8 +253,10 @@ def run(plan, config_path, job):
                 backup['identity'] = str(copy_input(backup['identity'], 'working-age.key'))
                 write_document(directory / 'backup-config.json', backup)
                 profile = copy_input(plan['backup_profile'], 'profile.sops.json')
-                command = ['make', 'routine-backup', 'PROFILE=' + str(profile),
-                           'CONFIG=' + str(directory / 'backup-config.json'), 'OUTPUT=' + str(directory / 'backup.json')]
+                # Make would add the Makefile and fleet configuration to the bound code.
+                command = [sys.executable, str(ROOT / 'scripts/operator-context.py'), '--profile=' + str(profile),
+                           '--config=' + str(directory / 'backup-config.json'),
+                           '--output=' + str(directory / 'backup.json')]
             limit = budget(plan, job)
             if job == 'drift':
                 # The drift child cancels itself at the limit and cleans node plaintext; its
