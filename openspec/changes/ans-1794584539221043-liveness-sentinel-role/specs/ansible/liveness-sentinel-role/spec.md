@@ -11,7 +11,7 @@ The role MUST install sing-box and Xray into `/opt/ripdpi-liveness-sentinel/bin`
 
 ### Requirement: REQ-LSR-PINS — One canonical pin file
 
-The role and `scripts/provision-disposable-liveness-runtime.py` MUST read engine versions and digests from `contract/liveness-runtime-pins.json` and MUST NOT carry a second copy of a digest.
+The role and `scripts/provision-disposable-liveness-runtime.py` MUST read engine versions and digests from `ansible/roles/liveness-sentinel/files/runtime-pins.json` and MUST NOT carry a second copy of a digest.
 
 #### Scenario: A digest is duplicated
 

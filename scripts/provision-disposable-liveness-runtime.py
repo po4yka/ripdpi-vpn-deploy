@@ -50,7 +50,7 @@ BUNDLER = ROOT / "scripts/build-real-vps-awg-nat-source-bundle.sh"
 ARCHITECTURES = {"aarch64": "arm64", "x86_64": "amd64"}
 # Update a version and all of its archive digests together after upstream
 # release review. The liveness-sentinel role reads the same file.
-PINS = json.loads((ROOT / "contract/liveness-runtime-pins.json").read_text())
+PINS = json.loads((ROOT / "ansible/roles/liveness-sentinel/files/runtime-pins.json").read_text())
 ENGINES = {
     name: {**engine, "archives": {arch: (item["name"], item["sha256"]) for arch, item in engine["archives"].items()}}
     for name, engine in PINS["engines"].items()

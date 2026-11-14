@@ -6,7 +6,7 @@ liveness_sentinel_role_enabled: true
 liveness_sentinel_prefix: /opt/ripdpi-liveness-sentinel
 
 # One canonical pin file shared with scripts/provision-disposable-liveness-runtime.py.
-liveness_sentinel_pins_file: "{{ role_path }}/../../../contract/liveness-runtime-pins.json"
+liveness_sentinel_pins_file: "{{ role_path }}/files/runtime-pins.json"
 liveness_sentinel_pins: "{{ lookup('ansible.builtin.file', liveness_sentinel_pins_file) | from_json }}"
 liveness_sentinel_engines: "{{ liveness_sentinel_pins.engines }}"
 liveness_sentinel_go_package: "{{ liveness_sentinel_pins.go_package }}"

@@ -6,7 +6,7 @@ A permanent cloud node, first the long-lived split-hop Node B, becomes a protoco
 
 ## Ownership
 
-Single serialized lane. Ansible: `roles/liveness-sentinel`, `role-tiers.yml`, `playbooks/site.yml`, `group_vars` complete `vpn` maps. Scripts: `provision-disposable-liveness-runtime.py`, `vpn-protocol-liveness.py`, `contract/liveness-runtime-pins.json`. Tests: `tests/unit/test_liveness_sentinel_role.py`, `tests/unit/test_tailnet_management.py`. Docs: `docs/reference/protocol-liveness.md`, `docs/how-to/deploy.md`, `docs/reference/deploy-profiles.md`, `docs/reference/testing.md`.
+Single serialized lane. Ansible: `roles/liveness-sentinel`, `role-tiers.yml`, `playbooks/site.yml`, `group_vars` complete `vpn` maps. Scripts: `provision-disposable-liveness-runtime.py`, `vpn-protocol-liveness.py`, `ansible/roles/liveness-sentinel/files/runtime-pins.json`. Tests: `tests/unit/test_liveness_sentinel_role.py`, `tests/unit/test_tailnet_management.py`. Docs: `docs/reference/protocol-liveness.md`, `docs/how-to/deploy.md`, `docs/reference/deploy-profiles.md`, `docs/reference/testing.md`.
 
 ## Execution
 

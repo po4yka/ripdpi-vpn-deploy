@@ -9,7 +9,7 @@ A fresh live node can only use `cloud-promotion-intent` with an independent clou
 ## What Changes
 
 - New research-tier role `liveness-sentinel`, gated by `vpn.enable_liveness_sentinel` (default false), that installs the pinned engines into `/opt/ripdpi-liveness-sentinel/bin` after digest and version verification, installs the AWG toolchain through the existing offline installer, verifies `ip`, `curl` and `python3`, and publishes `expected-runtime.json`.
-- New `contract/liveness-runtime-pins.json`, the single source for engine versions and digests; the disposable executor provisioner reads it instead of literals.
+- New `ansible/roles/liveness-sentinel/files/runtime-pins.json`, the single source for engine versions and digests; the disposable executor provisioner reads it instead of literals.
 - `scripts/vpn-protocol-liveness.py` prefers engines in the role prefix and falls back to PATH.
 - The live split-hop Node B enables the toggle and allowlists the role; every complete `vpn` map gains the key.
 - Docs for sentinel onboarding, the cloud-sentinel deploy paragraph and the live Node B row.
