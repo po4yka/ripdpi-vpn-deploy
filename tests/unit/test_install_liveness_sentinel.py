@@ -136,6 +136,17 @@ def setup(tmp_path, monkeypatch):
     return locals()
 
 
+@pytest.mark.parametrize("policy_value,expected", [(None, "dualstack"), ("ipv4-only", "ipv4-only")])
+def test_generation_metadata_carries_the_awg_ipv6_policy(setup, policy_value, expected):
+    # The node engine accepts an AWG IPv6 refusal only when the generation declares the IPv4-only policy.
+    s = setup
+    if policy_value is not None:
+        s["config"]["policies"][0]["awg_ipv6"] = policy_value
+    s["install"]()
+    metadata = json.loads(base64.b64decode(s["bundles"][0]["files"]["metadata.json"]))
+    assert metadata["awg_ipv6"] == expected
+
+
 def test_four_profiles_use_one_decrypt_and_receipt_before_assignment(setup):
     s = setup
     result = s["install"]()

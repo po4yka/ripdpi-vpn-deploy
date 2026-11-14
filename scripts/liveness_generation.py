@@ -285,7 +285,7 @@ def _generation_files(root, generation, directory):
         raise GenerationError("candidate-json")
     required = metadata.get("required_profiles")
     user = metadata.get("ssh_user")
-    if set(metadata) != {"generation_id", "required_profiles", "ssh_user", "provenance", "target_identity"} or metadata.get("generation_id") != generation or not isinstance(required, list) or not required or any(not isinstance(p, str) or p not in PROFILES for p in required) or len(set(required)) != len(required):
+    if set(metadata) - {"awg_ipv6"} != {"generation_id", "required_profiles", "ssh_user", "provenance", "target_identity"} or metadata.get("awg_ipv6", "dualstack") not in {"dualstack", "ipv4-only"} or metadata.get("generation_id") != generation or not isinstance(required, list) or not required or any(not isinstance(p, str) or p not in PROFILES for p in required) or len(set(required)) != len(required):
         raise GenerationError("candidate-metadata")
     if not isinstance(user, str) or re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", user) is None:
         raise GenerationError("candidate-user")
@@ -433,6 +433,20 @@ def _report_identity(report, config, metadata):
         raise GenerationError("probe-time-invalid")
 
 
+def _ipv4_only_refusal(profile, metadata):
+    """An IPv4-only AWG policy accepts the server's explicit IPv6 refusal once IPv4 carried the probe."""
+    families = profile.get("family_results")
+    if (profile.get("profile") != "p2-amneziawg" or metadata.get("awg_ipv6") != "ipv4-only"
+            or profile.get("verdict") != "blocked" or profile.get("error_kind") != "policy_refused"
+            or not isinstance(families, dict) or set(families) != {"ipv4", "ipv6"}):
+        return False
+    ipv4, ipv6 = families["ipv4"], families["ipv6"]
+    return (isinstance(ipv4, dict) and ipv4.get("verdict") in {"ok", "throttled"}
+            and ipv4.get("payload_transport") == "tcp-https"
+            and isinstance(ipv6, dict) and ipv6.get("verdict") == "blocked"
+            and ipv6.get("error_kind") == "policy_refused")
+
+
 def _successful(report, config, metadata):
     _report_identity(report, config, metadata)
     required = metadata["required_profiles"]
@@ -442,7 +456,7 @@ def _successful(report, config, metadata):
     if not isinstance(profiles, list) or any(not isinstance(p, dict) or p.get("profile") not in required for p in profiles):
         raise GenerationError("probe-profiles-invalid")
     if (len(profiles) != len(required) or {p["profile"] for p in profiles} != set(required)
-            or any(p.get("verdict") not in {"ok", "throttled"}
+            or any((p.get("verdict") not in {"ok", "throttled"} and not _ipv4_only_refusal(p, metadata))
                    or p.get("dns_through_tunnel") is not True
                    or p.get("authenticated_handshake") is not True
                    or (p["profile"] == "p2-amneziawg" and p.get("fresh_handshake") is not True)
