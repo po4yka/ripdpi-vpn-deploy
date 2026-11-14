@@ -517,6 +517,25 @@ def test_locked_helper_check_mode_predicts_old_current_without_mutation(
     assert _link_snapshot(root, public) == before
 
 
+def test_staged_check_predicts_the_link_candidates_that_apply_selects(
+    tmp_path: Path,
+) -> None:
+    # A revocation plan recorded by apply must match a later check-mode resume.
+    helper = _activator_module()
+    root, public = _activation_layout(tmp_path)
+    expected = [
+        {"path": str(root / "current"), "target": str(root / "releases" / "v1")},
+        {"path": str(public), "target": str(root / "current" / "runtime-fixture")},
+        {"path": str(root / "previous"), "target": str(root / "releases" / "v0")},
+    ]
+
+    predicted = helper.activate(root, "v1", "runtime-fixture", public, check=True, stage_only=True)
+    staged = helper.activate(root, "v1", "runtime-fixture", public, check=False, stage_only=True)
+
+    assert predicted["status"] == "predicted" and predicted["links"] == expected
+    assert staged["status"] == "staged" and staged["links"] == expected
+
+
 def test_locked_helper_rejects_traversing_current_and_previous_targets(
     tmp_path: Path,
 ) -> None:
