@@ -13,7 +13,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 ROLE = ROOT / "ansible/roles/liveness-sentinel"
-PINS = ROOT / "contract/liveness-runtime-pins.json"
+PINS = ROLE / "files/runtime-pins.json"
 
 
 def load(name: str, path: Path):
@@ -31,7 +31,7 @@ def test_disposable_flow_and_role_read_the_same_pin_file_and_no_digest_is_duplic
         for arch, item in engine["archives"].items():
             assert disposable.ENGINES[name]["archives"][arch] == (item["name"], item["sha256"])
             assert re.fullmatch(r"[0-9a-f]{64}", item["sha256"])
-    assert "contract/liveness-runtime-pins.json" in (ROLE / "defaults/main.yml").read_text()
+    assert "{{ role_path }}/files/runtime-pins.json" in (ROLE / "defaults/main.yml").read_text()
     for path in [*ROLE.rglob("*.yml"), ROOT / "scripts/provision-disposable-liveness-runtime.py"]:
         text = path.read_text()
         for engine in pins["engines"].values():
