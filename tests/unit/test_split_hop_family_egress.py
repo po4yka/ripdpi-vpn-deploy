@@ -90,3 +90,31 @@ def test_family_boundary_loads_after_transport_staging_and_before_activation():
     for name in ("ripdpi-transport-generation.service", "ripdpi-transport-normalizer.service",
                  "ripdpi-transport-direct.service"):
         assert name in before
+
+
+def test_firewall_loads_the_ingress_interface_when_the_play_did_not_import_its_role():
+    # rotate-credentials republishes the firewall without importing split-hop-ingress.
+    tasks = yaml.safe_load((ANSIBLE / "roles/firewall/tasks/main.yml").read_text())
+    names = [task["name"] for task in tasks]
+    load = tasks[names.index("Load split-hop ingress defaults when the play did not import that role")]
+    resolve = tasks[names.index("Resolve the split-hop ingress interface from the role defaults")]
+    # The AWG uplink admission compares against this interface, so it must resolve first.
+    assert names.index(resolve["name"]) < names.index("Admit AmneziaWG dual-stack forwarding prerequisites before mutation")
+
+    def runs(task, variables):
+        templar = Templar(loader=DataLoader(), variables=variables)
+        return all(templar.template(trust_as_template("{{ " + condition + " }}")) for condition in task["when"])
+
+    ingress = {"enable_split_hop_ingress": True}
+    for variables, expected in (({"vpn": ingress}, True),
+                                ({"vpn": {**ingress, "split_hop_family_egress": True}}, True),
+                                ({"vpn": {}}, False),
+                                ({"vpn": ingress, "split_hop_ingress_role_enabled": False}, False),
+                                ({"vpn": ingress, "split_hop_ingress": {"wg_interface": "wg9"}}, False)):
+        assert runs(load, variables) is expected and runs(resolve, variables) is expected, variables
+    path = Templar(loader=DataLoader(), variables={"role_path": str(ANSIBLE / "roles/firewall")}).template(
+        trust_as_template(load["ansible.builtin.include_vars"]["file"]))
+    variables = {load["ansible.builtin.include_vars"]["name"]: yaml.safe_load(Path(path).read_text())}
+    resolved = Templar(loader=DataLoader(), variables=variables).template(
+        trust_as_template(resolve["ansible.builtin.set_fact"]["split_hop_ingress"]))
+    assert resolved["wg_interface"] == "shop0"
