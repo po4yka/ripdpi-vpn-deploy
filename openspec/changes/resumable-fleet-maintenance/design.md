@@ -75,7 +75,8 @@ Retain prior recovery until the new restore proof succeeds.
   against the kit. Missing private dependencies fail before preview. Generation
   does not authorize deployment, decrypt credentials or invent dependency mappings.
 - Preparation binds each selected node's current core fields. Successful source,
-  protocol and cleanup gates create an immutable acceptance receipt. Reconciliation
+  protocol and cleanup gates create an immutable acceptance receipt. Its copy inside
+  the kit's `receipts/` tree is the catalog reference, so kit backups hold it. Reconciliation
   updates only those core fields with compare-and-swap, preserves other metadata,
   and refuses a competing core observation. Journaled acceptance survives a failed
   catalog write; resume reconciles it before another node, without redeployment.
@@ -86,7 +87,9 @@ Retain prior recovery until the new restore proof succeeds.
   fail closed. Callback discovery remains isolated from ambient plugins.
 - A private schedule configuration selects a clean controller revision, exact
   maintenance configuration and restricted backup profile, deadline, intervals,
-  and private state directory. Each run rechecks its frozen dependencies. Jobs
+  and private state directory. Drift rechecks the controller revision and every
+  maintenance input. Backup rechecks only its own inputs and the import-time closure
+  of the modules it executes, so fleet changes cannot stop recovery backups. Jobs
   use stable locks, bounded encrypted diagnostics and atomic start/result status.
   Backup success requires the canonical remote-download/decrypt/manifest receipt.
 - Render and install use launchd on macOS and a managed crontab block on Linux.

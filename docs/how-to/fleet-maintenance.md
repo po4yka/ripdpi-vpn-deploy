@@ -106,7 +106,11 @@ immutable acceptance receipt and updates only these fields under
 - `current_core_verified_at`;
 - `current_operation_receipt` and `current_operation_receipt_sha256`.
 
-Monitoring records and unrelated catalog entries remain intact. The receipt is
+Monitoring records and unrelated catalog entries remain intact. Publication copies
+the receipt to `receipts/maintenance/<id>-<plan digest prefix>/accepted-<alias>.json`
+beside the catalog, creating private directories as needed, and the catalog
+references that copy. Complete-kit backups therefore seal the referenced evidence
+wherever the maintenance state directory lives. The receipt is
 historical evidence, not a live status check. Preview, start and resume refuse
 before any host mutation when a node not yet accepted by this plan no longer has
 the core fields bound at preparation; prepare a new plan from the current catalog.
@@ -169,9 +173,15 @@ make operator-schedule ACTION=remove CONFIG="$SCHEDULE_PLAN"
 
 Preparation discovers and binds the controller revision, inventory, private
 inputs, site trees, backup configuration and routine credential profile. Installed
-jobs bind the exact schedule plan digest. Changed inputs or source require a new
+jobs bind the exact schedule plan digest. The drift job rechecks the clean controller
+revision and every maintenance input. The backup job rechecks only its deadline, the
+backup configuration, routine profile and identity, and the repository modules its
+process executes: the scheduler, `operator-context.py`, `operator-kit.py` and their
+import-time dependencies. It runs `operator-context.py` directly, so the Makefile and
+fleet configuration are not part of it. Commits, local edits and inventory or secret
+changes stop drift checks but not backups. Changed bound inputs or code require a new
 reviewed plan; remove the old schedule before installing its replacement. Keep the
-controller checkout clean and available at the recorded path. Linux daily jobs
+controller checkout available at the recorded path. Linux daily jobs
 run at 03:00 in the scheduler's local timezone; macOS uses the configured interval.
 A sleeping or offline controller can miss checks; status reports overdue evidence.
 

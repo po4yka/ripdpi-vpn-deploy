@@ -1031,6 +1031,8 @@ def test_catalog_reconciles_only_accepted_core_and_resumes_publication(maintenan
     assert record['core_source_revision'] == expected['revision']
     assert record['core_deployable_digest'] == expected['deployable_digest']
     assert record['monitoring_source_revision'] == 'b' * 40
+    # The referenced evidence is inside the kit selection that offsite backups seal.
+    assert record['current_operation_receipt'].startswith('receipts/maintenance/test-maintenance-')
     receipt = kit / record['current_operation_receipt']
     assert hashlib.sha256(receipt.read_bytes()).hexdigest() == record['current_operation_receipt_sha256']
     assert current['unrelated'] == 'preserve'
@@ -1134,15 +1136,14 @@ def test_scheduled_backup_requires_real_canonical_receipt(authority, monkeypatch
     plan = {'expires_at': '2099-01-01T00:00:00Z', 'state_directory': str(state), 'log_recipient': recipient, 'path': os.environ['PATH'],
             'backup_config': str(config), 'backup_profile': str(profile),
             'inputs': {str(path): {'sha256': private.digest_file(path)} for path in (config, profile, identity)},
-            'jobs': {'backup': {'timeout_seconds': 60}}}
+            'jobs': {'backup': {'timeout_seconds': 60}}, 'backup_code': scheduler.backup_code()}
     if outcome in {'expiry', 'expired'}:
         plan['expires_at'] = (datetime.now(timezone.utc) + timedelta(seconds=0.5 if outcome == 'expiry' else -1)).isoformat()
-    # Only the external Make/storage boundary is replaced. Execute a real child,
+    # Only the external routine-backup/storage boundary is replaced. Execute a real child,
     # real encryption and the scheduler's receipt validation and status writes.
-    monkeypatch.setattr(scheduler, 'recheck', lambda value: None)
     original = scheduler.encrypted_command
     def boundary(command, destination, recipient, **kwargs):
-        output = next(value.removeprefix('OUTPUT=') for value in command if value.startswith('OUTPUT='))
+        output = next(value.removeprefix('--output=') for value in command if value.startswith('--output='))
         script = 'import json,os,sys,datetime,time; from pathlib import Path; '
         if outcome == 'expiry':
             script += 'print("private-backup-diagnostic",flush=True); time.sleep(2); '
@@ -1167,13 +1168,14 @@ def test_scheduled_backup_requires_real_canonical_receipt(authority, monkeypatch
             scheduler.run(plan, config_path, 'backup')
     status = json.loads((state / 'backup.json').read_bytes())
     assert bool(status['last_success_at']) == (outcome == 'verified')
+    if outcome == 'expired':
+        # An expired grant refuses before private inputs are copied or a command starts.
+        assert 'run_directory' not in status and not list(state.glob('backup-*'))
+        return
     runtime = Path(status['run_directory'])
     assert not (runtime / 'working-age.key').exists()
-    if outcome in {'expiry', 'expired'}:
+    if outcome == 'expiry':
         assert not (runtime / 'backup.json').exists()
-    if outcome == 'expired':
-        assert not (runtime / 'command.log.age').exists()
-        return
     assert b'private-backup-diagnostic' not in (runtime / 'command.log.age').read_bytes()
     assert b'private-backup-diagnostic' in decrypt(identity, runtime / 'command.log.age')
 
@@ -1268,6 +1270,19 @@ def test_scheduler_prepare_and_real_drift_child(maintenance):
         time.sleep(.05)
     else:
         raise AssertionError('timed-out stage outlived the drift child')
+    # Backups bind the code they execute, not the controller revision or fleet inputs.
+    backup_check = ('import json,sys; sys.path.insert(0, "scripts"); from recovery_io import module; '
+                    'module("operator-schedule").recheck_backup(json.load(open(sys.argv[1])))')
+    def recheck_backup():
+        return subprocess.run([sys.executable, '-c', backup_check, str(plan_path)], cwd=root, env=env,
+                              capture_output=True, text=True, timeout=30)
+    write(root / 'ansible/inventory/generated.ini', '[vpn]\n')
+    write(root / 'unrelated.md', 'operator edit')
+    assert command('run', '--config', str(plan_path), '--job', 'drift').returncode == 1
+    assert recheck_backup().returncode == 0
+    with (root / 'scripts/operator-kit.py').open('a') as stream:
+        stream.write('\n')
+    assert 'backup-code-changed' in recheck_backup().stderr
 
 
 @pytest.mark.parametrize('system', ['Linux', 'Darwin'])

@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 
-from operator_maintenance_io import (MaintenanceError, read_bytes, private_directory,
-                                    update_document, write_document)
+from operator_maintenance_io import (MaintenanceError, digest_file, new_file, read_bytes,
+                                    private_directory, update_document, write_document)
 from recovery_io import document, digest, unique
 
 CORE_FIELDS = ('core_source_revision', 'core_deployable_digest', 'current_core_verified_at',
@@ -88,6 +89,24 @@ def generate(request_path, output, fleet):
     return {'phase': 'generated', 'nodes': names, 'deployment_authorized': False}
 
 
+def publish_receipt(plan, host, raw, receipt_sha256):
+    """Keep the evidence the catalog references inside the backed-up kit."""
+    kit = Path(plan['catalog']).parent
+    directory = kit
+    for part in ('receipts', 'maintenance', plan['id'] + '-' + digest(plan)[:16]):
+        directory = directory / part
+        if not os.path.lexists(directory):
+            directory.mkdir(mode=0o700)
+        private_directory(directory)
+    destination = directory / f'accepted-{host}.json'
+    if not os.path.lexists(destination):
+        with new_file(destination) as stream:
+            stream.write(raw)
+    if digest_file(destination) != receipt_sha256:
+        raise MaintenanceError('kit-receipt-conflict')
+    return destination.relative_to(kit)
+
+
 def reconcile(plan, node, receipt_path, receipt_sha256):
     raw = read_bytes(receipt_path)
     if hashlib.sha256(raw).hexdigest() != receipt_sha256:
@@ -100,9 +119,7 @@ def reconcile(plan, node, receipt_path, receipt_sha256):
     path = Path(plan['catalog'])
     raw_catalog = read_bytes(path)
     catalog = json.loads(raw_catalog, object_pairs_hook=unique)
-    reference = Path(receipt_path)
-    if reference.is_relative_to(path.parent):
-        reference = reference.relative_to(path.parent)
+    reference = publish_receipt(plan, node['host'], raw, receipt_sha256)
     wanted = dict(zip(CORE_FIELDS, (plan['source']['revision'], plan['source']['deployable_digest'],
                                    receipt['at'], str(reference), receipt_sha256)))
     current = core_state(catalog, node['host'])

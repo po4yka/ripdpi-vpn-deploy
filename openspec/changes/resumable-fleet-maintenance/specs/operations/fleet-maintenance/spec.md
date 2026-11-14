@@ -148,6 +148,11 @@ core updates, and retain a receipt with time, source and evidence binding.
 - **WHEN** a node passes acceptance but catalog publication fails
 - **THEN** resume reconciles its retained receipt before continuing and does not deploy it again.
 
+#### Scenario: Maintenance state lives outside the kit
+
+- **WHEN** an accepted node's catalog core state is published
+- **THEN** the catalog references a receipt copy inside the kit's `receipts/` tree.
+
 #### Scenario: Catalog core changed after preparation
 
 - **WHEN** a node not yet accepted by the plan no longer has its prepared core fields
@@ -187,3 +192,8 @@ and publish private status that distinguishes failure, running and overdue evide
 
 - **WHEN** a scheduled drift stage runs past the job timeout
 - **THEN** the drift child cancels that stage and removes node plaintext before it exits.
+
+#### Scenario: Controller source or fleet inputs change
+
+- **WHEN** the controller checkout, inventory or a maintenance secret changes after preparation
+- **THEN** the scheduled drift check refuses, while the scheduled backup still runs if its own inputs and executed modules are unchanged.
