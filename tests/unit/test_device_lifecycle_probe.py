@@ -473,6 +473,34 @@ def test_hysteria_retirement_requires_complete_stable_timeout_evidence(case):
         assert row["reason"] == "retired-runtime-access-failed"
 
 
+@pytest.mark.parametrize("case", ["retired", "active", "peer-present", "other-engine", "different-exit"])
+def test_naive_retirement_accepts_a_certificate_refusal_on_a_shared_port(case):
+    witness = {"peer_absent": case != "peer-present", "runtime_healthy": True,
+               "inactive_confirmed": case != "active", "token": "absent", "unit_token": "stopped"}
+    measured = {"accepted": False, "exit": 18 if case == "different-exit" else 60, "elapsed": 0.1,
+                "setup_ok": True, "cleanup_ok": True}
+
+    class Runtime(worker.Runtime):
+        def http(self, *_args, **_kwargs):
+            return {"accepted": True}
+
+        def witness(self, _profile):
+            return dict(witness)
+
+        def stream(self, *_args):
+            return measured
+
+    engine = "xray" if case == "other-engine" else "naive"
+    profile = {"id": engine + "-1", "engine": engine, "config": {}, "witness": {
+        "kind": "uuid" if engine == "xray" else "basic", "credential": "owned-user",
+        "instance": None, "config_path": "/etc/owned/config", "unit": "owned.service"}}
+    value = request([profile], "https://localhost/probe")
+    value["mode"] = "deny"
+    row = worker.run_request(value, runtime=Runtime())["profiles"][0]
+    assert (row["state"], row["reason"]) == (("denied", "retired-runtime-access-failed") if case == "retired"
+                                             else ("unknown", "access-ambiguous")), row
+
+
 def test_awg_witness_compares_the_peer_set_and_not_its_listing_order():
     first, second, third = ("A" * 43 + "=", "B" * 43 + "=", "C" * 43 + "=")
 

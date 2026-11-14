@@ -553,6 +553,8 @@ def run_request(request, *, runtime=None):
                     measured["exit"] == 7
                     or (profile["engine"] == "hysteria" and measured["exit"] == 28
                         and measured["elapsed"] >= timeout)
+                    # A disabled Naive shares TCP/443 with REALITY, whose certificate does not name the Naive host.
+                    or (profile["engine"] == "naive" and measured["exit"] == 60)
                 ):
                     state, reason = "denied", "retired-runtime-access-failed"
                 else:
