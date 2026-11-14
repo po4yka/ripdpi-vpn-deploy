@@ -302,6 +302,40 @@ def test_source_rebind_refuses_after_runtime_adoption(operation, monkeypatch):
         operation.run('0'*64)
 
 
+def test_source_rebind_renews_the_revocation_intent(operation, monkeypatch):
+    prepare(operation)
+    operation.run()
+    manifest = copy.deepcopy(operation.manifest)
+    manifest.update(id='33333333-3333-4333-8333-333333333333', action='revoke', delivery=None)
+    revoke = Lifecycle(manifest, operation.io)
+    prepare(revoke)
+    prepared = revoke._journal()['revocation']
+    monkeypatch.setattr(operation.io, 'source_identity', lambda: NEW_SOURCE)
+    assert revoke.run(revoke.status()['source_rebind_approval'])['phase'] == 'complete'
+    renewed = revoke._journal()['revocation']
+    assert renewed['operation_id'] == prepared['operation_id'] and renewed['intent_sha256'] != prepared['intent_sha256']
+    assert operation.io.revocations[-1] == renewed
+
+
+def test_rebind_renews_a_journal_rebound_without_a_renewed_intent(operation, monkeypatch):
+    # An operation rebound before the intent was renewed keeps its prepared intent until the next rebind.
+    prepare(operation)
+    operation.run()
+    manifest = copy.deepcopy(operation.manifest)
+    manifest.update(id='44444444-4444-4444-8444-444444444444', action='revoke', delivery=None)
+    revoke = Lifecycle(manifest, operation.io)
+    prepare(revoke)
+    def stale(doc):
+        doc['device_operations'][manifest['id']]['resume_source'] = NEW_SOURCE
+        return doc, {}
+    operate(revoke.journal_path, stale)
+    later = {'DEPLOY_SOURCE_REVISION': 'e'*40, 'DEPLOYABLE_SOURCE_DIGEST': 'f'*64}
+    monkeypatch.setattr(operation.io, 'source_identity', lambda: later)
+    with pytest.raises(ValueError, match='revocation-intent-changed'):
+        revoke.run()
+    assert revoke.run(revoke.status()['source_rebind_approval'])['phase'] == 'complete'
+
+
 def test_forged_terminal_phase_without_evidence_is_rejected(operation):
     prepare(operation)
     def corrupt(doc):

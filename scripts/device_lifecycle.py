@@ -34,6 +34,8 @@ def revocation_intent(journal, operation_id):
         'before', 'after', 'profiles', 'grants', 'artifact')}
     immutable['canaries'] = {host: {key: row[key] for key in ('token', 'document_b64')}
                              for host, row in journal['canaries'].items()}
+    # A reviewed source rebind renews the intent: a node holding an unfinished earlier intent refuses it.
+    immutable['source'] = journal.get('resume_source', journal['source'])
     return {'operation_id': operation_id, 'intent_sha256': sha(encoded(immutable))}
 
 
@@ -213,21 +215,21 @@ class Lifecycle:
         self._save(journal)
         return self.status()
 
-    def _journal(self):
+    def _journal(self, *, renewing=False):
         journal = self.io.read(self.journal_path).get('device_operations', {}).get(self.manifest['id'])
         if not isinstance(journal, dict) or journal.get('manifest_sha256') != self.manifest_digest:
             raise ValueError('device-operation-not-prepared-or-manifest-changed')
-        self._validate_journal(journal)
+        self._validate_journal(journal, intent=not renewing)
         return copy.deepcopy(journal)
 
-    def _validate_journal(self, journal):
+    def _validate_journal(self, journal, *, intent=True):
         import jsonschema
         schema = json.loads((ROOT / 'secrets/schema.json').read_text())
         validator = jsonschema.Draft202012Validator(schema).evolve(schema=schema['$defs']['device_operation_record'])
         if next(validator.iter_errors(journal), None) is not None:
             raise ValueError('invalid-device-operation-journal')
         expected = revocation_intent(journal, self.manifest['id']) if self.action == 'revoke' else None
-        if journal['revocation'] != expected:
+        if intent and journal['revocation'] != expected:
             raise ValueError('device-revocation-intent-changed')
         hosts = set(self.nodes)
         grant_ids = {host + '/' + token for host, grants in journal['grants'].items() for token in grants}
@@ -248,7 +250,6 @@ class Lifecycle:
 
     @staticmethod
     def _resume_source(journal):
-        # The revocation intent and its node barrier stay bound to the prepared source.
         return journal.get('resume_source', journal['source'])
 
     def _rebind_approval(self, journal, source):
@@ -265,6 +266,8 @@ class Lifecycle:
         if approval != self._rebind_approval(journal, source):
             raise ValueError('exact-device-source-rebind-approval-required')
         journal['resume_source'] = source
+        if self.action == 'revoke':
+            journal['revocation'] = revocation_intent(journal, self.manifest['id'])
         self._save(journal)
 
     def _runtime_hosts(self, journal):
@@ -320,7 +323,8 @@ class Lifecycle:
                 raise ValueError('device-revocation-runtime-witness-incomplete')
 
     def run(self, approval=None):
-        journal = self._journal()
+        # A rebind recomputes the intent, so it may load a journal whose stored intent predates it.
+        journal = self._journal(renewing=approval is not None)
         if approval is not None:
             self._rebind(journal, approval)
         self.io.verify_publisher_scope()
@@ -420,7 +424,7 @@ class Lifecycle:
         return self.status()
 
     def status(self):
-        journal = self._journal()
+        journal = self._journal(renewing=True)
         result = {'operation_id': self.manifest['id'], 'action': self.action, 'device': self.name, 'phase': journal['phase'],
                 'nodes_written': len(journal['written']), 'nodes_adopted': len(journal['adopted']),
                 'native_credential_profiles': sum(len(rows) for rows in journal['profiles'].values()),

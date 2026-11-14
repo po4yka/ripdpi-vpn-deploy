@@ -77,7 +77,7 @@ Obtain approval for the exact device, fleet nodes, publishers, credential action
    make device-lifecycle ACTION=resume DEVICE_MANIFEST="$DEVICE_MANIFEST" DEVICE_APPROVAL="$DEVICE_APPROVAL"
    ```
 
-   The encrypted intent and the revocation barrier keep the prepared source. When any node has adopted the operation, `status` reports no rebind approval and a source change still refuses.
+   For a revocation, the rebind also renews the revocation intent. A node that already accepted the earlier intent starts a new revocation for the renewed one. A node that holds an unfinished earlier revocation refuses it until that revocation is recovered. When the journal records any node as adopted, `status` reports no rebind approval and a source change still refuses.
 
 5. Inspect recorded progress without claiming a new runtime observation:
 
