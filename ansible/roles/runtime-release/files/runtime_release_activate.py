@@ -1499,8 +1499,13 @@ def activate(
             ),
         }
         changed = desired != before or requires_artifact
+        links = [{"path": str(path), "target": target} for path, target in (
+            (install_root / "current", desired["current"]),
+            (public_link, desired["public"]),
+            (install_root / "previous", desired["previous"])) if target is not None]
         if check:
-            return {"status": "predicted", "changed": changed}
+            # A staged prediction carries the same link candidates that apply would select.
+            return {"status": "predicted", "changed": changed, **({"links": links} if stage_only else {})}
 
         receipt_inputs = (
             artifact_sha256,
@@ -1595,10 +1600,7 @@ def activate(
             # Consumer validation/acceptance owns selecting these candidate paths.
             return {"status": "staged", "changed": publication_changed,
                     "candidate": str(install_root / "releases" / version / binary_name),
-                    "links": [{"path": str(path), "target": target} for path, target in (
-                        (install_root / "current", desired["current"]),
-                        (public_link, desired["public"]),
-                        (install_root / "previous", desired["previous"])) if target is not None]}
+                    "links": links}
         changed = desired != before or publication_changed
         try:
             _set_link_state(
