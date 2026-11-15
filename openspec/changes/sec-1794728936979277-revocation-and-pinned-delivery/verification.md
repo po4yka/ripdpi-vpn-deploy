@@ -1,11 +1,11 @@
 ---
 task_id: SEC-1794728936979277
 change: sec-1794728936979277-revocation-and-pinned-delivery
-commit_sha: a76ef4af
+commit_sha: 27c95d74ea1143d071236d48406be51603556321
 local: passed
 local_evidence: "make -k -j 4 check on the pre-commit tree: every target passed except test-unit, where two files failed (62 cases in test_client_drift.py, whose Terraform stub lacked the ssh_port output that issuance now reads, and the tracked-address guard on reverse-DNS literals in test_doh_lookup.py). Both were fixed and those files, with the identifier policy and docs index tests, then passed (106 cases); the other 12022 unit cases had passed in that run. Focused modules for rollback, share bundles, issuance SSH, the mirror and rotation passed; ansible-lint on the subscription-host role, snapshot-check, shellcheck and docs-check passed. Molecule for subscription-host did not run: the pinned Debian image has no arm64 manifest on the operator workstation. One independent review; its findings were fixed before the gate run. Integrated gate on the tree of cb173d5a, before its rebase onto two task-bookkeeping commits of main (all six tasks on one branch): make -k -j 4 check passed every target except test-unit, where 12170 cases passed and one failed, test_tailnet_network_executor.py::test_expiry_serializes_with_forward_mark_and_rolls_back_true; it is timing-sensitive under the parallel run, passes alone and with its file, and this branch changes no tailnet code."
-remote_ci: required
-remote_ci_evidence: Pending CI on the pull request, including the subscription-host Molecule scenario, which is the first run of the mirror units under systemd.
+remote_ci: passed
+remote_ci_evidence: "CI run 43712765464 on main at 827d555e: 81 jobs passed. The two failed native jobs (native runtime integration 3/4, native four-transport acceptance core-1) failed only at tests/unit/test_xhttp_endpoint_contract_native.py line 154, a parsing defect in a test of XRY-1794729068388916. The subscription-host Molecule scenario passed; it is the first run of the mirror units under systemd. Its first run on the pull request failed on a repeated mirror retirement, which 827d555e fixes."
 dry_run: required
 dry_run_evidence: Pending dry-run of the subscription host and the transport nodes after merge.
 staging: required

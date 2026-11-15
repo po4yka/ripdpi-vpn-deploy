@@ -1,11 +1,11 @@
 ---
 task_id: SEC-1794728606515594
 change: sec-1794728606515594-node-address-disclosure
-commit_sha: 1d7d62e8
+commit_sha: 03255d219236f684b38ef884f4125b111af2bd1c
 local: passed
 local_evidence: "make -k -j 4 check exit 0 on the tree before the commit, where the new files were still untracked, so the tracked-address guard did not scan them; it later flagged reverse-DNS literals in test_doh_lookup.py, fixed in 7854b107 (12051 unit tests passed, 551 vpnd tests passed, ansible-lint, shellcheck, snapshot-check, docs-check, task-check); focused modules for the changed scripts and the watchdog role passed. Molecule for the watchdog role did not run: the pinned Debian image has no arm64 manifest on the operator workstation. One independent review; its findings were fixed before the gate run. Integrated gate on the tree of cb173d5a, before its rebase onto two task-bookkeeping commits of main (all six tasks on one branch): make -k -j 4 check passed every target except test-unit, where 12170 cases passed and one failed, test_tailnet_network_executor.py::test_expiry_serializes_with_forward_mark_and_rolls_back_true; it is timing-sensitive under the parallel run, passes alone and with its file, and this branch changes no tailnet code."
-remote_ci: required
-remote_ci_evidence: Pending CI on the pull request, including the watchdog Molecule scenarios.
+remote_ci: passed
+remote_ci_evidence: "CI run 43712765464 on main at 827d555e: 81 jobs passed. The two failed native jobs (native runtime integration 3/4, native four-transport acceptance core-1) failed only at tests/unit/test_xhttp_endpoint_contract_native.py line 154, a parsing defect in a test of XRY-1794729068388916. The Molecule job with the watchdog scenario and the watchdog failure scenario passed."
 dry_run: required
 dry_run_evidence: Pending dry-run of the affected nodes after merge.
 staging: not_applicable
