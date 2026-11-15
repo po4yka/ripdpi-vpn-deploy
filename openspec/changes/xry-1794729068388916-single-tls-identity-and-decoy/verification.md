@@ -1,7 +1,7 @@
 ---
 task_id: XRY-1794729068388916
 change: xry-1794729068388916-single-tls-identity-and-decoy
-commit_sha: 7940b9c1
+commit_sha: 61861c6c
 local: passed
 local_evidence: "Focused checks on the working tree of 7940b9c1, each exit 0: pytest for test_reality_self_steal.py, test_tls_identity_preflight.py, test_public_site_contract.py, test_nginx_xhttp_bearer_logs.py, test_validate_reality_target.py, test_monitor_reality_target.py, test_validate_ansible_extra_vars.py, test_deploy_controller.py, test_operator_automation.py, test_sshd_ownership.py and test_transport_site_transaction.py; ansible-lint on the reality-self-steal, nginx-xhttp, xray, hysteria and node_manifest roles and site.yml; make snapshot-check; make shellcheck; make docs-check; openspec validate --strict; the commit hooks. Removing each fix makes a test fail. One independent review; its duplicate default_server finding and its Hysteria default finding were fixed before the commit. Not run: make check (the lead runs it on the integrated branch), Molecule (the pinned image has no arm64 manifest) and the native Linux test test_xhttp_endpoint_contract_native.py. A wider run of 87 unit files had failures only in test_observability_p2_runtime.py and test_observability_protocol_liveness_adapter.py (platform and capability checks in files this change does not touch) and in test_repository_identifier_policy.py (addresses in test_doh_lookup.py on the base branch)."
 remote_ci: required
