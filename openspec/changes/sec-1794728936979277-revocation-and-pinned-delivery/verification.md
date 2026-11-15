@@ -7,11 +7,11 @@ local_evidence: "make -k -j 4 check on the pre-commit tree: every target passed 
 remote_ci: passed
 remote_ci_evidence: "CI run 43712765464 on main at 827d555e: 81 jobs passed. The two failed native jobs (native runtime integration 3/4, native four-transport acceptance core-1) failed only at tests/unit/test_xhttp_endpoint_contract_native.py line 154, a parsing defect in a test of XRY-1794729068388916. The subscription-host Molecule scenario passed; it is the first run of the mirror units under systemd. Its first run on the pull request failed on a repeated mirror retirement, which 827d555e fixes."
 dry_run: required
-dry_run_evidence: Pending dry-run of the subscription host and the transport nodes after merge.
+dry_run_evidence: "Partly done on 2026-11-15. The full dry-run at 00daf904 exited 0 on the three transport nodes with 0 failed and 0 unreachable. Pending: a dry-run of a subscription host; no production node enables one."
 staging: required
 staging_evidence: Pending one mirror pull and publication on a staging subscription host with a pinned build worker key.
 live: required
-live_evidence: Pending deploy, one revocation with a share bundle, and one issuance over pinned SSH.
+live_evidence: "Partly done on 2026-11-15. The deploy at 00daf904 passed deploy, verify, source-drift, security-verify, smoke-test and protocol-liveness on node-a, node-b and node-c. Pending: one revocation with a share bundle, and one issuance over pinned SSH."
 client: not_applicable
 client_evidence: No client payload format changes.
 artifact: not_applicable

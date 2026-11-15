@@ -6,12 +6,12 @@ local: passed
 local_evidence: "make -k -j 4 check exit 0 on the tree before the commit, where the new files were still untracked, so the tracked-address guard did not scan them; it later flagged reverse-DNS literals in test_doh_lookup.py, fixed in 7854b107 (12051 unit tests passed, 551 vpnd tests passed, ansible-lint, shellcheck, snapshot-check, docs-check, task-check); focused modules for the changed scripts and the watchdog role passed. Molecule for the watchdog role did not run: the pinned Debian image has no arm64 manifest on the operator workstation. One independent review; its findings were fixed before the gate run. Integrated gate on the tree of cb173d5a, before its rebase onto two task-bookkeeping commits of main (all six tasks on one branch): make -k -j 4 check passed every target except test-unit, where 12170 cases passed and one failed, test_tailnet_network_executor.py::test_expiry_serializes_with_forward_mark_and_rolls_back_true; it is timing-sensitive under the parallel run, passes alone and with its file, and this branch changes no tailnet code."
 remote_ci: passed
 remote_ci_evidence: "CI run 43712765464 on main at 827d555e: 81 jobs passed. The two failed native jobs (native runtime integration 3/4, native four-transport acceptance core-1) failed only at tests/unit/test_xhttp_endpoint_contract_native.py line 154, a parsing defect in a test of XRY-1794729068388916. The Molecule job with the watchdog scenario and the watchdog failure scenario passed."
-dry_run: required
-dry_run_evidence: Pending dry-run of the affected nodes after merge.
+dry_run: passed
+dry_run_evidence: "On 2026-11-15 the full dry-run exited 0 on node-a, node-b and node-c with 0 failed and 0 unreachable, at 569a8276 and again at 00daf904. The node-a preview listed the watchdog file changes."
 staging: not_applicable
 staging_evidence: The watchdog change reaches the existing nodes through the ordinary deploy transaction; the script changes run on the operator workstation.
 live: required
-live_evidence: Pending deploy and one alert through an operator-chosen destination.
+live_evidence: "Partly done on 2026-11-15. The deploy at 00daf904 passed deploy, verify, source-drift, security-verify, smoke-test and protocol-liveness on node-a, node-b and node-c. Pending: one alert through an operator-chosen destination. node-a has no notification destination, so its alerts stay on the node."
 client: not_applicable
 client_evidence: No client payload changes.
 artifact: not_applicable
