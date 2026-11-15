@@ -52,6 +52,10 @@ UpCloud is the primary provider in v1. Resource shape:
 - `network_interface { type = "public" }` + `{ type = "utility" }` are required for the server to be reachable; `private` interfaces are optional for multi-VPS networking (out of scope for v1).
 - Daily snapshots are enabled in `template.backup_rule` (7-day retention) when `enable_backups` is true. It is off by default: a provider image is an unencrypted copy of the node's runtime secrets and stays with the provider after the node is gone. Restic backups remain the supported recovery path and contain the configs you can restore onto a fresh VPS.
 
+### Edge firewall plan policy
+
+The plan policy (`terraform/policy/server_metadata.rego`) keeps every node behind a provider firewall. A Hetzner, Vultr or Scaleway server must attach its firewall on the server resource, and a Scaleway security group must not accept inbound traffic by default. An UpCloud node starts with `enable_provider_firewall=false`; the policy refuses the next plan that changes resources while the existing server keeps the firewall off, so promote the node first. The first creation, a plan that still creates the firewall rules after an interrupted first apply, and a plan with no resource change stay allowed. The policy reads plans only: it does not find a node that is never planned again.
+
 ### Forwarded NAT and stateless filtering
 
 With `enable_provider_firewall=true`, return rules admit only the configured `provider_return_ephemeral_ports`. Terraform exports that range through `nat_source_port_range`; generated inventory carries it as `terraform_nat_source_port_range`. AWG and split-hop egress remap forwarded TCP/UDP source ports into it, including client ports 3074 and 62000. Other protocols retain address-only NAT. Disabled provider filtering and other providers retain ordinary NAT source-port selection.

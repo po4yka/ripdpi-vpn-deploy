@@ -10,10 +10,10 @@ A server without a provider edge firewall, an unbounded push to the collector, a
 
 ## Execution
 
-- [ ] SEC-1794729475212458 Deny a server that stays without a provider edge firewall #bug @item:SEC-1794729384681094
-- [ ] SEC-1794729504775329 Apply the metric allowlist and per-node limits in the collector relay #bug @item:SEC-1794729384681094
-- [ ] SEC-1794729526950019 Record the fork approval setting, pin the self-hosted label and publish images only from main #bug @item:SEC-1794729384681094
-- [ ] SEC-1794729547422604 Refuse hooks and shell allow entries in the agent settings file #bug @item:SEC-1794729384681094
+- [x] SEC-1794729475212458 Deny a server that stays without a provider edge firewall #bug @item:SEC-1794729384681094
+- [x] SEC-1794729504775329 Apply the metric allowlist and per-node limits in the collector relay #bug @item:SEC-1794729384681094
+- [x] SEC-1794729526950019 Record the fork approval setting, pin the self-hosted label and publish images only from main #bug @item:SEC-1794729384681094
+- [x] SEC-1794729547422604 Refuse hooks and shell allow entries in the agent settings file #bug @item:SEC-1794729384681094
 
 ## Verification
 

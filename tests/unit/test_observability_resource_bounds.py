@@ -427,12 +427,12 @@ def test_native_replay_workload_has_exact_declared_nodes_series_and_timestamps()
         assert len(rows) == 2000
         assert len(set(rows)) == 2000
         assert rows[0] == (
-            'vpn_observability_cardinality_replay{fixture_node="node-%d",'
-            'slot="0",generation="base"} %d %d' %
+            'vpn_observability_cardinality_replay{job="node-exporter",role="node-%d",'
+            'cpu="0",kind="base"} %d %d' %
             (node, node + 1, fixture["historical_ms"])
         )
         assert rows[-1].endswith(
-            'slot="1999",generation="base"} %d %d' %
+            'cpu="1999",kind="base"} %d %d' %
             (node + 1, fixture["historical_ms"])
         )
     assert fixture["current_ms"] - fixture["historical_ms"] == 86400000
@@ -450,7 +450,7 @@ def test_native_replay_verifier_rejects_missing_values_or_changed_timestamps(cor
     def scalar(expression, at):
         calls.append(expression)
         assert at == timestamp_ms / 1000 + 1
-        node = int(expression.split('fixture_node="node-')[1].split('"')[0])
+        node = int(expression.split('role="node-')[1].split('"')[0])
         if expression.startswith("sum("):
             kind, value = "sum", 2000 * (node + 1)
         elif expression.startswith("count(timestamp("):

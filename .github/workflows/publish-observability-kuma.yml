@@ -2,6 +2,8 @@ name: publish-observability-kuma
 
 on:
   push:
+    # A branch publishes through workflow_dispatch only.
+    branches: [main]
     paths:
       - 'images/observability-kuma/**'
       - '.github/workflows/publish-observability-kuma.yml'

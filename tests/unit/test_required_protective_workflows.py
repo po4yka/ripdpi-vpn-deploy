@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 
 import pytest
@@ -93,3 +94,60 @@ def test_security_events_write_is_scoped_to_the_image_scan_call():
     }
     for name in set(PROTECTIVE) - {"image-scan"}:
         assert "permissions" not in ci["jobs"][name]
+
+
+SELF_HOSTED_LANE = "real-vps-awg-nat.yml"
+HOSTED_RUNNERS = {"ubuntu-24.04", "ubuntu-24.04-arm", "macos-15", "macos-15-intel"}
+
+
+def _self_hosted_offenders(directory):
+    """Workflows, other than the one dormant lane, that can select a runner GitHub does not host."""
+    offenders = []
+    for path in sorted(directory.glob("*.y*ml")):
+        text = path.read_text()
+        if path.name == SELF_HOSTED_LANE:
+            continue
+        runs_on = set(re.findall(r"^\s*runs-on:\s*(.*?)\s*$", text, re.M))
+        runners = {
+            value
+            for found in re.findall(r"""["']?runner["']?\s*:\s*(\[[^\]]*\]|[^\s,}\]]+)""", text)
+            for value in re.split(r"""[\s,\[\]"']+""", found) if value
+        }
+        # A matrix runner must come from literals in the file, not from a variable, an input or a job output.
+        dynamic = "${{ matrix.runner }}" in runs_on and not runners
+        if (runs_on - HOSTED_RUNNERS - {"${{ matrix.runner }}"} or runners - HOSTED_RUNNERS or dynamic
+                or "self-hosted" in text or "ripdpi-awg-vps" in text):
+            offenders.append(path.name)
+    return offenders
+
+
+def test_only_the_real_vps_lane_names_a_self_hosted_runner(tmp_path):
+    lane = _workflow("real-vps-awg-nat")
+    assert lane["jobs"]["awg-nat"]["runs-on"] == ["self-hosted", "linux", "ripdpi-awg-vps"]
+    assert set(lane[True]) == {"workflow_dispatch"}
+    assert _self_hosted_offenders(WORKFLOWS) == []
+
+    (tmp_path / SELF_HOSTED_LANE).write_text((WORKFLOWS / SELF_HOSTED_LANE).read_text())
+    cases = {
+        "a-label.yml": "    runs-on: [self-hosted, linux, ripdpi-awg-vps]\n",
+        "b-custom-label.yml": "    runs-on: [linux, another-runner]\n",
+        "c-group.yml": "    runs-on:\n      group: private-runners\n",
+        "d-matrix.yml": "    runs-on: ${{ matrix.runner }}\n    strategy:\n      matrix:\n        runner: [ubuntu-24.04, home-runner]\n",
+        "e-json-matrix.yml": """    runs-on: ${{ matrix.runner }}\n      matrix: ${{ fromJSON('{"include":[{"runner":"home-runner"}]}') }}\n""",
+        "f-dynamic-matrix.yml": "    runs-on: ${{ matrix.runner }}\n      matrix: ${{ fromJSON(vars.RUNNERS) }}\n",
+        "hosted.yml": "    runs-on: ubuntu-24.04\n",
+        "hosted-matrix.yml": "    runs-on: ${{ matrix.runner }}\n      matrix:\n        runner: [ubuntu-24.04, macos-15]\n",
+    }
+    for name, body in cases.items():
+        (tmp_path / name).write_text("jobs:\n  job:\n" + body)
+    assert _self_hosted_offenders(tmp_path) == sorted(set(cases) - {"hosted.yml", "hosted-matrix.yml"})
+
+
+@pytest.mark.parametrize(
+    "workflow", ["publish-molecule-debian13", "publish-molecule-ubuntu2404", "publish-observability-kuma"]
+)
+def test_image_publish_runs_on_push_only_for_main(workflow):
+    triggers = _workflow(workflow)[True]
+    assert set(triggers) == {"push", "workflow_dispatch"}
+    assert triggers["push"]["branches"] == ["main"]
+    assert "tags" not in triggers["push"] and "branches-ignore" not in triggers["push"]

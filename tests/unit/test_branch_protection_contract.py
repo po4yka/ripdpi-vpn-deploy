@@ -25,7 +25,7 @@ def github(monkeypatch):
                  'source_type': 'Repository', 'conditions': {}, 'rules': [], 'bypass_actors': []},
              8: {'id': 8, 'name': 'unrelated', 'source_type': 'Repository'}}
     state = {'metadata': metadata, 'rules': rules, 'immutable': {'enabled': False},
-             'classic': None, 'writes': []}
+             'approval': {'approval_policy': 'first_time_contributors'}, 'classic': None, 'writes': []}
 
     def api(endpoint, method='GET', payload=None, allow_missing=False):
         if method != 'GET':
@@ -37,6 +37,10 @@ def github(monkeypatch):
         if endpoint.endswith('/branches/main/protection'):
             assert allow_missing
             return state['classic']
+        if endpoint.endswith('/actions/permissions/fork-pr-contributor-approval'):
+            if method == 'PUT':
+                state['approval'].update(payload)
+            return deepcopy(state['approval'])
         if endpoint.endswith('/immutable-releases'):
             if method == 'PUT':
                 state['immutable']['enabled'] = True
@@ -86,6 +90,7 @@ def test_policy_has_separate_integrity_ci_and_tag_rules():
         'allow_merge_commit': False, 'allow_squash_merge': False, 'allow_rebase_merge': True,
         'delete_branch_on_merge': True, 'allow_auto_merge': True}
     assert POLICY['immutable_releases'] is True
+    assert POLICY['fork_pull_request_approval'] == 'all_external_contributors'
     assert not (ROOT / '.github/workflows/branch-protection.yml').exists()
 
 
@@ -96,6 +101,8 @@ def test_preview_makes_no_writes_and_orders_integrity_before_ci_migration(github
         ('POST', 'main-integrity'), ('PUT', 'main-ci'), ('POST', 'release-tags')]
     assert changes[1][1] == BASE + '/rulesets/7'
     assert changes[-1] == ('PUT', BASE + '/immutable-releases', None)
+    assert changes[-2] == ('PUT', BASE + '/actions/permissions/fork-pr-contributor-approval',
+                           {'approval_policy': 'all_external_contributors'})
 
 
 def test_apply_preserves_unrelated_rules_and_becomes_idempotent(github, monkeypatch, capsys):
@@ -103,6 +110,7 @@ def test_apply_preserves_unrelated_rules_and_becomes_idempotent(github, monkeypa
     assert policy_tool.main() == 0
     assert github['rules'][8] == {'id': 8, 'name': 'unrelated', 'source_type': 'Repository'}
     assert github['rules'][7]['name'] == 'main-ci'
+    assert github['approval'] == {'approval_policy': 'all_external_contributors'}
     assert 'verified' in capsys.readouterr().out
     assert policy_tool.plan(POLICY) == []
     writes = deepcopy(github['writes'])
@@ -110,7 +118,7 @@ def test_apply_preserves_unrelated_rules_and_becomes_idempotent(github, monkeypa
     assert github['writes'] == writes
 
 
-@pytest.mark.parametrize('failure', ['foreign', 'owner', 'admin', 'classic', 'duplicate', 'inherited'])
+@pytest.mark.parametrize('failure', ['foreign', 'owner', 'admin', 'classic', 'duplicate', 'inherited', 'approval'])
 def test_unsafe_or_ambiguous_remote_state_refuses_before_writes(github, failure):
     policy = deepcopy(POLICY)
     if failure == 'foreign':
@@ -121,6 +129,8 @@ def test_unsafe_or_ambiguous_remote_state_refuses_before_writes(github, failure)
         github['metadata']['permissions']['admin'] = False
     elif failure == 'classic':
         github['classic'] = {'enabled': True}
+    elif failure == 'approval':
+        policy['fork_pull_request_approval'] = 'first_time_contributors'
     elif failure == 'duplicate':
         github['rules'][9] = {**github['rules'][7], 'id': 9, 'name': 'main-ci'}
     else:
@@ -150,11 +160,12 @@ def test_partial_api_failure_stops_apply_and_retry_reads_remaining_state(github,
     assert policy_tool.main() == 0
 
 
-def test_failed_readback_is_not_reported_as_success(github, monkeypatch, capsys):
+@pytest.mark.parametrize('setting', ['/immutable-releases', '/fork-pr-contributor-approval'])
+def test_failed_readback_is_not_reported_as_success(github, monkeypatch, capsys, setting):
     api = policy_tool.api
 
     def stale(endpoint, method='GET', payload=None, **kwargs):
-        if method == 'PUT' and endpoint.endswith('/immutable-releases'):
+        if method == 'PUT' and endpoint.endswith(setting):
             return None
         return api(endpoint, method, payload, **kwargs)
 

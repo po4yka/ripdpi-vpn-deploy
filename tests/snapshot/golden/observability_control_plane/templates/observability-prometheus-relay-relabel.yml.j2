@@ -8,3 +8,30 @@
   replacement: node
 - action: labeldrop
   regex: ingress_node
+# The sender's allowlist, applied again: a node must not store what its own
+# sender (observability_agent prometheus.yml.j2) would have dropped. The lists
+# are literals on both sides by design; test_relay_allowlist_matches_the_sender
+# fails when they differ. up is the sender's own per-target scrape series; its
+# other scrape_* series are dropped. Only the sender's three jobs are accepted,
+# so a node cannot write series under a collector-local job name.
+- action: keep
+  source_labels: [job]
+  regex: "node-exporter|node-exporter-required-services|observability-agent"
+- action: keep
+  source_labels: [__name__, name, state]
+  regex: "node_systemd_unit_state;(caddy-naive[.]service|hysteria-server[.]service|nginx[.]service|observability-agent[.]service|observability-alertmanager[.]service|observability-disk-guard[.]service|observability-ingress[.]service|observability-prometheus[.]service|xray[.]service);(active|failed)|(up|node_(cpu|memory|filesystem|time|boot|network|disk|filefd)_.*|node_load(1|5|15)|observability_push_.*|vpn_(xray_stats|observability_|watchdog_|backup_|certificate_|honeypot_|policy_ratelimit_|burn_).*|process_(cpu_seconds_total|resident_memory_bytes|open_fds|max_fds|start_time_seconds)|go_(goroutines|threads)|vm_rows_ignored_total|vmagent_remotewrite_(pending_data_bytes|pending_inmemory_blocks|queue_blocked|errors_total|packets_dropped_total|samples_dropped_total|retries_count_total|bytes_sent_total|blocks_sent_total)|vm_persistentqueue_(bytes_pending|bytes_dropped_total|blocks_dropped_total|bytes_written_total|blocks_written_total|bytes_read_total|blocks_read_total));;.*"
+# A label value can hold the separator, so the name label gets its own rule.
+- action: keep
+  source_labels: [__name__, name]
+  regex: "node_systemd_unit_state;.+|[^;]+;"
+- action: keep
+  source_labels: [mountpoint]
+  regex: "^$|^/$"
+- action: keep
+  source_labels: [device]
+  regex: "^$|^(lo|eth[0-9]+|ens[0-9]+|enp[0-9a-z]+|vda[0-9]*|sda[0-9]*|nvme[0-9]+n[0-9]+p?[0-9]*)$"
+- action: keep
+  source_labels: [__name__, reason]
+  regex: "^(vm_rows_ignored_total;(too_long_label_name|too_long_label_value|too_many_labels)|[^;]+;)$"
+- action: labelkeep
+  regex: "^(__name__|job|instance|environment|cpu|mode|device|fstype|mountpoint|node|role|state|kind|name|reason)$"

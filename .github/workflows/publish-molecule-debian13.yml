@@ -2,6 +2,8 @@ name: publish-molecule-debian13
 
 on:
   push:
+    # A branch publishes through workflow_dispatch only.
+    branches: [main]
     paths:
       - 'images/molecule-debian13/**'
       - '.github/workflows/publish-molecule-debian13.yml'

@@ -30,6 +30,8 @@
       - observability_control_plane.prometheus.archive_members.arm64 is match('^[A-Za-z0-9._+/+-]+$')
       - observability_control_plane.relay_listen == '127.0.0.1:19091'
       - observability_control_plane.relay_install_root == '/opt/observability-collector-vmagent'
+      - observability_control_plane.relay_series_per_node | default(2200) | int >= 1
+      - observability_control_plane.relay_series_per_node | default(2200) | int <= 30000
       - observability_control_plane.relay_queue_dir == observability_control_plane.data_dir ~ '/relay-queue'
       - observability_control_plane.relay.version is match('^v[0-9]+[.][0-9]+[.][0-9]+$')
       - observability_control_plane.relay.urls.amd64 is match('^https://|^file://')

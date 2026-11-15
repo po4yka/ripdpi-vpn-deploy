@@ -12,8 +12,8 @@ The 2026-11-15 audit found four places where a safe state depends on a manual st
 
 ## What Changes
 
-- The plan policy refuses an UpCloud VPN server that exists and keeps the provider firewall off, and a server on any provider with no attached firewall or a default-accept inbound policy.
-- The collector relay keeps only allowed metric names and labels and enforces series and label limits for each node certificate.
+- The plan policy refuses a plan that changes resources while an existing UpCloud server keeps the provider firewall off, and a server on another provider with no attached firewall or a default-accept inbound policy. First creation, promotion, the completion of an interrupted first apply and a plan with no resource change stay allowed, because recovery and `make apply` use them before promotion.
+- The collector relay keeps only the sender's allowed metric names and labels, limits labels for each series, and limits unique series for each hour to one budget for each enrolled node, summed for the whole relay. The relay binary has no limit for each certificate.
 - The repository policy records the fork pull-request approval setting, and the configuration check verifies it. A test refuses the self-hosted label outside the one named workflow. The image publish workflows run only on `main`.
 - A test refuses hooks and shell allow entries in the tracked agent settings file.
 
@@ -30,7 +30,7 @@ The 2026-11-15 audit found four places where a safe state depends on a manual st
 ## Impact
 
 - Terraform: `terraform/policy/` and its tests.
-- Ansible: `ansible/roles/observability_control_plane/` relay templates and unit.
+- Ansible: `ansible/roles/observability_control_plane/` relay templates, unit, defaults and the Molecule pushes that go through the relay.
 - CI: `.github/repository-policy.json`, `scripts/configure-repository.py`, the three `publish-*.yml` workflows.
 - Tests: `tests/unit/test_agent_instructions.py` and a workflow policy test.
-- Operations: an UpCloud node that was never promoted fails its next plan until the operator promotes it.
+- Operations: an UpCloud node that was never promoted fails its next plan that changes a resource until the operator promotes it. A node that is never planned again is not found by this policy.

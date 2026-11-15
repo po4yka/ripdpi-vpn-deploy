@@ -69,6 +69,12 @@ def plan(policy):
             changes.append(('POST', f'{base}/rulesets', desired))
     if not matches(metadata, policy['settings']):
         changes.append(('PATCH', base, policy['settings']))
+    approval = policy['fork_pull_request_approval']
+    if approval != 'all_external_contributors':
+        raise ValueError('Refusing to weaken fork pull request approval')
+    endpoint = f'{base}/actions/permissions/fork-pr-contributor-approval'
+    if api(endpoint)['approval_policy'] != approval:
+        changes.append(('PUT', endpoint, {'approval_policy': approval}))
     immutable = api(f'{base}/immutable-releases')
     if immutable['enabled'] != policy['immutable_releases']:
         if not policy['immutable_releases']:

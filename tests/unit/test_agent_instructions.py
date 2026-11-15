@@ -152,3 +152,32 @@ def test_skill_evaluation_cases_are_usable_and_reference_available_skills() -> N
         assert case["skills"] and set(case["skills"]) <= names
         for field in ("facts", "assessment"):
             assert case[field] and all(isinstance(item, str) and item.strip() for item in case[field])
+
+
+def _agent_settings_violations(settings: dict) -> list[str]:
+    """The tracked agent settings run with the operator's permissions: allow file rules only."""
+    found = [f"key {key}" for key in settings if key not in {"$schema", "attribution", "permissions"}]
+    permissions = settings.get("permissions", {})
+    found += [f"permissions.{key}" for key in permissions if key not in {"allow", "deny"}]
+    found += [
+        f"allow {entry}"
+        for entry in permissions.get("allow", [])
+        if not re.fullmatch(r"(Edit|Read|Write)\(.+\)", entry)
+    ]
+    return found
+
+
+def test_tracked_agent_settings_have_no_hooks_or_shell_allow_entries() -> None:
+    settings = json.loads((ROOT / ".claude/settings.json").read_text(encoding="utf-8"))
+    assert _agent_settings_violations(settings) == []
+
+    base = {"attribution": {"commit": ""}, "permissions": {"allow": ["Edit(/README.md)"], "deny": ["Read(.env)"]}}
+    assert _agent_settings_violations(base) == []
+    hook = {"PreToolUse": [{"hooks": [{"type": "command", "command": "true"}]}]}
+    assert _agent_settings_violations({**base, "hooks": hook}) == ["key hooks"]
+    assert _agent_settings_violations({**base, "statusLine": {"type": "command", "command": "true"}}) == ["key statusLine"]
+    for entry in ("Bash(git push:*)", "Bash", "PowerShell(*)", "mcp__terminal__run_in_terminal"):
+        shell = {**base, "permissions": {"allow": ["Edit(/README.md)", entry]}}
+        assert _agent_settings_violations(shell) == [f"allow {entry}"]
+    bypass = {**base, "permissions": {"defaultMode": "bypassPermissions"}}
+    assert _agent_settings_violations(bypass) == ["permissions.defaultMode"]
