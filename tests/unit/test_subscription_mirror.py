@@ -14,8 +14,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-from scripts.template_render import render_fragment, template_environment
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location(
     "mirror_renderer", REPO_ROOT / "scripts/check-templates-render.py"

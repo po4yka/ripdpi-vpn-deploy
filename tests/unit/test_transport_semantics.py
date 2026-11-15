@@ -11,7 +11,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-import transport_semantics
 from transport_semantics import awg_errors, cohort_errors, generate_awg_shape, hysteria_errors, transport_errors
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -358,7 +357,7 @@ def test_generated_awg_shapes_are_bounded_admitted_and_distinct():
 def test_generator_draws_again_after_equal_sizes_and_after_the_published_set(monkeypatch):
     # Offsets in draw order jmin, jc, jmax - jmin, s1, s2: equal sizes (207 bytes), the published set, then minima.
     offsets = iter([0, 0, 0, 44, 100, 20, 1, 10, 35, 85, 0, 0, 0, 0, 0, 0])
-    monkeypatch.setattr(transport_semantics.secrets, "randbelow", lambda _bound: next(offsets))
+    monkeypatch.setattr("transport_semantics.secrets.randbelow", lambda _bound: next(offsets))
     assert generate_awg_shape() == {"listen_port": 20000, "jc": 3, "jmin": 20, "jmax": 40, "s1": 15, "s2": 15}
     assert next(offsets, None) is None
 
