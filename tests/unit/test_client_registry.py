@@ -175,6 +175,35 @@ def _run_issuer(env: dict[str, str], *args: str) -> subprocess.CompletedProcess:
         return subprocess.CompletedProcess(arguments, child.returncode, stdout, stderr)
 
 
+def test_issuance_sends_the_payload_only_over_pinned_ssh(tmp_path):
+    env, payload_file, _, _ = _harness(tmp_path)
+    log = tmp_path / "ssh-argv.jsonl"
+    real = tmp_path / "bin" / "ssh-real"
+    (tmp_path / "bin" / "ssh").rename(real)
+    _write_executable(
+        tmp_path / "bin" / "ssh",
+        f"#!{sys.executable}\nimport json, os, sys\n"
+        f"with open({str(log)!r}, 'a') as stream:\n    stream.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+        f"os.execv({str(real)!r}, [{str(real)!r}, *sys.argv[1:]])\n",
+    )
+    pins, key = tmp_path / "pin file", tmp_path / "operator-key"
+    result = _run_issuer({**env, "INSPECT_KNOWN_HOSTS": str(pins), "ANSIBLE_SSH_PRIVATE_KEY_FILE": str(key),
+                          "SUBSCRIPTION_SSH_HOST": "node.tailnet.example"})
+    assert result.returncode == 0, result.stderr
+    calls = [json.loads(line) for line in log.read_text().splitlines()]
+    assert len(calls) == 2 and payload_file.exists()
+    for argv in calls:
+        # The operator's SSH configuration is ignored and the port comes from the provider output.
+        assert argv[:4] == ["-F", "/dev/null", "-p", "2222"]
+        options = {argv[index + 1] for index, value in enumerate(argv) if value == "-o"}
+        assert {"BatchMode=yes", "StrictHostKeyChecking=yes", "ForwardAgent=no", "ProxyCommand=none",
+                f'UserKnownHostsFile="{pins}"', "GlobalKnownHostsFile=/dev/null", "IdentityAgent=none"} <= options
+        assert not any(option.startswith("StrictHostKeyChecking=") and option != "StrictHostKeyChecking=yes" for option in options)
+        assert argv[argv.index("-i") + 1] == str(key)
+        # The explicit management name replaces the public address; the remote command stays last.
+        assert argv[-2].endswith("@node.tailnet.example")
+
+
 def test_sops_fixture_reads_complete_document_before_output(tmp_path):
     fake = tmp_path / "sops"
     _write_executable(fake, _sops_stub().replace(

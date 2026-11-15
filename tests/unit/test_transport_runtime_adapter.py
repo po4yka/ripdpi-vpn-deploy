@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 
 import pytest
@@ -785,6 +786,93 @@ def test_operator_rollback_rejects_ambiguous_identity(raw):
     from transport_runtime_rollback import release_versions
     with pytest.raises(accept.Refusal, match='rollback-version-invalid'):
         release_versions(raw)
+
+
+def xray_config(*clients, short_ids=('aa01',), password=None):
+    inbound = {'settings': {'clients': [{'id': client, 'flow': 'xtls-rprx-vision'} for client in clients]},
+               'streamSettings': {'realitySettings': {'shortIds': list(short_ids)}}}
+    trojan = [{'settings': {'clients': [{'password': password}]}}] if password else []
+    return json.dumps({'inbounds': [inbound, *trojan, {'tag': 'api', 'settings': {}}], 'outbounds': []}).encode()
+
+
+@pytest.mark.parametrize('previous', [
+    xray_config('kept', 'removed'),                          # a client ID that the accepted configuration dropped
+    xray_config('kept', short_ids=('aa01', 'bb02')),         # a removed REALITY short ID
+    xray_config('kept', password='removed-password'),        # a removed password credential
+], ids=['client-id', 'short-id', 'password'])
+def test_config_rollback_refuses_a_previous_config_that_readmits_a_removed_credential(previous):
+    from transport_runtime_rollback import refuse_readmission
+    with pytest.raises(accept.Refusal, match='rollback-readmits-client'):
+        refuse_readmission(previous, xray_config('kept'))
+
+
+def test_config_rollback_admits_a_previous_config_with_no_extra_credential():
+    from transport_runtime_rollback import refuse_readmission
+    # The previous configuration may hold fewer credentials, and other settings may differ.
+    refuse_readmission(xray_config('kept'), xray_config('kept', 'added', short_ids=('aa01', 'cc03')))
+    refuse_readmission(xray_config('kept'), xray_config('kept'))
+
+
+def test_config_rollback_compares_uuids_without_case_and_covers_other_inbound_secrets():
+    from transport_runtime_rollback import admitted_identities, refuse_readmission
+    upper, lower = '0F9D2C3A-1B4E-4C5D-8E6F-7A8B9C0D1E2F', '0f9d2c3a-1b4e-4c5d-8e6f-7a8b9c0d1e2f'
+    refuse_readmission(xray_config(upper), xray_config(lower))
+    other = json.dumps({'inbounds': [{'settings': {'password': 'single', 'accounts': [{'user': 'name', 'pass': 'secret'}],
+                                                    'users': [{'auth': 'token'}]}}]}).encode()
+    assert admitted_identities(other) == {'single', 'secret', 'token'}
+
+
+class RecordingTransaction:
+    def __init__(self):
+        self.receipts = []
+
+    def refuse_revocation_rollback(self, receipt):
+        self.receipts.append(receipt)
+
+
+def _rollback_files(tmp_path, previous, current):
+    unit, config = tmp_path / 'xray.service', tmp_path / 'config.json'
+    unit.write_text('[Service]\n')
+    config.write_bytes(current)
+    (tmp_path / 'config.json.prev').write_bytes(previous)
+    return unit, config, {'nodes': {str(tmp_path / 'config.json.prev'): {'identity': [0]}}}
+
+
+def test_config_rollback_plan_checks_revocation_and_readmission_before_it_selects_the_previous_config(tmp_path, monkeypatch):
+    import transport_runtime_rollback as rollback
+    monkeypatch.setattr(rollback, 'restore_points', lambda candidates: candidates)
+    unit, config, receipt = _rollback_files(tmp_path, xray_config('kept'), xray_config('kept', 'added'))
+    tx = RecordingTransaction()
+    candidates = rollback.config_candidates(tx, receipt, unit, config, 0)
+    assert tx.receipts == [receipt]
+    assert base64.b64decode(candidates[1]['data']) == xray_config('kept') and candidates[1]['path'] == str(config)
+
+    unit, config, receipt = _rollback_files(tmp_path, xray_config('kept', 'removed'), xray_config('kept'))
+    with pytest.raises(accept.Refusal, match='rollback-readmits-client'):
+        rollback.config_candidates(RecordingTransaction(), receipt, unit, config, 0)
+    assert config.read_bytes() == xray_config('kept')
+
+    class Fenced(RecordingTransaction):
+        def refuse_revocation_rollback(self, receipt):
+            raise accept.Refusal('revocation-rollback-forbidden')
+
+    unit, config, receipt = _rollback_files(tmp_path, xray_config('kept'), xray_config('kept'))
+    with pytest.raises(accept.Refusal, match='revocation-rollback-forbidden'):
+        rollback.config_candidates(Fenced(), receipt, unit, config, 0)
+
+
+def test_rollback_command_prints_the_refusal_category_only():
+    result = subprocess.run([sys.executable, str(LIBRARY / 'transport_runtime_rollback.py'), 'config'],
+                            capture_output=True, text=True, timeout=20)
+    # An unprivileged run is refused first; the category tells the operator which rule stopped it.
+    assert (result.returncode, result.stdout, result.stderr) == (1, '', 'transport-rollback-refused: root-required\n')
+
+
+@pytest.mark.parametrize('previous', [b'not json', b'[]', b'{"inbounds": [7]}'])
+def test_config_rollback_refuses_an_unreadable_previous_config(previous):
+    from transport_runtime_rollback import refuse_readmission
+    with pytest.raises(accept.Refusal, match='rollback-config-invalid'):
+        refuse_readmission(previous, xray_config('kept'))
 
 
 def make_directories(path):

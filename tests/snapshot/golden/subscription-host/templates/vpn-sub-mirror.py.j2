@@ -11,23 +11,16 @@ import errno
 import fcntl
 import os
 import pwd
-import shlex
 import shutil
 import stat
-import subprocess
 import sys
 import uuid
 from pathlib import Path
 
 DEST = Path("/var/lib/vpn-subscription")
-BACKEND = "rsync"
-SOURCE = ""
-RSYNC_OPTIONS = "-az --delete"
-SSH_KEY = "/etc/vpn-subscription/mirror_ssh_key"
-SSH_OPTIONS = "-o StrictHostKeyChecking=accept-new -o BatchMode=yes"
-RESTIC_REPO = ""
-RESTIC_SNAPSHOT_PATH = ""
-RESTIC_PASSWORD_FILE = "/etc/vpn-subscription/mirror_restic_password"
+# The tree that vpn-sub-mirror-fetch.service pulled as the mirror user. That
+# unit holds the mirror credentials; this process only copies its result.
+INCOMING = Path("/var/lib/vpn-sub-mirror/incoming")
 
 GENERATION_ROOT = DEST / ".vpn-sub-mirror-generations"
 CURRENT_POINTER = DEST / ".vpn-sub-mirror-current"
@@ -212,24 +205,35 @@ def _new_stage() -> Path:
 
 
 def _pull_into(stage: Path) -> None:
-    if BACKEND == "rsync":
-        if not SOURCE:
-            raise MirrorError("rsync backend selected but mirror.source is empty")
-        ssh = ["ssh", "-i", SSH_KEY, *shlex.split(SSH_OPTIONS)]
-        subprocess.run(
-            ["rsync", *shlex.split(RSYNC_OPTIONS), "-e", shlex.join(ssh), SOURCE, f"{stage}/"],
-            check=True,
-        )
-        return
-    if BACKEND != "restic":
-        raise MirrorError(f"unsupported mirror backend: {BACKEND}")
-    if not RESTIC_REPO:
-        raise MirrorError("restic backend selected but mirror.restic_repo is empty")
-    environment = os.environ | {"RESTIC_PASSWORD_FILE": RESTIC_PASSWORD_FILE}
-    command = ["restic", "-r", RESTIC_REPO, "restore", "latest", "--target", str(stage)]
-    if RESTIC_SNAPSHOT_PATH:
-        command.extend(["--include", RESTIC_SNAPSHOT_PATH])
-    subprocess.run(command, check=True, env=environment)
+    """Copy the fetched tree, so that this process owns every node it publishes."""
+    metadata = _lstat(INCOMING)
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise MirrorError("fetched payload is not a directory")
+
+    def unreadable(error: OSError) -> None:
+        raise MirrorError(f"fetched payload is unreadable: {error.filename}")
+
+    for root, directories, files in os.walk(INCOMING, followlinks=False, onerror=unreadable):
+        target = stage / Path(root).relative_to(INCOMING)
+        for name in directories:
+            if (Path(root) / name).is_symlink():
+                raise MirrorError("fetched payload contains symlink")
+            (target / name).mkdir(mode=0o700)
+        for name in files:
+            if (Path(root) / name).is_symlink():
+                raise MirrorError("fetched payload contains symlink")
+            # O_NOFOLLOW still refuses a link swapped in after the check; O_NONBLOCK keeps a FIFO from blocking.
+            descriptor = os.open(Path(root) / name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(descriptor, "rb") as reader:
+                if not stat.S_ISREG(os.fstat(reader.fileno()).st_mode):
+                    raise MirrorError("fetched payload contains non-regular entry")
+                with open(target / name, "xb") as writer:
+                    shutil.copyfileobj(reader, writer)
+    # The fetch unit replaces the whole directory by rename. A fetch that was
+    # started by hand during this copy would leave a mix of two pulls here.
+    current = _lstat(INCOMING)
+    if (current.st_dev, current.st_ino) != (metadata.st_dev, metadata.st_ino):
+        raise MirrorError("fetched payload changed during the copy")
 
 
 def _validate_and_harden(stage: Path) -> None:
@@ -312,7 +316,7 @@ def main() -> int:
             if stage.exists() and not stage.is_symlink():
                 _remove_stage_tree(stage)
             raise
-    except (MirrorError, OSError, subprocess.CalledProcessError) as exc:
+    except (MirrorError, OSError) as exc:
         print(f"vpn-sub-mirror: {exc}", file=sys.stderr)
         return 1
     finally:

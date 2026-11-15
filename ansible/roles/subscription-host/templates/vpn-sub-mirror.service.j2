@@ -1,7 +1,10 @@
 [Unit]
-Description=VPN subscription payload mirror (pull hashed-on-disk tree from build worker)
+Description=VPN subscription payload mirror (publish the fetched hashed-on-disk tree)
 Documentation=https://github.com/po4yka/vpn-deploy/blob/main/docs/how-to/subscription-host-separation.md
-After=network-online.target
+# The fetch unit pulls as the mirror user; this unit starts only after it ends
+# and fails with it, so a failed pull publishes nothing.
+Requires=vpn-sub-mirror-fetch.service
+After=network-online.target vpn-sub-mirror-fetch.service
 Wants=network-online.target
 
 [Service]
@@ -10,9 +13,8 @@ User=vpn-bootstrap
 Group=vpn-bootstrap
 ExecStart=/usr/local/bin/vpn-sub-mirror.sh
 
-# Hardening — mirrors vpn-bootstrap.service.j2. MemoryDenyWriteExecute is
-# intentionally omitted: the mirror invokes rsync/ssh (and optionally
-# restic), which may map writable+executable pages on some libc builds.
+# Hardening — mirrors vpn-bootstrap.service.j2. This unit copies the fetched
+# tree and holds no mirror credential; rsync, ssh and restic run in the fetch unit.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true

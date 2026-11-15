@@ -86,12 +86,31 @@ token_hash="$(printf '%s' "$token" | python3 -c 'import hashlib, sys; print(hash
 remote_path="${SUBSCRIPTION_DIR}/bootstrap/${token_hash}"
 
 # The bearer payload goes only to a host whose key is already pinned; never trust a new key here.
-ssh_options=(-o StrictHostKeyChecking=yes -o ForwardAgent=no)
+# The option set matches payload_ssh in issue_sub_token.py: no operator SSH configuration,
+# the pinned file only, and nothing forwarded.
+ssh_port="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw ssh_port)"
+[[ "$ssh_port" =~ ^[0-9]{1,5}$ ]] || { echo "error: invalid SSH port from Terraform output" >&2; exit 1; }
+ssh_options=(-F /dev/null -p "$ssh_port" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UpdateHostKeys=no
+  -o "UserKnownHostsFile=\"${INSPECT_KNOWN_HOSTS:-${HOME}/.ssh/known_hosts}\"" -o GlobalKnownHostsFile=/dev/null
+  -o VerifyHostKeyDNS=no -o ForwardAgent=no -o ClearAllForwardings=yes -o ProxyCommand=none -o ConnectTimeout=10)
+if [[ -n "${ANSIBLE_SSH_PRIVATE_KEY_FILE:-}" ]]; then
+  ssh_options+=(-o IdentitiesOnly=yes -o IdentityAgent=none -i "$ANSIBLE_SSH_PRIVATE_KEY_FILE")
+fi
+# A HostName rule in the SSH configuration no longer applies; an operator who
+# reaches the host by another name (a tailnet address) sets SUBSCRIPTION_SSH_HOST.
+ssh_host="${SUBSCRIPTION_SSH_HOST:-$server_ip}"
+[[ "$ssh_host" =~ ^[A-Za-z0-9_.:-]+$ ]] || { echo "error: invalid SSH host" >&2; exit 1; }
 
 # See issue-sub-token.sh: mirrored generations do not consume legacy direct
 # writes, so fail closed before installing a bearer payload.
-if ! ssh "${ssh_options[@]}" "${admin_user}@${server_ip}" \
-  "sudo test ! -e '${SUBSCRIPTION_DIR}/.vpn-sub-mirror-generations' -a ! -L '${SUBSCRIPTION_DIR}/.vpn-sub-mirror-current'"; then
+mirror_status=0
+ssh "${ssh_options[@]}" "${admin_user}@${ssh_host}" \
+  "sudo test ! -e '${SUBSCRIPTION_DIR}/.vpn-sub-mirror-generations' -a ! -L '${SUBSCRIPTION_DIR}/.vpn-sub-mirror-current'" || mirror_status=$?
+if (( mirror_status == 255 )); then
+  # ssh itself failed: an unknown or changed host key ends here, before any payload leaves.
+  echo "error: the pinned SSH connection was refused; check the host key in ${INSPECT_KNOWN_HOSTS:-${HOME}/.ssh/known_hosts}" >&2
+  exit 1
+elif (( mirror_status != 0 )); then
   echo "error: subscription mirror mode is active; direct token issuance is unavailable" >&2
   exit 1
 fi
@@ -99,9 +118,9 @@ fi
 # Publish the bounded deadline first; interrupted issuance cannot create an
 # unbounded grant. The token timestamp remains authoritative if metadata is lost.
 meta="{\"expires\":${expiry_epoch}}"
-printf '%s' "$meta" | ssh "${ssh_options[@]}" "${admin_user}@${server_ip}" \
+printf '%s' "$meta" | ssh "${ssh_options[@]}" "${admin_user}@${ssh_host}" \
   "sudo install -o vpn-bootstrap -g vpn-bootstrap -m 0600 /dev/stdin '${remote_path}.meta'"
-printf '%s' "$payload" | ssh "${ssh_options[@]}" "${admin_user}@${server_ip}" \
+printf '%s' "$payload" | ssh "${ssh_options[@]}" "${admin_user}@${ssh_host}" \
   "sudo install -o vpn-bootstrap -g vpn-bootstrap -m 0600 /dev/stdin '${remote_path}'"
 
 echo "stored hash: ${token_hash:0:8}…  path: ${remote_path}"

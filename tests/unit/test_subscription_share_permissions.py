@@ -44,6 +44,7 @@ def test_actual_share_copy_repairs_modes_preserves_bytes_and_converges(tmp_path)
         action['group'] = grp.getgrgid(os.getgid()).gr_name
     play = [{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False,
              'become': False, 'vars': {'ansible_become': False, 'ansible_python_interpreter': sys.executable,
+             'subscription': {'revoked_tokens': []},
              'vpn': {'share_bundles': [{'token': 'synthetic-token', 'client': 'synthetic', 'local_path': str(bundle)}]}},
              'tasks': tasks, 'handlers': [{'name': 'Reload nginx', 'ansible.builtin.debug': {'msg': 'synthetic handler'}}]}]
     playbook = tmp_path / 'play.json'

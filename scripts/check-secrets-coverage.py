@@ -58,7 +58,7 @@ NON_SECRET_TOPLEVEL = {
     "amneziawg",  # role defaults
     # `subscription` covers the subscription-host role, including the
     # opt-in continuous-mirror sub-keys (subscription.mirror.{enabled,
-    # backend,interval,source,ssh_key,ssh_key_path,restic_repo,
+    # backend,interval,source,ssh_key,ssh_key_path,ssh_known_hosts,restic_repo,
     # restic_snapshot_path,restic_password,restic_password_file}). The
     # real secret fields there are mirror.ssh_key and
     # mirror.restic_password; sub-key schema lives in the example file

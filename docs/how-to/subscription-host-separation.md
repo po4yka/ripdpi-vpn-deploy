@@ -62,10 +62,10 @@ The subscription host needs to fetch per-device payloads that the transport host
 
     Two backends, selected by `subscription.mirror.backend`:
 
-      * `rsync` (default): `rsync -az --delete` over ssh from `subscription.mirror.source` using a pull key (`subscription.mirror.ssh_key`, rendered to `ssh_key_path`, default `/etc/vpn-subscription/mirror_ssh_key`).
+      * `rsync` (default): `rsync -az --delete` over ssh from `subscription.mirror.source` using a pull key (`subscription.mirror.ssh_key`, rendered to `ssh_key_path`, default `/etc/vpn-subscription/mirror_ssh_key`). A remote source needs `subscription.mirror.ssh_known_hosts`, the build worker's host key in `known_hosts` format: the pull checks it strictly and never trusts a key on first use. `ssh_opts` admits only a port (`-p 2222`); the role fixes the host-key and forwarding options, and an `rsync://` source is refused because it has no host authentication.
       * `restic`: `restic restore latest` from `subscription.mirror.restic_repo` (subtree `restic_snapshot_path`), password from `subscription.mirror.restic_password`.
 
-    The mirror is an **outbound pull only** — it opens no new public surface and preserves the host's loopback-only serving posture. The pull runs exclusively inside the timer-driven unit, so it stays idempotent across Ansible converges (config files only). Mind the bandwidth + freshness trade-off: a shorter `interval` keeps the host fresher at the cost of repeated transfers.
+    The mirror is an **outbound pull only** — it opens no new public surface and preserves the host's loopback-only serving posture. The pull (`vpn-sub-mirror-fetch.service`) runs as its own `vpn-sub-mirror` user, which alone can read the pull key, the pinned host key and the restic password. The publisher (`vpn-sub-mirror.service`) runs as the delivery service user, starts only after a successful pull and publishes its own copy of the fetched tree, so a compromise of the internet-facing service does not expose the build worker credentials. The pull runs exclusively inside the timer-driven unit, so it stays idempotent across Ansible converges (config files only). Mind the bandwidth + freshness trade-off: a shorter `interval` keeps the host fresher at the cost of repeated transfers.
 
 ## What this does not buy you
 

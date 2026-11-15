@@ -76,7 +76,7 @@ The recipient list is also stored at `.sops.yaml` if you have one — the runtim
 | Issue one Naive device | `make naive-issue CLIENT=laptop SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml` |
 | Revoke one Naive device | `make naive-revoke CLIENT=laptop SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml` |
 | Read one Naive credential for delivery | `make naive-readout CLIENT=laptop SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml OUTPUT=~/.config/vpn-provision/laptop.naive.json` |
-| Re-encrypt under a new recipient | `sops updatekeys ~/.config/vpn-provision/prod.secrets.sops.yaml` |
+| Re-encrypt under a new recipient set and a new data key | `scripts/rotate-secrets.sh` (`sops updatekeys`, then `sops rotate --in-place`) |
 | Decrypt for deploy | `make decrypt` (writes configured `SECRETS_FILE`, mode 0600) |
 | Wipe plaintext | `make clean` (shred or rm) |
 

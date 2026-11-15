@@ -29,7 +29,7 @@ def test_retirement_refuses_uncertain_discovery(state, code, refuse):
 
 
 def test_exact_timer_stops_before_service_and_only_loaded_units_are_disabled():
-    assert TASKS[0]['loop'] == ['vpn-sub-mirror.timer', 'vpn-sub-mirror.service']
+    assert TASKS[0]['loop'] == ['vpn-sub-mirror.timer', 'vpn-sub-mirror.service', 'vpn-sub-mirror-fetch.service']
     loaded, masked = TASKS[1:]
     for state in ('loaded', 'masked', 'not-found'):
         item = {'item': {'stdout': state}}

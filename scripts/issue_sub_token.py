@@ -20,6 +20,28 @@ from client_payload import ROOT, command, materialize, options, paths, validate_
 from encrypted_client_document import CommittedPublication, ExternalPublicationUncertain, operate
 
 
+def payload_ssh(target, port):
+    """SSH for a call that carries device credentials.
+
+    It ignores the operator's SSH configuration, accepts only a host key that is
+    already in the pinned file and forwards nothing, so a replaced or hijacked
+    node cannot receive the payload or the agent. An operator who reaches the
+    host by another name (a tailnet address) sets SUBSCRIPTION_SSH_HOST, because
+    a HostName rule in the SSH configuration no longer applies.
+    """
+    pins = os.environ.get('INSPECT_KNOWN_HOSTS') or str(Path.home() / '.ssh/known_hosts')
+    options = ['BatchMode=yes', 'StrictHostKeyChecking=yes', 'UpdateHostKeys=no', 'UserKnownHostsFile="' + pins + '"',
+               'GlobalKnownHostsFile=/dev/null', 'VerifyHostKeyDNS=no', 'ForwardAgent=no', 'ClearAllForwardings=yes',
+               'ProxyCommand=none', 'ConnectTimeout=10']
+    key = os.environ.get('ANSIBLE_SSH_PRIVATE_KEY_FILE')
+    if key:
+        options += ['IdentitiesOnly=yes', 'IdentityAgent=none']
+    command = ['ssh', '-F', '/dev/null', '-p', port]
+    for option in options:
+        command += ['-o', option]
+    return command + (['-i', key] if key else []) + [target]
+
+
 def issue(args):
     if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', args.client):
         raise ValueError('invalid-client')
@@ -81,7 +103,9 @@ def issue(args):
         admin = command([str(ROOT / 'scripts/terraform-env.sh'), 'output', '-raw', 'admin_user']).decode().strip()
         hostname = command([str(ROOT / 'scripts/terraform-env.sh'), 'output', '-raw', 'server_hostname']).decode().strip()
         # Only fixed, validated endpoint/user syntax enters the SSH destination.
-        if not re.fullmatch(r'[A-Za-z0-9_.:-]+', server_ip) or not re.fullmatch(r'[a-z_][a-z0-9_-]*', admin):
+        ssh_port = command([str(ROOT / 'scripts/terraform-env.sh'), 'output', '-raw', 'ssh_port']).decode().strip()
+        if (not re.fullmatch(r'[A-Za-z0-9_.:-]+', server_ip) or not re.fullmatch(r'[a-z_][a-z0-9_-]*', admin)
+                or not ssh_port.isascii() or not ssh_port.isdigit() or not 1 <= int(ssh_port) <= 65535):
             raise ValueError('invalid-delivery-endpoint')
         sub_host = publication['sub_host'] or hostname
         if not isinstance(sub_host, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9.-]*', sub_host):
@@ -90,21 +114,24 @@ def issue(args):
         if not port.isascii() or not port.isdigit() or not 1 <= int(port) <= 65535:
             raise ValueError('invalid-subscription-port')
         publication['url'] = 'https://' + sub_host + ':' + port + '/sub/' + token
-        target = admin + '@' + server_ip
+        ssh_host = os.environ.get('SUBSCRIPTION_SSH_HOST') or server_ip
+        if not re.fullmatch(r'[A-Za-z0-9_.:-]+', ssh_host):
+            raise ValueError('invalid-delivery-endpoint')
+        ssh = payload_ssh(admin + '@' + ssh_host, ssh_port)
         publisher = "sudo -u vpn-bootstrap /usr/local/bin/vpn-bootstrap.py"
         # The installed runtime owns its configured namespace and publication lock.
         # An old service has no readiness protocol and refuses before mutation.
         try:
-            ready = command(['ssh', target, publisher + " --publication-ready '" + directory + "'"]).decode().strip()
+            ready = command([*ssh, publisher + " --publication-ready '" + directory + "'"]).decode().strip()
         except ValueError:
-            raise ValueError('subscription publisher unavailable or mirror mode is active') from None
+            raise ValueError('subscription publisher unavailable, mirror mode is active, or the pinned SSH connection was refused') from None
         if ready != 'subscription-publisher-v1':
-            raise ValueError('subscription publisher unavailable or mirror mode is active')
+            raise ValueError('subscription publisher unavailable, mirror mode is active, or the pinned SSH connection was refused')
         document = dict(schema_version=1, payload_b64=base64.b64encode(publication['payload']).decode('ascii'),
                         client=args.client, expires=publication['expires'])
         # A failed SSH reply cannot prove that its one atomic remote write was absent.
         mark_external_started()
-        receipt = command(['ssh', target, publisher + " --publish-sub " + token_hash + " '" + directory + "'"],
+        receipt = command([*ssh, publisher + " --publish-sub " + token_hash + " '" + directory + "'"],
                           data=json.dumps(document, separators=(',', ':')).encode()).decode().strip()
         if receipt != 'subscription-published-v1':
             raise ValueError('subscription publisher acknowledgement unavailable')
@@ -167,7 +194,7 @@ def main():
     except ValueError as error:
         # Only our fixed categories are exposed; downstream parsers may echo input.
         allowed = {'no client_registry entry; re-issue the token', 'ambiguous client_registry entries; re-issue', 'token does not belong to requested client',
-                   'registry lacks AWG delivery selection or delivery options; re-issue', 'subscription mirror mode is active or delivery unavailable', 'subscription publisher unavailable or mirror mode is active'}
+                   'registry lacks AWG delivery selection or delivery options; re-issue', 'subscription mirror mode is active or delivery unavailable', 'subscription publisher unavailable, mirror mode is active, or the pinned SSH connection was refused'}
         print('subscription-delivery: ' + (str(error) if str(error) in allowed else 'private transaction refused'), file=sys.stderr)
         return 2
     except (OSError, KeyError, TypeError, AttributeError, RecursionError, StopIteration, subprocess.SubprocessError, yaml.YAMLError):

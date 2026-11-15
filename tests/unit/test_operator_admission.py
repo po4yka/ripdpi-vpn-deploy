@@ -51,6 +51,75 @@ def test_rotation_lock_admits_next_private_writer_under_public_umask(tmp_path, e
         fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
 
+def _rotation(tmp_path, sops_body):
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    for name in ("rotate-secrets.sh", "private-operator-lock.py"):
+        shutil.copy(ROOT / "scripts" / name, scripts)
+    executable(scripts / "audit-log.sh", "#!/bin/sh\nexit 0\n")
+    commands = tmp_path / "bin"
+    commands.mkdir()
+    executable(commands / "sops", sops_body)
+    source = tmp_path / "private" / "synthetic.sops.yaml"
+    source.parent.mkdir()
+    source.write_text("ciphertext under the old data key\n")
+    source.chmod(0o600)
+    result = subprocess.run(
+        ["bash", str(scripts / "rotate-secrets.sh")], cwd=tmp_path, text=True, capture_output=True, timeout=10, check=False,
+        env={**os.environ, "SOPS_FILE": str(source), "SOPS_CALLS": str(tmp_path / "calls"), "PATH": f"{commands}:{os.environ['PATH']}"},
+    )
+    return result, source
+
+
+# Each stub call rewrites the file, as sops does, and records its arguments.
+ROTATING_SOPS = """#!/bin/sh
+printf '%s\\n' "$*" >> "$SOPS_CALLS"
+for last do :; done
+printf '%s after %s\\n' "$(cat "$last")" "$1" > "$last"
+[ "$1" != "${SOPS_FAIL:-none}" ]
+"""
+
+
+def test_rotation_updates_recipients_and_then_rotates_the_data_key(tmp_path):
+    result, source = _rotation(tmp_path, ROTATING_SOPS)
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "calls").read_text().splitlines() == [f"updatekeys {source}", f"rotate --in-place {source}"]
+    assert source.read_text() == "ciphertext under the old data key after updatekeys after rotate\n"
+    # No copy of the file stays beside it, apart from the writer lock.
+    assert sorted(entry.name for entry in source.parent.iterdir()) == [source.name, source.name + ".new-client.lock"]
+
+
+@pytest.mark.parametrize("failing_step", ["updatekeys", "rotate"])
+def test_failed_rotation_leaves_the_secrets_file_unchanged(tmp_path, failing_step):
+    result, source = _rotation(tmp_path, ROTATING_SOPS.replace("${SOPS_FAIL:-none}", failing_step))
+    assert result.returncode != 0
+    # The stub had already rewritten the file when it failed: the original bytes are restored.
+    assert source.read_text() == "ciphertext under the old data key\n"
+    assert stat.S_IMODE(source.stat().st_mode) == 0o600
+    assert sorted(entry.name for entry in source.parent.iterdir()) == [source.name, source.name + ".new-client.lock"]
+
+
+def test_rotation_stops_at_a_copy_left_by_a_killed_run(tmp_path):
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    for name in ("rotate-secrets.sh", "private-operator-lock.py"):
+        shutil.copy(ROOT / "scripts" / name, scripts)
+    commands = tmp_path / "bin"
+    commands.mkdir()
+    executable(commands / "sops", "#!/bin/sh\ntouch \"$SOPS_CALLED\"\n")
+    source = tmp_path / "synthetic.sops.yaml"
+    source.write_text("possibly half rotated\n")
+    stale = Path(str(source) + ".rotate.Ab12Cd")
+    stale.write_text("file before the killed run\n")
+    result = subprocess.run(
+        ["bash", str(scripts / "rotate-secrets.sh")], cwd=tmp_path, text=True, capture_output=True, timeout=10, check=False,
+        env={**os.environ, "SOPS_FILE": str(source), "SOPS_CALLED": str(tmp_path / "called"), "PATH": f"{commands}:{os.environ['PATH']}"},
+    )
+    assert result.returncode != 0 and stale.name in result.stderr
+    assert not (tmp_path / "called").exists()
+    assert (source.read_text(), stale.read_text()) == ("possibly half rotated\n", "file before the killed run\n")
+
+
 @pytest.mark.parametrize("authority", ["symlink", "hardlink", "writable"])
 def test_rotation_refuses_unsafe_lock_without_changing_target(tmp_path, authority):
     source = tmp_path / "synthetic.yaml"

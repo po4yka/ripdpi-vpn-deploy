@@ -10,10 +10,10 @@ A revoked device credential stays unusable across rollback and share bundles, de
 
 ## Execution
 
-- [ ] SEC-1794728996747903 Refuse a config rollback that re-admits a removed client #bug !high @item:SEC-1794728936979277
-- [ ] SEC-1794729007676570 Remove a share bundle on revocation and prune undeclared bundles #bug !high @item:SEC-1794728936979277
-- [ ] SEC-1794729019627773 Send device payloads over pinned SSH and separate the mirror user #bug !high @item:SEC-1794728936979277
-- [ ] SEC-1794729031539704 Rotate the SOPS data key when recipients change #bug !high @item:SEC-1794728936979277
+- [x] SEC-1794728996747903 Refuse a config rollback that re-admits a removed client #bug !high @item:SEC-1794728936979277
+- [x] SEC-1794729007676570 Remove a share bundle on revocation and prune undeclared bundles #bug !high @item:SEC-1794728936979277
+- [x] SEC-1794729019627773 Send device payloads over pinned SSH and separate the mirror user #bug !high @item:SEC-1794728936979277
+- [x] SEC-1794729031539704 Rotate the SOPS data key when recipients change #bug !high @item:SEC-1794728936979277
 
 ## Verification
 

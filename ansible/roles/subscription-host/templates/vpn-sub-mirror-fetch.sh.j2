@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Fetch the payload tree from the build worker as the mirror user.
+#
+# This is the only process that reads the mirror credentials. The publisher runs
+# as the delivery service user, copies the fetched tree and never sees them, so
+# a compromise of the internet-facing service does not give access to the worker.
+# Managed by Ansible role subscription-host.
+set -euo pipefail
+umask 022
+
+incoming=/var/lib/vpn-sub-mirror/incoming
+stage="${incoming}.fetch"
+rm -rf -- "$stage"
+mkdir -- "$stage"
+
+{% if (subscription.mirror.backend | default('rsync')) == 'rsync' %}
+# The role admits only a port in mirror.ssh_opts. The pinned options still come
+# first, because ssh keeps the first value of each option.
+ssh_command=(ssh -F /dev/null -i {{ subscription.mirror.ssh_key_path | default('/etc/vpn-subscription/mirror_ssh_key') | quote }}
+  -o BatchMode=yes -o StrictHostKeyChecking=yes -o UpdateHostKeys=no
+  -o UserKnownHostsFile={{ subscription.mirror.ssh_known_hosts_path | default('/etc/vpn-subscription/mirror_known_hosts') | quote }}
+  -o GlobalKnownHostsFile=/dev/null -o KnownHostsCommand=none -o VerifyHostKeyDNS=no
+  -o IdentitiesOnly=yes -o IdentityAgent=none -o ForwardAgent=no -o ClearAllForwardings=yes
+  -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 {{ subscription.mirror.ssh_opts | default('') }})
+# rsync splits this string on spaces; the role admits only paths and options without them.
+remote_shell="${ssh_command[*]}"
+rsync {{ subscription.mirror.rsync_opts | default('-az --delete') }} --no-owner --no-group \
+  -e "$remote_shell" -- {{ subscription.mirror.source | default('') | quote }} "${stage}/"
+{% else %}
+RESTIC_PASSWORD_FILE={{ subscription.mirror.restic_password_file | default('/etc/vpn-subscription/mirror_restic_password') | quote }} \
+  restic -r {{ subscription.mirror.restic_repo | default('') | quote }} restore latest --target "$stage"{% if subscription.mirror.restic_snapshot_path | default('') %} --include {{ subscription.mirror.restic_snapshot_path | quote }}{% endif %}
+
+{% endif %}
+# The delivery user reads this tree through the directory permissions of its
+# parent, whatever modes the source or the snapshot had.
+chmod -R u=rwX,go=rX "$stage"
+
+# The publisher starts only after this unit ends, so it never reads a half-replaced tree.
+rm -rf -- "${incoming}.previous"
+[[ ! -e "$incoming" ]] || mv -- "$incoming" "${incoming}.previous"
+mv -- "$stage" "$incoming"
+rm -rf -- "${incoming}.previous"
