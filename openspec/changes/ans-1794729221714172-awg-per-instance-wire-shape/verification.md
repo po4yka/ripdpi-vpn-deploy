@@ -1,11 +1,11 @@
 ---
 task_id: ANS-1794729221714172
 change: ans-1794729221714172-awg-per-instance-wire-shape
-commit_sha: 0a66649f
+commit_sha: a856c95365a99cf6d40fd1e2e27f495490ca32e9
 local: passed
 local_evidence: "Focused modules passed (388 tests: test_transport_semantics, test_secrets_schema, test_amneziawg_version_floor, test_bootstrap_awg_handoff, test_provider_listeners_parity, test_listener_contract, test_docs_index, test_agent_instructions); the new tests fail with the non-test changes reverted. make tf-test exit 0 (278 provider runs), make tf-policy-verify, snapshot-check, shellcheck, docs-check and ansible-lint for the amneziawg role exit 0. The complete unit collection ran once: every remaining failure is a native_runtime test that needs Linux, or the tracked-address check on tests/unit/test_doh_lookup.py from 1d7d62e8, which this change does not touch. make check did not run here: the lead runs one gate on the integrated branch. Molecule for the amneziawg role did not run: the pinned image has no arm64 manifest on the operator workstation. One independent review found no high or medium defect. Integrated gate on the tree of cb173d5a, before its rebase onto two task-bookkeeping commits of main (all six tasks on one branch): make -k -j 4 check passed every target except test-unit, where 12170 cases passed and one failed, test_tailnet_network_executor.py::test_expiry_serializes_with_forward_mark_and_rolls_back_true; it is timing-sensitive under the parallel run, passes alone and with its file, and this branch changes no tailnet code."
-remote_ci: required
-remote_ci_evidence: Pending CI on the pull request, including the amneziawg and full-stack Molecule scenarios.
+remote_ci: passed
+remote_ci_evidence: "CI run 43712765464 on main at 827d555e: 81 jobs passed. The two failed native jobs (native runtime integration 3/4, native four-transport acceptance core-1) failed only at tests/unit/test_xhttp_endpoint_contract_native.py line 154, a parsing defect in a test of XRY-1794729068388916. The amneziawg Molecule job, both full-stack Molecule scenarios and the native AWG device binding, dual-stack and UDP checksum tests passed."
 dry_run: required
 dry_run_evidence: Pending dry-run of each production node; a node with published values or port 51820 must refuse.
 staging: required
