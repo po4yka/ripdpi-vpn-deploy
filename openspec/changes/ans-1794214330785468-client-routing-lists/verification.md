@@ -12,8 +12,8 @@ staging: required
 staging_evidence: null
 live: passed
 live_evidence: On 2026-11-15 the node-b deploy at da6fb86d passed deploy, verify, source-drift, security-verify, smoke-test and protocol-liveness. The served profile.json lists the 6 expected deny-listed domains in BlockSites, an empty BlockIp, RouteOrder block-proxy-direct and a newer LastUpdated.
-client: required
-client_evidence: null
+client: passed
+client_evidence: On 2026-11-15 an Android device with INCY 3.9.9 re-imported the Autorouting link; INCY updated the existing profile in place and showed 6 block rules with route order Block, Proxy, Direct. With the VPN connected through the P1 XHTTP server on node-b, an HTTP HEAD request to the deny-listed orakul.spb.ru closed in 117 ms with no response, while the same request from an unfiltered workstation returned 200; the unblocked sibling spb.ru answered 503 and the direct sberbank.ru and chel.ru and the proxied example.com answered normally through the same tunnel. TCP connect alone is not evidence, because the client TUN stack accepts connections before routing.
 artifact: required
 artifact_evidence: docs/reference/subscription-plane.md documents the route, admission and the deliberate unpinned feed.
 ---
