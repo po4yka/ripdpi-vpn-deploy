@@ -18,6 +18,9 @@ observability_control_plane:
   relay_install_root: /opt/observability-collector-vmagent
   relay_binary_link: /usr/local/libexec/observability-collector-vmagent
   relay_queue_dir: /var/lib/observability-prometheus/relay-queue
+  # Unique series for each hour that the relay accepts for each enrolled node.
+  # 2200 is the tested capacity: 20,000 base and 2,000 churn series for ten nodes.
+  relay_series_per_node: 2200
   remote_write_path_prefix: /remote-write/v1/nodes
   request_body_limit: 8m
   request_concurrency: 4

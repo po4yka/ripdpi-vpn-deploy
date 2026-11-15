@@ -29,6 +29,10 @@ The PR title and every commit subject in the PR must use Conventional Commit syn
 
 The aggregate enforces the existing behavior of its child checks. It does not strengthen their contracts: `reproducible-build` still permits example placeholder pins and treats Xray rebuild mismatches as advisory. Costly PR jobs follow the complete dependency plan; unknown paths and shared configuration select full CI. See [CI dependency selection](../reference/testing.md#ci-dependency-selection).
 
+## Actions runner and publish controls
+
+`.github/repository-policy.json` records `fork_pull_request_approval` as `all_external_contributors`: a workflow run from a fork pull request waits for approval from a maintainer. The configuration command plans a change when the live setting differs and refuses a recorded value that is weaker. One workflow, `real-vps-awg-nat.yml`, names a self-hosted runner label, and no runner is registered for it. `tests/unit/test_required_protective_workflows.py` fails when another workflow selects a runner that GitHub does not host. The three image publish workflows run on a push to `main` only; to publish from a branch, start the workflow with `workflow_dispatch` on that branch.
+
 ## Preview and apply
 
 Use existing authenticated GitHub CLI access with repository administration permission. The configuration command prints only public policy, never tokens. It does not read the fleet, inventory, SOPS files, or local operator kit.

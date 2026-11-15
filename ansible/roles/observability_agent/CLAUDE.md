@@ -98,7 +98,7 @@ The staged selection includes its previous-runtime link when supplied by runtime
   collection fails. Generic queued blocks alone do not establish nonce capture.
 - Restart acceptance must recover exact historical samples after both clean stop and SIGKILL once persistence is observed. Retaining files, a queue-depth decrease, or fresh samples after restart cannot establish recovery. Host power-loss/fsync durability is not implied by a process-kill test.
 - This role needs the monitoring and node_manifest producers to have converged before it runs; site ordering is intentionally owned by a separate change.
-- Do not widen the metric regex or add a telemetry fallback without the metric contract and ingestion role changes.
+- Do not widen the metric regex or add a telemetry fallback without the metric contract and ingestion role changes. The collector relay repeats these literal metric and label lists (`observability-prometheus-relay-relabel.yml.j2`); change both templates together, `test_relay_allowlist_matches_the_sender` fails otherwise.
 - The strict native scrape parser does not support Prometheus label-name/value-length YAML keys. Apply the same bounds through native `maxLabelNameLen`, `maxLabelValueLen` and `maxLabelsPerTimeseries` flags; rejected series increment the bounded `vm_rows_ignored_total{reason}` self metric. Never disable strict parsing.
 - Watchdog recovery is inferred only from its canonical consecutive-failure and hourly kick counters; it is local recovery evidence, never outside-in client-path recovery.
 - `LoadCredential` source files are root-only input to systemd; do not replace it with an EnvironmentFile or put PEM content into the Prometheus template.

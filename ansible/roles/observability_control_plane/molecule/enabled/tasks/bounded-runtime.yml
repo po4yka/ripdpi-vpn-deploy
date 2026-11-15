@@ -240,8 +240,9 @@
         def publish(timestamp_ms, offset, slots=series_per_node, churn='base'):
             # This is a ten-node cardinality workload using one managed sender,
             # not ten enrolled identities or a production scrape-limit bypass.
+            # The relay keeps only the sender's jobs and labels, so the fixture uses them.
             for node in range(nodes):
-                body = ''.join(metric + '{fixture_node="node-%d",slot="%d",generation="%s"} %d %d\n' %
+                body = ''.join(metric + '{job="node-exporter",role="node-%d",cpu="%d",kind="%s"} %d %d\n' %
                                (node, slot, churn, node + offset, timestamp_ms) for slot in range(slots)).encode()
                 request = urllib.request.Request('http://127.0.0.1:19090/api/v1/import/prometheus',
                                                  data=body, method='POST')
@@ -250,7 +251,7 @@
         def exact(timestamp_ms, offset, slots=series_per_node, churn='base'):
             at = timestamp_ms / 1000 + 1
             for node in range(nodes):
-                selector = metric + '{fixture_node="node-%d",generation="%s"}' % (node, churn)
+                selector = metric + '{role="node-%d",kind="%s"}' % (node, churn)
                 if scalar('count(' + selector + ')', at) != slots:
                     return False
                 if scalar('sum(' + selector + ')', at) != slots * (node + offset):
@@ -429,8 +430,9 @@
             # High-entropy synthetic labels exercise native chunk rollover with no
             # production sample-limit change. Never drain this disposable load.
             body = b''.join(b'vpn_observability_queue_pressure{' +
-                            b','.join(('nonce%d="' % index).encode() + base64.b64encode(os.urandom(96)) + b'"'
-                                      for index in range(8)) + b'} 1\n' for _ in range(1000))
+                            b','.join(label + b'="' + base64.b64encode(os.urandom(96)) + b'"' for label in
+                                      (b'cpu', b'mode', b'fstype', b'role', b'state', b'kind', b'instance')) +
+                            b'} 1\n' for _ in range(1000))
             request = urllib.request.Request('http://127.0.0.1:19090/api/v1/import/prometheus',
                                              data=body, method='POST')
             with opener.open(request, timeout=30) as response:

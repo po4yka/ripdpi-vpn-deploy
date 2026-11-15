@@ -57,6 +57,13 @@ vmagent relay (`127.0.0.1:19091`, own pin and `/opt/observability-collector-vmag
 root) with `extra_label=ingress_node=<cert-bound id>`. vmagent appends extra labels
 instead of replacing them, so its relabel file drops any payload `node` and maps
 `ingress_node` to `node`. Do not use `$1` after the `rewrite ^` regex, which resets captures.
+The same file then repeats the sender's literal metric and label allowlist, so a
+node cannot store what its own sender would drop; a unit test fails when the two
+templates differ. The relay unit bounds labels (16, 64-byte names, 128-byte
+values) and unique series for each hour: `relay_series_per_node` (2200) for each
+enrolled identity, summed for the whole relay, not enforced for each certificate.
+Only the sender's three job names and `up` (not the other `scrape_*` series) pass.
+Molecule pushes through this relay must use an allowed job, names and labels.
 The relay disables its on-disk queue: once its bounded memory buffer fills, a
 Prometheus outage returns 429 to the sender's durable queue. Samples already
 acknowledged in that buffer, and Prometheus rejections after acceptance, are lost.

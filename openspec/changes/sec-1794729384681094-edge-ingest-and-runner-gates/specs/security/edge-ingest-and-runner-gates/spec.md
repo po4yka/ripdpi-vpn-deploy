@@ -6,12 +6,17 @@ The provider edge firewall, the collector ingest path, the self-hosted runner la
 
 ### Requirement: REQ-SEC-EIG-EDGE-FIREWALL — Refuse a server that stays without an edge firewall
 
-The plan policy MUST deny a plan in which an UpCloud VPN server already exists and its provider firewall stays off. It MUST allow the plan that creates that server and the plan that turns the firewall on. For every provider it MUST deny a server with no attached provider firewall and a firewall whose inbound default is accept.
+The plan policy MUST deny a plan that changes resources while an existing UpCloud server keeps its provider firewall off. It MUST allow first creation or replacement, promotion, the completion of an interrupted first apply, and a plan with no resource change. For every other provider it MUST deny a server with no attached provider firewall and a firewall whose inbound default is accept.
 
 #### Scenario: Existing UpCloud server with the firewall off
 
-- **WHEN** a plan leaves an existing UpCloud VPN server with `firewall` false
+- **WHEN** a plan changes a resource and leaves an existing UpCloud server with `firewall` false
 - **THEN** the policy denies the plan and names promotion as the fix
+
+#### Scenario: Interrupted first apply or empty plan
+
+- **WHEN** a plan still creates the firewall rules of an existing UpCloud server, or changes no resource
+- **THEN** the policy allows the plan
 
 #### Scenario: First creation
 
@@ -23,9 +28,14 @@ The plan policy MUST deny a plan in which an UpCloud VPN server already exists a
 - **WHEN** a plan has a server resource with no firewall attachment
 - **THEN** the policy denies the plan
 
+#### Scenario: Attachment known only after apply
+
+- **WHEN** a plan creates a server whose firewall reference is not known until apply
+- **THEN** the policy allows the plan
+
 ### Requirement: REQ-SEC-EIG-RELAY-LIMITS — Bound what one node can push to the collector
 
-The collector relay MUST drop every series whose metric name is not in the allowed set and every label that is not in the allowed set. It MUST enforce a limit on the number of series and on label count and label value length for each node certificate. A push over a limit MUST NOT stop ingestion for other nodes, and the collector MUST count the rejected series.
+The collector relay MUST drop every metric name and label outside the sender's allowed set, and a repository test MUST fail when the two lists differ. The relay MUST limit label count and length for each series, and unique series for each hour to one budget for each enrolled node, summed for the whole relay. A push over a limit MUST NOT fail, and the relay MUST count the rejected series.
 
 #### Scenario: Unknown metric name
 
@@ -34,12 +44,12 @@ The collector relay MUST drop every series whose metric name is not in the allow
 
 #### Scenario: High-cardinality push
 
-- **WHEN** one node pushes more series than its limit
-- **THEN** the relay rejects the excess, the drop counter increases, and series from other nodes are stored
+- **WHEN** one node pushes more unique series than the relay's hourly limit
+- **THEN** the relay drops the excess, its drop counter increases, and series that other nodes already send are stored
 
 ### Requirement: REQ-SEC-EIG-RUNNER-LANE — Record and check the self-hosted runner controls
 
-`.github/repository-policy.json` MUST record that pull requests from forks need approval for all outside contributors, and `scripts/configure-repository.py` MUST fail its check when the live setting differs. A repository test MUST fail when a workflow other than the named real-VPS lane uses a self-hosted runner label. The image publish workflows MUST run on push only for `main`.
+`.github/repository-policy.json` MUST record that fork pull requests need approval for all outside contributors. `scripts/configure-repository.py` MUST plan a change when the live setting differs and MUST refuse a weaker recorded value. A repository test MUST fail when a workflow other than the real-VPS lane selects a runner that GitHub does not host. The image publish workflows MUST run on push only for `main`.
 
 #### Scenario: Second workflow with the label
 
@@ -49,7 +59,7 @@ The collector relay MUST drop every series whose metric name is not in the allow
 #### Scenario: Approval setting differs
 
 - **WHEN** the live fork approval setting is weaker than the recorded one
-- **THEN** the configuration check exits non-zero
+- **THEN** the plan lists the change, and an apply whose readback still differs exits non-zero
 
 #### Scenario: Push to another branch
 
@@ -58,7 +68,7 @@ The collector relay MUST drop every series whose metric name is not in the allow
 
 ### Requirement: REQ-SEC-EIG-AGENT-SETTINGS — Keep hooks and shell allow entries out of the agent settings
 
-A repository test MUST fail when the tracked agent settings file has a `hooks` key or a permission allow entry for a shell command.
+A repository test MUST fail when the tracked agent settings file has a `hooks` key or a permission allow entry for a shell command. The test MUST allow only the schema, attribution and permission keys, and only file tool entries in the allow list.
 
 #### Scenario: Hook added
 

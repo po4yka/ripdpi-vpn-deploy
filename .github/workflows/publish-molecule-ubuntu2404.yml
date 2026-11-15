@@ -2,6 +2,8 @@ name: publish-molecule-ubuntu2404
 
 on:
   push:
+    # A branch publishes through workflow_dispatch only.
+    branches: [main]
     paths:
       - 'images/molecule-ubuntu2404/**'
       - '.github/workflows/publish-molecule-ubuntu2404.yml'

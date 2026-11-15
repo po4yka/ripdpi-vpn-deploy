@@ -98,6 +98,9 @@
       relay_install_root: /opt/observability-collector-vmagent
       relay_binary_link: /usr/local/libexec/observability-collector-vmagent
       relay_queue_dir: /var/lib/observability-prometheus/relay-queue
+      # One enrolled identity replays the ten-node capacity workload (22,000 series)
+      # and the queue-pressure load, so the fixture raises the hourly series budget.
+      relay_series_per_node: 30000
       relay:
         version: v1.155.0
         urls:

@@ -3,6 +3,7 @@
 import argparse
 from pathlib import Path
 import os
+import re
 import shlex
 import socket
 import ssl
@@ -14,7 +15,7 @@ from typing import Callable
 import pytest
 import yaml
 
-from scripts.template_render import render_template
+from scripts.template_render import merge_render_vars, render_template
 
 ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / "ansible/roles/observability_control_plane"
@@ -190,10 +191,15 @@ def test_ingress_requires_relay_and_relay_writes_only_to_loopback_prometheus() -
         "-remoteWrite.flushInterval": "1s",
         "-memory.allowedBytes": "33554432",
         "-remoteWrite.relabelConfig": "/etc/observability-control-plane/relay-relabel.yml",
+        # Two enrolled identities, 2200 unique series for each hour for each of them.
+        "-remoteWrite.maxHourlySeries": "4400",
+        "-maxLabelsPerTimeseries": "16",
+        "-maxLabelNameLen": "64",
+        "-maxLabelValueLen": "128",
     }
-    rules = yaml.safe_load(render_template(ROLE / "templates/observability-prometheus-relay-relabel.yml.j2", _values()))
+    rules = _relay_rules()
     # Payload node goes first, then the ingress identity becomes node and its carrier label goes.
-    assert rules == [
+    assert rules[:3] == [
         {"action": "labeldrop", "regex": "node"},
         {"action": "labelmap", "regex": "ingress_node", "replacement": "node"},
         {"action": "labeldrop", "regex": "ingress_node"},
@@ -209,6 +215,114 @@ def test_ingress_requires_relay_and_relay_writes_only_to_loopback_prometheus() -
         "NoNewPrivileges=true",
     ):
         assert required in relay.splitlines()
+
+
+def _relay_rules() -> list[dict]:
+    values = _values()
+    values["observability_alert_policy"] = {"required_systemd_units": ["nginx.service", "xray.service"]}
+    return yaml.safe_load(render_template(ROLE / "templates/observability-prometheus-relay-relabel.yml.j2", values))
+
+
+def _relabel(rules: list[dict], labels: dict[str, str]) -> dict[str, str] | None:
+    """Apply keep, labelkeep, labeldrop and labelmap rules; None means the series is dropped."""
+    labels = dict(labels)
+    for rule in rules:
+        regex = re.compile(rule["regex"])
+        if rule["action"] == "keep":
+            value = ";".join(labels.get(name, "") for name in rule["source_labels"])
+            if not regex.fullmatch(value):
+                return None
+        elif rule["action"] == "labelkeep":
+            labels = {name: value for name, value in labels.items() if regex.fullmatch(name)}
+        elif rule["action"] == "labeldrop":
+            labels = {name: value for name, value in labels.items() if not regex.fullmatch(name)}
+        elif rule["action"] == "labelmap":
+            labels.update({rule["replacement"]: value for name, value in labels.items() if regex.fullmatch(name)})
+        else:
+            raise AssertionError(rule["action"])
+    return labels
+
+
+@pytest.mark.parametrize(
+    "pushed",
+    [
+        {"__name__": "attacker_series"},
+        {"__name__": "node_systemd_unit_state", "name": "other.service", "state": "active"},
+        {"__name__": "node_systemd_unit_state", "name": "nginxXservice", "state": "active"},
+        {"__name__": "node_systemd_unit_state", "name": "nginx.service", "state": "inactive"},
+        {"__name__": "node_cpu_seconds_total", "name": "nginx.service"},
+        {"__name__": "node_filesystem_avail_bytes", "mountpoint": "/srv/random-1"},
+        {"__name__": "node_network_receive_bytes_total", "device": "veth9f3a"},
+        {"__name__": "node_load1", "reason": "random-1"},
+        {"__name__": "vpn_burn_x", "name": "a;", "state": "s"},
+        {"__name__": "vmagent_remotewrite_packets_dropped_total", "job": "observability-relay"},
+        {"__name__": "node_load1", "job": ""},
+    ],
+    ids=lambda pushed: "-".join(pushed.values()),
+)
+def test_relay_drops_series_outside_the_sender_allowlist(pushed: dict[str, str]) -> None:
+    assert _relabel(_relay_rules(), {"job": "node-exporter", "ingress_node": "vpn-p0", **pushed}) is None
+
+
+def test_relay_keeps_allowed_series_and_only_allowed_labels() -> None:
+    rules = _relay_rules()
+
+    assert _relabel(
+        rules,
+        {
+            "__name__": "node_cpu_seconds_total", "job": "node-exporter", "cpu": "0", "mode": "idle",
+            "environment": "prod", "node": "forged-node", "ingress_node": "vpn-p0", "attacker_label": "random-1",
+        },
+    ) == {
+        "__name__": "node_cpu_seconds_total", "job": "node-exporter", "cpu": "0", "mode": "idle",
+        "environment": "prod", "node": "vpn-p0",
+    }
+    for kept in (
+        {"__name__": "node_systemd_unit_state", "name": "xray.service", "state": "failed"},
+        {"__name__": "vm_rows_ignored_total", "reason": "too_many_labels"},
+        {"__name__": "up", "instance": "127.0.0.1:9100"},
+        {"__name__": "node_filesystem_avail_bytes", "mountpoint": "/", "device": "vda1", "fstype": "ext4"},
+    ):
+        kept["job"] = "observability-agent"
+        assert _relabel(rules, {**kept, "ingress_node": "vpn-p0"}) == {**kept, "node": "vpn-p0"}
+
+
+def test_relay_allowlist_matches_the_sender() -> None:
+    """The lists are literals in both templates; this fails when one side changes alone."""
+    values = merge_render_vars()
+    sender = yaml.safe_load(
+        render_template(ROOT / "ansible/roles/observability_agent/templates/prometheus.yml.j2", values)
+    )
+    node, systemd, agent = (job["metric_relabel_configs"] for job in sender["scrape_configs"])
+    relay = yaml.safe_load(
+        render_template(ROLE / "templates/observability-prometheus-relay-relabel.yml.j2", values)
+    )[3:]
+
+    def inner(regex: str) -> str:
+        assert regex.startswith("^(") and regex.endswith(")$")
+        return regex[2:-2]
+
+    units = systemd[0]["regex"].removeprefix("^node_systemd_unit_state;").removesuffix("$")
+    assert relay[0] == {
+        "action": "keep",
+        "source_labels": ["job"],
+        "regex": "|".join(job["job_name"] for job in sender["scrape_configs"]),
+    }
+    assert relay[2] == {
+        "action": "keep", "source_labels": ["__name__", "name"], "regex": "node_systemd_unit_state;.+|[^;]+;",
+    }
+    del relay[2], relay[0]
+    assert relay[0] == {
+        "action": "keep",
+        "source_labels": ["__name__", "name", "state"],
+        "regex": "node_systemd_unit_state;%s|(up|%s|%s);;.*"
+        % (units, inner(node[0]["regex"]), inner(agent[0]["regex"])),
+    }
+    assert relay[1:4] == [node[1], node[2], agent[1]]
+    assert relay[4]["action"] == "labelkeep" and len(relay) == 5
+    assert set(inner(relay[4]["regex"]).split("|")) == {"instance", "environment"}.union(
+        *(set(inner(job[-1]["regex"]).split("|")) for job in (node, systemd, agent))
+    )
 
 
 def test_ingress_binds_each_certificate_subject_to_exact_node_path() -> None:
@@ -323,9 +437,13 @@ def test_enabled_role_refuses_missing_pins_and_mtls_before_mutation(
     assert "changed=0" in result.stdout
 
 
-@pytest.mark.parametrize("relay_pinned", [True, False], ids=["relay-pinned", "relay-unpinned"])
+@pytest.mark.parametrize(
+    ("relay_pinned", "series_per_node"),
+    [(True, 2200), (False, 2200), (True, None), (True, 0), (True, "unlimited")],
+    ids=["relay-pinned", "relay-unpinned", "series-budget-default", "series-budget-zero", "series-budget-text"],
+)
 def test_enabled_role_requires_relay_pins_in_the_receiver_contract(
-    tmp_path: Path, relay_pinned: bool
+    tmp_path: Path, relay_pinned: bool, series_per_node: object
 ) -> None:
     role = yaml.safe_load((ROLE / "defaults/main.yml").read_text())["observability_control_plane"]
     archive = {"amd64": "https://example.invalid/a.tar.gz", "arm64": "https://example.invalid/b.tar.gz"}
@@ -340,6 +458,10 @@ def test_enabled_role_requires_relay_pins_in_the_receiver_contract(
         version="3.15.1", urls=archive, sha256=digest,
         archive_members={"amd64": "prometheus", "arm64": "prometheus"},
     )
+    # A complete private mapping can omit the budget; zero would mean no limit in vmagent.
+    del role["relay_series_per_node"]
+    if series_per_node is not None:
+        role["relay_series_per_node"] = series_per_node
     if relay_pinned:
         role["relay"] = {
             "version": "v1.155.0", "urls": archive, "sha256": digest,
@@ -364,7 +486,8 @@ def test_enabled_role_requires_relay_pins_in_the_receiver_contract(
     assert result.returncode != 0
     assert "changed=0" in result.stdout
     # A pinned relay passes the receiver contract and stops at the next producer-scope check.
-    assert ("Enabled collector requires mode-matched alerting" in result.stdout) is relay_pinned
+    accepted = relay_pinned and series_per_node in (None, 2200)
+    assert ("Enabled collector requires mode-matched alerting" in result.stdout) is accepted
 
 
 def test_enabled_molecule_archive_matches_runtime_release_strip_contract() -> None:

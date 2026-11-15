@@ -36,7 +36,7 @@ systemd-analyze verify /etc/systemd/system/ripdpi-real-vps-awg-nat.service \
 
 ## Before you register a self-hosted runner
 
-`.github/workflows/real-vps-awg-nat.yml` targets a runner with the label `ripdpi-awg-vps` and runs as root on it. No such runner is registered while the local timer is the executor. This repository is public: a pull request from a fork can add its own workflow that selects the same label, and the `GITHUB_REF` guard inside the reviewed workflow does not apply to a workflow the fork supplies. Before you register the runner, set the repository's fork pull request approval to require approval for all outside collaborators, register the runner as ephemeral, and limit its sudoers entry to the fixed runner path. Remove the registration when the lane is not in use.
+`.github/workflows/real-vps-awg-nat.yml` targets a runner with the label `ripdpi-awg-vps` and runs as root on it. No such runner is registered while the local timer is the executor. This repository is public: a pull request from a fork can add its own workflow that selects the same label, and the `GITHUB_REF` guard inside the reviewed workflow does not apply to a workflow the fork supplies. The repository policy records fork pull request approval for all outside collaborators, and a repository test refuses a second workflow with a self-hosted label. Before you register the runner, run `make repository-policy-plan` and confirm that it plans no change to that approval setting, register the runner as ephemeral, and limit its sudoers entry to the fixed runner path. Remove the registration when the lane is not in use.
 
 ## What a PASS proves
 
