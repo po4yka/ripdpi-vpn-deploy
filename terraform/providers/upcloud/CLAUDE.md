@@ -4,6 +4,9 @@
 
 An explicit observer requires one encrypted 10 GB Archive backup volume at a separate device slot. VPN nodes retain zero extra observer storage. Independent filesystem and private-path admission remain guest checks, not Terraform success.
 
+The legacy listener set opens no AmneziaWG port: each instance has a generated
+port that only an explicit `public_listeners` entry opens.
+
 REALITY alternate listeners are opt-in: examples and the legacy listener set
 only declare the primary port. An enabled `xray_fallback_port` also requires an
 explicit matching `public_listeners` entry; runtime/provider parity stays strict.

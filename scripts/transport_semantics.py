@@ -15,6 +15,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import sys
 from urllib.parse import urlsplit
 
@@ -117,7 +118,11 @@ def source_errors(raw: dict, source: dict, path: str) -> list[tuple[str, str]]:
 
 INTERFACE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,14}\Z")
 PLACEHOLDER = re.compile(r"REPLACE_WITH_[A-Z0-9_]+\Z")
+# Published fallback and example set: staging and fixtures may keep it, production refuses it.
 AWG_PARAMETERS = {"jc": 4, "jmin": 40, "jmax": 70, "s1": 50, "s2": 100}
+AWG_PUBLISHED_PORT = 51820
+# Generated ports stay above the default listeners and below the Linux ephemeral range.
+AWG_PORT_RANGE = (20000, 32767)
 AWG_MTU_MIN, AWG_MTU_MAX, AWG_MTU_DEFAULT = 1280, 1420, 1420
 MAX_INPUT_BYTES = 4 * 1024 * 1024
 EGRESS_CREDENTIALS = (
@@ -651,6 +656,19 @@ def parameter_errors(raw: dict, path: str, *, allow_placeholders: bool = False) 
     return errors
 
 
+def generate_awg_shape() -> dict:
+    """Draw one instance's junk, padding and port values; never the published set."""
+    def draw(low: int, high: int) -> int:
+        return low + secrets.randbelow(high - low + 1)
+
+    while True:
+        jmin = draw(20, 80)
+        shape = {"jc": draw(3, 8), "jmin": jmin, "jmax": jmin + draw(20, 200), "s1": draw(15, 150), "s2": draw(15, 150)}
+        # Equal initiation (148 + S1) and response (92 + S2) sizes are refused by admission: draw again.
+        if shape != AWG_PARAMETERS and 148 + shape["s1"] != 92 + shape["s2"]:
+            return {"listen_port": draw(*AWG_PORT_RANGE), **shape}
+
+
 def awg_dns_valid(value):
     if not isinstance(value, list) or not 1 <= len(value) <= 4:
         return False
@@ -686,7 +704,8 @@ def effective_awg_instances(raw: object, defaults: object = None, cohort: object
 
 
 def awg_errors(raw: object, defaults: object = None, cohort: object = None, *,
-               allow_placeholders: bool = False, source: dict | None = None) -> list[tuple[str, str]]:
+               allow_placeholders: bool = False, source: dict | None = None,
+               production: bool = False) -> list[tuple[str, str]]:
     if not isinstance(raw, dict):
         return [("amneziawg_secrets", "must be a mapping")]
     defaults = defaults if isinstance(defaults, dict) else {}
@@ -726,6 +745,14 @@ def awg_errors(raw: object, defaults: object = None, cohort: object = None, *,
                 errors.append(("amneziawg_secrets.instances", "duplicate listen_port"))
             else:
                 ports.add(port)
+        if production:
+            migrate = ("replace it with generated values (scripts/transport_semantics.py --generate-awg-shape), "
+                       "open the new port in public_listeners, deploy, then redeliver every device configuration: "
+                       "docs/reference/awg-cohorts.md")
+            if port == AWG_PUBLISHED_PORT:
+                errors.append((f"{path}.listen_port", "production refuses the WireGuard default port; " + migrate))
+            if all(item.get(name) == value for name, value in AWG_PARAMETERS.items()):
+                errors.append((path, "production refuses the published junk and padding value set; " + migrate))
         for field, version in (("address_v4", 4), ("address_v6", 6)):
             if field not in item:
                 errors.append((f"{path}.{field}", "both server address families are required"))
@@ -919,7 +946,8 @@ def transport_errors(doc: object, context: object = None, *, sections: list[str]
             or ("hysteria" in sections and isinstance(vpn, dict) and vpn.get("enable_nginx_xhttp", False))):
         errors.extend(xhttp_errors(doc, context))
     if "awg" in sections:
-        errors.extend(awg_errors(doc.get("amneziawg_secrets"), context.get("amneziawg"), context.get("amneziawg_cohort"), allow_placeholders=allow_placeholders, source=doc))
+        errors.extend(awg_errors(doc.get("amneziawg_secrets"), context.get("amneziawg"), context.get("amneziawg_cohort"), allow_placeholders=allow_placeholders, source=doc,
+                                 production=context.get("env") == "prod"))
 
     if "hysteria" in sections:
         errors.extend(hysteria_errors(doc.get("hysteria"), context.get("public_site_canonical_url")))
@@ -986,7 +1014,13 @@ def selected_context(context: object, sections: list[str] | None) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--section", action="append", choices=("xray", "xhttp", "awg", "hysteria", "egress", "mtg"))
+    parser.add_argument("--generate-awg-shape", action="store_true",
+                        help="Print generated listen_port, jc, jmin, jmax, s1 and s2 for one new instance as YAML.")
     args = parser.parse_args()
+    if args.generate_awg_shape:
+        for name, value in generate_awg_shape().items():
+            print(f"{name}: {value}")
+        return 0
     try:
         payload = sys.stdin.buffer.read(MAX_INPUT_BYTES + 1)
         if len(payload) > MAX_INPUT_BYTES:

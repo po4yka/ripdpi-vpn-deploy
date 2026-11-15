@@ -2,7 +2,7 @@
 id: ANS-1794729221714172
 title: Randomise the AmneziaWG wire shape and listen port per instance
 kind: bug
-status: backlog
+status: doing
 area: ansible
 priority: high
 risk: high
@@ -23,6 +23,6 @@ Every production AmneziaWG instance has generated junk, padding and port values 
 ## Acceptance criteria
 
 - Instance creation writes generated `jc`, `jmin`, `jmax`, `s1` and `s2` values that satisfy the existing parameter relationships.
-- Strict validation refuses a production instance that omits one of these values or that has the committed example value set; a staging document still validates.
+- Every secrets document must state the five values; strict validation and transport admission refuse a production instance that has the committed example value set, and a staging document with that set still validates.
 - On production the AmneziaWG role refuses any header value from 1 to 4 without a recorded measurement.
 - Production validation refuses the WireGuard default port, and the provider legacy listener list opens no AmneziaWG port.

@@ -14,9 +14,11 @@ PROVIDERS = ("upcloud", "hetzner", "vultr", "scaleway")
 EXPECTED_FIXED_LISTENERS = [
     ('"xray"', '"tcp"', "443"),
     ('"public-site-http"', '"tcp"', "80"),
-    ('"amneziawg"', '"udp"', "51820"),
     ('"hysteria"', '"udp"', "443"),
 ]
+# The legacy set opens no AmneziaWG port. The examples show the published
+# example port, which production validation refuses, as the entry to replace.
+EXAMPLE_AMNEZIAWG_LISTENER = ('"amneziawg"', '"udp"', "51820")
 
 _ENTRY = re.compile(
     r'\{\s*name\s*=\s*(?P<name>"[^"]+")\s*,\s*protocol\s*=\s*(?P<protocol>"[^"]+")\s*,'
@@ -64,6 +66,7 @@ def test_nginx_xhttp_listener_port_matches_ansible_default() -> None:
 def test_explicit_provider_examples_include_every_default_runtime_listener() -> None:
     expected = set(EXPECTED_FIXED_LISTENERS)
     expected.add(('"nginx-xhttp"', '"tcp"', "8443"))
+    expected.add(EXAMPLE_AMNEZIAWG_LISTENER)
     for provider in PROVIDERS:
         for environment in ("staging", "prod"):
             path = REPO_ROOT / f"terraform/providers/{provider}/environments/{environment}.tfvars.example"

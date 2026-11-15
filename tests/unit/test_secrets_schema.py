@@ -165,14 +165,14 @@ def filled():
         "amneziawg_go_commit": "2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf",
         "amneziawg_tools_version": "v1.0.20241018",
         "amneziawg_tools_commit": "c0b400c6dfc046f5cae8f3051b14cb61686fcf55",
-        "amneziawg_secrets": {"instances": [{"wire_profile": "awg-3.1-ranges-v1", "name": "awg0", "listen_port": 51820,
+        "amneziawg_secrets": {"instances": [{"wire_profile": "awg-3.1-ranges-v1", "name": "awg0", "listen_port": 23817,
             "address_v4": "10.66.66.1/24", "address_v6": "fd42:42:42::1/64",
             "server_private_key": base64.b64encode(bytes([8]) * 32).decode(),
-            "jc": 4,
-            "jmin": 40,
-            "jmax": 70,
-            "s1": 50,
-            "s2": 100,
+            "jc": 5,
+            "jmin": 31,
+            "jmax": 118,
+            "s1": 37,
+            "s2": 121,
             "h1": '1234567890',
             "h2": '2345678901',
             "h3": '3456789012',
@@ -1172,3 +1172,27 @@ def test_panel_only_schema_excludes_notification_credentials_and_delivery(filled
     elif case == 'primary-bot': document['observability_secrets']['telegram'] = {'bot_token': 'b'*32, 'chat_id': '123456789', 'relay_auth_token': 'a'*64}
     errors = list(jsonschema.Draft202012Validator(json.loads(SCHEMA.read_text())).iter_errors(document))
     assert bool(errors) is (case != 'panel')
+
+
+PUBLISHED_AWG_SET = {"jc": 4, "jmin": 40, "jmax": 70, "s1": 50, "s2": 100}
+
+
+@pytest.mark.parametrize(("change", "location"), [
+    ({"listen_port": 51820}, "amneziawg_secrets.instances.0.listen_port: production refuses the WireGuard default port"),
+    (PUBLISHED_AWG_SET, "amneziawg_secrets.instances.0: production refuses the published junk and padding value set"),
+], ids=["wireguard-default-port", "published-value-set"])
+def test_strict_production_refuses_published_awg_values_and_staging_keeps_them(filled, tmp_path, change, location):
+    filled["amneziawg_secrets"]["instances"][0].update(change)
+    production = _validate_cli(filled, tmp_path)
+    assert production.returncode == 1
+    assert location in production.stderr and "then redeliver every device configuration" in production.stderr
+    staging = _validate_cli_with_selector(filled, tmp_path, enabled=False)
+    assert staging.returncode == 0, staging.stderr
+
+
+@pytest.mark.parametrize("key", ["jc", "jmin", "jmax", "s1", "s2", "listen_port"])
+def test_every_document_requires_explicit_awg_shape_values(filled, tmp_path, key):
+    del filled["amneziawg_secrets"]["instances"][0][key]
+    result = _validate_cli(filled, tmp_path)
+    assert result.returncode == 1
+    assert "amneziawg_secrets.instances.0: failed required constraint" in result.stderr

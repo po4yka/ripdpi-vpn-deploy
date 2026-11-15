@@ -77,7 +77,7 @@ run "legacy_listener_surface_has_no_reality_alternate" {
   }
 
   assert {
-    condition = length(output.public_listeners) == 5 && alltrue([
+    condition = length(output.public_listeners) == 4 && alltrue([
       for listener in output.public_listeners : listener.port != 2053
     ])
     error_message = "The legacy default must not implicitly expose an alternate REALITY port."

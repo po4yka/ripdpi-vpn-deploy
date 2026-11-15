@@ -10,9 +10,9 @@ Every production AmneziaWG instance has generated junk, padding and port values 
 
 ## Execution
 
-- [ ] ANS-1794729302489703 Generate junk and padding values per instance and refuse implicit or published values on production #bug !high @item:ANS-1794729221714172
-- [ ] ANS-1794729321608732 Refuse WireGuard message types as header values on production #bug !high @item:ANS-1794729221714172
-- [ ] ANS-1794729336937986 Generate the listen port and open it only from the listener contract #bug !high @item:ANS-1794729221714172
+- [x] ANS-1794729302489703 Generate junk and padding values per instance and refuse implicit or published values on production #bug !high @item:ANS-1794729221714172
+- [x] ANS-1794729321608732 Refuse WireGuard message types as header values on production #bug !high @item:ANS-1794729221714172
+- [x] ANS-1794729336937986 Generate the listen port and open it only from the listener contract #bug !high @item:ANS-1794729221714172
 
 ## Verification
 

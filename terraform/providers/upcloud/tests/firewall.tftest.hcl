@@ -442,3 +442,41 @@ run "disabled_provider_filter_does_not_constrain_nat" {
     error_message = "Disabled provider filtering must preserve ordinary NAT port selection."
   }
 }
+
+run "legacy_listener_set_opens_no_amneziawg_port" {
+  command = plan
+
+  variables {
+    enable_hysteria             = true
+    public_listeners            = []
+    use_legacy_public_listeners = true
+  }
+
+  assert {
+    condition = length(output.public_listeners) > 0 && alltrue([
+      for listener in output.public_listeners :
+      listener.name != "amneziawg" && (listener.protocol != "udp" || listener.port == 443)
+    ])
+    error_message = "The legacy listener set must open no AmneziaWG port; public_listeners names the instance port"
+  }
+}
+
+run "listener_contract_names_the_amneziawg_instance_port" {
+  command = plan
+
+  variables {
+    public_listeners = [
+      { name = "xray", protocol = "tcp", port = 443 },
+      { name = "amneziawg", protocol = "udp", port = 23817 },
+    ]
+  }
+
+  assert {
+    condition = length([
+      for listener in output.public_listeners : listener if listener.protocol == "udp"
+      ]) == 1 && alltrue([
+      for listener in output.public_listeners : listener.port == 23817 if listener.protocol == "udp"
+    ])
+    error_message = "The listener contract must carry exactly the declared AmneziaWG UDP port"
+  }
+}

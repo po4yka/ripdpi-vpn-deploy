@@ -11,7 +11,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from transport_semantics import awg_errors, cohort_errors, hysteria_errors, transport_errors
+import transport_semantics
+from transport_semantics import awg_errors, cohort_errors, generate_awg_shape, hysteria_errors, transport_errors
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/transport_semantics.py"
@@ -336,3 +337,79 @@ def test_native_acme_listener_conflict_requires_both_active_transports(nginx_ena
         'enable_nginx_xhttp': nginx_enabled, 'enable_hysteria': hysteria_enabled}}, sections=['hysteria'])
     conflict = ('hysteria.acme', 'native HTTP-01 requires its own public TCP/80 listener')
     assert (conflict in errors) is (nginx_enabled and hysteria_enabled)
+
+
+GENERATED_SHAPE = {"listen_port": 23817, "jc": 5, "jmin": 31, "jmax": 118, "s1": 37, "s2": 121}
+
+
+def test_generated_awg_shapes_are_bounded_admitted_and_distinct():
+    shapes = [generate_awg_shape() for _ in range(200)]
+    for shape in shapes:
+        assert list(shape) == ["listen_port", "jc", "jmin", "jmax", "s1", "s2"]
+        assert 20000 <= shape["listen_port"] <= 32767
+        assert 3 <= shape["jc"] <= 8 and 20 <= shape["jmin"] <= 80
+        assert shape["jmin"] + 20 <= shape["jmax"] <= shape["jmin"] + 200
+        assert 15 <= shape["s1"] <= 150 and 15 <= shape["s2"] <= 150
+        assert 148 + shape["s1"] != 92 + shape["s2"]
+        assert not awg_errors({"instances": [{**awg(), **shape}]}, production=True)
+    assert len({tuple(shape.values()) for shape in shapes}) >= 199
+
+
+def test_generator_draws_again_after_equal_sizes_and_after_the_published_set(monkeypatch):
+    # Offsets in draw order jmin, jc, jmax - jmin, s1, s2: equal sizes (207 bytes), the published set, then minima.
+    offsets = iter([0, 0, 0, 44, 100, 20, 1, 10, 35, 85, 0, 0, 0, 0, 0, 0])
+    monkeypatch.setattr(transport_semantics.secrets, "randbelow", lambda _bound: next(offsets))
+    assert generate_awg_shape() == {"listen_port": 20000, "jc": 3, "jmin": 20, "jmax": 40, "s1": 15, "s2": 15}
+    assert next(offsets, None) is None
+
+
+def test_generator_cli_prints_one_yaml_mapping():
+    result = subprocess.run([sys.executable, str(SCRIPT), "--generate-awg-shape"], capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0 and not result.stderr
+    shape = yaml.safe_load(result.stdout)
+    assert not awg_errors({"instances": [{**awg(), **shape}]}, production=True)
+
+
+@pytest.mark.parametrize(("change", "refused"), [
+    ({}, ["amneziawg_secrets.instances.0.listen_port", "amneziawg_secrets.instances.0"]),
+    ({"listen_port": 23817}, ["amneziawg_secrets.instances.0"]),
+    ({"jc": 5, "jmin": 31, "jmax": 118, "s1": 37, "s2": 121}, ["amneziawg_secrets.instances.0.listen_port"]),
+    ({"listen_port": 23817, "s2": 101}, []),
+    (GENERATED_SHAPE, []),
+], ids=["published-port-and-set", "published-set", "published-port", "one-value-differs", "generated"])
+def test_production_refuses_the_published_port_and_value_set(change, refused):
+    raw = {**awg(), **change}
+    assert not awg_errors({"instances": [raw]})
+    assert not transport_errors({"amneziawg_secrets": {"instances": [raw]}}, {"env": "staging"})
+    errors = transport_errors({"amneziawg_secrets": {"instances": [raw]}}, {"env": "prod"})
+    assert [path for path, _ in errors] == refused
+    assert all("then redeliver every device configuration" in message for _, message in errors)
+
+
+def test_production_refuses_the_implicit_fallback_but_admits_a_cohort_set():
+    raw = {key: value for key, value in awg().items() if key not in ("jc", "jmin", "jmax", "s1", "s2")}
+    raw["listen_port"] = 23817
+    document = {"instances": [raw]}
+    assert not awg_errors(document)
+    assert [path for path, _ in awg_errors(document, production=True)] == ["amneziawg_secrets.instances.0"]
+    cohort = {"jc": 4, "jmin": 10, "jmax": 50, "s1": 0, "s2": 0}
+    assert not awg_errors(document, None, cohort, production=True)
+
+
+@pytest.mark.parametrize(("env", "accepted"), [("prod", False), ("staging", True), (None, True)])
+def test_actual_controller_preflight_applies_production_awg_rules(tmp_path, env, accepted):
+    marker = tmp_path / "mutation"
+    variables = {"ansible_python_interpreter": sys.executable, "role_path": str(ROOT / "ansible/roles/amneziawg"),
+                 "transport_input_sections": ["awg"], "amneziawg_secrets": {"instances": [awg()]},
+                 "vpn": {"enable_xray_reality": False, "enable_hysteria": False, "enable_amneziawg": True}}
+    if env:
+        variables["env"] = env
+    play = tmp_path / "preflight.yml"
+    play.write_text(yaml.safe_dump([{
+        "hosts": "localhost", "connection": "local", "gather_facts": False, "become": False, "vars": variables,
+        "tasks": [{"ansible.builtin.import_tasks": str(ROOT / "ansible/playbooks/tasks/transport-input-preflight.yml")},
+                  {"name": "Publish mutation marker", "ansible.builtin.copy": {"dest": str(marker), "content": "mutated"}}],
+    }]))
+    result = subprocess.run(["ansible-playbook", "-i", "localhost,", str(play)], capture_output=True, text=True, timeout=30)
+    assert (result.returncode == 0) is accepted, result.stdout + result.stderr
+    assert marker.exists() is accepted

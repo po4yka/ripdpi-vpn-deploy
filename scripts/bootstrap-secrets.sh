@@ -46,7 +46,8 @@ usage: $0 --target HOST:PORT --server-name HOST [options]
 
 Generates: age key (if missing), REALITY x25519 keypair, per-client
 UUIDs and 8-hex shortIds, restic password, AmneziaWG server key, four
-random H1..H4 singleton strings. Writes plaintext + SOPS-encrypted output to
+random H1..H4 singleton strings, and a generated AmneziaWG listen port with
+junk and padding values. Writes plaintext + SOPS-encrypted output to
 ~/.config/vpn-provision/.
 USAGE
   exit 1
@@ -245,6 +246,9 @@ H1="$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')"
 H2="$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')"
 H3="$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')"
 H4="$(od -An -N4 -tu4 /dev/urandom | tr -d ' ')"
+# Generated listen port, junk and padding values, indented for the instance block.
+AWG_SHAPE="$(python3 "$REPO_ROOT/scripts/transport_semantics.py" --generate-awg-shape | sed 's/^/      /')"
+[[ -n "$AWG_SHAPE" ]] || { echo "could not generate the AmneziaWG wire shape" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
 # Restic password
@@ -387,15 +391,10 @@ amneziawg_tools_commit: "${AWG_TOOLS_COMMIT}"
 amneziawg_secrets:
   instances:
     - name: awg0
-      listen_port: 51820
+${AWG_SHAPE}
       address_v4: "10.66.66.1/24"
       address_v6: "fd42:42:42::1/64"
       server_private_key: "${AWG_SERVER_PRIV}"
-      jc: 4
-      jmin: 40
-      jmax: 70
-      s1: 50
-      s2: 100
       wire_profile: awg-3.1-ranges-v1
       h1: "${H1}"
       h2: "${H2}"
