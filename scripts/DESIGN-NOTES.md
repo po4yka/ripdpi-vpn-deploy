@@ -305,7 +305,7 @@ semantic and exact-node cross-link validation without probes or writes; a
 multi-node controller must validate every split private config before the first
 readiness or convergence call.
 
-**Sentinel transport is separate from host identity** — an optional `ssh_transport_host` selects the directly reachable address while the required paired `ssh_host_key_alias` preserves pinned-key verification. This path disables inherited proxy and multiplexing options so a stale alias route cannot make healthy protocol evidence disappear.
+**Sentinel transport is separate from host identity** — an optional `ssh_transport_host` selects the directly reachable address while the required paired `ssh_host_key_alias` preserves pinned-key verification. This path disables inherited proxy and multiplexing options so a stale alias route cannot make healthy protocol evidence disappear. `cloud_promotion_scope` admits either the state-derived public address or a Tailnet address (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) as that transport. A Tailnet route must pin the inventory alias, and its key must equal the key pinned for the public address, so the managed server stays bound to its Terraform state when the operator's public source is not admitted.
 
 **Endpoint variants are probed independently** — sentinel sing-box configs bind one loopback inbound per emitted endpoint, probe the variants concurrently within one bounded stage, preserve redacted per-variant verdicts, and collapse them into one logical profile verdict only after every variant is observed. A profile is alive when any endpoint succeeds; all variants must be blocked before the profile can contribute blocking evidence. Never put `urltest` startup selection in the measurement path.
 

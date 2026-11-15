@@ -14,6 +14,9 @@ from recovery_io import ROOT, document, module, read
 PROVIDERS = {'upcloud': ('upcloud_server', 'hostname'),
              'scaleway': ('scaleway_instance_server', 'name'),
              'vultr': ('vultr_instance', 'label')}
+# Tailscale node address ranges. 100.64.0.0/10 is shared CGNAT space too; the pinned
+# host-key check, not the range, proves which server answers.
+TAILNET_NETWORKS = (ipaddress.ip_network('100.64.0.0/10'), ipaddress.ip_network('fd7a:115c:a1e0::/48'))
 ROW_FIELDS = {'provider', 'environment', 'inventory_alias', 'server_id', 'state_sha256'}
 FIELDS = {'schema_version', 'source_revision', 'target', 'sentinel', 'state_directory',
           'sops_file', 'age_key_file', 'cleanup_manifest', 'sentinel_known_hosts', 'sentinel_identity'}
@@ -88,15 +91,28 @@ def _sentinel(value, manifest, server, environment):
     import install_liveness_sentinel as installer
     from fleet_inspection import InspectionError, ssh_command
     sentinel = value['liveness']['sentinels'][0]
+    port = server['ssh_port']
+
+    def pinned(entry):
+        return entry if port == 22 else f'[{entry}]:{port}'
+
     address = server['public_ipv4'][0]
-    alias = address if server['ssh_port'] == 22 else f"[{address}]:{server['ssh_port']}"
-    if (sentinel.get('vantage') != 'external' or sentinel.get('ssh_transport_host') != address
-            or sentinel.get('ssh_host_key_alias') != alias):
+    transport = sentinel.get('ssh_transport_host')
+    # Management SSH may use the sentinel's Tailnet address. The probe vantage stays external.
+    pin_name = address if transport == address else manifest['sentinel']['inventory_alias']
+    if transport != address:
+        try:
+            if not isinstance(transport, str) or not any(ipaddress.ip_address(transport) in network for network in TAILNET_NETWORKS):
+                raise ValueError
+        except (TypeError, ValueError):
+            raise ValueError('cloud-sentinel-transport-refused') from None
+    alias = pinned(pin_name)
+    if sentinel.get('vantage') != 'external' or sentinel.get('ssh_host_key_alias') != alias:
         raise ValueError
     pins = Path(manifest['sentinel_known_hosts'])
     key = Path(manifest['sentinel_identity'])
-    host = {'name': manifest['sentinel']['inventory_alias'], 'alias': address, 'transport': address,
-            'address': address, 'port': server['ssh_port'], 'user': server['admin_user'], 'key': str(key)}
+    host = {'name': manifest['sentinel']['inventory_alias'], 'alias': pin_name, 'transport': transport,
+            'address': transport, 'port': port, 'user': server['admin_user'], 'key': str(key)}
     # Apply the same strict source boundary as ordinary fleet inspection.
     try:
         strict = ssh_command(host, pins)
@@ -111,14 +127,21 @@ def _sentinel(value, manifest, server, environment):
         settings.setdefault(name, []).append(text)
     if len(settings.get('identityfile', [])) == 1:
         settings['identityfile'] = [str(Path(settings['identityfile'][0]).expanduser().absolute())]
-    expected = {'hostname': address, 'hostkeyalias': alias, 'user': host['user'],
+    expected = {'hostname': transport, 'hostkeyalias': alias, 'user': host['user'],
                 'port': str(host['port']), 'identityfile': str(key), 'userknownhostsfile': str(pins),
                 'identitiesonly': 'yes', 'identityagent': 'none', 'globalknownhostsfile': '/dev/null'}
     if any(settings.get(name) != [text] for name, text in expected.items()):
         raise ValueError
-    found = installer._run(['ssh-keygen', '-F', alias, '-f', str(pins)], environment=clean)
-    keys = {tuple(line.split()[1:3]) for line in found.decode().splitlines() if not line.startswith('#')}
+
+    def keys_for(entry):
+        found = installer._run(['ssh-keygen', '-F', entry, '-f', str(pins)], environment=clean)
+        return {tuple(line.split()[1:3]) for line in found.decode().splitlines() if not line.startswith('#')}
+
+    keys = keys_for(alias)
     if len(keys) != 1 or next(iter(keys))[0] != 'ssh-ed25519':
+        raise ValueError
+    # A Tailnet route proves the managed server only through the key pinned for its state address.
+    if pin_name != address and keys_for(pinned(address)) != keys:
         raise ValueError
     fingerprint = hashlib.sha256(base64.b64decode(next(iter(keys))[1], validate=True)).hexdigest()
     probe = 'python3 -I -B -S -c ' + shlex.quote(SENTINEL_PROBE)

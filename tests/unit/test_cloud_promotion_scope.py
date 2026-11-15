@@ -209,6 +209,66 @@ def test_nondefault_sentinel_port_uses_one_canonical_pin_alias(cloud):
     assert observed['sentinel_identity']['hostname'] == 'node-b'
 
 
+def _tailnet_route(value, manifest, settings, address):
+    pins = Path(manifest['sentinel_known_hosts'])
+    pins.write_text(pins.read_text().replace('8.8.8.8 ', 'node-b,8.8.8.8 '))
+    value['liveness']['sentinels'][0].update(ssh_transport_host=address, ssh_host_key_alias='node-b')
+    settings.update(hostname=address, hostkeyalias='node-b')
+
+
+@pytest.mark.parametrize('address', ['100.101.102.103', 'fd7a:115c:a1e0::1'])
+def test_tailnet_route_reaches_the_sentinel_pinned_for_its_state_address(cloud, address):
+    value, manifest, _, settings, _, calls = cloud
+    _tailnet_route(value, manifest, settings, address)
+    assert scope.scope(value, {})[1]['sentinel_identity']['hostname'] == 'node-b'
+    probe = calls[-1]
+    assert address in probe and 'HostKeyAlias=node-b' in probe and '8.8.8.8' not in probe
+
+
+@pytest.mark.parametrize('fault', ['public-alias', 'other-pin'])
+def test_tailnet_route_refuses_an_unbound_identity(cloud, fault):
+    value, manifest, _, settings, _, _ = cloud
+    _tailnet_route(value, manifest, settings, '100.101.102.103')
+    sentinel = value['liveness']['sentinels'][0]
+    pins = Path(manifest['sentinel_known_hosts'])
+    if fault == 'public-alias':
+        sentinel['ssh_host_key_alias'] = '8.8.8.8'
+    else:
+        other = pins.parent / 'other'
+        subprocess.run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', str(other)], check=True, capture_output=True)
+        key = ' '.join(other.with_suffix('.pub').read_text().split()[:2])
+        pins.write_text(pins.read_text().replace('node-b,8.8.8.8 ', 'node-b ') + f'8.8.8.8 {key}\n')
+    with pytest.raises(ValueError):
+        scope.scope(value, {})
+
+
+@pytest.mark.parametrize('transport', ['9.9.9.9', '127.0.0.1', 1684300900, None])
+def test_transport_outside_the_state_address_and_tailnet_refuses_before_ssh(cloud, transport):
+    value, manifest, _, settings, _, calls = cloud
+    _tailnet_route(value, manifest, settings, '100.101.102.103')
+    value['liveness']['sentinels'][0]['ssh_transport_host'] = transport
+    settings['hostname'] = str(transport)
+    with pytest.raises(ValueError, match='cloud-sentinel-transport-refused'):
+        scope.scope(value, {})
+    assert calls == []
+
+
+def test_tailnet_route_on_a_nondefault_port_checks_the_bracketed_pins(cloud):
+    value, manifest, path, settings, _, calls = cloud
+    state_path = scope.ROOT / 'terraform/providers/scaleway/terraform.tfstate.d/p1-node/terraform.tfstate'
+    data = json.loads(state_path.read_bytes())
+    data['outputs']['ssh_port']['value'] = 2222
+    state_path.write_bytes(canonical(data))
+    manifest['sentinel']['state_sha256'] = hashlib.sha256(state_path.read_bytes()).hexdigest()
+    path.write_bytes(canonical(manifest))
+    pins = Path(manifest['sentinel_known_hosts'])
+    pins.write_text(pins.read_text().replace('8.8.8.8 ', '[node-b]:2222,[8.8.8.8]:2222 '))
+    value['liveness']['sentinels'][0].update(ssh_transport_host='100.101.102.103', ssh_host_key_alias='[node-b]:2222')
+    settings.update(hostname='100.101.102.103', hostkeyalias='[node-b]:2222', port='2222')
+    assert scope.scope(value, {})[1]['sentinel_identity']['hostname'] == 'node-b'
+    assert [c[2] for c in calls if c[0] == 'ssh-keygen'] == ['[node-b]:2222', '[8.8.8.8]:2222']
+
+
 def test_source_errors_are_categorical_before_any_ssh(cloud, monkeypatch):
     value, _, _, _, _, calls = cloud
     class SourceError(Exception):
