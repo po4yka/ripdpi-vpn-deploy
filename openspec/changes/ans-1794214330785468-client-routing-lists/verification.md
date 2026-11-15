@@ -4,14 +4,14 @@ change: ans-1794214330785468-client-routing-lists
 commit_sha: null
 local: passed
 local_evidence: On the working tree over 066bc817, tests/unit/test_routing_lists_refresh.py passes 40 tests, including the admission refusals, generation retention and the rendered nginx route. An offline run admitted a real feed. Local subscription-host Molecule fails at the shared nginx publication step on this Mac with the feature disabled as well, so that scenario relies on CI.
-remote_ci: required
-remote_ci_evidence: null
-dry_run: required
-dry_run_evidence: null
+remote_ci: passed
+remote_ci_evidence: PR CI passed for each change to the feature (PRs 548, 551 and 605), and main CI run 43687588270 passed on fd5d4e03, the commit that added deny-list block rules.
+dry_run: passed
+dry_run_evidence: On 2026-11-15 the production node-b dry-run at da6fb86d passed with 5 changed and 0 failed tasks, including the routing list refresher and its policy.
 staging: required
 staging_evidence: null
-live: required
-live_evidence: null
+live: passed
+live_evidence: On 2026-11-15 the node-b deploy at da6fb86d passed deploy, verify, source-drift, security-verify, smoke-test and protocol-liveness. The served profile.json lists the 6 expected deny-listed domains in BlockSites, an empty BlockIp, RouteOrder block-proxy-direct and a newer LastUpdated.
 client: required
 client_evidence: null
 artifact: required
