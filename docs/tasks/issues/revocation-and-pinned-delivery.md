@@ -2,7 +2,7 @@
 id: SEC-1794728936979277
 title: Keep revoked devices revoked and bind secret delivery to pinned hosts
 kind: bug
-status: doing
+status: review
 area: security
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: sec-1794728936979277-revocation-and-pinned-delivery
 created: 2026-11-15
 updated: 2026-11-15
 related_tasks: []
+status_detail: Implemented in 545221f8; remote CI, dry-run, staging and live evidence pending
 ---
 
 ## Goal
