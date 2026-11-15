@@ -2,7 +2,8 @@
 id: ANS-1794729221714172
 title: Randomise the AmneziaWG wire shape and listen port per instance
 kind: bug
-status: doing
+status: review
+status_detail: Implemented in 99ad4837; remote CI, Molecule, dry-run, live and client evidence pending
 area: ansible
 priority: high
 risk: high
