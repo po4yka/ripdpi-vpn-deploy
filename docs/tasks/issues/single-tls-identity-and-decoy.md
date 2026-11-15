@@ -2,7 +2,7 @@
 id: XRY-1794729068388916
 title: Give each node one TLS identity and an operator-owned decoy
 kind: bug
-status: doing
+status: review
 area: xray-config
 priority: high
 risk: high
