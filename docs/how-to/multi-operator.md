@@ -53,8 +53,9 @@ The transport-host file carries everything else. The Ansible play loads the righ
 2. Copy `secrets/.sops.yaml.example` to `~/.config/vpn-provision/.sops.yaml` and replace the placeholders with real recipients per scope.
 3. Re-encrypt existing blobs:
    ```bash
-   for f in ~/.config/vpn-provision/*.sops.yaml; do sops updatekeys -y "$f"; done
+   for f in ~/.config/vpn-provision/*.sops.yaml; do sops updatekeys -y "$f" && sops rotate --in-place "$f"; done
    ```
+   `sops updatekeys` alone keeps the data key, so a removed recipient could still decrypt every later version. `scripts/rotate-secrets.sh` runs both steps for one file and restores the file when either step fails.
 4. Verify each operator can decrypt only what they should:
    ```bash
    # As subscription-operator with no prod recipient:

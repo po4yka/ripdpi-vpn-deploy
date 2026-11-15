@@ -1,0 +1,42 @@
+[Unit]
+Description=VPN subscription payload fetch (pull from the build worker as the mirror user)
+Documentation=https://github.com/po4yka/vpn-deploy/blob/main/docs/how-to/subscription-host-separation.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# A user of its own: it holds the mirror credentials, and the delivery service
+# user cannot read them. vpn-sub-mirror.service publishes what this unit fetched.
+User=vpn-sub-mirror
+Group=vpn-sub-mirror
+ExecStart=/usr/local/bin/vpn-sub-mirror-fetch.sh
+# A stalled build worker must not hold the publisher's start job open: the timer
+# does not fire again while this unit is still starting.
+TimeoutStartSec=15min
+# restic keeps its index cache here; the mirror user has no home directory.
+CacheDirectory=vpn-sub-mirror
+Environment=RESTIC_CACHE_DIR=/var/cache/vpn-sub-mirror
+
+# Hardening — mirrors vpn-bootstrap.service.j2. MemoryDenyWriteExecute is
+# intentionally omitted: rsync/ssh (and optionally restic) may map
+# writable+executable pages on some libc builds.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/vpn-sub-mirror
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=yes
+LockPersonality=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+# Keep resource mutations denied except rsync's startup setrlimit call. The
+# default seccomp action is SIGSYS, so denying that call prevents every pull.
+SystemCallFilter=~@privileged @resources
+SystemCallFilter=setrlimit

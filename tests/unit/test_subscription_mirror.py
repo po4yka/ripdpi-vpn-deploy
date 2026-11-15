@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import runpy
 import subprocess
@@ -12,6 +13,8 @@ from pathlib import Path
 
 import pytest
 import yaml
+
+from scripts.template_render import render_fragment, template_environment
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location(
@@ -25,6 +28,14 @@ MIRROR_HELPER = (
 BOOTSTRAP_HELPER = (
     REPO_ROOT / "ansible/roles/subscription-host/templates/vpn-bootstrap.py.j2"
 )
+FETCH_SCRIPT = (
+    REPO_ROOT / "ansible/roles/subscription-host/templates/vpn-sub-mirror-fetch.sh.j2"
+)
+FETCH_UNIT = (
+    REPO_ROOT / "ansible/roles/subscription-host/templates/vpn-sub-mirror-fetch.service.j2"
+)
+# The one place the fetch unit writes and the publisher reads; tests point it at tmp_path.
+FETCHED = "/var/lib/vpn-sub-mirror/incoming"
 MIRROR_UNIT = (
     REPO_ROOT / "ansible/roles/subscription-host/templates/vpn-sub-mirror.service.j2"
 )
@@ -57,8 +68,10 @@ def _render_helper(tmp_path: Path, dest: Path, **mirror: str) -> Path:
             "mirror": {"backend": "rsync", **mirror},
         }
     )
+    # The publisher copies the tree that the fetch unit pulled; tests hand it a tree directly.
+    incoming = mirror.get("source", str(tmp_path / "incoming")).rstrip("/")
     helper = tmp_path / "vpn-sub-mirror.py"
-    helper.write_text(renderer.render_template(MIRROR_HELPER, variables))
+    helper.write_text(renderer.render_template(MIRROR_HELPER, variables).replace(FETCHED, incoming))
     helper.chmod(0o755)
     return helper
 
@@ -338,7 +351,7 @@ def test_unsafe_nested_staged_payload_refuses_before_pointer_publish(
     result = _run(helper)
 
     assert result.returncode != 0
-    assert "staged payload contains" in result.stderr
+    assert "fetched payload contains" in result.stderr
     assert not (dest / ".vpn-sub-mirror-current").exists()
     assert (dest / "sub/current").read_text() == "direct payload"
     assert (dest / "bootstrap/current").read_text() == "direct bootstrap"
@@ -391,33 +404,47 @@ def test_interrupted_pulled_stage_with_nonprivate_payload_modes_is_reclaimed(
     assert (_current_generation(dest) / "sub" / "payload").read_text() == "next:sub"
 
 
+def _render_fetch(tmp_path: Path, incoming: Path, **mirror: str) -> Path:
+    variables = renderer.merge_render_vars()
+    variables["subscription"].update({"mirror": mirror})
+    script = tmp_path / "vpn-sub-mirror-fetch.sh"
+    script.write_text(renderer.render_template(FETCH_SCRIPT, variables).replace(FETCHED, str(incoming)))
+    script.chmod(0o755)
+    return script
+
+
 @pytest.mark.parametrize("valid_layout", [True, False])
 def test_restic_layout_is_validated_before_generation_publish(
     tmp_path: Path, valid_layout: bool
 ) -> None:
     dest = _private_directory(tmp_path / "destination")
+    incoming = tmp_path / "fetched" / "incoming"
+    incoming.parent.mkdir()
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     restored = "sub/payload" if valid_layout else "unexpected/sub/payload"
     restic = fake_bin / "restic"
     restic.write_text(
         "#!/usr/bin/env bash\nset -euo pipefail\ntarget=\n"
+        '[ "$RESTIC_PASSWORD_FILE" = "$EXPECTED_PASSWORD_FILE" ]\n'
         'while [ "$#" -gt 0 ]; do if [ "$1" = --target ]; then target=$2; shift 2; else shift; fi; done\n'
         f'mkdir -p "$target/{Path(restored).parent}"\n'
         f'printf restored > "$target/{restored}"\n'
+        f'chmod 0600 "$target/{restored}"\n'
     )
     restic.chmod(0o755)
-    helper = _render_helper(
-        tmp_path,
-        dest,
-        backend="restic",
-        restic_repo="fixture-repository",
-        restic_snapshot_path="",
-        restic_password_file=str(tmp_path / "password"),
+    password = tmp_path / "password"
+    fetch = _render_fetch(
+        tmp_path, incoming, backend="restic", restic_repo="fixture-repository",
+        restic_snapshot_path="", restic_password_file=str(password),
     )
-    environment = os.environ | {"PATH": f"{fake_bin}:{os.environ['PATH']}"}
+    environment = os.environ | {"PATH": f"{fake_bin}:{os.environ['PATH']}", "EXPECTED_PASSWORD_FILE": str(password)}
+    fetched = subprocess.run(["bash", str(fetch)], capture_output=True, text=True, env=environment)
+    assert fetched.returncode == 0, fetched.stderr
+    # The delivery user reads the fetched tree through directory permissions, whatever the snapshot modes were.
+    assert (incoming / restored).stat().st_mode & 0o777 == 0o644
 
-    result = _run(helper, environment=environment)
+    result = _run(_render_helper(tmp_path, dest, source=str(incoming)))
 
     if valid_layout:
         assert result.returncode == 0, result.stderr
@@ -426,6 +453,54 @@ def test_restic_layout_is_validated_before_generation_publish(
         assert result.returncode != 0
         assert "unexpected root entry" in result.stderr
         assert not (dest / ".vpn-sub-mirror-current").exists()
+
+
+def test_fetch_replaces_the_tree_and_a_failed_pull_keeps_the_previous_one(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    _write_source(source, "first")
+    incoming = tmp_path / "fetched" / "incoming"
+    incoming.parent.mkdir()
+    fetch = _render_fetch(tmp_path, incoming, source=str(source) + "/")
+    assert subprocess.run(["bash", str(fetch)], capture_output=True, text=True).returncode == 0
+    assert (incoming / "sub/payload").read_text() == "first:sub"
+    (source / "sub/stale").write_text("removed upstream")
+    assert subprocess.run(["bash", str(fetch)], capture_output=True, text=True).returncode == 0
+    (source / "sub/stale").unlink()
+    _write_source(source, "second")
+    assert subprocess.run(["bash", str(fetch)], capture_output=True, text=True).returncode == 0
+    assert (incoming / "sub/payload").read_text() == "second:sub" and not (incoming / "sub/stale").exists()
+    assert {entry.name for entry in incoming.parent.iterdir()} == {"incoming"}
+
+    failing = _render_fetch(tmp_path, incoming, source=str(tmp_path / "missing") + "/")
+    assert subprocess.run(["bash", str(failing)], capture_output=True, text=True).returncode != 0
+    assert (incoming / "sub/payload").read_text() == "second:sub"
+
+
+def test_fetch_pins_the_worker_host_key_before_any_operator_option(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    rsync = fake_bin / "rsync"
+    rsync.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "$RSYNC_ARGV"\n')
+    rsync.chmod(0o755)
+    incoming = tmp_path / "fetched" / "incoming"
+    incoming.parent.mkdir()
+    fetch = _render_fetch(
+        tmp_path, incoming, source="build@worker.example:/payload/", ssh_opts="-p 2222",
+        ssh_key_path="/etc/vpn-subscription/mirror_ssh_key", ssh_known_hosts_path="/etc/vpn-subscription/mirror_known_hosts",
+    )
+    argv_file = tmp_path / "rsync-argv"
+    environment = os.environ | {"PATH": f"{fake_bin}:{os.environ['PATH']}", "RSYNC_ARGV": str(argv_file)}
+    assert subprocess.run(["bash", str(fetch)], capture_output=True, text=True, env=environment).returncode == 0
+    argv = argv_file.read_text().splitlines()
+    remote_shell = argv[argv.index("-e") + 1].split()
+    assert remote_shell[:5] == ["ssh", "-F", "/dev/null", "-i", "/etc/vpn-subscription/mirror_ssh_key"]
+    strict, extra = remote_shell.index("StrictHostKeyChecking=yes"), remote_shell.index("2222")
+    pinned = remote_shell.index("UserKnownHostsFile=/etc/vpn-subscription/mirror_known_hosts")
+    # ssh keeps the first value of an option, so the pinned ones precede the operator's.
+    assert strict < extra and pinned < extra
+    assert {"ForwardAgent=no", "KnownHostsCommand=none", "GlobalKnownHostsFile=/dev/null", "ConnectTimeout=10"} <= set(remote_shell)
+    assert "accept-new" not in " ".join(remote_shell)
+    assert argv[-2:] == ["build@worker.example:/payload/", f"{incoming}.fetch/"]
 
 
 def test_direct_bootstrap_mode_keeps_legacy_payload_root_when_pointer_is_absent(
@@ -464,30 +539,31 @@ def test_concurrent_publishers_are_serialized_and_keep_current_pointer_valid(
     _write_source(source, "payload")
     dest = _private_directory(tmp_path / "destination")
     helper = _render_helper(tmp_path, dest, source=str(source) + "/")
-    fake_bin = tmp_path / "bin"
-    fake_bin.mkdir()
     gate = tmp_path / "gate"
     gate.mkdir()
-    rsync = fake_bin / "rsync"
-    rsync.write_text(
-        "#!/usr/bin/env bash\n"
-        "set -euo pipefail\n"
-        'if mkdir "$MIRROR_GATE/first" 2>/dev/null; then\n'
-        '  touch "$MIRROR_GATE/started"\n'
-        '  while [[ ! -e "$MIRROR_GATE/release" ]]; do sleep 0.02; done\n'
-        "fi\n"
-        'destination="${!#}"\n'
-        'cp -R "$MIRROR_TEST_SOURCE"/. "$destination"\n'
+    # The first publisher holds the lock inside its copy step until the gate is released.
+    driver = tmp_path / "gated-publisher.py"
+    driver.write_text(
+        "import os, runpy, sys, time\n"
+        "namespace = runpy.run_path(sys.argv[1])\n"
+        "copy = namespace['_pull_into']\n"
+        "def gated(stage):\n"
+        "    gate = os.environ['MIRROR_GATE']\n"
+        "    try:\n"
+        "        os.mkdir(gate + '/first')\n"
+        "    except FileExistsError:\n"
+        "        return copy(stage)\n"
+        "    open(gate + '/started', 'w').close()\n"
+        "    while not os.path.exists(gate + '/release'):\n"
+        "        time.sleep(0.02)\n"
+        "    copy(stage)\n"
+        "namespace['main'].__globals__['_pull_into'] = gated\n"
+        "raise SystemExit(namespace['main']())\n"
     )
-    rsync.chmod(0o755)
-    environment = os.environ | {
-        "PATH": f"{fake_bin}:{os.environ['PATH']}",
-        "MIRROR_GATE": str(gate),
-        "MIRROR_TEST_SOURCE": str(source),
-    }
+    environment = os.environ | {"MIRROR_GATE": str(gate)}
 
     first = subprocess.Popen(
-        [sys.executable, str(helper)],
+        [sys.executable, str(driver), str(helper)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -498,7 +574,7 @@ def test_concurrent_publishers_are_serialized_and_keep_current_pointer_valid(
         time.sleep(0.02)
     assert (gate / "started").exists()
     second = subprocess.Popen(
-        [sys.executable, str(helper)],
+        [sys.executable, str(driver), str(helper)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -538,3 +614,110 @@ def test_atomic_document_survives_complete_mirror_generation(tmp_path):
     namespace = _render_bootstrap(tmp_path, dest)
     root = namespace["_payload_root"]()
     assert namespace["_delivery"](root / "sub", digest) == (exact, False)
+
+
+MIRROR_TASKS = REPO_ROOT / "ansible/roles/subscription-host/tasks/mirror.yml"
+
+
+def _mirror_tasks() -> dict[str, dict]:
+    import yaml
+
+    return {task["name"]: task for task in yaml.safe_load(MIRROR_TASKS.read_text())}
+
+
+def test_mirror_credentials_belong_to_the_mirror_user_only() -> None:
+    tasks = _mirror_tasks()
+    directory = tasks["Ensure mirror credential directory"]["ansible.builtin.file"]
+    assert (directory["owner"], directory["group"], directory["mode"]) == ("vpn-sub-mirror", "vpn-sub-mirror", "0700")
+    for name in ("Drop rsync ssh key", "Drop restic password file", "Pin the build worker host key"):
+        task = tasks[name]
+        credential = task["ansible.builtin.copy"]
+        # Owner-only and not the delivery service user, which faces the internet.
+        assert (credential["owner"], credential["group"], credential["mode"]) == ("vpn-sub-mirror", "vpn-sub-mirror", "0600")
+        assert task["no_log"] is True and task["diff"] is False
+    fetched = tasks["Ensure the fetched payload directory"]["ansible.builtin.file"]
+    assert (fetched["owner"], fetched["group"], fetched["mode"]) == ("vpn-sub-mirror", "vpn-bootstrap", "0750")
+
+
+def test_fetch_runs_as_the_mirror_user_and_publication_waits_for_it() -> None:
+    variables = renderer.merge_render_vars()
+    fetch = renderer.render_template(FETCH_UNIT, variables)
+    publish = renderer.render_template(MIRROR_UNIT, variables)
+    assert "User=vpn-sub-mirror\n" in fetch and "User=vpn-bootstrap" not in fetch
+    assert "TimeoutStartSec=15min\n" in fetch
+    assert "ReadWritePaths=/var/lib/vpn-sub-mirror\n" in fetch
+    assert "User=vpn-bootstrap\n" in publish
+    assert "Requires=vpn-sub-mirror-fetch.service\n" in publish
+    assert "vpn-sub-mirror-fetch.service" in next(line for line in publish.splitlines() if line.startswith("After="))
+    # The publisher holds no credential and starts no network client.
+    helper = renderer.render_template(MIRROR_HELPER, variables)
+    assert "import subprocess" not in helper and "mirror_ssh_key" not in helper and "PASSWORD" not in helper
+
+
+@pytest.mark.parametrize(
+    ("mirror", "admitted"),
+    [
+        ({"source": "/srv/payload/"}, True),
+        ({"source": "build@worker.example:/payload/", "ssh_known_hosts": "worker.example ssh-ed25519 AAAA", "ssh_opts": "-p 2222"}, True),
+        ({"source": "build@worker.example:/payload/"}, False),
+        ({"source": "build@worker.example:/payload/", "ssh_known_hosts": "  "}, False),
+        ({"source": "rsync://worker.example/payload/", "ssh_known_hosts": "worker.example ssh-ed25519 AAAA"}, False),
+        ({"source": "/srv/payload/", "ssh_opts": "-o StrictHostKeyChecking=accept-new"}, False),
+        ({"source": "/srv/payload/", "ssh_opts": "-o KnownHostsCommand=/bin/true"}, False),
+        ({"source": "/srv/payload/", "ssh_opts": "-p 2222 -A"}, False),
+        ({"source": "/srv/payload/", "rsync_opts": "-az $(id)"}, False),
+        ({"source": "/srv/payload/", "rsync_opts": "-az --delete\n"}, False),
+        ({"backend": "restic", "restic_repo": "repository"}, True),
+    ],
+    ids=["local", "remote-pinned", "remote-unpinned", "remote-blank-pin", "rsync-daemon", "host-key-option",
+         "known-hosts-command", "agent-forwarding", "shell-syntax", "trailing-line-break", "restic"],
+)
+def test_mirror_inputs_need_a_pinned_host_key_and_plain_options(tmp_path, mirror, admitted) -> None:
+    # Real Ansible evaluates the role's own task, so its typing of the conditions is what is tested.
+    play = [{"hosts": "localhost", "connection": "local", "gather_facts": False,
+             "vars": {"subscription": {"mirror": mirror}}, "tasks": [_mirror_tasks()["Validate mirror inputs"]]}]
+    playbook = tmp_path / "play.json"
+    playbook.write_text(json.dumps(play))
+    result = subprocess.run(
+        ["ansible-playbook", "-i", "localhost,", str(playbook)], capture_output=True, text=True, timeout=120, cwd=tmp_path,
+        env={**os.environ, "ANSIBLE_CONFIG": str(REPO_ROOT / "ansible/ansible.cfg"), "ANSIBLE_NOCOLOR": "1"},
+    )
+    assert (result.returncode == 0) is admitted, result.stdout + result.stderr
+
+
+def test_a_tree_replaced_during_the_copy_is_not_published(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    _write_source(source, "first")
+    dest = _private_directory(tmp_path / "destination")
+    namespace = runpy.run_path(str(_render_helper(tmp_path, dest, source=str(source))))
+    module_shutil = namespace["main"].__globals__["shutil"]
+    original = module_shutil.copyfileobj
+
+    def replace_then_copy(reader, writer):
+        # What a second fetch does: a new directory takes the place of the one being copied.
+        if source.exists() and not (tmp_path / "old").exists():
+            source.rename(tmp_path / "old")
+            _write_source(source, "second")
+        original(reader, writer)
+
+    module_shutil.copyfileobj = replace_then_copy
+    try:
+        assert namespace["main"]() == 1
+    finally:
+        module_shutil.copyfileobj = original
+    assert not (dest / ".vpn-sub-mirror-current").exists()
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads any directory")
+def test_an_unreadable_fetched_directory_is_not_skipped(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    _write_source(source, "next")
+    (source / "sub" / "nested").mkdir()
+    (source / "sub" / "nested").chmod(0o000)
+    dest = _private_directory(tmp_path / "destination")
+    try:
+        result = _run(_render_helper(tmp_path, dest, source=str(source)))
+    finally:
+        (source / "sub" / "nested").chmod(0o700)
+    assert result.returncode != 0 and "unreadable" in result.stderr
+    assert not (dest / ".vpn-sub-mirror-current").exists()

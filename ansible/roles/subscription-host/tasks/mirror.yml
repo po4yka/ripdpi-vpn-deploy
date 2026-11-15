@@ -11,6 +11,70 @@
 #
 # Gated by the caller with `when: subscription.mirror.enabled`.
 
+# The mirror credentials belong to a user of their own. The delivery service
+# user (vpn-bootstrap) faces the internet and must not be able to read them.
+- name: Validate mirror inputs
+  vars:
+    mirror_source: "{{ subscription.mirror.source | default('') }}"
+    mirror_remote_rsync: >-
+      {{ (subscription.mirror.backend | default('rsync')) == 'rsync'
+         and (subscription.mirror.source | default('')) is match('^[^/][^:]*:') }}
+    # \Z, not $: a trailing line break would split the rendered command line.
+    mirror_plain: '^[A-Za-z0-9 =_.:/@%+,-]*\Z'
+    mirror_path: '^/[A-Za-z0-9_./-]+\Z'
+    mirror_port_only: '^(-p [0-9]{1,5}|-o Port=[0-9]{1,5})?\Z'
+  ansible.builtin.assert:
+    that:
+      - (subscription.mirror.backend | default('rsync')) in ['rsync', 'restic']
+      - (subscription.mirror.ssh_opts | default('')) is match(mirror_port_only)
+      - (subscription.mirror.rsync_opts | default('-az --delete')) is match(mirror_plain)
+      - mirror_source is match(mirror_plain)
+      - mirror_source is not match('(?i)rsync://')
+      - (subscription.mirror.ssh_key_path | default('/etc/vpn-subscription/mirror_ssh_key')) is match(mirror_path)
+      - (subscription.mirror.ssh_known_hosts_path | default('/etc/vpn-subscription/mirror_known_hosts')) is match(mirror_path)
+      - not mirror_remote_rsync or (subscription.mirror.ssh_known_hosts | default('') | trim | length > 0)
+    fail_msg: >-
+      The mirror needs plain option strings and absolute paths without spaces.
+      mirror.ssh_opts admits only a port ("-p 2222"): the role fixes the
+      host-key and forwarding options. An rsync:// source is refused, because
+      it has no host authentication. A remote rsync source needs
+      subscription.mirror.ssh_known_hosts, the pinned host key of the build
+      worker; the mirror never trusts a key on first use.
+
+- name: Create the mirror group
+  ansible.builtin.group:
+    name: vpn-sub-mirror
+    system: true
+
+- name: Create the mirror user
+  ansible.builtin.user:
+    name: vpn-sub-mirror
+    group: vpn-sub-mirror
+    system: true
+    shell: /usr/sbin/nologin
+    home: /nonexistent
+    create_home: false
+
+# Check mode does not create the user, and a task that names a missing owner
+# fails on a path that already exists. Skip those tasks until the user is there.
+- name: Inspect the mirror user in check mode
+  ansible.builtin.getent:
+    database: passwd
+    key: vpn-sub-mirror
+    fail_key: false
+  when: ansible_check_mode
+
+# The delivery service reads the fetched tree through its group; other users
+# cannot enter this directory.
+- name: Ensure the fetched payload directory
+  ansible.builtin.file:
+    path: /var/lib/vpn-sub-mirror
+    state: directory
+    owner: vpn-sub-mirror
+    group: vpn-bootstrap
+    mode: "0750"
+  when: not ansible_check_mode or getent_passwd['vpn-sub-mirror'] is not none
+
 - name: Install mirror client (rsync)
   ansible.builtin.apt:
     name:
@@ -34,36 +98,72 @@
   ansible.builtin.file:
     path: /etc/vpn-subscription
     state: directory
-    owner: vpn-bootstrap
-    group: vpn-bootstrap
+    owner: vpn-sub-mirror
+    group: vpn-sub-mirror
     mode: "0700"
-  when: subscription.mirror.enabled | default(false)
+  when:
+    - subscription.mirror.enabled | default(false)
+    - not ansible_check_mode or getent_passwd['vpn-sub-mirror'] is not none
 
 - name: Drop rsync ssh key
   ansible.builtin.copy:
     content: "{{ subscription.mirror.ssh_key }}"
     dest: "{{ subscription.mirror.ssh_key_path | default('/etc/vpn-subscription/mirror_ssh_key') }}"
-    owner: vpn-bootstrap
-    group: vpn-bootstrap
+    owner: vpn-sub-mirror
+    group: vpn-sub-mirror
     mode: "0600"
   no_log: true
   diff: false
   when:
     - (subscription.mirror.backend | default('rsync')) == 'rsync'
     - subscription.mirror.ssh_key | default('') | length > 0
+    - not ansible_check_mode or getent_passwd['vpn-sub-mirror'] is not none
 
 - name: Drop restic password file
   ansible.builtin.copy:
     content: "{{ subscription.mirror.restic_password }}"
     dest: "{{ subscription.mirror.restic_password_file | default('/etc/vpn-subscription/mirror_restic_password') }}"
-    owner: vpn-bootstrap
-    group: vpn-bootstrap
+    owner: vpn-sub-mirror
+    group: vpn-sub-mirror
     mode: "0600"
   no_log: true
   diff: false
   when:
     - (subscription.mirror.backend | default('rsync')) == 'restic'
     - subscription.mirror.restic_password | default('') | length > 0
+    - not ansible_check_mode or getent_passwd['vpn-sub-mirror'] is not none
+
+- name: Pin the build worker host key
+  ansible.builtin.copy:
+    content: "{{ subscription.mirror.ssh_known_hosts | trim }}\n"
+    dest: "{{ subscription.mirror.ssh_known_hosts_path | default('/etc/vpn-subscription/mirror_known_hosts') }}"
+    owner: vpn-sub-mirror
+    group: vpn-sub-mirror
+    mode: "0600"
+  no_log: true
+  diff: false
+  when:
+    - (subscription.mirror.backend | default('rsync')) == 'rsync'
+    - subscription.mirror.ssh_known_hosts | default('') | trim | length > 0
+    - not ansible_check_mode or getent_passwd['vpn-sub-mirror'] is not none
+
+- name: Render mirror fetch script
+  ansible.builtin.template:
+    src: vpn-sub-mirror-fetch.sh.j2
+    dest: /usr/local/bin/vpn-sub-mirror-fetch.sh
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart vpn-sub-mirror timer
+
+- name: Install mirror fetch systemd service
+  ansible.builtin.template:
+    src: vpn-sub-mirror-fetch.service.j2
+    dest: /etc/systemd/system/vpn-sub-mirror-fetch.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart vpn-sub-mirror timer
 
 - name: Render mirror sync script
   ansible.builtin.template:

@@ -5,6 +5,8 @@
 # /share/<token>/ via the subscription vhost.
 #
 # Upload only selected bundles; harden retained shares on every convergence.
+# A revoked token gets no bundle: revoked-hashes.yml removes it and the upload
+# below skips it.
 
 - name: Protect dedicated share ancestry
   ansible.builtin.file:
@@ -37,7 +39,8 @@
   loop: "{{ vpn.share_bundles | default([]) }}"
   loop_control:
     label: "{{ item.client }}"
-  when: vpn.share_bundles | default([]) | length > 0
+  # A revoked token gets no bundle, even while it is still declared.
+  when: (item.token | hash('sha256')) not in (subscription.revoked_tokens | default([]) | map('trim') | map('lower') | list)
 
 - name: Sync share bundle contents
   ansible.builtin.copy:
@@ -53,7 +56,8 @@
   loop: "{{ vpn.share_bundles | default([]) }}"
   loop_control:
     label: "{{ item.client }}"
-  when: vpn.share_bundles | default([]) | length > 0
+  # A revoked token gets no bundle, even while it is still declared.
+  when: (item.token | hash('sha256')) not in (subscription.revoked_tokens | default([]) | map('trim') | map('lower') | list)
   notify: Reload nginx
 
 - name: Repair retained share tree permissions

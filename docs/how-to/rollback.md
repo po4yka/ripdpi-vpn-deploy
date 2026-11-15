@@ -35,7 +35,7 @@ If automatic rescue didn't fire (e.g., the bad change was outside the xray templ
 make rollback-config ANSIBLE_LIMIT=<alias>
 ```
 
-It stages `/etc/xray/config.json.prev`, validates the complete candidate, and commits only after loaded runtime identity and authenticated native forwarding succeed. Refusal restores the exact prior configuration and service state.
+It stages `/etc/xray/config.json.prev`, validates the complete candidate, and commits only after loaded runtime identity and authenticated native forwarding succeed. Refusal restores the exact prior configuration and service state. The previous configuration predates every later device removal, so the rollback is refused (`rollback-readmits-client` or `revocation-rollback-forbidden`) when it would give a removed or revoked device its access back; deploy the current configuration instead.
 
 Both rollback verbs act on exactly one inventory alias per run and refuse a missing limit, a group, a pattern or a list; run them once per affected node.
 

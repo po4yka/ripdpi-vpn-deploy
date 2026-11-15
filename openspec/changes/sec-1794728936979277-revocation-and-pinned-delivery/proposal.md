@@ -16,9 +16,9 @@ The 2026-11-15 audit found paths on which a revoked credential stays usable, and
 ## What Changes
 
 - The `config` rollback refuses a previous configuration that would re-admit a revoked or removed client identity.
-- Revoking a token removes its share bundle. Converge removes bundle directories that are not declared.
+- Revoking a token removes its share bundle, and a revoked token cannot get a new one. Bundles that are not revoked are kept, as before.
 - Every SSH call that carries a device payload ignores the user's SSH configuration, requires a pinned host key and forwards no agent.
-- BREAKING: the mirror requires a pinned `known_hosts` entry from secrets and runs as its own user, which owns the mirror key and the backup password.
+- BREAKING: a mirror with a remote source requires a pinned `known_hosts` entry from secrets, and `mirror.ssh_opts` no longer accepts host-key options. The pull runs as its own user, which owns the mirror key and the backup password; the publisher copies the fetched tree.
 - BREAKING: `rotate-secrets.sh` rotates the SOPS data key after it updates the recipients.
 
 ## Capabilities

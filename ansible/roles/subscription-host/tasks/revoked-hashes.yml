@@ -13,3 +13,26 @@
       {% endfor %}
   no_log: true
   diff: false
+
+# Share bundles are static files named by the same token, so the deny list does
+# not stop them. Remove the bundle of every revoked token in the same run. This
+# also covers the retained-publisher flow, which does not ingest bundles.
+- name: List published share bundle directories for revocation
+  ansible.builtin.find:
+    paths: /var/www/subscription-host/share
+    file_type: directory
+    recurse: false
+    hidden: true
+  register: subscription_share_revocable
+  no_log: true
+
+- name: Remove the share bundle of every revoked token
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  no_log: true
+  diff: false
+  loop: "{{ subscription_share_revocable.files | default([]) | map(attribute='path') | list }}"
+  loop_control:
+    label: share bundle
+  when: (item | basename | hash('sha256')) in (subscription.revoked_tokens | default([]) | map('trim') | map('lower') | list)

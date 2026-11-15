@@ -66,6 +66,10 @@ task, without installing, enabling, starting or restarting a listener. The
 device controller must still observe its owned TLS canary change from 200 to
 410 and clean it up; stopped or incomplete retained runtime is unfinished.
 
+**Revocation removes the share bundle** — a bundle is a static file tree named by the same token, so the deny list alone does not stop it. `revoked-hashes.yml` removes the bundle of every revoked token, in the normal and the retained-publisher flow, and the upload tasks skip a revoked token that is still declared. Bundles that are not revoked stay across runs: `vpn.share_bundles` is an upload selection, not the complete set.
+
+**The mirror credentials have their own user** — `vpn-sub-mirror-fetch.service` pulls as `vpn-sub-mirror`, the only user that can read the pull key, the pinned host key and the restic password. `vpn-sub-mirror.service` requires it, runs as the delivery service user and publishes a copy of the fetched tree, so every published node is owned by the service without any chown. A remote rsync source needs the pinned host key; the pull never trusts a key on first use, `ssh_opts` admits only a port, and an `rsync://` source is refused. The pull runs outside the publisher lock: the fetch unit replaces its directory by one rename, and the publisher refuses a tree that changed during its copy. Role retirement removes the fetched copy; `mirror.enabled: false` keeps it with the other retained mirror state.
+
 **Share files have OS read boundaries** — the dedicated subscription-host and
 share directories are root:www-data 0750; token directories use 0750 and files
 0640. Copy repairs current files before recursive mode repair fixes retained

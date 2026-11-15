@@ -20,17 +20,22 @@ The `config` rollback action MUST refuse when a revocation is recorded for the a
 
 ### Requirement: REQ-SEC-RPD-SHARE-REVOCATION — Stop serving a share bundle when its token is revoked
 
-After a token is revoked, the share route for that token MUST NOT return any file. A converge MUST remove every share bundle directory that is not in the declared list.
+After a token is revoked, the share route for that token MUST NOT return any file, in the normal convergence and in the retained-publisher revocation flow. A revoked token MUST NOT receive a bundle while it is still declared. A bundle whose token is not revoked MUST stay when a later run does not declare it.
 
 #### Scenario: Revoked token
 
 - **WHEN** the operator revokes a token that has a share bundle
 - **THEN** a request for any file of that bundle returns the same response as an unknown token
 
-#### Scenario: Undeclared bundle
+#### Scenario: Declared and revoked
 
-- **WHEN** a bundle directory exists on the host and is not in the declared list
-- **THEN** the next converge removes it
+- **WHEN** a run declares a bundle for a token that is in the revoked list
+- **THEN** no bundle directory exists for that token after the run
+
+#### Scenario: Retained bundle
+
+- **WHEN** a bundle exists on the host, its token is not revoked, and the run declares no bundles
+- **THEN** the bundle stays
 
 ### Requirement: REQ-SEC-RPD-PINNED-PAYLOAD-SSH — Send device payloads only over pinned SSH
 
@@ -48,11 +53,16 @@ An SSH call that carries a device payload MUST ignore the user's SSH configurati
 
 ### Requirement: REQ-SEC-RPD-MIRROR-IDENTITY — Pin the mirror source and separate its user
 
-The subscription mirror MUST verify the build worker against a host key supplied in secrets and MUST refuse a first-use key. The mirror key and the backup password MUST belong to a user that is not the internet-facing service user, and the service user MUST NOT be able to read them.
+The subscription mirror MUST verify a remote build worker against a host key supplied in secrets and MUST refuse a first-use key. Operator options MUST NOT be able to change host-key or forwarding behaviour. The mirror key, the pinned host key and the backup password MUST belong to a user that is not the internet-facing service user, and the service user MUST NOT be able to read them. The published payload MUST still be owned by the service user.
 
 #### Scenario: Mirror enabled without a host key
 
-- **WHEN** the mirror is enabled and the host-key secret is empty
+- **WHEN** the mirror is enabled with a remote rsync source and the host-key secret is empty
+- **THEN** the role fails before it installs the mirror
+
+#### Scenario: Operator option that weakens the pin
+
+- **WHEN** `mirror.ssh_opts` sets a host-key or forwarding option
 - **THEN** the role fails before it installs the mirror
 
 #### Scenario: Service user reads the mirror key

@@ -48,7 +48,7 @@ def lab(tmp_path, monkeypatch):
     (bin_dir / 'terraform').write_text('''#!/usr/bin/env python3
 import sys
 key = sys.argv[-1]
-print({'server_ipv4':'192.0.2.10','server_hostname':'vpn.example.com','admin_user':'admin'}.get(key, ''))
+print({'server_ipv4':'192.0.2.10','server_hostname':'vpn.example.com','admin_user':'admin','ssh_port':'22'}.get(key, ''))
 ''')
     (bin_dir / 'ssh').write_text('''#!/usr/bin/env python3
 import base64, json, os, pathlib, sys

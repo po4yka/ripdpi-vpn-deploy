@@ -35,12 +35,13 @@ Fence and lock initialization is limited to a genuinely fresh payload root and a
 | One-time bootstrap URL | required | `/bootstrap/<token>` via vpn-bootstrap service | ✓ shipped |
 | Scoped payload (per-device profile only) | required | per-device with shared server params | ✓ partial |
 | HTTPS endpoint with no access log of paths | required | nginx logs only URI-free categories (`status`, `upstream_status`, `limit`) to `vpn-sub.categorical.log`; `error_log` goes to `/dev/null` | ✓ shipped |
-| Revocation list | implemented in v1.2 | `subscription.revoked_tokens` | ✓ shipped |
+| Revocation list | implemented in v1.2 | `subscription.revoked_tokens`; the same run removes the token's `/share/` bundle and refuses to upload one for it | ✓ shipped |
 | Rate-limit | implemented in v1.2 | `subscription.rate_limit` + burst | ✓ shipped |
 | Token expiry per device | required | Atomic `<sha256>.document` for new `/sub/` delivery; legacy payload/`.meta` remains readable. vpn-bootstrap returns 410 at expiry for both routes. | ✓ shipped |
 | RIPDPI client expiry warning | required | `make issue-sub-token FORMAT=ripdpi EXPIRES=…` normalizes one UTC instant into both the atomic document and `ripdpi.expires`; Android warns before the enforcement point. | ✓ shipped |
 | Delivery host separate from VPN node | required | `vpn_subscription_only` inventory var skips every transport role; pairs with multi-operator SOPS split | ✓ shipped (see `docs/how-to/subscription-host-separation.md`) |
 | QR bootstrap flow | required | `issue-bootstrap.sh --qr` + `issue-sub-token.sh --qr` writes a PNG | ✓ shipped |
+| Payload delivery over pinned SSH | required | `issue-sub-token.sh` and `issue-bootstrap.sh` ignore `~/.ssh/config`, accept only a host key in `INSPECT_KNOWN_HOSTS` (default `~/.ssh/known_hosts`), use the provider's `ssh_port` and forward nothing; `ANSIBLE_SSH_PRIVATE_KEY_FILE` selects the key and `SUBSCRIPTION_SSH_HOST` a management name such as a tailnet address | ✓ shipped |
 | Audit log of token reads | recommended | `/var/log/vpn-subscription/reads.log` JSONL; one record per read (consumed/unknown/revoked/expired) with hash prefix + src_ip + bytes; pull via `make sub-reads` | ✓ shipped |
 | Hashed token storage | recommended | disk paths use `<route>/<sha256(token)>`; plaintext token never on disk | ✓ shipped |
 | No `Referer` / no `cache` | required | explicit `Cache-Control: no-store` + `Referrer-Policy: no-referrer` on both `/sub/` and `/bootstrap/` | ✓ shipped |

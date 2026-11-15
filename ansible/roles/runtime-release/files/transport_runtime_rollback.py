@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import stat
 import sys
+import uuid
 
 from transport_runtime_accept import Adapter, STATE, read_parameters, parameter_candidate, restore_points, unit_binary, gateway_units, fields
 from transport_runtime_probe import run
@@ -22,6 +23,30 @@ UNIT_ROOT = Path('/etc/systemd/system')
 
 def file_candidate(path, data, gid, mode=0o640):
     return {'path': str(path), 'data': base64.b64encode(data).decode(), 'gid': gid, 'mode': mode}
+
+
+def admitted_identities(data):
+    """Every credential an Xray configuration admits: inbound client secrets and REALITY short IDs."""
+    found = set()
+    for inbound in json.loads(data).get('inbounds') or []:
+        settings = inbound.get('settings') or {}
+        entries = [settings, *(entry for key in ('clients', 'users', 'accounts') for entry in settings.get(key) or [])]
+        found.update(str(entry[key]) for entry in entries for key in ('id', 'password', 'pass', 'auth') if key in entry)
+        reality = (inbound.get('streamSettings') or {}).get('realitySettings') or {}
+        found.update(str(item) for item in reality.get('shortIds') or [])
+    # Xray reads a UUID without regard to case; other secrets are compared exactly.
+    return {str(uuid.UUID(item)) if re.fullmatch(r'[0-9a-fA-F-]{36}', item) else item for item in found}
+
+
+def refuse_readmission(previous, current):
+    # The previous configuration predates every later removal, so publishing it
+    # can give a removed or revoked device its access back.
+    try:
+        readmitted = admitted_identities(previous) - admitted_identities(current)
+    except (ValueError, AttributeError, TypeError):
+        raise Refusal('rollback-config-invalid') from None
+    if readmitted:
+        raise Refusal('rollback-readmits-client')
 
 
 def release_versions(raw):
@@ -103,6 +128,18 @@ def runtime_candidates(tx, raw_version, unit_path, config_path, gid, *, gateway_
             file_candidate(config_path, config_path.read_bytes(), gid)]
 
 
+def config_candidates(tx, receipt, unit_path, config_path, gid):
+    """The `config` rollback plan: the previous configuration, unless it would undo a device removal."""
+    previous = config_path.with_name('config.json.prev')
+    if not receipt['nodes'].get(str(previous)):
+        raise Refusal('accepted-previous-config-required')
+    previous_data = previous.read_bytes()
+    tx.refuse_revocation_rollback(receipt)
+    refuse_readmission(previous_data, config_path.read_bytes())
+    return restore_points([file_candidate(unit_path, unit_path.read_bytes(), 0, 0o644),
+                           file_candidate(config_path, previous_data, gid)])
+
+
 class RollbackAdapter(Adapter):
     def validate(self):
         super().validate()
@@ -167,11 +204,7 @@ def main():
             raise Refusal('accepted-xray-required')
         gid = receipt['nodes'][str(config_path)]['identity'][3]
         if args.action == 'config':
-            previous = config_path.with_name('config.json.prev')
-            if not receipt['nodes'].get(str(previous)):
-                raise Refusal('accepted-previous-config-required')
-            candidates = restore_points([file_candidate(unit_path, unit_path.read_bytes(), 0, 0o644),
-                                         file_candidate(config_path, previous.read_bytes(), gid)])
+            candidates = config_candidates(tx, receipt, unit_path, config_path, gid)
         else:
             gateway_paths = [UNIT_ROOT / unit for unit in gateway_units()]
             if any(not receipt['nodes'].get(str(path)) for path in gateway_paths):
@@ -187,6 +220,10 @@ def main():
 if __name__ == '__main__':
     try:
         main()
+    except Refusal as refusal:
+        # A refusal category holds no private value; it tells the operator which rule stopped the rollback.
+        print('transport-rollback-refused: ' + str(refusal), file=sys.stderr)
+        raise SystemExit(1)
     except Exception:
         print('transport-rollback-refused', file=sys.stderr)
         raise SystemExit(1)
