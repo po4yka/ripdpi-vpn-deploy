@@ -10,6 +10,10 @@
     - vpn.enable_reality_self_steal | default(false) | bool
   no_log: true
 
+# The site journal admits only declared paths, so an operator-owned tree is declared file by file.
+- name: Read the operator-owned self-steal site layout before declaring its paths
+  ansible.builtin.include_tasks: ../../roles/reality-self-steal/tasks/operator-site.yml
+
 - name: Declare bounded desired ingress paths without reading runtime secrets
   ansible.builtin.set_fact:
     _transport_ingress_request:
@@ -66,8 +70,9 @@
             {{ ['/etc/nginx/sites-available/reality-self-steal.conf',
                 '/etc/nginx/sites-enabled/reality-self-steal.conf',
                 '/etc/nginx/sites-enabled/default', reality_self_steal_tls_dir ~ '/current']
-               + (query('ansible.builtin.fileglob', playbook_dir ~ '/../roles/reality-self-steal/files/public-site/*')
-                  | map('basename') | map('regex_replace', '^', reality_self_steal_site_root ~ '/') | list)
+               + ((query('ansible.builtin.fileglob', playbook_dir ~ '/../roles/reality-self-steal/files/public-site/*')
+                   | map('basename') | list + _self_steal_operator_files)
+                  | unique | map('regex_replace', '^', reality_self_steal_site_root ~ '/') | list)
                + ([_transport_ingress_self_steal_release ~ '/fullchain.pem',
                    _transport_ingress_self_steal_release ~ '/privkey.pem']
                   if ((vpn.enable_reality_self_steal | default(false) | bool)

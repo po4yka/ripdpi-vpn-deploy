@@ -796,17 +796,27 @@ def test_each_protected_tag_selects_both_frontends_and_once_activation(tmp_path,
     assert events.count('activate') == 1 and events[-1] == 'ingress-commit'
 
 
-@pytest.mark.parametrize('mode', ['enabled', 'disabled', 'subscription'])
+@pytest.mark.parametrize('mode', ['enabled', 'operator-site', 'disabled', 'subscription'])
 def test_actual_ingress_declaration_has_exact_candidate_paths_and_optional_secret_boundaries(tmp_path, mode):
     import hashlib
+    import shutil
     root = tmp_path.resolve()
     assets = root / 'roles/reality-self-steal/files/public-site'
     assets.mkdir(parents=True)
     names = [path.name for path in (ROOT / 'ansible/roles/reality-self-steal/files/public-site').iterdir() if path.is_file()]
     for name in names:
         (assets / name).write_text('public asset path fixture')
-    enabled = mode == 'enabled'
-    variables = {'vpn': {'enable_nginx_xhttp': mode != 'disabled', 'enable_reality_self_steal': mode != 'disabled'},
+    enabled = mode in ('enabled', 'operator-site')
+    # The site journal refuses a publication path it did not declare, so an operator tree is declared file by file.
+    operator = ['404.html', 'assets/site.css', 'index.html', 'notes/first.html'] if mode == 'operator-site' else []
+    for name in operator:
+        (root / 'operator-site' / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / 'operator-site' / name).write_text('operator page fixture')
+    tasks = root / 'roles/reality-self-steal/tasks'
+    tasks.mkdir(parents=True)
+    shutil.copy(ROOT / 'ansible/roles/reality-self-steal/tasks/operator-site.yml', tasks)
+    variables = {'reality_self_steal_public_site_dir': str(root / 'operator-site') if operator else '',
+                 'vpn': {'enable_nginx_xhttp': mode != 'disabled', 'enable_reality_self_steal': mode != 'disabled'},
                  'vpn_subscription_only': mode == 'subscription',
                  'reality_self_steal_site_root': '/var/www/reality-self-steal',
                  'reality_self_steal_tls_dir': '/etc/nginx/reality-self-steal'}
@@ -815,7 +825,7 @@ def test_actual_ingress_declaration_has_exact_candidate_paths_and_optional_secre
         variables['reality_self_steal'] = {'cert_pem': 'synthetic certificate path identity', 'key_pem': 'synthetic key path identity'}
     # Disabled/subscription mode deliberately supplies no optional secret map.
     expected_xhttp = ['/etc/nginx/sites-available/vpn-xhttp.conf', '/etc/nginx/sites-enabled/vpn-xhttp.conf', '/etc/nginx/sites-enabled/default']
-    expected_self = ['/etc/nginx/sites-available/reality-self-steal.conf', '/etc/nginx/sites-enabled/reality-self-steal.conf', '/etc/nginx/sites-enabled/default', '/etc/nginx/reality-self-steal/current'] + ['/var/www/reality-self-steal/' + name for name in sorted(names)]
+    expected_self = ['/etc/nginx/sites-available/reality-self-steal.conf', '/etc/nginx/sites-enabled/reality-self-steal.conf', '/etc/nginx/sites-enabled/default', '/etc/nginx/reality-self-steal/current'] + ['/var/www/reality-self-steal/' + name for name in sorted(set(names) | set(operator))]
     if enabled:
         expected_xhttp += ['/var/www/public-site/' + name for name in [
             'favicon.svg', 'logo.svg', '404.html', 'assets/site.css', 'index.html', 'about.html',
@@ -829,9 +839,11 @@ def test_actual_ingress_declaration_has_exact_candidate_paths_and_optional_secre
         authority = variables['reality_self_steal']
         release = hashlib.sha256(''.join(hashlib.sha256(authority[key].encode()).hexdigest() for key in ['cert_pem', 'key_pem']).encode()).hexdigest()
         expected_self += ['/etc/nginx/reality-self-steal/releases/' + release + '/' + name for name in ['fullchain.pem', 'privkey.pem']]
-    source = yaml.safe_load((ROOT / 'ansible/playbooks/tasks/transport-ingress-begin.yml').read_text())[:2]
+    source = yaml.safe_load((ROOT / 'ansible/playbooks/tasks/transport-ingress-begin.yml').read_text())[:3]
+    # The real task file lives in playbooks/tasks; its relative include resolves from there.
+    _write(root / 'playbooks/tasks/begin.yml', source)
     _write(root / 'playbooks/play.yml', [{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False, 'become': False, 'vars': {**variables, 'expected_xhttp': sorted(expected_xhttp), 'expected_self': sorted(expected_self)},
-                              'tasks': source + [{'ansible.builtin.assert': {'that': ["_transport_ingress_request.owners[0].paths | sort == expected_xhttp", "_transport_ingress_request.owners[2].paths | sort == expected_self", "_transport_ingress_request.owners[1].paths | sort == ['/etc/nginx/conf.d/vpn-public-acme.conf', '/etc/vpn-public-tls/config.json']"]}, 'no_log': True}]}])
+                              'tasks': [{'ansible.builtin.import_tasks': 'tasks/begin.yml'}, {'ansible.builtin.assert': {'that': ["_transport_ingress_request.owners[0].paths | sort == expected_xhttp", "_transport_ingress_request.owners[2].paths | sort == expected_self", "_transport_ingress_request.owners[1].paths | sort == ['/etc/nginx/conf.d/vpn-public-acme.conf', '/etc/vpn-public-tls/config.json']"]}, 'no_log': True}]}])
     result = _run(root / "playbooks")
     assert result.returncode == 0, result.stdout + result.stderr
 
