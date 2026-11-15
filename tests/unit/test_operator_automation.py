@@ -1138,7 +1138,8 @@ def test_scheduled_backup_requires_real_canonical_receipt(authority, monkeypatch
             'inputs': {str(path): {'sha256': private.digest_file(path)} for path in (config, profile, identity)},
             'jobs': {'backup': {'timeout_seconds': 60}}, 'backup_code': scheduler.backup_code()}
     if outcome in {'expiry', 'expired'}:
-        plan['expires_at'] = (datetime.now(timezone.utc) + timedelta(seconds=0.5 if outcome == 'expiry' else -1)).isoformat()
+        # The expiry window must let a loaded runner start the child and log its marker first.
+        plan['expires_at'] = (datetime.now(timezone.utc) + timedelta(seconds=3 if outcome == 'expiry' else -1)).isoformat()
     # Only the external routine-backup/storage boundary is replaced. Execute a real child,
     # real encryption and the scheduler's receipt validation and status writes.
     original = scheduler.encrypted_command
@@ -1146,7 +1147,7 @@ def test_scheduled_backup_requires_real_canonical_receipt(authority, monkeypatch
         output = next(value.removeprefix('--output=') for value in command if value.startswith('--output='))
         script = 'import json,os,sys,datetime,time; from pathlib import Path; '
         if outcome == 'expiry':
-            script += 'print("private-backup-diagnostic",flush=True); time.sleep(2); '
+            script += 'print("private-backup-diagnostic",flush=True); time.sleep(8); '
         script += 'p=Path(sys.argv[1]); p.write_text(json.dumps({"phase":"offsite-download-decrypt-manifest-verified",'
         script += '"delivery":{"remote_verified":' + ('False' if outcome == 'no-readback' else 'True') + '},'
         script += '"files_verified":2,"manifest_sha256":"a"*64,"at":datetime.datetime.now(datetime.timezone.utc).isoformat()})); p.chmod(0o600); '
