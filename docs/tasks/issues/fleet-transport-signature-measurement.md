@@ -2,7 +2,7 @@
 id: SEC-1794729595622909
 title: Measure fleet-wide transport signatures before changing defaults
 kind: research
-status: review
+status: done
 area: security
 priority: medium
 risk: standard
@@ -15,6 +15,9 @@ created: 2026-11-15
 updated: 2026-11-15
 spec_reason: research-only
 related_tasks: []
+closed_at: "2026-11-15T13:07:28Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "docs/research/fleet-transport-signatures-2026-11.md merged in 180049e1 (PR 609): seven fleet-wide signatures measured on loopback, each with method, result and verdict; no verdict is change-the-default, so no follow-up task is filed; the Salamander row of the threat model is corrected in the same commit. The PR checks passed on a tree equal to the merged commit."
 ---
 
 ## Goal
