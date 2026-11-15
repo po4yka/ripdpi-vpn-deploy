@@ -151,8 +151,9 @@ def test_pinned_endpoints_preserve_peer_origin_privacy_and_rejected_candidate(pr
             assert f'content="{origin}/"' in named
         unknown = plain("192.0.2.90")
         assert re.search(r"HTTP/1\.1 404\b", unknown) and "Location:" not in unknown
-        site_404 = get(stack, primary_port, "/no-such-page").split("\r\n\r\n", 1)[1]
-        assert site_404 and unknown.split("\r\n\r\n", 1)[1] == site_404
+        # Text-mode subprocess output has no CR: the header block ends at the first empty line.
+        site_404 = get(stack, primary_port, "/no-such-page").split("\n\n", 1)[1]
+        assert site_404 and unknown.split("\n\n", 1)[1] == site_404
         exported = exported_outbound(stack)
         access = stack.library / "logs/access.log"
         for port in (primary_port, 2083):
