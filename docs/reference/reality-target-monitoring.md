@@ -19,7 +19,7 @@ make validate-target
 make monitor-reality-target VANTAGE=filtered-cohort-a
 ```
 
-The first healthy observation establishes the accepted ASN/prefix baseline. Any reachability failure, indeterminate measurement, or ASN/prefix change is unhealthy. The first unhealthy UTC day is recorded; an unhealthy observation on the next UTC day sends a high-priority ntfy alert using `watchdog_secrets`, and later unhealthy UTC days send one reminder per day until the signal recovers or the operator acknowledges a healthy metadata change. Repeated manual runs on the same UTC day update the report without advancing the strike count or sending extra reminders.
+The first healthy observation establishes the accepted ASN/prefix baseline. Any reachability failure, indeterminate measurement, or ASN/prefix change is unhealthy. The first unhealthy UTC day is recorded; an unhealthy observation on the next UTC day sends a high-priority ntfy alert to the service that `NTFY_URL` names, using `watchdog_secrets`, and later unhealthy UTC days send one reminder per day until the signal recovers or the operator acknowledges a healthy metadata change. Repeated manual runs on the same UTC day update the report without advancing the strike count or sending extra reminders.
 
 Install the daily job on the filtered probe host by passing the same technical label:
 

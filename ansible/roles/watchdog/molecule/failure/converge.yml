@@ -64,6 +64,7 @@
       kicks_per_hour_max: 3
       provider: ntfy
       ntfy_url: "http://127.0.0.1:18080"   # local stub listener
+      node_alias: molecule-node
       reality_probe_client: watchdog
       reality_probe_timeout: 15
       reality_probe_socks_port: 31082

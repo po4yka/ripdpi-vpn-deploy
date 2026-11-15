@@ -72,6 +72,8 @@ input is loaded as `notifications.json`. The Python sender reads it internally;
 the shell forwards only title, tags and body. An absolute request deadline and
 the finite oneshot deadline prevent a notification stall from disabling probes.
 
+**No notification destination by default** — `watchdog.provider` is `none`, so a node sends nothing off-host until the operator chooses a service. A provider needs a node alias, which replaces the hostname in titles and tags, and production refuses the public ntfy service because it would receive the node address with every alert.
+
 ## What's done well
 
 - **Protocol completion is load-bearing** — the configured exact HTTP status returned through the temporary

@@ -40,15 +40,20 @@ printf '%s\t64500\t203.0.113.0/24\tTEST\tTEST\n' "$1"
     env = dict(os.environ, PATH=f'{binaries}:{os.environ["PATH"]}', HOME=str(tmp_path),
                IP='203.0.113.77', PROVIDER='upcloud', ENV='test', CALLS=str(tmp_path/'calls'),
                ENABLE_HYSTERIA='false')
-    for key in ['NTFY_URL', 'NTFY_TOPIC', 'NODE_EXPORTER_TEXTFILE_DIR']:
+    for key in ['NTFY_URL', 'NTFY_TOPIC', 'NODE_EXPORTER_TEXTFILE_DIR', 'XDG_STATE_HOME']:
         env.pop(key, None)
-    result = subprocess.run(['bash', str(scripts/'burn-check.sh')], env=env, capture_output=True, text=True, timeout=10)
+    result = subprocess.run(['bash', str(scripts/'burn-check.sh'), '--third-party'], env=dict(env, NODES='vantage.example'),
+                            capture_output=True, text=True, timeout=10)
     assert result.returncode == 2, result.stderr
     assert 'host=203.0.113.77:443' in (tmp_path/'calls').read_text()
     result = subprocess.run(['bash', str(scripts/'probing-summary.sh')], env=env, capture_output=True, text=True, timeout=10)
     assert result.returncode == 0, result.stderr
     calls = (tmp_path/'calls').read_text()
     assert 'admin@203.0.113.77' in calls and 'unexpected-primary-address' not in calls
+    # The node report is private, outside the repository, and its name has no address.
+    [report] = (tmp_path/'.local/state/vpn-provision/reports').iterdir()
+    assert report.stat().st_mode & 0o777 == 0o600 and '203.0.113.77' not in report.name
+    assert not (tmp_path/'reports').exists()
     state = tmp_path/'.cache/vpn-deploy'
     state.mkdir(parents=True)
     primary = state/'asn-upcloud-test.state'

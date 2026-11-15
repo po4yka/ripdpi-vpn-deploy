@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 # External reachability probe for the current VPN VPS IP.
 #
-# Uses check-host.net's public node API to test TCP/443 reachability from
-# multiple vantage points, including filtered ones. Exits non-zero if N or
-# more nodes fail. Intended to run from cron on the operator workstation.
+# By default it opens one TCP connection to port 443 from this workstation and
+# exits non-zero when that fails. It gives the node address to no other party,
+# so it is safe to run from cron.
 #
-# Also runs an external UDP/443 (Hysteria2/QUIC) edge-reachability probe. This
+# --third-party asks check-host.net to test TCP/443 from the vantage points in
+# NODES. That service then holds the node address, and each of its vantage
+# points opens a connection to the node, so use it only for a manual check
+# during an incident. NODES alone never enables it.
+#
+# --udp-probe also runs an external UDP/443 (Hysteria2/QUIC) edge probe. Its
+# packet has one fixed shape, so do not send it on a schedule. This
 # closes a silent-failure gap: on several cloud providers, inbound
 # UDP/443 is silently dropped at the provider-edge firewall even when the
 # instance's own nftables shows ACCEPT and the listener is bound. On-host
@@ -17,16 +23,18 @@
 # with `tcpdump -i any udp port 443`.
 #
 # Usage:
-#   scripts/burn-check.sh                      # uses defaults
-#   FAIL_THRESHOLD=3 scripts/burn-check.sh
-#   NODES="ru1.node.check-host.net,ru4.node.check-host.net,uk1.node.check-host.net" \
-#     scripts/burn-check.sh
+#   scripts/burn-check.sh                      # direct TCP probe only
+#   scripts/burn-check.sh --udp-probe
+#   NODES="<vantage-a>,<vantage-b>" FAIL_THRESHOLD=2 scripts/burn-check.sh --third-party
 #
 # Required env:
 #   PROVIDER (default: upcloud)
 #   ENV      (default: prod)
 #
-# Optional env (UDP/443 Hysteria2 edge probe):
+# Optional env:
+#   TCP_PORT            (default: 443)   — TCP port of the REALITY listener
+#
+# Optional env (UDP/443 Hysteria2 edge probe, with --udp-probe):
 #   ENABLE_HYSTERIA     (default: true)  — set false to skip the UDP probe (WARN)
 #   HYSTERIA_SALAMANDER (default: false) — set true when Salamander obfs is on;
 #                                          external probing is then impossible
@@ -39,9 +47,25 @@ set -euo pipefail
 PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-FAIL_THRESHOLD="${FAIL_THRESHOLD:-2}"
-DEFAULT_NODES="ru1.node.check-host.net,ru2.node.check-host.net,ru4.node.check-host.net,de1.node.check-host.net"
-NODES="${NODES:-$DEFAULT_NODES}"
+TCP_PORT="${TCP_PORT:-443}"
+[[ "$TCP_PORT" =~ ^[0-9]{1,5}$ ]] || { echo "burn-check: TCP_PORT must be a port number" >&2; exit 64; }
+THIRD_PARTY=0
+UDP_PROBE=0
+for arg in "$@"; do
+  case "$arg" in
+    --third-party) THIRD_PARTY=1 ;;
+    --udp-probe) UDP_PROBE=1 ;;
+    *) echo "usage: $0 [--third-party] [--udp-probe]" >&2; exit 64 ;;
+  esac
+done
+NODES="${NODES:-}"
+if (( THIRD_PARTY )); then
+  [[ -n "$NODES" ]] || { echo "burn-check: --third-party needs NODES, the vantage points to use" >&2; exit 64; }
+  FAIL_THRESHOLD="${FAIL_THRESHOLD:-2}"
+else
+  [[ -z "$NODES" ]] || echo "WARN: NODES is set but --third-party was not passed; no third-party service is used" >&2
+  FAIL_THRESHOLD=1
+fi
 
 # UDP/443 (Hysteria2) external edge probe — see header. Always non-fatal.
 ENABLE_HYSTERIA="${ENABLE_HYSTERIA:-true}"
@@ -77,7 +101,7 @@ write_metrics() {
     echo "# TYPE vpn_burn_run_error gauge"
     echo "vpn_burn_run_error{provider=\"${provider_label}\",env=\"${env_label}\"} $((1 - CHECK_COMPLETED))"
     if (( RESULT_VALID )); then
-      echo "# HELP vpn_burn_pending_nodes Nodes whose check-host.net results had not arrived when polling stopped"
+      echo "# HELP vpn_burn_pending_nodes Vantage points whose results had not arrived when polling stopped"
       echo "# TYPE vpn_burn_pending_nodes gauge"
       echo "vpn_burn_pending_nodes{provider=\"${provider_label}\",env=\"${env_label}\"} ${PENDING}"
     fi
@@ -136,11 +160,26 @@ import ipaddress, sys
 ipaddress.IPv4Address(sys.argv[1])
 PY
 
+if (( ! THIRD_PARTY )); then
+  # One vantage point, in the result shape of the third-party service below.
+  RESULT="$(TCP_IP="$IP" TCP_PORT="$TCP_PORT" python3 - <<'PY'
+import json, os, socket
+
+ip = os.environ["TCP_IP"]
+try:
+    socket.create_connection((ip, int(os.environ["TCP_PORT"])), timeout=10).close()
+    result = {"address": ip}
+except OSError as error:
+    result = {"error": error.strerror or "connection failed"}
+print(json.dumps({"operator": [[result]]}))
+PY
+)"
+else
 # check-host.net rest API: GET /check-tcp?host=<ip>:<port>&node=<n1>&node=<n2>…
 # returns a request_id; results are polled at /check-result/<request_id>.
 NODE_PARAMS="$(echo "$NODES" | tr ',' '\n' | sed 's/^/\&node=/' | tr -d '\n')"
 if ! REQ="$(curl -fsS --connect-timeout 5 --max-time 20 -H 'Accept: application/json' \
-  "https://check-host.net/check-tcp?host=${IP}:443${NODE_PARAMS}")"; then
+  "https://check-host.net/check-tcp?host=${IP}:${TCP_PORT}${NODE_PARAMS}")"; then
   API_ERROR=1
   echo "check-host.net request failed" >&2
   exit 2
@@ -171,6 +210,7 @@ for _ in $(seq 1 15); do
   PENDING="$(echo "$RESULT" | jq '[to_entries[] | select(.value == null)] | length')"
   [[ "$PENDING" == "0" ]] && break
 done
+fi
 
 # Count nodes whose first result didn't include an "address" field success.
 # A successful check-tcp result looks like: {"address":"…","time":0.123}.
@@ -205,14 +245,16 @@ else
   echo "WARN: ${PENDING} of ${TOTAL} check-host.net nodes are still pending after the poll window — run marked incomplete (vpn_burn_run_error=1), pending nodes excluded from the failure count" >&2
 fi
 
-echo "burn-check: ${PROVIDER}/${ENV} ${IP}:443  →  ${TOTAL} nodes probed, ${FAILS} failed"
+echo "burn-check: ${PROVIDER}/${ENV} ${IP}:${TCP_PORT}  →  ${TOTAL} vantage points probed, ${FAILS} failed"
 echo "$RESULT" | jq -r 'to_entries[] | "  \(.key): \(.value // "pending")"'
 
 # ---------------------------------------------------------------------------
 # External UDP/443 (Hysteria2/QUIC) edge-reachability probe. Always non-fatal:
 # UDP_OK is "" (not measured / skipped), 0 (no response), or 1 (reachable).
 # ---------------------------------------------------------------------------
-if [[ "$ENABLE_HYSTERIA" != "true" ]]; then
+if (( ! UDP_PROBE )); then
+  :
+elif [[ "$ENABLE_HYSTERIA" != "true" ]]; then
   echo "WARN: hysteria disabled (ENABLE_HYSTERIA=${ENABLE_HYSTERIA}) — skipping UDP/443 edge probe" >&2
 elif [[ "$HYSTERIA_SALAMANDER" == "true" ]]; then
   echo "WARN: Salamander obfs enabled — an external UDP/443 probe cannot work (obfs mangles the unauthenticated QUIC probe). Verify server-side: tcpdump -i any udp port 443" >&2
@@ -279,7 +321,7 @@ PY
 fi
 
 if (( FAILS >= FAIL_THRESHOLD )); then
-  echo "FAIL: ${FAILS} of ${TOTAL} nodes could not reach ${IP}:443 — IP may be burned" >&2
+  echo "FAIL: ${FAILS} of ${TOTAL} vantage points could not reach ${IP}:${TCP_PORT} — IP may be burned" >&2
   exit 1
 fi
 

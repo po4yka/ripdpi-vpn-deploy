@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from jinja2 import UndefinedError
 
-from scripts.template_render import merge_render_vars, render_template
+from scripts.template_render import merge_render_vars, render_fragment, render_template, template_environment
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TEMPLATES = REPO_ROOT / "ansible" / "roles" / "watchdog" / "templates"
@@ -101,6 +101,7 @@ def test_notification_authority_is_separate_and_the_unit_has_a_deadline():
     variables = _multi_cohort_vars()
     variables["watchdog_secrets"]["ntfy_topic"] = "synthetic-private-topic"
     variables["watchdog_secrets"]["ntfy_token"] = "synthetic-private-token"
+    variables["watchdog"] = {**variables["watchdog"], "provider": "ntfy", "ntfy_url": "https://alerts.example"}
     config = json.loads(
         render_template(TEMPLATES / "vpn-watchdog-notifications.json.j2", variables)
     )
@@ -112,6 +113,56 @@ def test_notification_authority_is_separate_and_the_unit_has_a_deadline():
     )
     assert "TimeoutStartSec=565s" in unit
     assert config["token"] not in unit and config["topic"] not in unit
+
+
+def test_default_watchdog_has_no_notification_destination():
+    variables = _multi_cohort_vars()
+    variables["watchdog_secrets"]["ntfy_topic"] = "synthetic-private-topic"
+    config = json.loads(render_template(TEMPLATES / "vpn-watchdog-notifications.json.j2", variables))
+    assert config == {"provider": "none"}
+
+
+@pytest.mark.parametrize(
+    ("alias", "node_id", "expected"),
+    [("edge-a", "monitor-7", "edge-a"), ("", "monitor-7", "monitor-7"), ("", "", "")],
+)
+def test_alerts_name_the_node_by_alias_and_never_by_hostname(alias, node_id, expected):
+    variables = _multi_cohort_vars()
+    variables["watchdog"] = {**variables["watchdog"], "node_alias": alias}
+    variables["observability_agent"] = {"node_id": node_id}
+    env = render_template(TEMPLATES / "vpn-watchdog.env.j2", variables)
+    assert f"WATCHDOG_NODE_ALIAS={expected}\n" in env
+    script = render_template(TEMPLATES / "vpn-watchdog.sh.j2", variables)
+    assert 'title="VPN[$WATCHDOG_NODE_ALIAS] failing' in script
+    assert "HOSTNAME" not in script and "$(hostname" not in script
+
+
+@pytest.mark.parametrize(
+    ("watchdog", "env", "admitted"),
+    [
+        ({"provider": "ntfy", "node_alias": "edge-a", "ntfy_url": "https://alerts.example"}, "prod", True),
+        ({"provider": "ntfy", "node_alias": "edge-a", "ntfy_url": "https://ntfy.sh"}, "prod", False),
+        ({"provider": "ntfy", "node_alias": "edge-a", "ntfy_url": "https://eu.NTFY.sh/"}, "prod", False),
+        ({"provider": "ntfy", "node_alias": "edge-a", "ntfy_url": "https://ntfy.sh./"}, "prod", False),
+        ({"provider": "ntfy", "node_alias": "edge-a", "ntfy_url": "https://ntfy.sh"}, "staging", True),
+        ({"provider": "ntfy", "node_alias": "edge-a", "ntfy_url": ""}, "staging", False),
+        ({"provider": "ntfy", "node_alias": "", "ntfy_url": "https://alerts.example"}, "prod", False),
+        ({"provider": "pushover", "node_alias": "host.example.net"}, "prod", False),
+        ({"provider": "pushover", "node_alias": "edge-a"}, "prod", True),
+    ],
+)
+def test_notification_destination_needs_an_alias_and_refuses_the_public_service_on_production(watchdog, env, admitted):
+    import yaml
+
+    tasks = yaml.safe_load((TEMPLATES.parent / "tasks" / "enable.yml").read_text())
+    guard = next(task for task in tasks if task["name"] == "Validate watchdog notification destination")
+    variables = {"watchdog": watchdog, "env": env, "observability_agent": {"node_id": ""}}
+    for name, source in guard["vars"].items():
+        variables[name] = render_fragment(name, source, variables)
+    environment = template_environment(None)
+    conditions = guard["ansible.builtin.assert"]["that"]
+    assert all(environment.compile_expression(condition)(**variables) for condition in conditions) is admitted
+    assert guard["when"] == "watchdog.provider != 'none'"
 
 
 def test_verify_uses_loaded_credentials_and_only_new_journal_evidence():

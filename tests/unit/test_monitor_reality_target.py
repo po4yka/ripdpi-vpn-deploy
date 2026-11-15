@@ -132,7 +132,7 @@ printf '204'""",
     # test_validate_reality_target.py, independently of these categorical inputs.
     scripts = tmp_path / "repo" / "scripts"
     scripts.mkdir(parents=True)
-    for name in ("monitor-reality-target.sh", "reality-target-monitor-probe.sh", "reality_target_monitor.py", "bootstrap_readiness.py"):
+    for name in ("monitor-reality-target.sh", "reality-target-monitor-probe.sh", "reality_target_monitor.py", "bootstrap_readiness.py", "ntfy-curl-config.sh"):
         shutil.copy2(REPO_ROOT / "scripts" / name, scripts / name)
     (scripts / "reality_target_validation.py").write_text("""
 import argparse, os, sys, subprocess
@@ -329,6 +329,9 @@ def test_two_strikes_alert_daily_then_recovery(monitor_env):
     assert len(_alerts(monitor_env)) == 1
     alert_blob = "\n".join(_alerts(monitor_env))
     assert TARGET not in alert_blob
+    # The stub records the curl argument list: the destination and token are not in it.
+    assert "private-alert-topic" not in alert_blob and "private-alert-token" not in alert_blob
+    assert "ntfy.fixture.invalid" not in alert_blob
     assert all(server_name not in alert_blob for server_name in SERVER_NAMES)
 
     _set_day(monitor_env, 13)

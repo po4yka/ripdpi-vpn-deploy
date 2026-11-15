@@ -114,6 +114,72 @@ def test_tracked_files_do_not_contain_forbidden_identifiers():
     assert not offenders, "forbidden repository identifiers:\n" + "\n".join(offenders)
 
 
+# Globally routable literals that are not node addresses. Any other public address
+# in a tracked file fails: a node address once reached the public history through a
+# verification note. Use a documentation range or `<redacted-address>` instead.
+ALLOWED_PUBLIC_ADDRESSES = {
+    **dict.fromkeys(
+        ("1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4", "9.9.9.9", "208.67.222.222",
+         "2606:4700:4700::1111", "2606:4700:4700::1001", "2001:4860:4860::8888"),
+        "public resolver",
+    ),
+    **dict.fromkeys(
+        ("1.2.3.4", "9.9.9.0", "9.9.9.8", "13.107.21.200", "93.184.216.34", "140.82.121.4", "142.250.1.1",
+         "142.250.190.78", "149.154.160.0", "149.154.160.1", "151.101.1.69", "185.125.190.39",
+         "2001:4860::1", "2001:4860:ffff::1"),
+        "public service or placeholder address used as a test or example value",
+    ),
+    **dict.fromkeys(
+        ("8.0.0.0", "100.128.0.1", "149.0.0.0", "172.15.0.1", "172.32.0.1", "203.0.112.0"),
+        "first address outside a reserved range, in a boundary test",
+    ),
+    **dict.fromkeys(("4.8.12.9", "4.8.15.5", "4.8.19.0", "4.8.20.0"), "four-part version number"),
+}
+IPV4_CANDIDATE = re.compile(r"(?<!\d)(?<!\d\.)(?:\d{1,3}\.){3}\d{1,3}(?!\d|\.\d)")
+IPV6_CANDIDATE = re.compile(r"(?<![\w:])(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}(?![\w:])")
+GLOBAL_UNICAST_V6 = ipaddress.ip_network("2000::/3")
+
+
+def _public_addresses(text):
+    """Return (line number, address) for each globally routable unicast literal in lowercase text."""
+    found = []
+    for number, line in enumerate(text.splitlines(), 1):
+        for candidate in IPV4_CANDIDATE.findall(line) + IPV6_CANDIDATE.findall(line):
+            try:
+                address = ipaddress.ip_address(candidate)
+            except ValueError:
+                continue
+            if address.is_global and not address.is_multicast and (address.version == 4 or address in GLOBAL_UNICAST_V6):
+                found.append((number, str(address)))
+    return found
+
+
+def test_address_scan_flags_public_unicast_literals_only():
+    text = (
+        "node at 45.33.32.156:443, and 45.33.32.157.\n"          # followed by a port and by a full stop
+        "endpoint [2a01:4f8:c0c::1]:443 and name.45.33.32.158.sslip.example\n"
+        "docs 192.0.2.7 198.51.100.9 203.0.113.5 2001:db8::7 <redacted-address>\n"
+        "private 10.0.0.1 100.64.0.2 fd00::1 ::1 224.0.0.1 ff02::1:2 64:ff9b::a01:203\n"
+        "oid 1.3.6.1.4.1 slice values[1::2] time 12:34:56\n"
+    )
+    assert _public_addresses(text) == [
+        (1, "45.33.32.156"), (1, "45.33.32.157"), (2, "45.33.32.158"), (2, "2a01:4f8:c0c::1"),
+    ]
+
+
+def test_tracked_files_contain_no_unlisted_public_address():
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True
+    ).stdout.decode().split("\0")
+    offenders = [
+        f"{relative}:{number}"
+        for relative in filter(_should_scan, tracked)
+        for number, address in _public_addresses(_read_tracked_content(ROOT / relative))
+        if address not in ALLOWED_PUBLIC_ADDRESSES
+    ]
+    assert not offenders, "public addresses in tracked files (file:line):\n" + "\n".join(offenders)
+
+
 def test_physical_acceptance_evidence_contains_no_public_ip_literals():
     research = (ROOT / "docs/research/ios-split-routing.md").read_text()
     evidence = research.split("## Physical acceptance matrix", 1)[1].split(

@@ -20,7 +20,7 @@ vpn:
   enable_amneziawg: true          # P2 — device-VPN
   enable_geodata: true            # geosite/geoip pinned + daily refresh
   enable_monitoring: true
-  enable_watchdog: true           # local probe + ntfy/Pushover alerts
+  enable_watchdog: true           # local probes; alerts need an operator-set destination
   enable_backup: true
   enable_subscription_host: false # opt-in; not in v1 default deploy
   enable_tailnet_management: false # opt-in ordinary OpenSSH over a restricted Tailnet

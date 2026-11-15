@@ -10,9 +10,14 @@ watchdog:
   reality_probe_client: watchdog
   reality_probe_timeout: 15
   reality_probe_socks_port: 31082
-  # Provider: ntfy.sh (default) or pushover.
-  # ntfy is HTTP POST to ntfy.topic; no signup, but anyone with the topic
-  # can read alerts. Use a long random topic name and treat it as a secret.
-  provider: ntfy
+  # Provider: none (default), ntfy or pushover. With none the watchdog still
+  # probes and recovers but sends nothing off the node. A provider needs
+  # node_alias (or the monitoring node ID), which replaces the hostname in alerts;
+  # ntfy also needs ntfy_url.
+  # Production refuses the public ntfy service: it would receive the node
+  # address with every alert.
+  provider: none
+  node_alias: ""
+  ntfy_url: ""
 
 watchdog_role_enabled: true

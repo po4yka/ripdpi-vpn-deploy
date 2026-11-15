@@ -38,7 +38,7 @@ All four provider roots open exactly the typed `public_listeners` contract at th
 Diagnostic rule: **trust `tcpdump` showing inbound packets, not `nft list` showing ACCEPT.** Verification chain after a deploy:
 
 1. Listener bound — `ss -ulnp` shows hysteria on `:443` (the in-host smoke-test already dials it from localhost).
-2. External probe — `make burn-check` sends an unauthenticated QUIC Version-Negotiation trigger from the operator vantage to `UDP/443` and treats any reply as proof of end-to-end delivery (non-fatal WARN otherwise).
+2. External probe — `scripts/burn-check.sh --udp-probe` sends an unauthenticated QUIC Version-Negotiation trigger from the operator vantage to `UDP/443` and treats any reply as proof of end-to-end delivery (non-fatal WARN otherwise).
 3. If the probe gets no reply, `tcpdump -i any udp port 443` on the server disambiguates: **zero inbound packets ⇒ the provider edge is dropping UDP.**
 
 **Deploy-time manual step when the edge drops UDP despite the rule.** None of the provider roots require a UI action to *declare* the UDP/443 rule — all accept it through Terraform. But if the burn-check UDP probe fails while TCP/443 succeeds, the provider network is dropping UDP at a layer Terraform cannot reach. The fix is provider-side and manual: open/confirm UDP/443 in the provider's web console security group, or file a support request to lift a UDP-default-closed policy. Do not chase the on-host firewall — it is not the cause. (Note Hysteria2 also supports a non-443 UDP port via `hysteria_port`; moving to e.g. UDP/8443 sidesteps both edge friction and QUIC throttling on the filtered path on UDP/443.)
