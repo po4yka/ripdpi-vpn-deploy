@@ -1,11 +1,13 @@
 """P0 REALITY self-steal behavior at the Ansible role boundary."""
 
+import base64
 import importlib.util
 import json
 import os
 from pathlib import Path
 import subprocess
 
+import pytest
 import yaml
 
 from tests.site_role_graph import site_roles
@@ -450,3 +452,88 @@ def test_self_steal_access_log_retains_no_client_address_or_user_agent() -> None
     assert not any(field in rendered for field in ("$remote_addr", "$http_referer", "$http_user_agent"))
     assert "access_log /var/log/nginx/reality-self-steal.access.log vpn_self_steal;" in rendered
     assert "log_format vpn_self_steal" in rendered
+
+
+SELF_STEAL_TASKS = ANSIBLE / "roles" / "reality-self-steal" / "tasks"
+SITE_STAGING_TASKS = (
+    ("main.yml", "Require an operator-owned self-steal site on production hosts"),
+    ("operator-site.yml", "Enumerate the operator-owned self-steal site on the controller"),
+    ("operator-site.yml", "Resolve the published self-steal site layout"),
+    ("configure.yml", "Require the operator-owned tree to carry the index and the ordinary error page"),
+    ("configure.yml", "Inspect owned candidate roots without following links"),
+    ("configure.yml", "Add the bundled landing assets to the same publication"),
+    ("configure.yml", "Add the operator-owned site to the same publication"),
+    ("configure.yml", "Retire the bundled pages that the operator-owned tree does not provide"),
+)
+
+
+def _stage_self_steal_site(tmp_path: Path, variables: dict) -> tuple[subprocess.CompletedProcess, dict | None]:
+    """Run the role's own site-staging tasks in place of the nginx publication transaction."""
+    selected = []
+    for name, task_name in SITE_STAGING_TASKS:
+        selected.append(next(task for task in yaml.safe_load((SELF_STEAL_TASKS / name).read_text())
+                             if task["name"] == task_name))
+    result_file = tmp_path / "staged.json"
+    play = tmp_path / "site-staging.yml"
+    defaults = yaml.safe_load((SELF_STEAL_TASKS.parent / "defaults" / "main.yml").read_text())
+    play.write_text(yaml.safe_dump([{
+        "hosts": "localhost", "connection": "local", "gather_facts": False, "become": False,
+        "vars": {**defaults, "nginx_transaction_files": [], "role_path": str(SELF_STEAL_TASKS.parent),
+                 "reality_self_steal_role_enabled": True, "reality_self_steal_site_root": "/srv/site",
+                 "reality_self_steal_tls_dir": "/srv/tls", **variables},
+        "tasks": selected + [{"name": "Record staged rows", "ansible.builtin.copy": {
+            "dest": str(result_file), "mode": "0600",
+            "content": "{{ {'files': nginx_transaction_files, 'roots': _self_steal_candidate_roots.results"
+                       " | map(attribute='item') | list} | to_json }}"}}],
+    }]))
+    result = subprocess.run(["ansible-playbook", "-i", "localhost,", str(play)],
+                            env={**os.environ, "ANSIBLE_RETRY_FILES_ENABLED": "0"}, cwd=tmp_path,
+                            capture_output=True, text=True, timeout=60)
+    return result, json.loads(result_file.read_text()) if result_file.exists() else None
+
+
+def test_production_refuses_the_bundled_self_steal_site_before_staging(tmp_path: Path) -> None:
+    result, staged = _stage_self_steal_site(tmp_path, {"env": "prod"})
+    assert result.returncode != 0
+    assert staged is None
+    assert "reality_self_steal_public_site_dir" in result.stdout
+
+
+def test_non_production_publishes_the_bundled_self_steal_site(tmp_path: Path) -> None:
+    result, staged = _stage_self_steal_site(tmp_path, {"env": "staging"})
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert {row["path"]: row["kind"] for row in staged["files"]} == {
+        "/srv/site/index.html": "file", "/srv/site/404.html": "file", "/srv/site/site.css": "file"}
+    assert staged["roots"] == [{"path": "/srv/site", "mode": "0755"}, {"path": "/srv/tls", "mode": "0750"}]
+
+
+def test_operator_tree_replaces_the_bundled_self_steal_site(tmp_path: Path) -> None:
+    site = tmp_path / "site"
+    (site / "img" / "deep").mkdir(parents=True)
+    (site / "index.html").write_text("<h1>owned</h1>")
+    (site / "404.html").write_text("missing")
+    binary = bytes(range(256)) * 3
+    (site / "img" / "deep" / "logo.png").write_bytes(binary)
+    result, staged = _stage_self_steal_site(tmp_path, {"env": "prod", "reality_self_steal_public_site_dir": str(site)})
+    assert result.returncode == 0, result.stdout + result.stderr
+    rows = {row["path"]: row for row in staged["files"]}
+    assert {path: row["kind"] for path, row in rows.items()} == {
+        "/srv/site/index.html": "file", "/srv/site/404.html": "file", "/srv/site/img/deep/logo.png": "file",
+        "/srv/site/site.css": "absent"}
+    assert base64.b64decode(rows["/srv/site/index.html"]["content_b64"], validate=True) == b"<h1>owned</h1>"
+    assert base64.b64decode(rows["/srv/site/img/deep/logo.png"]["content_b64"], validate=True) == binary
+    assert staged["roots"][2:] == [{"path": "/srv/site/img", "mode": "0755"},
+                                   {"path": "/srv/site/img/deep", "mode": "0755"}]
+    assert "<h1>owned</h1>" not in result.stdout
+
+
+@pytest.mark.parametrize("missing", ["index.html", "404.html"])
+def test_operator_tree_without_a_required_page_refuses(tmp_path: Path, missing: str) -> None:
+    site = tmp_path / "site"
+    site.mkdir()
+    for name in {"index.html", "404.html"} - {missing}:
+        (site / name).write_text("page")
+    result, staged = _stage_self_steal_site(tmp_path, {"env": "staging", "reality_self_steal_public_site_dir": str(site)})
+    assert result.returncode != 0
+    assert staged is None
+    assert "must contain index.html and 404.html" in result.stdout.replace("\n", " ").replace("  ", " ")

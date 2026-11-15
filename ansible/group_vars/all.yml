@@ -165,6 +165,19 @@ public_site_canonical_url: "https://vpn.example.com:8443"
 # convergence while this is empty. Supply it in the same private extra-vars
 # file as public_site_canonical_url.
 nginx_xhttp_public_site_dir: ""
+# The same contract for the REALITY self-steal site (at least index.html and
+# 404.html); production hosts refuse the bundled self-steal pages.
+reality_self_steal_public_site_dir: ""
+# Result of `NODE_ADDRESS=<node address> make validate-target` for a borrowed
+# REALITY target: same_asn, different_asn or unknown. Production refuses
+# different_asn unless tls_identity_exception holds a reason.
+reality_target_network: ""
+# Measured reason (path, date, outcome) for keeping a production address that
+# presents two unrelated TLS identities: a borrowed REALITY target on TCP/443
+# beside Hysteria or nginx-xhttp with the operator certificate, or a borrowed
+# target in a different network. Empty refuses such a production host. The node
+# manifest records only that an exception is active.
+tls_identity_exception: ""
 # Measurement record (path, date, outcome) that justifies keeping a
 # WireGuard-shaped AmneziaWG instance (S1=S2=0, H1..H4=1,2,3,4, e.g. the
 # narrow-junk-sequential cohort) on a production host. Empty refuses such an

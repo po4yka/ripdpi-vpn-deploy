@@ -46,6 +46,16 @@
       on every public port, so reuse nginx_xhttp.cert_pem/key_pem or choose a distinct name.
   when: reality_self_steal_role_enabled | bool
 
+- name: Require an operator-owned self-steal site on production hosts
+  ansible.builtin.assert:
+    that:
+      - (reality_self_steal_public_site_dir | length > 0) or ((env | default('')) != 'prod')
+    fail_msg: >-
+      Production hosts refuse the repository-bundled self-steal site: set
+      reality_self_steal_public_site_dir to a controller-local directory holding the
+      operator-owned static site (at least index.html and 404.html).
+  when: reality_self_steal_role_enabled | bool
+
 - name: Derive the immutable TLS release path
   ansible.builtin.set_fact:
     reality_self_steal_tls_release_dir: >-

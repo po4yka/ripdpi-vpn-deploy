@@ -13,9 +13,9 @@ The 2026-11-15 audit found that one scan of a default node shows more than one T
 ## What Changes
 
 - The self-steal role publishes the site from an operator directory and refuses production without one.
-- The REALITY target validator reports whether the target and the node are in the same network.
-- BREAKING: production refuses a node that presents two unrelated TLS identities on one address, unless the operator records a measured exception with a reason.
-- BREAKING: the port 80 server serves the decoy site when the XHTTP port is not 443. It sends no redirect to another port and answers an unknown Host with the decoy 404 page.
+- The REALITY target validator reports whether the target and the node are in the same network, when the operator supplies the node address.
+- BREAKING: production refuses a borrowed REALITY target beside Hysteria or nginx-xhttp on the same address, and a borrowed target that the operator recorded as being in a different network, unless the operator records a measured exception with a reason.
+- BREAKING: each port 80 server serves the decoy site when the HTTPS port of its name is not 443. It sends no redirect to another port, and a default server answers an unknown Host with the decoy 404 page.
 
 ## Capabilities
 
@@ -30,7 +30,7 @@ The 2026-11-15 audit found that one scan of a default node shows more than one T
 
 ## Impact
 
-- Ansible: `ansible/roles/reality-self-steal/`, `ansible/roles/nginx-xhttp/templates/site.conf.j2`, `ansible/roles/xray/` preflight, `ansible/roles/hysteria/` preflight, `ansible/group_vars/`.
-- Scripts: `scripts/reality_target_validation.py`.
+- Ansible: `ansible/roles/reality-self-steal/`, `ansible/roles/nginx-xhttp/templates/site.conf.j2` and `public-acme.conf.j2`, a shared preflight imported by `ansible/playbooks/site.yml` and the xray, hysteria and nginx-xhttp roles, `ansible/roles/node_manifest/`, `ansible/group_vars/all.yml`.
+- Scripts: `scripts/reality_target_validation.py`; `scripts/validate-ansible-extra-vars.py`, `scripts/deploy-controller.py` and `scripts/fleet-maintenance.py` accept the new operator inputs.
 - Secrets: `secrets/prod.secrets.example.yaml` comment for the target rule; no new secret.
-- Operations: a production node with a borrowed target outside its network, or with Hysteria on UDP/443 beside a borrowed target, fails preflight until the operator changes the layout or records the exception.
+- Operations: a production node with a borrowed target beside Hysteria or nginx-xhttp, or with a recorded `reality_target_network: different_asn`, fails preflight until the operator changes the layout or records the exception. Every committed profile that enables REALITY with Hysteria or nginx-xhttp and without self-steal is affected on `env: prod`.

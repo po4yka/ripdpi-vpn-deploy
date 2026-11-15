@@ -2,6 +2,7 @@
 # Read-only point-in-time TLS/HTTP hygiene; never establishes filtered survival.
 # TARGET=host:port SERVER_NAMES='a.example,b.example' (or encrypted SOPS_FILE).
 # TARGET_MODE=owned-public requires PUBLIC_ENDPOINT and exact OWNED_SNI.
+# NODE_ADDRESS=<node public address> adds target_network (same_asn, different_asn, unknown).
 # PROBE_TIMEOUT=12 VALIDATION_TIMEOUT=120 bound operations and the entire run.
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"

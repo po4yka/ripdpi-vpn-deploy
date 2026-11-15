@@ -12,6 +12,18 @@
         \ | int\n]"
       - (reality_self_steal_port | int) not in reality_self_steal_public_tcp_ports
     fail_msg: reality_self_steal_port must be a private, non-conflicting TCP port.
+- name: Read the operator-owned self-steal site layout
+  ansible.builtin.include_tasks: operator-site.yml
+- name: Require the operator-owned tree to carry the index and the ordinary error page
+  ansible.builtin.assert:
+    that:
+      - "'index.html' in _self_steal_operator_files"
+      - "'404.html' in _self_steal_operator_files"
+      - (_self_steal_operator_site.files | rejectattr('isreg') | rejectattr('isdir') | list | length) == 0
+    fail_msg: >-
+      reality_self_steal_public_site_dir must contain index.html and 404.html and only
+      regular files and directories.
+  when: reality_self_steal_public_site_dir | length > 0
 - name: Install the self-steal TLS runtime without premature default activation
   ansible.builtin.apt:
     name:
@@ -53,9 +65,10 @@
   ansible.builtin.stat:
     path: '{{ item.path }}'
     follow: false
-  loop:
-    - {path: '{{ reality_self_steal_site_root }}', mode: '0755'}
-    - {path: '{{ reality_self_steal_tls_dir }}', mode: '0750'}
+  loop: >-
+    {{ [{'path': reality_self_steal_site_root, 'mode': '0755'}, {'path': reality_self_steal_tls_dir, 'mode': '0750'}]
+       + (dict(_self_steal_operator_dirs | map('regex_replace', '^', reality_self_steal_site_root ~ '/')
+               | zip_longest([], fillvalue='0755')) | dict2items(key_name='path', value_name='mode')) }}
   register: _self_steal_candidate_roots
 
 - name: Require existing candidate roots to retain safe owned directory authority
@@ -114,12 +127,34 @@
         kind: absent
   no_log: true
   diff: false
-- name: Add the complete owned landing assets to the same publication
+- name: Add the bundled landing assets to the same publication
   ansible.builtin.set_fact:
-    nginx_transaction_files: "{{ nginx_transaction_files + [{'path': reality_self_steal_site_root ~ '/' ~ (item\
-      \ | basename),\n    'kind': 'file', 'content_b64': lookup('ansible.builtin.file', item, rstrip=false) | b64encode,\n\
-      \    'mode': '0644', 'uid': 0, 'gid': 0}] }}"
-  loop: '{{ query(''ansible.builtin.fileglob'', role_path ~ ''/files/public-site/*'') }}'
+    nginx_transaction_files: >-
+      {{ nginx_transaction_files + [{'path': reality_self_steal_site_root ~ '/' ~ (item | basename),
+          'kind': 'file', 'content_b64': lookup('ansible.builtin.file', item, rstrip=false) | b64encode,
+          'mode': '0644', 'uid': 0, 'gid': 0}] }}
+  loop: "{{ query('ansible.builtin.fileglob', role_path ~ '/files/public-site/*') }}"
+  when: _self_steal_operator_files | length == 0
+  no_log: true
+  diff: false
+# The file lookup cannot carry binary assets, so the controller encodes each file.
+- name: Add the operator-owned site to the same publication
+  ansible.builtin.set_fact:
+    nginx_transaction_files: >-
+      {{ nginx_transaction_files + [{'path': reality_self_steal_site_root ~ '/' ~ item,
+          'kind': 'file', 'content_b64': lookup('ansible.builtin.pipe',
+            'base64 < ' ~ ((reality_self_steal_public_site_dir ~ '/' ~ item) | quote) ~ ' | tr -d "\n"'),
+          'mode': '0644', 'uid': 0, 'gid': 0}] }}
+  loop: '{{ _self_steal_operator_files }}'
+  no_log: true
+  diff: false
+- name: Retire the bundled pages that the operator-owned tree does not provide
+  ansible.builtin.set_fact:
+    nginx_transaction_files: >-
+      {{ nginx_transaction_files + [{'path': reality_self_steal_site_root ~ '/' ~ item, 'kind': 'absent'}] }}
+  loop: >-
+    {{ query('ansible.builtin.fileglob', role_path ~ '/files/public-site/*') | map('basename')
+       | difference(_self_steal_operator_files) if (_self_steal_operator_files | length > 0) else [] }}
   no_log: true
   diff: false
 - name: Validate publish and adopt complete self-steal authority under shared nginx lock

@@ -130,13 +130,17 @@
         executable: /bin/bash
       changed_when: false
 
-    - name: HTTP redirects to the configured HTTPS listener
+    - name: Port 80 serves the site and never redirects to another port
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          test "$(curl --silent --output /dev/null --write-out '%{http_code}' --header 'Host: vpn.example.test' http://127.0.0.1/)" = 301
-          test "$(curl --silent --output /dev/null --write-out '%{redirect_url}' \
-            --header 'Host: vpn.example.test' http://127.0.0.1/)" = https://vpn.example.test:8443/
+          named="$(curl --silent --include --header 'Host: vpn.example.test' http://127.0.0.1/)"
+          grep -q '^HTTP/1.1 200' <<<"$named"
+          ! grep -qi '^Location:' <<<"$named"
+          unknown="$(curl --silent --include --header 'Host: 127.0.0.1' http://127.0.0.1/)"
+          grep -q '^HTTP/1.1 404' <<<"$unknown"
+          ! grep -qi '^Location:' <<<"$unknown"
+          test "$(curl --silent --header 'Host: 127.0.0.1' http://127.0.0.1/)" = "$(cat /var/www/public-site/404.html)"
         executable: /bin/bash
       changed_when: false
 

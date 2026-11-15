@@ -23,6 +23,9 @@ ALLOWED_KEYS = {
     "firewall_tailnet_collector_ingress",
     "public_site_canonical_url",
     "nginx_xhttp_public_site_dir",
+    "reality_self_steal_public_site_dir",
+    "reality_target_network",
+    "tls_identity_exception",
     "network_exposure_gate",
     "vpn_device_revocation",
     "vpn_device_retained_publisher",
@@ -164,8 +167,17 @@ def validate(path: Path) -> None:
         if not origin_valid(url):
             raise ValueError("public_site_canonical_url must be a canonical HTTPS origin")
 
-    if "nginx_xhttp_public_site_dir" in document:
-        read_site(document["nginx_xhttp_public_site_dir"])
+    for name in ("nginx_xhttp_public_site_dir", "reality_self_steal_public_site_dir"):
+        if name in document:
+            read_site(document[name])
+
+    if document.get("reality_target_network", "") not in ("", "same_asn", "different_asn", "unknown"):
+        raise ValueError("reality_target_network must be same_asn, different_asn or unknown")
+
+    if "tls_identity_exception" in document:
+        reason = document["tls_identity_exception"]
+        if not isinstance(reason, str) or len(reason) > 512 or any(ord(char) < 32 or ord(char) == 127 for char in reason):
+            raise ValueError("tls_identity_exception must be one line of at most 512 characters")
 
     if "firewall_tailnet_collector_ingress" in document:
         validate_collector_ingress(document['firewall_tailnet_collector_ingress'])

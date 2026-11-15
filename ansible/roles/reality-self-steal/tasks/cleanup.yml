@@ -6,12 +6,16 @@
       - {path: /etc/nginx/sites-available/reality-self-steal.conf, kind: absent}
       - {path: '{{ reality_self_steal_tls_dir }}/current', kind: absent}
 
+- name: Read the operator-owned self-steal site layout
+  ansible.builtin.include_tasks: operator-site.yml
+
 - name: Include exact owned landing assets in compensated retirement
   ansible.builtin.set_fact:
     nginx_transaction_files: >-
-      {{ nginx_transaction_files + [{'path': reality_self_steal_site_root ~ '/' ~ (item | basename),
-          'kind': 'absent'}] }}
-  loop: "{{ query('ansible.builtin.fileglob', role_path ~ '/files/public-site/*') }}"
+      {{ nginx_transaction_files + [{'path': reality_self_steal_site_root ~ '/' ~ item, 'kind': 'absent'}] }}
+  loop: >-
+    {{ (query('ansible.builtin.fileglob', role_path ~ '/files/public-site/*') | map('basename')
+        + _self_steal_operator_files) | unique }}
   no_log: true
   diff: false
 

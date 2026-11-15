@@ -8,6 +8,9 @@
   vars:
     transport_input_sections: [hysteria, egress]
 
+- name: Preflight the TLS identities of the public address
+  ansible.builtin.import_tasks: "{{ role_path }}/../../playbooks/tasks/tls-identity-preflight.yml"
+
 - name: Require one exact fresh native ACME recovery intent
   ansible.builtin.assert:
     that:

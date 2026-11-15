@@ -7,6 +7,9 @@
   vars:
     transport_input_sections: [xray, egress]
 
+- name: Preflight the TLS identities of the public address
+  ansible.builtin.import_tasks: "{{ role_path }}/../../playbooks/tasks/tls-identity-preflight.yml"
+
 - name: Prepare guarded topology for standalone frontend convergence
   ansible.builtin.import_tasks: "{{ role_path }}/../../playbooks/tasks/transport-egress-prepare.yml"
   when: not (transport_egress_prepared | default(false) | bool)

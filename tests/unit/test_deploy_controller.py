@@ -772,14 +772,14 @@ print('{{"summary": {{"validation": "valid"}}, "plan": {{}}}}')
                    for entry in calls(workspace))
 
 
+@pytest.mark.parametrize("key", ["nginx_xhttp_public_site_dir", "reality_self_steal_public_site_dir"])
 @pytest.mark.parametrize("target", ["dry-run", "deploy"])
-def test_owned_site_is_snapshotted_for_publication_and_removed_afterward(workspace, target):
+def test_owned_site_is_snapshotted_for_publication_and_removed_afterward(workspace, target, key):
     root = workspace["root"]
     site = root.parent / "owned-site"
     write(site / "404.html", "missing page")
     write(site / "assets/style.css", "body { color: black; }")
-    override = write(root.parent / "site.yml", yaml.safe_dump({
-        "nginx_xhttp_public_site_dir": str(site)}))
+    override = write(root.parent / "site.yml", yaml.safe_dump({key: str(site)}))
     record = root.parent / "published-site.json"
     binary = Path(workspace["env"]["PATH"].split(os.pathsep)[0])
     write(binary / "ansible-playbook", f"""#!{sys.executable}
@@ -787,7 +787,7 @@ import json, pathlib, stat, sys, yaml
 play = json.loads(pathlib.Path(sys.argv[1]).read_text())
 files = play[0]['vars']['deployment_input_files']['node-one']
 override = next(pathlib.Path(p) for p in files if p.endswith('-overrides.yml'))
-site = pathlib.Path(yaml.safe_load(override.read_text())['nginx_xhttp_public_site_dir'])
+site = pathlib.Path(yaml.safe_load(override.read_text())[{key!r}])
 pathlib.Path({str(record)!r}).write_text(json.dumps({{
     'path': str(site), 'page': (site / '404.html').read_text(),
     'css': (site / 'assets/style.css').read_text(),

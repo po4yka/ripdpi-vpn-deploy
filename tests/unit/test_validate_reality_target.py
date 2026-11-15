@@ -435,3 +435,79 @@ def test_http_failure_retains_successful_tls_observation(monkeypatch):
     assert reasons == ["https_timeout"]
     assert observations == [("192.0.2.1", "", "", 1, 1)]
     assert compatibility == "unavailable"
+
+
+class OriginBudget:
+    """Stands in for the bounded probe-asn.sh call: address -> origin AS number, None -> failed lookup."""
+
+    def __init__(self, origins):
+        self.origins, self.asked = origins, []
+
+    def run(self, stage, command):
+        assert stage == 'metadata' and Path(command[0]).name == 'probe-asn.sh'
+        self.asked.append(command[1])
+        number = self.origins.get(command[1])
+        if number is None:
+            raise validator.Refused('metadata_failed')
+        return f'{command[1]}\t{number}\t192.0.2.0/24\tXX\tfixture\n'
+
+
+@pytest.mark.parametrize('origins,expected', [
+    ({'192.0.2.10': 64500, '198.51.100.7': 64500, '198.51.100.8': 64500}, 'same_asn'),
+    ({'192.0.2.10': 64500, '198.51.100.7': 64501, '198.51.100.8': 64502}, 'different_asn'),
+    ({'192.0.2.10': 64500, '198.51.100.7': 64500, '198.51.100.8': 64501}, 'different_asn'),
+    ({'192.0.2.10': None, '198.51.100.7': 64500, '198.51.100.8': 64500}, 'unknown'),
+    ({'192.0.2.10': 64500, '198.51.100.7': 64500, '198.51.100.8': None}, 'unknown'),
+])
+def test_target_network_compares_every_target_origin_with_the_node(monkeypatch, origins, expected):
+    monkeypatch.setenv('NODE_ADDRESS', '192.0.2.10')
+    budget = OriginBudget(origins)
+    assert validator.target_network(budget, 'borrowed', ['198.51.100.7', '198.51.100.8']) == expected
+
+
+def test_target_network_sends_nothing_without_a_node_address_or_for_an_owned_target(monkeypatch):
+    budget = OriginBudget({})
+    monkeypatch.delenv('NODE_ADDRESS', raising=False)
+    assert validator.target_network(budget, 'borrowed', ['198.51.100.7']) == 'unknown'
+    monkeypatch.setenv('NODE_ADDRESS', '192.0.2.10')
+    assert validator.target_network(budget, 'owned-public', ['198.51.100.7']) == 'not_applicable'
+    assert budget.asked == []
+
+
+def cymru(address, number):
+    name = ipaddress.ip_address(address).reverse_pointer.rsplit('.', 2)[0] + '.origin.asn.cymru.com'
+    return {('TXT', name): [f'{number} | 192.0.2.0/24 | XX | fixture | 2026-01-01'],
+            ('TXT', f'AS{number}.asn.cymru.com'): [f'{number} | XX | fixture | 2026-01-01 | fixture']}
+
+
+@pytest.mark.parametrize('node_origin,expected', [(64500, 'same_asn'), (64511, 'different_asn'), (None, 'unknown')])
+def test_real_report_carries_the_target_network_category_only(tls_site, node_origin, expected):
+    records = cymru(tls_site[3], 64500)
+    if node_origin:
+        records.update(cymru('192.0.2.10', node_origin))
+    with doh_server(records) as doh_url:
+        result, report = run_site(tls_site, NODE_ADDRESS='192.0.2.10', DOH_URL=doh_url)
+    # A failed lookup is not a target defect: the validator still passes.
+    assert result.returncode == 0, (report, result.stderr)
+    assert report['target_network'] == expected
+    for private in ('192.0.2.10', tls_site[3], '64500', '64511'):
+        assert private not in result.stdout + result.stderr
+
+
+def test_real_report_without_a_node_address_and_for_an_owned_target(tls_site):
+    queries = []
+    with doh_server({}, queries) as doh_url:
+        _, report = run_site(tls_site, NODE_ADDRESS=None, DOH_URL=doh_url)
+        assert report['target_network'] == 'unknown'
+        _, owned = run_site(tls_site, NODE_ADDRESS='192.0.2.10', DOH_URL=doh_url, TARGET_MODE='owned-public',
+                            PUBLIC_ENDPOINT=f'{tls_site[3]}:{tls_site[0]}', OWNED_SNI='exact.example')
+        assert owned['target_network'] == 'not_applicable'
+    assert queries == []
+
+
+def test_invalid_node_address_refuses_before_network(monkeypatch):
+    monkeypatch.setenv('TARGET', 'target.example:443')
+    monkeypatch.setenv('SERVER_NAMES', 'borrowed.example')
+    monkeypatch.setenv('NODE_ADDRESS', 'node.example')
+    with pytest.raises(validator.Refused, match='invalid_node_address'):
+        validator.load_inputs(None)

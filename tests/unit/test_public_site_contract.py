@@ -724,7 +724,7 @@ def test_molecule_exercises_live_http_semantics() -> None:
         / "verify.yml"
     ).read_text()
     for behavior in (
-        "%{redirect_url}",
+        "--header 'Host: 127.0.0.1' http://127.0.0.1/",
         "--head",
         "%{http_code}",
         "Page not found",
@@ -1073,3 +1073,60 @@ def test_owned_site_render_refuses_unsafe_inputs_without_writing(tmp_path: Path,
     assert not (tmp_path / "new").exists() and not (tmp_path / "missing").exists()
     assert [path.name for path in existing.iterdir()] == ["index.html"]
     assert (existing / "index.html").read_text() == "operator page\n"
+
+
+def _port_80_servers(*, port: int, fallback_port: int = 2083, acme: bool = False) -> dict[str, str]:
+    """Render the port 80 servers and return each block by its server_name."""
+    variables = renderer.merge_render_vars()
+    name = variables["nginx_xhttp"]["server_name"]
+    variables["nginx_xhttp_public_port"] = port
+    variables["nginx_xhttp_fallback_port"] = fallback_port
+    variables["public_site_canonical_url"] = f"https://{name}" + ("" if port == 443 else f":{port}")
+    variables["nginx_xhttp"] = {**variables["nginx_xhttp"], "fallback_enabled": True,
+                                "fallback_server_name": "alternate.example.invalid"}
+    rendered = renderer.render_template(TEMPLATE, variables)
+    if acme:
+        # Managed TLS moves the primary server to the public TLS owner's file; the renderer
+        # cannot evaluate the site template's alias branch, so drop that server here.
+        name_line = f"server_name {name};"
+        rendered = "".join("\nserver {" + block for block in rendered.split("\nserver {")[1:]
+                           if re.search(r"listen 80\b", block) and name_line not in block)
+        variables["nginx_xhttp"] = {**variables["nginx_xhttp"], "acme": {"domains": [name]}}
+        rendered += renderer.render_template(TEMPLATE.parent / "public-acme.conf.j2", variables)
+    servers = {}
+    for block in rendered.split("\nserver {")[1:]:
+        if re.search(r"^\s*listen 80\b", block, re.M):
+            (server_name,) = re.findall(r"^\s*server_name (\S+);", block, re.M)
+            assert server_name not in servers
+            servers[server_name] = block
+    assert set(servers) == {name, "alternate.example.invalid", "_"}
+    return servers
+
+
+@pytest.mark.parametrize("acme", [False, True])
+def test_port_80_serves_the_decoy_and_never_redirects_to_another_port(acme: bool) -> None:
+    servers = _port_80_servers(port=8443, acme=acme)
+    for name, block in servers.items():
+        assert "return 301" not in block, name
+        assert "root /var/www/public-site;" in block and "error_page 404 /404.html;" in block, name
+        assert re.search(r"location = /404\.html \{\s*internal;", block), name
+    primary = servers[renderer.merge_render_vars()["nginx_xhttp"]["server_name"]]
+    assert re.search(r"location / \{\s*try_files \$uri \$uri/ =404;", primary)
+
+
+@pytest.mark.parametrize("acme", [False, True])
+def test_port_80_redirects_only_to_https_without_a_port(acme: bool) -> None:
+    servers = _port_80_servers(port=443, fallback_port=443, acme=acme)
+    name = renderer.merge_render_vars()["nginx_xhttp"]["server_name"]
+    redirects = {host: re.findall(r"return 301 (\S+);", block) for host, block in servers.items()}
+    assert redirects == {name: [f"https://{name}$request_uri"] if acme else ["https://$host$request_uri"],
+                         "alternate.example.invalid": ["https://$host$request_uri"], "_": []}
+
+
+@pytest.mark.parametrize("port", [443, 8443])
+@pytest.mark.parametrize("acme", [False, True])
+def test_an_unknown_host_on_port_80_gets_the_decoy_404(port: int, acme: bool) -> None:
+    default = _port_80_servers(port=port, acme=acme)["_"]
+    assert default.count("default_server;") == 2
+    assert re.search(r"location / \{\s*return 404;", default)
+    assert "root /var/www/public-site;" in default and "error_page 404 /404.html;" in default

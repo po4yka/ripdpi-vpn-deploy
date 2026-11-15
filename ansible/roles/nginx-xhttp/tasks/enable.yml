@@ -8,6 +8,9 @@
   vars:
     transport_input_sections: [xhttp]
 
+- name: Preflight the TLS identities of the public address
+  ansible.builtin.import_tasks: "{{ role_path }}/../../playbooks/tasks/tls-identity-preflight.yml"
+
 - name: Pre-flight — nginx public listener must not collide with REALITY
   ansible.builtin.assert:
     that:

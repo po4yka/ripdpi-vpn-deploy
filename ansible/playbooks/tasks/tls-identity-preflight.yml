@@ -1,0 +1,41 @@
+---
+# A borrowed REALITY target shows the target's certificate on TCP/443. A listener
+# that presents the operator certificate on the same address then gives one scan
+# two unrelated names, and a target outside the node's network fails the
+# address comparison a censor makes. Production refuses both layouts unless the
+# operator recorded why the node keeps them.
+- name: Refuse two unrelated TLS identities on one production address
+  vars:
+    _tls_identity_borrowed: >-
+      {{ (vpn.enable_xray_reality | default(true) | bool)
+         and not (vpn.enable_reality_self_steal | default(false) | bool)
+         and not (vpn_subscription_only | default(false) | bool) }}
+    # shortcut: only the two transports the 2026-11-15 audit named; add a row when another role serves the operator certificate.
+    _tls_identity_operator_listeners: >-
+      {{ (['Hysteria on UDP/' ~ (hysteria_port | default(443))]
+          if (vpn.enable_hysteria | default(true) | bool) else [])
+         + (['nginx-xhttp on TCP/' ~ (nginx_xhttp_public_port | default(8443))]
+            if (vpn.enable_nginx_xhttp | default(true) | bool) else []) }}
+  ansible.builtin.assert:
+    that:
+      - tls_identity_exception | default('') is string
+      - reality_target_network | default('') in ['', 'same_asn', 'different_asn', 'unknown']
+      - >-
+        (env | default('')) != 'prod'
+        or not (_tls_identity_borrowed | bool)
+        or (tls_identity_exception | default('') | trim | length > 0)
+        or (_tls_identity_operator_listeners | length == 0
+            and reality_target_network | default('') != 'different_asn')
+    fail_msg: >-
+      This production address presents two unrelated TLS identities: REALITY on
+      TCP/{{ xray_port | default(443) }} shows the certificate of a borrowed target{{
+        ' that the validator reported in a different network (reality_target_network: different_asn)'
+        if reality_target_network | default('') == 'different_asn' else '' }}{{
+        ', and ' ~ (_tls_identity_operator_listeners | join(' and ')) ~ ' present the operator certificate'
+        if _tls_identity_operator_listeners | length > 0 else '' }}.
+      Choose one: (1) enable vpn.enable_reality_self_steal so that TCP/443 presents the
+      operator certificate; (2) keep the borrowed target on a node without those listeners
+      and select a target in the node's network; (3) record the measured reason in
+      tls_identity_exception. reality_target_network accepts same_asn, different_asn or
+      unknown from `make validate-target`.
+  tags: [always]

@@ -233,6 +233,10 @@
         (vpn.enable_cascade_egress | default(false) | bool)
       tags: [always]
 
+    - name: Preflight the TLS identities of the public address
+      ansible.builtin.import_tasks: tasks/tls-identity-preflight.yml
+      tags: [always]
+
     - name: Admit the provider and runtime public listener contract
       ansible.builtin.import_tasks: tasks/public-listener-preflight.yml
       tags: [always]

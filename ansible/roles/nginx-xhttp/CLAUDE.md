@@ -14,11 +14,11 @@ The committing journal requires both finish flags and the explicit revocation fi
 HSTS follows the hostname's complete managed public HTTPS topology. A primary
 or fallback hostname served on TCP/443 keeps a one-year policy on all its direct
 frontends. Alternate-port-only names send `max-age=0` to clear cached policy;
-a browser would otherwise upgrade HTTP/80 to unrelated HTTPS/443 before the
-configured redirect. Compare DNS names without case. A distinct fallback name
+a browser would otherwise upgrade HTTP/80 to unrelated HTTPS/443 before it
+reaches the plain HTTP site. Compare DNS names without case. A distinct fallback name
 has its own policy. A previously cached policy clears only after a successful
 HTTPS visit to a managed alternate port; certificate errors at 443 cannot be
-repaired by an HTTP redirect.
+repaired over plain HTTP.
 
 Site capture precedes initial firewall convergence. Fresh-host compensation skips stopping an absent nginx unit, while a unit installed after capture is still stopped and disabled before the journal is closed.
 
@@ -58,7 +58,7 @@ omitting 443. Alternate pages retain that primary canonical identity.
 
 **Origin resolution is scoped to its consumer** — the role never edits global `/etc/hosts`. Hysteria binds a private accepted hosts file for a matching node-local origin; public hostname resolution and external DNS remain separately verified acceptance. Hostname-bound pages/assets and their removals publish through the same typed owner transaction as TLS/vhosts, so site compensation restores complete accepted ingress content.
 
-**Ordinary paths are a real static site** — the role publishes repository-owned content to `/var/www/public-site`, serves it on the primary and alternate HTTPS vhosts, and redirects TCP/80 to the configured HTTPS port. On a host whose inventory `env` is `prod` the bundled content is refused: `nginx_xhttp_public_site_dir` must name a controller-local tree (at least `404.html`), whose regular files are read on the controller (`find` plus `base64`, because the `file` lookup cannot carry binary assets) and published at the same relative paths in the same compensated transaction, with the bundled pages it does not provide declared absent. Template changes do not reach an operator tree by themselves: render a new tree with `make public-site-render` (same pages from `vars/public-site.yml`, news page off) and point the host's overrides at it. Both XHTTP locations set `proxy_intercept_errors on` with `error_page 404 502 503 504 =404 /404.html`, so a probe gets the same site 404 whether Xray answered, refused or is down. Identity pages are rendered from `templates/public-site/` so canonical metadata follows `public_site_canonical_url`; reusable CSS, favicon, search logo, and the host-neutral 404 remain static files. The secret XHTTP path remains a separate exact transport seam. Keep admin, metrics, status, and health endpoints off the public vhost.
+**Ordinary paths are a real static site** — the role publishes repository-owned content to `/var/www/public-site`, serves it on the primary and alternate HTTPS vhosts, and answers TCP/80 as the same site. TCP/80 redirects to HTTPS only when the name's HTTPS port is 443; for another port it serves the site tree itself, because a redirect to a non-standard port is unusual for a web site and points a scanner at the second listener. A request for any other Host, such as the node address, reaches the `default_server` and gets the site `404.html` with status 404. With managed TLS the named server lives in `public-acme.conf.j2`; the `default_server` stays in `site.conf.j2`, whose transaction retires the packaged default site, so the earlier managed-TLS publication never validates two default servers. Until the first site publication the tree is absent and these servers answer with nginx's built-in 404. The TCP/80 servers have no `/news.html` or feed location; the bundled news page answers 404 there. On a host whose inventory `env` is `prod` the bundled content is refused: `nginx_xhttp_public_site_dir` must name a controller-local tree (at least `404.html`), whose regular files are read on the controller (`find` plus `base64`, because the `file` lookup cannot carry binary assets) and published at the same relative paths in the same compensated transaction, with the bundled pages it does not provide declared absent. Template changes do not reach an operator tree by themselves: render a new tree with `make public-site-render` (same pages from `vars/public-site.yml`, news page off) and point the host's overrides at it. Both XHTTP locations set `proxy_intercept_errors on` with `error_page 404 502 503 504 =404 /404.html`, so a probe gets the same site 404 whether Xray answered, refused or is down. Identity pages are rendered from `templates/public-site/` so canonical metadata follows `public_site_canonical_url`; reusable CSS, favicon, search logo, and the host-neutral 404 remain static files. The secret XHTTP path remains a separate exact transport seam. Keep admin, metrics, status, and health endpoints off the public vhost.
 
 **One search identity graph** — `LLM Model Notes` is the sole public name. The home page emits `WebSite` + `Organization`; supporting pages emit `WebPage`; articles emit `Article` with the same visible author/publisher and dated metadata. Stable entity IDs, logo URLs, canonicals, Open Graph URLs, and the lowercase domain fallback all derive from `public_site_canonical_url`. Do not invent addresses, profiles, or contact details merely to fill structured-data fields.
 
@@ -135,9 +135,9 @@ shared-role idempotence without claiming an inactive unit adopted configuration.
   this vhost. The non-XHTTP public paths are the opt-in, secret-token routing
   lists and Snell evaluation fixture locations. Both disable access and error
   logging; the Snell location also disables compression and is rate-limited.
-- **Plain-HTTP redirects log nothing** — both TCP/80 redirect servers set
+- **Plain HTTP logs nothing** — every TCP/80 server sets
   `access_log off` and `error_log /dev/null crit`, because a client can send
-  any bearer path over HTTP before the redirect.
+  any bearer path over HTTP.
 - **Coherent HTTP identity** — canonical pages, discovery files, favicon, and error behavior are repository-owned and versioned; TCP/80 is part of the same Terraform-to-Ansible listener contract as HTTPS.
 - **Profile-aware port choice** — REALITY-disabled cohorts can set
   `nginx_xhttp_public_port: 443`. Full-stack hosts must keep it off 443

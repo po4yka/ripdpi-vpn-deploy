@@ -62,7 +62,7 @@ Default single-host port ownership:
 |---|---|---|
 | TCP/443 | P0 REALITY Xray inbound | `xray_port` |
 | 127.0.0.1:8443 | Optional P0 owned TLS target, never a public listener | `reality_self_steal_port` |
-| TCP/80 | nginx redirect to the public HTTPS site | fixed listener contract entry |
+| TCP/80 | nginx public site; redirect to HTTPS only when the site is on TCP/443 | fixed listener contract entry |
 | TCP/8443 | P1 nginx public HTTPS listener | `nginx_xhttp_public_port` |
 | 127.0.0.1:10085 | P1 Xray XHTTP local inbound behind nginx | `nginx_xhttp_port` |
 | 127.0.0.1:10086 | Xray StatsService, local diagnostics only | `xray_api_listen` |
