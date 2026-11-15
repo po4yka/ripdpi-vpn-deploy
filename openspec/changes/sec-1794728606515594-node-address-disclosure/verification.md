@@ -3,7 +3,7 @@ task_id: SEC-1794728606515594
 change: sec-1794728606515594-node-address-disclosure
 commit_sha: 839b45f8
 local: passed
-local_evidence: "make -k -j 4 check exit 0 on the committed tree (12051 unit tests passed, 551 vpnd tests passed, ansible-lint, shellcheck, snapshot-check, docs-check, task-check); focused modules for the changed scripts and the watchdog role passed. Molecule for the watchdog role did not run: the pinned Debian image has no arm64 manifest on the operator workstation. One independent review; its findings were fixed before the gate run."
+local_evidence: "make -k -j 4 check exit 0 on the tree before the commit, where the new files were still untracked, so the tracked-address guard did not scan them; it later flagged reverse-DNS literals in test_doh_lookup.py, fixed in d92e9fd3 (12051 unit tests passed, 551 vpnd tests passed, ansible-lint, shellcheck, snapshot-check, docs-check, task-check); focused modules for the changed scripts and the watchdog role passed. Molecule for the watchdog role did not run: the pinned Debian image has no arm64 manifest on the operator workstation. One independent review; its findings were fixed before the gate run."
 remote_ci: required
 remote_ci_evidence: Pending CI on the pull request, including the watchdog Molecule scenarios.
 dry_run: required
