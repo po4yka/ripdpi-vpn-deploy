@@ -6,14 +6,14 @@ local: passed
 local_evidence: "Focused modules passed (388 tests: test_transport_semantics, test_secrets_schema, test_amneziawg_version_floor, test_bootstrap_awg_handoff, test_provider_listeners_parity, test_listener_contract, test_docs_index, test_agent_instructions); the new tests fail with the non-test changes reverted. make tf-test exit 0 (278 provider runs), make tf-policy-verify, snapshot-check, shellcheck, docs-check and ansible-lint for the amneziawg role exit 0. The complete unit collection ran once: every remaining failure is a native_runtime test that needs Linux, or the tracked-address check on tests/unit/test_doh_lookup.py from 1d7d62e8, which this change does not touch. make check did not run here: the lead runs one gate on the integrated branch. Molecule for the amneziawg role did not run: the pinned image has no arm64 manifest on the operator workstation. One independent review found no high or medium defect. Integrated gate on the tree of cb173d5a, before its rebase onto two task-bookkeeping commits of main (all six tasks on one branch): make -k -j 4 check passed every target except test-unit, where 12170 cases passed and one failed, test_tailnet_network_executor.py::test_expiry_serializes_with_forward_mark_and_rolls_back_true; it is timing-sensitive under the parallel run, passes alone and with its file, and this branch changes no tailnet code."
 remote_ci: passed
 remote_ci_evidence: "CI run 43712765464 on main at 827d555e: 81 jobs passed. The two failed native jobs (native runtime integration 3/4, native four-transport acceptance core-1) failed only at tests/unit/test_xhttp_endpoint_contract_native.py line 154, a parsing defect in a test of XRY-1794729068388916. The amneziawg Molecule job, both full-stack Molecule scenarios and the native AWG device binding, dual-stack and UDP checksum tests passed."
-dry_run: required
-dry_run_evidence: Pending dry-run of each production node; a node with published values or port 51820 must refuse.
+dry_run: passed
+dry_run_evidence: "On 2026-11-15 the full dry-run at 25847e91 refused on node-c at transport admission: its AmneziaWG instance used port 51820 and the published value set. After the replacement the full dry-run exited 0 on node-c at 25847e91 and at 00daf904. node-a and node-b have no AmneziaWG instance and their dry-runs exited 0."
 staging: required
 staging_evidence: Pending a staging deploy with the published fixture values, which must still pass.
-live: required
-live_evidence: Pending replacement of the values on each production instance, the provider plan for the new port, and the deploy.
+live: passed
+live_evidence: "On 2026-11-15 the one production instance (node-c) got a generated port and generated junk and padding values in its encrypted document. The provider plan for the new listener port was reviewed and applied. The deploy passed at 25847e91 and again at 00daf904 with deploy, verify, source-drift, security-verify, smoke-test and protocol-liveness exit 0; the outside probe completed an AmneziaWG handshake with a fresh handshake time and resolved DNS through the tunnel."
 client: required
-client_evidence: Pending redelivery of the device configurations and one handshake per instance.
+client_evidence: "Partly done on 2026-11-15. The production instance has three peers, two probe peers and one user device. The device-lifecycle refresh of that device at 00daf904 completed on all three nodes (3 written, 3 adopted) and kept its credentials. The new recipient artifact carries the generated port and values in its AmneziaWG entry; its REALITY, XHTTP and Hysteria2 entries are byte-identical to the previous delivery. The outside handshake in the live category came from the protocol-liveness client, not from the device. Pending: import of the new AmneziaWG entry on the device and one handshake from it."
 artifact: not_applicable
 artifact_evidence: No release artifact changes.
 ---
