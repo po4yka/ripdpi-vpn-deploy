@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-15
+goal: SEC-1794729384681094 Gate the UpCloud edge firewall, collector ingest and
+  CI runner lane

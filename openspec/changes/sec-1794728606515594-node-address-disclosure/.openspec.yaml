@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-15
+goal: SEC-1794728606515594 Stop nodes and operator tools from disclosing node
+  addresses
