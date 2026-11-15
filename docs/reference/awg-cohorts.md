@@ -26,7 +26,8 @@ Plain WireGuard Initiation messages are deterministically identifiable: 148 byte
 | Profile | Jc | Jmin | Jmax | S1 | S2 | H1..H4 | `wire_profile` | Cohort file |
 |---|---|---|---|---|---|---|---|---|
 | `narrow-junk-sequential` | 4 | 10 | 50 | 0 | 0 | 1, 2, 3, 4 | `awg-3.1-ranges-v1` | `ansible/roles/amneziawg/vars/cohorts/narrow-junk-sequential.yml` |
-| broad-rule baseline (role default) | 4 | 40 | 70 | 50 | 100 | random per instance (no default; set per instance) | set per instance | — (`AWG_PARAMETERS` in `scripts/transport_semantics.py`) |
+| broad-rule baseline | generated per instance: 3–8 | 20–80 | Jmin + 20 to Jmin + 200 | 15–150 | 15–150 | random per instance (no default; set per instance) | set per instance | — (`generate_awg_shape` in `scripts/transport_semantics.py`) |
+| published fallback (staging, fixtures and the secrets example only) | 4 | 40 | 70 | 50 | 100 | set per instance | set per instance | — (`AWG_PARAMETERS` in `scripts/transport_semantics.py`) |
 
 `narrow-junk-sequential` targets DPI rules that discriminate against the broad-baseline shape (long junks + non-zero S1/S2) but still accept the compact form with sequential header magic. Behaviour observed against such a rule: the handshake completes most of the time but occasionally stalls and the client needs 3–4 retries.
 
@@ -34,7 +35,26 @@ Plain WireGuard Initiation messages are deterministically identifiable: 148 byte
 
 Cohort profiles ship as YAML files under `ansible/roles/amneziawg/vars/cohorts/<slug>.yml`. Activate one by setting `vpn.awg_cohort: <slug>` in `ansible/group_vars/all.yml` (or a host-specific group_vars file). The role reads the cohort file at runtime and uses its `wire_profile/jc/jmin/jmax/s1/s2/h1..h4/i1..i5` as defaults; explicit values in each `amneziawg_secrets.instances[]` still win, so the cohort file sets the profile and SOPS overrides anything per-deployment.
 
-Leaving `vpn.awg_cohort` empty keeps the broad-rule baseline from `AWG_PARAMETERS` in `scripts/transport_semantics.py` — that is the right starting point on any network without a documented profile. Because `narrow-junk-sequential` keeps the plain 148-byte Initiation behind its junk (`S1 = S2 = 0`, `H1..H4 = 1, 2, 3, 4`), a host whose inventory `env` is `prod` refuses it unless `awg_wireguard_shaped_measurement` names the measurement record that justifies it (see [deploy-profiles](deploy-profiles.md)).
+Leaving `vpn.awg_cohort` empty keeps the broad-rule baseline (long junk, non-zero `S1` and `S2`, random headers), which is the right starting point on any network without a documented profile. Because `narrow-junk-sequential` uses `H1..H4 = 1, 2, 3, 4`, a host whose inventory `env` is `prod` refuses it unless `awg_wireguard_shaped_measurement` names the measurement record that justifies it (see [deploy-profiles](deploy-profiles.md)).
+
+## Per-instance wire shape and port
+
+The junk count, junk size range, handshake padding and listen port of an instance are private per-instance values, like its headers. `scripts/bootstrap-secrets.sh` writes generated values for the first instance, and `python3 scripts/transport_semantics.py --generate-awg-shape` prints a new `listen_port`, `jc`, `jmin`, `jmax`, `s1` and `s2` set for any later instance. The generator uses a cryptographic random source, keeps the values inside the ranges in the table above, draws the port from 20000 to 32767 (above the default listeners and below the Linux ephemeral range), and draws again when the initiation and response sizes would be equal.
+
+The value set `Jc=4, Jmin=40, Jmax=70, S1=50, S2=100` and the port 51820 are published in this repository: they are the fallback in `AWG_PARAMETERS`, the committed secrets example and the test fixtures. A staging, lab or Molecule host may keep them. Production refuses them in two places: `validate-secrets.py --strict --environment prod` and the transport admission that runs before any host change on a host whose inventory `env` is `prod`. The secrets schema requires all five values and the port in every instance of every document, so an instance cannot fall back to the published set without stating it. A cohort file is also public: use one on production only for a measured path, and prefer generated values in the instance, which override the cohort.
+
+On production no header may be a value from 1 to 4, whatever the padding is. With `H4 = 4` every data packet and keepalive is a plain WireGuard transport message, and `S1`/`S2` change only the handshake. The `awg_wireguard_shaped_measurement` record is the only exception.
+
+### Moving a production instance off the published values
+
+An existing production instance that has the published value set or port fails validation after this rule, and no production deploy passes while it is present. A second instance beside it does not help, because the old instance still fails. Replace the values of the instance, in the same way as a server-wide header rotation:
+
+1. Run `python3 scripts/transport_semantics.py --generate-awg-shape` and put its `listen_port`, `jc`, `jmin`, `jmax`, `s1` and `s2` into the instance in the encrypted secrets file. If a header is a value from 1 to 4, replace the four headers with random values above 4 at the same time.
+2. Replace the AmneziaWG port in `public_listeners` in the provider tfvars, review the plan and apply it. The deploy refuses a port that the provider contract does not open.
+3. Run the dry-run and the deploy. From this moment the old device configurations cannot complete a handshake: `S1`, `S2`, the headers and the port must match on both sides.
+4. Redeliver every device configuration of that instance through the normal issuance path; the exported profile and bundle carry the new values and a new `cohort_fingerprint`. The peer keys do not change.
+
+Between steps 3 and 4 a device has no AmneziaWG tunnel and uses the other transports of its profile. Plan the change for a time when you can redeliver the configurations at once. Rollback is a deploy of the previous release with the previous secrets generation.
 
 `vpn.awg_cohort` supplies defaults for every instance; explicit per-instance parameters win. A single instance uses the same nonempty list contract.
 

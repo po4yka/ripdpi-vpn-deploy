@@ -259,3 +259,52 @@ run "rejects_invalid_ssh_cidr" {
 
   expect_failures = [var.allowed_ssh_cidrs]
 }
+
+run "legacy_listener_set_opens_no_amneziawg_port" {
+  command = plan
+
+  variables {
+    enable_hysteria             = true
+    public_listeners            = []
+    use_legacy_public_listeners = true
+  }
+
+  assert {
+    condition = length(output.public_listeners) > 0 && alltrue([
+      for listener in output.public_listeners :
+      listener.name != "amneziawg" && (listener.protocol != "udp" || listener.port == 443)
+    ])
+    error_message = "The legacy listener set must open no AmneziaWG port; public_listeners names the instance port"
+  }
+}
+
+run "listener_contract_names_the_amneziawg_instance_port" {
+  command = plan
+
+  variables {
+    public_listeners = [
+      { name = "xray", protocol = "tcp", port = 443 },
+      { name = "amneziawg", protocol = "udp", port = 23817 },
+    ]
+  }
+
+  assert {
+    condition = length([
+      for listener in output.public_listeners : listener if listener.protocol == "udp"
+      ]) == 1 && alltrue([
+      for listener in output.public_listeners : listener.port == 23817 if listener.protocol == "udp"
+    ])
+    error_message = "The listener contract must carry exactly the declared AmneziaWG UDP port"
+  }
+
+  assert {
+    condition = length([
+      for r in values(vultr_firewall_rule.tcp_public) : r if r.protocol == "udp"
+      ]) == 2 && alltrue([
+      for family in ["v4", "v6"] :
+      vultr_firewall_rule.tcp_public["${family}-udp-23817"].port == "23817" &&
+      vultr_firewall_rule.tcp_public["${family}-udp-23817"].ip_type == family
+    ])
+    error_message = "The provider firewall must open exactly the declared AmneziaWG UDP port on IPv4 and IPv6"
+  }
+}

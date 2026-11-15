@@ -99,9 +99,9 @@ actual wire values.
 **Cohort profiles are config, not code** — `vars/cohorts/<slug>.yml` is the
 SOT. New cohort = new file. See `docs/reference/awg-cohorts.md`. Currently shipped as
 a YAML file: `narrow-junk-sequential`. The broad-rule baseline (long junks
-+ non-zero S1/S2 + random per-instance H1..H4) is encoded as the role's
-hard-coded defaults — no separate cohort file needed, that profile is the
-safe starting point on any unmeasured network.
++ non-zero S1/S2 + random per-instance H1..H4) needs no cohort file: each
+instance carries generated values, and the published `AWG_PARAMETERS`
+fallback serves only staging and fixtures.
 
 **New cohort recipe** — add `vars/cohorts/<technical-slug>.yml` with the
 obfuscation parameters, naming the slug after the packet shape (e.g.
@@ -146,7 +146,8 @@ interfaces. Fresh absence and recorded enable/disable transitions stay idempoten
 
 ## Pitfalls
 
-- **WireGuard-shaped instances need a measurement on production** — `guard-wireguard-shape.yml` refuses `env: prod` for an instance with `S1 = S2 = 0` and `H1..H4 = 1,2,3,4` unless `awg_wireguard_shaped_measurement` is set; the shape is the plain Initiation behind junk that `docs/reference/awg-cohorts.md` calls deterministically identifiable, so it is only acceptable for a measured path.
+- **A WireGuard message type as header needs a measurement on production** — `guard-wireguard-shape.yml` refuses `env: prod` for an instance in which any of `H1..H4` is a value from 1 to 4, whatever `S1` and `S2` are, unless `awg_wireguard_shaped_measurement` is set. `H4 = 4` makes every data packet a plain WireGuard transport message; padding changes only the handshake.
+- **Production refuses the published wire shape and port** — transport admission (`awg_errors` with `env: prod`) and strict secrets validation refuse the `AWG_PARAMETERS` value set and port 51820. They stay valid for staging, Molecule and fixtures. Replace them in the instance with the output of `transport_semantics.py --generate-awg-shape`, open the new port in `public_listeners`, deploy, then redeliver every device configuration (`docs/reference/awg-cohorts.md`); a second instance beside the old one does not pass, and a cohort file is public, so a new cohort does not replace generated instance values.
 - **amneziawg-go builds with the pinned Go, never distro Go** — the role
   downloads `amneziawg_go_toolchain_version` from go.dev, verifies its sha256
   and builds with `GOTOOLCHAIN=local`. Distro go.env defaults to `auto`, and

@@ -341,6 +341,7 @@ def test_live_api_failures_exit_indeterminate(monkeypatch, error):
 
 
 _WIREGUARD_SHAPED = {"name": "awg0", "s1": 0, "s2": 0, "h1": "1", "h2": "2", "h3": "3", "h4": "4"}
+_RANDOM_HEADERS = {"name": "awg0", "s1": 37, "s2": 121, "h1": "1000-1999", "h2": "2147483650", "h3": "305419896", "h4": "4000000000"}
 
 
 @pytest.mark.parametrize(
@@ -351,10 +352,18 @@ _WIREGUARD_SHAPED = {"name": "awg0", "s1": 0, "s2": 0, "h1": "1", "h2": "2", "h3
         ({"_awg_instances": [_WIREGUARD_SHAPED], "env": "prod",
           "awg_wireguard_shaped_measurement": "measurements/2026-10-plain-initiation: passes"}, True),
         ({"_awg_instances": [_WIREGUARD_SHAPED], "env": "staging"}, True),
-        ({"_awg_instances": [{**_WIREGUARD_SHAPED, "s1": 50, "s2": 100}], "env": "prod"}, True),
-        ({"_awg_instances": [{**_WIREGUARD_SHAPED, "h1": "1000-1999"}], "env": "prod"}, True),
+        ({"_awg_instances": [{**_WIREGUARD_SHAPED, "s1": 50, "s2": 100}], "env": "prod"}, False),
+        ({"_awg_instances": [{**_RANDOM_HEADERS, "h4": "4"}], "env": "prod"}, False),
+        ({"_awg_instances": [_RANDOM_HEADERS, {**_RANDOM_HEADERS, "name": "awg1", "h2": "2"}], "env": "prod"}, False),
+        ({"_awg_instances": [{**_RANDOM_HEADERS, "h4": "4"}], "env": "prod",
+          "awg_wireguard_shaped_measurement": "measurements/2026-10-plain-transport: passes"}, True),
+        ({"_awg_instances": [{**_RANDOM_HEADERS, "h4": "4"}], "env": "staging"}, True),
+        ({"_awg_instances": [_RANDOM_HEADERS], "env": "prod"}, True),
+        ({"_awg_instances": [{**_RANDOM_HEADERS, "s1": 0, "s2": 0}], "env": "prod"}, True),
     ],
-    ids=["prod-unmeasured", "prod-blank-measurement", "prod-measured", "staging", "padded-handshake", "random-headers"],
+    ids=["prod-unmeasured", "prod-blank-measurement", "prod-measured", "staging", "padded-handshake",
+         "padded-transport-type", "second-instance-low-header", "padded-transport-type-measured",
+         "padded-transport-type-staging", "random-headers", "random-headers-no-padding"],
 )
 def test_wireguard_shape_guard_requires_a_production_measurement(tmp_path, variables, accepted):
     playbook = tmp_path / "shape-guard.yml"

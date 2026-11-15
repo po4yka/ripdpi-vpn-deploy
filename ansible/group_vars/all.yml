@@ -178,8 +178,8 @@ reality_target_network: ""
 # target in a different network. Empty refuses such a production host. The node
 # manifest records only that an exception is active.
 tls_identity_exception: ""
-# Measurement record (path, date, outcome) that justifies keeping a
-# WireGuard-shaped AmneziaWG instance (S1=S2=0, H1..H4=1,2,3,4, e.g. the
+# Measurement record (path, date, outcome) that justifies keeping an
+# AmneziaWG instance with any header value from 1 to 4 (e.g. the
 # narrow-junk-sequential cohort) on a production host. Empty refuses such an
 # instance when the inventory env is prod; staging and lab hosts are not gated.
 awg_wireguard_shaped_measurement: ""
@@ -248,6 +248,8 @@ hysteria_hop_interval: "30s"
 # override these, but pre-task rendering must not rely on role defaults.
 cdn_front_port: 8443
 naive_bind_port: 443
+# Staging and fixture fallback only: each instance states its own generated
+# port, and production refuses 51820.
 amneziawg_listen_port: 51820
 subscription_port: 8444
 honeypot_port: 4443

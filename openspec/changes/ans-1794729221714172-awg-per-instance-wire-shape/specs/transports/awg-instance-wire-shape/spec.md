@@ -20,21 +20,26 @@ Instance creation MUST draw `jc`, `jmin`, `jmax`, `s1` and `s2` from a cryptogra
 
 ### Requirement: REQ-PROTO-AWG-SHAPE-EXPLICIT — Refuse implicit and published values on production
 
-Strict validation for a production document MUST refuse an instance that omits any of `jc`, `jmin`, `jmax`, `s1` or `s2`, and an instance whose five values equal the value set in the committed secrets example. A staging document MUST still validate with either.
+Secrets validation MUST refuse, for every environment, an instance that omits any of `jc`, `jmin`, `jmax`, `s1` or `s2`. Strict validation for a production document and transport admission for a production host MUST refuse an instance whose five effective values equal the published value set of the committed secrets example. A staging document MUST still validate with the published value set.
 
-#### Scenario: Omitted value on production
+#### Scenario: Omitted value
 
-- **WHEN** a production instance has no `s2`
-- **THEN** validation fails and names the instance and the key
+- **WHEN** an instance has no `s2`
+- **THEN** validation fails and names the instance
 
 #### Scenario: Example values on production
 
 - **WHEN** a production instance has the five values of the committed example
-- **THEN** validation fails
+- **THEN** validation fails and names the instance and the replacement path
+
+#### Scenario: Implicit fallback on a production host
+
+- **WHEN** transport admission for a production host receives an instance that takes all five values from the fallback
+- **THEN** admission fails before any host mutation
 
 #### Scenario: Staging document
 
-- **WHEN** a staging instance omits the values
+- **WHEN** a staging instance has the five values of the committed example
 - **THEN** validation passes
 
 ### Requirement: REQ-PROTO-AWG-SHAPE-HEADERS — Refuse WireGuard message types as header values on production
@@ -53,7 +58,7 @@ On a host whose inventory `env` is `prod`, the AmneziaWG role MUST refuse an ins
 
 ### Requirement: REQ-PROTO-AWG-SHAPE-PORT — Use an instance port that is not the WireGuard default
 
-Instance creation MUST draw the listen port from a random source. Production validation MUST refuse the WireGuard default port. The provider roots MUST open the AmneziaWG port only from the listener contract, and their legacy listener list MUST NOT contain an AmneziaWG entry.
+Instance creation MUST draw the listen port from a cryptographic random source, above the default listeners and below the ephemeral port range. Production validation MUST refuse the WireGuard default port. The provider roots MUST open the AmneziaWG port only from the listener contract, and their legacy listener list MUST NOT contain an AmneziaWG entry.
 
 #### Scenario: Default port on production
 

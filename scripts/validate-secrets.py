@@ -231,7 +231,8 @@ def _observability_rotation_errors(
 
 
 def _semantic_errors(
-    doc: dict, *, observability_enabled: bool = False, allow_placeholders: bool = True
+    doc: dict, *, observability_enabled: bool = False, allow_placeholders: bool = True,
+    production: bool = False,
 ) -> list[tuple[str, str]]:
     """Validate relationships and network values JSON Schema cannot express."""
     errors: list[tuple[str, str]] = []
@@ -252,7 +253,8 @@ def _semantic_errors(
     for key in ("name", "uuid"):
         if _duplicate_values(xray_clients, key):
             errors.append(("xray.clients", f"duplicate {key}"))
-    errors.extend(transport_errors(doc, allow_placeholders=allow_placeholders))
+    errors.extend(transport_errors(doc, {"env": "prod"} if production else None,
+                                   allow_placeholders=allow_placeholders))
 
     for path, clients in [("hysteria.clients", (doc.get("hysteria") or {}).get("clients") or [])]:
         if _duplicate_values(clients, "name"):
@@ -497,6 +499,7 @@ def main() -> int:
     semantic_errors = _semantic_errors(
         doc,
         observability_enabled=observability_enabled,
+        production=args.strict and "prod" in (args.environment or []),
     ) + registry_errors(doc, allow_placeholders=not args.strict)
     if args.observability_topology is not None:
         semantic_errors += _observability_topology_errors(

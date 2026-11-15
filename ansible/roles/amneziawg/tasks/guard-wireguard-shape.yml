@@ -1,12 +1,12 @@
 ---
-- name: "Guard: a WireGuard-shaped AmneziaWG instance needs a recorded measurement on production"
+- name: "Guard: an AmneziaWG instance with a WireGuard message type as header needs a recorded measurement on production"
   vars:
     _awg_wireguard_shaped: >-
-      {{ _awg_instances
-         | selectattr('s1', 'eq', 0) | selectattr('s2', 'eq', 0)
-         | selectattr('h1', 'eq', '1') | selectattr('h2', 'eq', '2')
-         | selectattr('h3', 'eq', '3') | selectattr('h4', 'eq', '4')
-         | map(attribute='name') | list }}
+      {{ (_awg_instances | selectattr('h1', 'in', ['1', '2', '3', '4']) | list
+          + _awg_instances | selectattr('h2', 'in', ['1', '2', '3', '4']) | list
+          + _awg_instances | selectattr('h3', 'in', ['1', '2', '3', '4']) | list
+          + _awg_instances | selectattr('h4', 'in', ['1', '2', '3', '4']) | list)
+         | map(attribute='name') | unique | list }}
   ansible.builtin.assert:
     that:
       - >-
@@ -15,10 +15,11 @@
         or ((awg_wireguard_shaped_measurement | default('')) | trim | length > 0)
     quiet: true
     fail_msg: |
-      AmneziaWG instance(s) {{ _awg_wireguard_shaped | join(', ') }} use S1=S2=0 with
-      H1..H4 = 1,2,3,4: the handshake is a plain 148-byte WireGuard Initiation
-      preceded by junk, the shape docs/reference/awg-cohorts.md calls
-      deterministically identifiable. A production host may keep it only for a
-      measured path: set awg_wireguard_shaped_measurement to the measurement
+      AmneziaWG instance(s) {{ _awg_wireguard_shaped | join(', ') }} use a header value
+      from 1 to 4. With H4 = 4 every data packet and keepalive is a plain WireGuard
+      transport message, whatever S1 and S2 are; with H1 = 1 and S1 = 0 the handshake
+      is the plain 148-byte Initiation that docs/reference/awg-cohorts.md calls
+      deterministically identifiable. A production host may keep such a value only
+      for a measured path: set awg_wireguard_shaped_measurement to the measurement
       record (path, date, outcome) in the same private extra-vars file as
-      public_site_canonical_url, or choose random headers / nonzero S1,S2.
+      public_site_canonical_url, or give the instance random headers above 4.

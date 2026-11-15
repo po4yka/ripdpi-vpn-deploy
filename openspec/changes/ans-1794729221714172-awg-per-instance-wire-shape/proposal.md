@@ -12,9 +12,9 @@ The 2026-11-15 audit found that the AmneziaWG handshake shape and port are the s
 ## What Changes
 
 - New instances get junk and padding values from a random source, inside validated bounds, at issue time.
-- BREAKING: strict validation refuses a production instance that omits a junk or padding value, or whose values equal the published example values.
+- BREAKING: strict validation and transport admission refuse a production instance whose junk and padding values equal the published example values. The secrets schema already requires all five values in every document, so an instance cannot omit one.
 - BREAKING: production refuses any header value from 1 to 4, unless a recorded measurement exists for that instance.
-- BREAKING: production refuses the WireGuard default listen port. New instances get a random port. The provider legacy listener list has no AmneziaWG entry; the port comes from the listener contract.
+- BREAKING: production refuses the WireGuard default listen port. New instances get a random port. The provider legacy listener list has no AmneziaWG entry; the port comes from the listener contract. `amneziawg_listen_port` in `group_vars/all.yml` stays as the staging and fixture fallback.
 
 ## Capabilities
 
@@ -29,8 +29,8 @@ The 2026-11-15 audit found that the AmneziaWG handshake shape and port are the s
 ## Impact
 
 - Scripts: `scripts/bootstrap-secrets.sh`, `scripts/transport_semantics.py`, `scripts/validate-secrets.py`.
-- Ansible: `ansible/roles/amneziawg/tasks/guard-wireguard-shape.yml`, `ansible/roles/amneziawg/defaults/main.yml`, the cohort recipe in `ansible/roles/amneziawg/CLAUDE.md`, `ansible/roles/real-vps-awg-nat/defaults/main.yml`, `ansible/group_vars/all.yml`.
+- Ansible: `ansible/roles/amneziawg/tasks/guard-wireguard-shape.yml`, `ansible/playbooks/tasks/transport-input-preflight.yml`, the notes in `ansible/roles/amneziawg/CLAUDE.md`, comments in `ansible/group_vars/all.yml`. The `real-vps-awg-nat` staging lane is unchanged.
 - Terraform: `listeners.tf` in the four provider roots and their tests.
-- Secrets: `secrets/schema.json`, `secrets/prod.secrets.example.yaml`.
-- Clients: every device on an instance whose values change needs a new configuration. The change uses the existing cohort and device migration path.
+- Secrets: a comment in `secrets/prod.secrets.example.yaml`; the schema is unchanged.
+- Clients: every device on an instance whose values change needs a new configuration. The operator replaces the values of the instance and redelivers the device configurations, as for a server-wide header rotation.
 - Docs: `docs/reference/awg-cohorts.md`.

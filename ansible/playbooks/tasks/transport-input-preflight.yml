@@ -23,6 +23,7 @@
                          {'enable_xray_reality': false, 'enable_nginx_xhttp': false,
                           'enable_hysteria': false, 'enable_amneziawg': false}
                          if vpn_subscription_only | default(false) | bool else {}),
+                      'env': env | default(''),
                       'require_transport_egress': not (vpn_subscription_only | default(false) | bool),
                       'amneziawg': amneziawg | default({}),
                       'amneziawg_cohort': amneziawg_cohort | default({}),

@@ -21,6 +21,8 @@ public_listeners = [
   { name = "public-site-http", protocol = "tcp", port = 80 },
   { name = "nginx-xhttp", protocol = "tcp", port = 8443 },
   { name = "hysteria", protocol = "udp", port = 443 },
+  # Replace 51820 with the generated listen_port of each AmneziaWG instance in
+  # the secrets file. Production validation refuses 51820.
   { name = "amneziawg", protocol = "udp", port = 51820 },
 ]
 build_env       = "prod"
