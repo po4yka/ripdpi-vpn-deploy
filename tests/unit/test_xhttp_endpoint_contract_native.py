@@ -138,11 +138,21 @@ def test_pinned_endpoints_preserve_peer_origin_privacy_and_rejected_candidate(pr
             assert "application/atom+xml" in get(stack, port, "/feed.xml")
             assert f"{origin}/" in get(stack, port, "/sitemap.xml")
             assert f"Sitemap: {origin}/sitemap.xml" in get(stack, port, "/robots.txt")
-        redirected = fixture.command([
-            "ip", "netns", "exec", stack.namespace, "curl", "--silent", "--noproxy", "*",
-            "--max-time", "5", "--resolve", "owned.example:80:192.0.2.90", "-I", "http://owned.example/",
-        ])
-        assert f"Location: {origin}/" in redirected
+        def plain(host):
+            return fixture.command([
+                "ip", "netns", "exec", stack.namespace, "curl", "--silent", "--noproxy", "*", "--max-time", "5",
+                "--include", "--header", f"Host: {host}", "http://192.0.2.90/"])
+        named = plain("owned.example")
+        if primary_port == 443:
+            assert "Location: https://owned.example/" in named
+        else:
+            # Port 80 serves the site itself; a redirect to another port would point at the second listener.
+            assert re.search(r"HTTP/1\.1 200\b", named) and "Location:" not in named
+            assert f'content="{origin}/"' in named
+        unknown = plain("192.0.2.90")
+        assert re.search(r"HTTP/1\.1 404\b", unknown) and "Location:" not in unknown
+        site_404 = get(stack, primary_port, "/no-such-page").split("\r\n\r\n", 1)[1]
+        assert site_404 and unknown.split("\r\n\r\n", 1)[1] == site_404
         exported = exported_outbound(stack)
         access = stack.library / "logs/access.log"
         for port in (primary_port, 2083):

@@ -95,14 +95,42 @@ server {
     error_log  /var/log/nginx/vpn-xhttp.error.log warn;
 }
 
-# HTTP → HTTPS redirect (so the host looks like a normal website)
+# Plain HTTP for the primary host (so the host looks like a normal website)
 server {
     listen 80;
     listen [::]:80;
     server_name vpn.example.com;
     server_tokens off;
-    # The redirected path can carry a bearer token; never log it.
+    # A client can send any bearer path over HTTP; never log it.
     access_log off;
     error_log /dev/null crit;
-    return 301 https://$host:8443$request_uri;
+    root /var/www/public-site;
+    index index.html;
+    error_page 404 /404.html;
+    location = /404.html {
+        internal;
+    }
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}
+
+# Any other Host, such as the node address, gets the site's ordinary 404 page.
+# This file is the only owner of the default server: its transaction retires the
+# packaged default site, which the earlier managed-TLS publication does not.
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    server_tokens off;
+    access_log off;
+    error_log /dev/null crit;
+    root /var/www/public-site;
+    error_page 404 /404.html;
+    location = /404.html {
+        internal;
+    }
+    location / {
+        return 404;
+    }
 }

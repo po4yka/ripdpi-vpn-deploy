@@ -10,6 +10,8 @@ Operator target hygiene selects `--mode owned-public` with an explicit public en
 
 **No public listener** — nginx binds only the literal IPv4 loopback address. The role does not add TCP/80, wildcard, or IPv6 listeners and therefore does not change the Terraform public-listener contract.
 
+**Operator-owned site on production** — `reality_self_steal_public_site_dir` names a controller-local tree (at least `index.html` and `404.html`, regular files and directories only). The role reads it on the controller and publishes it in the same nginx transaction, with the bundled pages it does not provide declared absent. A host whose inventory `env` is `prod` refuses an empty variable before the role changes the host (earlier roles of a site run have already converged), because the three bundled pages are public and identical on every node. Non-production hosts keep the bundled site. The contract copies `nginx_xhttp_public_site_dir`; the two variables stay separate because the two roles can serve different names.
+
 **Explicit lifecycle** — the role always participates in a normal site play. Enabled mode configures the target; disabled mode removes its nginx config, certificate, and site data so a stale private listener cannot survive a rollback.
 
 ## What's done well
@@ -34,6 +36,7 @@ Operator target hygiene selects `--mode owned-public` with an explicit public en
   assets); copy and re-theme both per identity. Never share exact assets or
   the 404 body across domains — identical content hashes make the fleet
   clusterable.
+- A file removed from the operator tree stays on the host until the role is disabled with the variable still set; retirement removes the bundled pages and the files of the current tree, and keeps empty directories.
 - DNS, certificate issuance, client SNI rotation, and filtered-vantage survival remain operator promotion gates outside this role.
 
 Remote target validation uses `TARGET_MODE=owned-public`, `PUBLIC_ENDPOINT` and

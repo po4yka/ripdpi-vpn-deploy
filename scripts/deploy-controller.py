@@ -799,7 +799,7 @@ def controller(mode):
         validate_yaml(secret_data)
         secrets = private_file(directory / "secrets.yaml", secret_data)
         environment["VPN_SECRETS_FILE"] = str(secrets)
-        overrides, override_values, input_fences, site_fence = None, {}, [], None
+        overrides, override_values, input_fences, site_fences = None, {}, [], []
         if os.environ.get("DEPLOY_EXTRA_VARS_FILE"):
             if not os.environ.get("DEPLOY_LIMIT"):
                 raise DeployError("extra vars require an explicit inventory selection")
@@ -812,8 +812,11 @@ def controller(mode):
             override_values, exposure_fences = prepare_network_exposure_inputs(
                 root, directory, override_values, hosts, environment)
             input_fences = [override_fence, *exposure_fences]
-            if "nginx_xhttp_public_site_dir" in override_values:
-                original_site = override_values["nginx_xhttp_public_site_dir"]
+            for key, snapshot_name in (("nginx_xhttp_public_site_dir", "public-site"),
+                                       ("reality_self_steal_public_site_dir", "self-steal-site")):
+                if key not in override_values:
+                    continue
+                original_site = override_values[key]
                 entries, fingerprint = read_site(original_site)
                 approved = APPROVED_INPUTS.get()
                 if approved is not None:
@@ -821,17 +824,17 @@ def controller(mode):
                               for name, content in entries.items()}
                     if actual != approved['trees'].get(original_site):
                         raise DeployError('approved public site changed')
-                site_fence = (original_site, fingerprint)
-                snapshot = directory / "public-site"
+                site_fences.append((original_site, fingerprint))
+                snapshot = directory / snapshot_name
                 for relative, content in entries.items():
                     path = snapshot / relative
                     if content is None:
                         path.mkdir(mode=0o700)
                     else:
                         private_file(path, content)
-                override_values = dict(override_values, nginx_xhttp_public_site_dir=str(snapshot))
+                override_values = dict(override_values, **{key: str(snapshot)})
             normalized = (yaml.safe_dump(override_values, sort_keys=True).encode()
-                          if "network_exposure_gate" in override_values or site_fence else override_data)
+                          if "network_exposure_gate" in override_values or site_fences else override_data)
             overrides = private_file(directory / "operator-overrides.yml", normalized)
         known_hosts = private_file(directory / "known_hosts", read_input(os.environ.get(
             "DEPLOY_KNOWN_HOSTS", str(Path.home() / ".ssh/known_hosts"))))
@@ -898,8 +901,9 @@ def controller(mode):
                         environment=certificate_environment, cwd=directory)
         for fence in input_fences:
             verify_input_fence(fence)
-        if site_fence and read_site(site_fence[0])[1] != site_fence[1]:
-            raise DeployError("operator public site changed before convergence")
+        for original_site, fingerprint in site_fences:
+            if read_site(original_site)[1] != fingerprint:
+                raise DeployError("operator public site changed before convergence")
         if mode == "deploy":
             # Recheck every selected sink before the first host can be changed.
             # Checking inside the host loop could discover a later unsafe sink

@@ -5,6 +5,27 @@
 {% set nginx_fallback_name = nginx_xhttp.fallback_server_name | default(nginx_xhttp.server_name) %}
 {% set nginx_same_public_host = (nginx_fallback_name | lower) == (nginx_xhttp.server_name | lower) %}
 {% set nginx_primary_hsts = nginx_redirect_port == 443 or (nginx_fallback_enabled and (nginx_xhttp_fallback_port | int) == 443 and nginx_same_public_host) %}
+{# Port 80 never redirects to a port other than 443: such a redirect is unusual
+   for a web site and points a scanner at the second listener. #}
+{% macro nginx_port80_site(https_port) %}
+    server_tokens off;
+    # A client can send any bearer path over HTTP; never log it.
+    access_log off;
+    error_log /dev/null crit;
+{% if https_port == 443 %}
+    return 301 https://$host$request_uri;
+{% else %}
+    root /var/www/public-site;
+    index index.html;
+    error_page 404 /404.html;
+    location = /404.html {
+        internal;
+    }
+    location / {
+        try_files $uri $uri/ =404;
+    }
+{% endif %}
+{% endmacro %}
 {% if (vpn.enable_snell | default(false)) and (snell | default({})).evaluation_enabled | default(false) %}
 limit_req_zone $binary_remote_addr zone=snell_evaluation:1m rate=10r/s;
 {% endif %}
@@ -235,16 +256,12 @@ server {
 }
 
 {% if nginx_fallback_name != nginx_xhttp.server_name %}
-# HTTP → HTTPS redirect for the distinct fallback host (so it looks like a site)
+# Plain HTTP for the distinct fallback host (so it looks like a site)
 server {
     listen 80;
     listen [::]:80;
     server_name {{ nginx_fallback_name }};
-    server_tokens off;
-    # The redirected path can carry a bearer token; never log it.
-    access_log off;
-    error_log /dev/null crit;
-    return 301 https://$host{% if (nginx_xhttp_fallback_port | int) != 443 %}:{{ nginx_xhttp_fallback_port }}{% endif %}$request_uri;
+{{ nginx_port80_site(nginx_xhttp_fallback_port | int) -}}
 }
 {% endif %}
 {% endif %}
@@ -267,15 +284,31 @@ server {
 }
 {% endif %}
 {% else %}
-# HTTP → HTTPS redirect (so the host looks like a normal website)
+# Plain HTTP for the primary host (so the host looks like a normal website)
 server {
     listen 80;
     listen [::]:80;
     server_name {{ nginx_xhttp.server_name }};
+{{ nginx_port80_site(nginx_redirect_port) -}}
+}
+
+{% endif -%}
+# Any other Host, such as the node address, gets the site's ordinary 404 page.
+# This file is the only owner of the default server: its transaction retires the
+# packaged default site, which the earlier managed-TLS publication does not.
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
     server_tokens off;
-    # The redirected path can carry a bearer token; never log it.
     access_log off;
     error_log /dev/null crit;
-    return 301 https://$host{% if nginx_redirect_port != 443 %}:{{ nginx_redirect_port }}{% endif %}$request_uri;
+    root /var/www/public-site;
+    error_page 404 /404.html;
+    location = /404.html {
+        internal;
+    }
+    location / {
+        return 404;
+    }
 }
-{% endif -%}

@@ -153,6 +153,11 @@ def load_inputs(budget):
     normalized = names(configured) if configured is not None else None
     if target is not None:
         endpoint(target)
+    if os.environ.get("NODE_ADDRESS"):
+        try:
+            ipaddress.ip_address(os.environ["NODE_ADDRESS"])
+        except ValueError:
+            raise Refused("invalid_node_address") from None
     mode = os.environ.get("TARGET_MODE", "borrowed")
     if mode not in {"borrowed", "owned-public"}:
         raise Refused("invalid_mode")
@@ -229,6 +234,29 @@ def pinned_client():
         raise Refused("client_unavailable") from None
 
 
+def origin(budget, ip):
+    fields = budget.run("metadata", [str(HERE / "probe-asn.sh"), ip]).strip().split("\t")
+    if len(fields) != 5 or not fields[1].isdigit():
+        raise Refused("asn_lookup_failed")
+    return fields
+
+
+def target_network(budget, mode, ips):
+    """Compare the origin AS of a borrowed target with the node's; report the category only."""
+    if mode == "owned-public":
+        return "not_applicable"
+    node = os.environ.get("NODE_ADDRESS")
+    # Without an explicit node address nothing is sent to the lookup service.
+    if not node or not ips:
+        return "unknown"
+    try:
+        own = origin(budget, node)[1]
+        return "same_asn" if all(origin(budget, ip)[1] == own for ip in ips) else "different_asn"
+    except Refused:
+        # The lookup depends on an external service; its failure is not a target defect.
+        return "unknown"
+
+
 def collect(budget, mode, host, port, configured, *, metadata=False):
     reasons, observations = [], []
     compatibility = "unavailable"
@@ -263,9 +291,7 @@ def collect(budget, mode, host, port, configured, *, metadata=False):
         failed, asn, prefix = 0, "", ""
         if metadata:
             try:
-                fields = budget.run("metadata", [str(HERE / "probe-asn.sh"), ip]).strip().split("\t")
-                if len(fields) != 5 or not fields[1].isdigit():
-                    raise Refused("asn_lookup_failed")
+                fields = origin(budget, ip)
                 asn, prefix = "AS" + fields[1], str(ipaddress.ip_network(fields[2]))
             except (Refused, ValueError) as error:
                 reasons.append(str(error) if isinstance(error, Refused) else "asn_lookup_failed")
@@ -325,14 +351,18 @@ def main():
         except (OSError, ValueError):
             return 1
     reasons, observations, compatibility, mode, resolution = [], [], "unavailable", "unknown", "not_applicable"
+    network = "unknown"
     try:
         with cancellation():
             budget = Budget()
             mode, host, port, configured = load_inputs(budget)
+            network = target_network(budget, mode, [])
             if args.names:
                 args.names.write_text(" ".join(configured))
             reasons, observations, compatibility, resolution = collect(budget, mode, host, port, configured,
                                                                       metadata=args.action == "collect")
+            if args.action == "validate":
+                network = target_network(budget, mode, [row[0] for row in observations])
     except Refused as error:
         reasons.append(str(error))
     except (OSError, ValueError, KeyError, TypeError):
@@ -344,6 +374,7 @@ def main():
         print(json.dumps(dict(schema_version=1, mode=mode, hygiene="failed" if not observations or any(not r.startswith("client_") for r in reasons) else "passed",
                               reason_codes=sorted(set(reasons)), client_compatibility=compatibility,
                               owned_name_resolution=resolution,
+                              target_network=network,
                               client_engine="curl-impersonate-0.6.1/chrome116" if compatibility != "unavailable" else None,
                               filtered_survival="unverified", promotion="not_authorized",
                               checked_pairs=sum(row[3] for row in observations))))

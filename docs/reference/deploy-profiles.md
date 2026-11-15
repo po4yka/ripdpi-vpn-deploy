@@ -103,6 +103,20 @@ Use an absolute path with safe owner-controlled directories and regular files. L
 
 A host whose inventory `env` is `prod` refuses convergence while the variable is empty; staging, lab and Molecule hosts may keep the bundled pages.
 
+The REALITY self-steal site follows the same contract through `reality_self_steal_public_site_dir`. Its tree must contain `index.html` and `404.html`; the three pages bundled under `ansible/roles/reality-self-steal/` are refused on a production host and removed where the operator tree does not provide them.
+
+### One TLS identity for each production address
+
+A borrowed REALITY target shows the target's certificate on TCP/443. When Hysteria or nginx-xhttp presents the operator certificate on the same address, one scan finds two unrelated names. A host whose inventory `env` is `prod` refuses that layout before any host change, and also refuses a borrowed target that the validator reported in a different network. The failure message names the listeners. Choose one of these:
+
+| Choice | Input |
+|---|---|
+| Present the operator certificate on TCP/443 too | `vpn.enable_reality_self_steal: true` with the `reality_self_steal.*` secrets |
+| Keep the borrowed target on a node without those listeners, with a target in the node's network | a P0 profile, and `reality_target_network: same_asn` |
+| Keep the layout and record why | `tls_identity_exception: "<path, date, outcome>"` |
+
+`reality_target_network` holds the `target_network` value that `NODE_ADDRESS=<node address> make validate-target` reports (`same_asn`, `different_asn` or `unknown`); only `different_asn` refuses. Put both values in the private extra-vars file. The node manifest records `security_controls.tls_identity_exception` as `true` or `false` and never the reason. A host whose `env` is not `prod` is not checked.
+
 The same production gate applies to a WireGuard-shaped AmneziaWG instance (`S1 = S2 = 0` with `H1..H4 = 1,2,3,4`): its handshake is a plain 148-byte WireGuard Initiation behind junk. A `prod` host keeps such an instance only when `awg_wireguard_shaped_measurement` names the measurement record (path, date, outcome) that justifies it; put it in the same private override file. The same reasoning applies to `xray.xhttp_path`: the committed example carries a `REPLACE_WITH_` placeholder that strict validation refuses, so choose a private path per deployment.
 
 ### Secrets that rotate together with the origin

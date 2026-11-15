@@ -113,6 +113,8 @@ entry for standalone invocation. It delegates to localhost without privilege,
 executes read-only in check mode, and sends private values only on stdin under
 `no_log`. Disabled-role reconciliation bypasses unused transport inputs.
 
+**One TLS identity for each production address** — site pre-tasks and the enabled Xray, Hysteria and nginx-xhttp roles import `playbooks/tasks/tls-identity-preflight.yml`. On `env: prod` it refuses a borrowed REALITY target beside Hysteria or nginx-xhttp, and a recorded `reality_target_network: different_asn`, unless `tls_identity_exception` holds a reason. It reads variables only and contacts no service; the operator records the validator result.
+
 **Exporter endpoint verification shares installation admission** — `verify.yml`
 gathers only local network facts and reuses monitoring's literal private endpoint
 validator. Custom ports and IPv6 targets match the sender's scrape jobs; public,

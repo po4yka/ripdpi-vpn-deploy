@@ -374,3 +374,24 @@ def test_liveness_sentinel_awg_inputs_arrive_as_one_verified_set(tmp_path, mutat
     else:
         with pytest.raises(ValueError, match="liveness-sentinel AWG"):
             validator.validate(path)
+
+
+def test_accepts_the_self_steal_site_and_the_tls_identity_record(tmp_path: Path) -> None:
+    site = tmp_path / "site"
+    site.mkdir(mode=0o700)
+    (site / "404.html").write_bytes(b"ordinary missing page")
+    validator.validate(write_yaml(tmp_path, {
+        "reality_self_steal_public_site_dir": str(site), "reality_target_network": "different_asn",
+        "tls_identity_exception": "measured 2026-11-01: path keeps both listeners"}))
+
+
+@pytest.mark.parametrize("document,message", [
+    ({"reality_self_steal_public_site_dir": "relative/site"}, "public site"),
+    ({"reality_target_network": "AS64500"}, "reality_target_network"),
+    ({"tls_identity_exception": ["reason"]}, "tls_identity_exception"),
+    ({"tls_identity_exception": "line one\nline two"}, "tls_identity_exception"),
+    ({"tls_identity_exception": "x" * 513}, "tls_identity_exception"),
+])
+def test_rejects_malformed_tls_identity_inputs(tmp_path: Path, document: dict, message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        validator.validate(write_yaml(tmp_path, document))

@@ -58,7 +58,8 @@
     "unattended_upgrades": {{ (security_controls | default({})).unattended_upgrades | default(false) | to_json }},
     "fail2ban": {{ (security_controls | default({})).fail2ban | default(false) | to_json }},
     "crowdsec": {{ (intrusion_prevention | default({})).crowdsec.enabled | default(false) | to_json }},
-    "firewall_egress_policy": {{ firewall_egress_policy | default('permissive') | to_json }}
+    "firewall_egress_policy": {{ firewall_egress_policy | default('permissive') | to_json }},
+    "tls_identity_exception": {{ (tls_identity_exception | default('') | trim | length > 0) | to_json }}
   },
   "recovery": {
     "backup": {

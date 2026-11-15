@@ -35,13 +35,12 @@ def blocks(text: str, opener: str) -> list[str]:
     return found
 
 
-def test_plain_http_redirects_never_log_the_request_path():
-    redirects = [block for block in blocks(render_every_bearer_surface(), r"^server \{")
-                 if re.search(r"^\s*listen 80;", block, re.M)]
-    # The primary and the distinct fallback hostname each have a redirect server.
-    assert len(redirects) == 2
-    for block in redirects:
-        assert "$request_uri" in block
+def test_plain_http_servers_never_log_the_request_path():
+    plain = [block for block in blocks(render_every_bearer_surface(), r"^server \{")
+             if re.search(r"^\s*listen 80\b", block, re.M)]
+    # The primary hostname, the distinct fallback hostname and the default server.
+    assert len(plain) == 3
+    for block in plain:
         assert all(directive in block for directive in SILENT), block
 
 
