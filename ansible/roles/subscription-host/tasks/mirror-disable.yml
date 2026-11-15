@@ -21,11 +21,15 @@
     enabled: false
   loop: '{{ _subscription_mirror_units.results }}'
   register: _subscription_mirror_stopped
-  when: item.stdout == 'loaded'
+  when: item.stdout == 'loaded' and item.item != 'vpn-sub-mirror-fetch.service'
 
-- name: Stop masked mirror execution while preserving its mask
+# The pull unit has no [Install] section. systemd_service reads a static unit
+# as enabled, so `enabled: false` reports a change for it on every run.
+- name: Stop masked or static mirror execution without changing enablement
   ansible.builtin.systemd_service:
     name: '{{ item.item }}'
     state: stopped
   loop: '{{ _subscription_mirror_units.results }}'
-  when: item.stdout == 'masked'
+  when: >-
+    item.stdout == 'masked' or
+    (item.stdout == 'loaded' and item.item == 'vpn-sub-mirror-fetch.service')

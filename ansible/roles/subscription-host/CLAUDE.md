@@ -76,8 +76,10 @@ share directories are root:www-data 0750; token directories use 0750 and files
 nested directories. Token paths remain censored in verbose and diff callbacks.
 
 **Mirror false retires execution first** — enabled-role convergence inspects the
-exact timer and service before payload changes. It stops and disables loaded
-units, stops masked units without removing their masks, and retains unit files,
+exact timer and services before payload changes. It stops and disables loaded
+units, only stops the static pull unit (it has no enablement, and the module
+reports a change for `enabled: false` on it in every run), stops masked units
+without removing their masks, and retains unit files,
 private credentials, accepted generations, consumption fences and revocation
 state. Check mode only predicts systemd changes. The timer restart handler also
 requires the current mirror toggle. A retained generation pointer still blocks

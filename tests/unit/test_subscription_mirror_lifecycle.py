@@ -31,10 +31,14 @@ def test_retirement_refuses_uncertain_discovery(state, code, refuse):
 def test_exact_timer_stops_before_service_and_only_loaded_units_are_disabled():
     assert TASKS[0]['loop'] == ['vpn-sub-mirror.timer', 'vpn-sub-mirror.service', 'vpn-sub-mirror-fetch.service']
     loaded, masked = TASKS[1:]
-    for state in ('loaded', 'masked', 'not-found'):
-        item = {'item': {'stdout': state}}
-        assert bool(evaluate(loaded['when'], item)) is (state == 'loaded')
-        assert bool(evaluate(masked['when'], item)) is (state == 'masked')
+    # The pull unit is static: `enabled: false` reports a change for it on every run.
+    assert '[Install]' not in (ROLE / 'templates/vpn-sub-mirror-fetch.service.j2').read_text()
+    for unit in TASKS[0]['loop']:
+        static = unit == 'vpn-sub-mirror-fetch.service'
+        for state in ('loaded', 'masked', 'not-found'):
+            item = {'item': {'item': unit, 'stdout': state}}
+            assert bool(evaluate(loaded['when'], item)) is (state == 'loaded' and not static)
+            assert bool(evaluate(masked['when'], item)) is (state == 'masked' or (state == 'loaded' and static))
     assert loaded['ansible.builtin.systemd_service']['enabled'] is False
     assert 'enabled' not in masked['ansible.builtin.systemd_service']
     assert all(task['ansible.builtin.systemd_service']['state'] == 'stopped' for task in TASKS[1:])
