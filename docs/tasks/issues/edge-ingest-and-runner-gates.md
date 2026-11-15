@@ -2,7 +2,7 @@
 id: SEC-1794729384681094
 title: Gate the UpCloud edge firewall, collector ingest and CI runner lane
 kind: bug
-status: doing
+status: review
 area: security
 priority: medium
 risk: high
