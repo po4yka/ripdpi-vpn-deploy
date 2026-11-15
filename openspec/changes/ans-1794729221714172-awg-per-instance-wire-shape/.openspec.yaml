@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-15
+goal: ANS-1794729221714172 Randomise the AmneziaWG wire shape and listen port
+  per instance

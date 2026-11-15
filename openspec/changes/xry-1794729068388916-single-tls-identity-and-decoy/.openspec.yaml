@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-15
+goal: XRY-1794729068388916 Give each node one TLS identity and an operator-owned
+  decoy

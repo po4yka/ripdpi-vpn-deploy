@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-15
+goal: SEC-1794728936979277 Keep revoked devices revoked and bind secret delivery
+  to pinned hosts
