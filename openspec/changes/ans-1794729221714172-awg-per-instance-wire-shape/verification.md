@@ -1,7 +1,7 @@
 ---
 task_id: ANS-1794729221714172
 change: ans-1794729221714172-awg-per-instance-wire-shape
-commit_sha: 99ad4837
+commit_sha: 6962e101
 local: passed
 local_evidence: "Focused modules passed (388 tests: test_transport_semantics, test_secrets_schema, test_amneziawg_version_floor, test_bootstrap_awg_handoff, test_provider_listeners_parity, test_listener_contract, test_docs_index, test_agent_instructions); the new tests fail with the non-test changes reverted. make tf-test exit 0 (278 provider runs), make tf-policy-verify, snapshot-check, shellcheck, docs-check and ansible-lint for the amneziawg role exit 0. The complete unit collection ran once: every remaining failure is a native_runtime test that needs Linux, or the tracked-address check on tests/unit/test_doh_lookup.py from 839b45f8, which this change does not touch. make check did not run here: the lead runs one gate on the integrated branch. Molecule for the amneziawg role did not run: the pinned image has no arm64 manifest on the operator workstation. One independent review found no high or medium defect."
 remote_ci: required
