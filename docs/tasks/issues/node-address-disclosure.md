@@ -2,7 +2,7 @@
 id: SEC-1794728606515594
 title: Stop nodes and operator tools from disclosing node addresses
 kind: bug
-status: doing
+status: review
 area: security
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: sec-1794728606515594-node-address-disclosure
 created: 2026-11-15
 updated: 2026-11-15
 related_tasks: []
+status_detail: Implemented in 839b45f8; remote CI, dry-run and live evidence pending
 ---
 
 ## Goal
