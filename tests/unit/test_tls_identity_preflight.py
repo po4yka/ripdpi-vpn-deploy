@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 
@@ -47,6 +48,8 @@ def evaluate(tmp_path: Path, cases: dict[str, dict]) -> dict[str, str | None]:
 def test_production_refuses_a_borrowed_target_beside_the_operator_certificate(tmp_path: Path) -> None:
     outcomes = evaluate(tmp_path, {
         "hysteria": {"env": "prod", "vpn": {**P0, "enable_hysteria": True}},
+        # A permanent workspace has its own name as env; inventory marks it with vpn_build_environment.
+        "named_workspace": {"env": "p0-workspace", "vpn_build_environment": "prod", "vpn": {**P0, "enable_hysteria": True}},
         "xhttp": {"env": "prod", "vpn": {**P0, "enable_nginx_xhttp": True}, "nginx_xhttp_public_port": 8443},
         "other_network": {"env": "prod", "vpn": P0, "reality_target_network": "different_asn"},
         "blank_exception": {"env": "prod", "vpn": FULL, "tls_identity_exception": "  "},
@@ -62,6 +65,24 @@ def test_production_refuses_a_borrowed_target_beside_the_operator_certificate(tm
     assert "nginx-xhttp on TCP/8443 present the operator certificate" in flat["xhttp"]
     assert "different network" in flat["other_network"] and "present the operator" not in flat["other_network"]
     assert "Hysteria on UDP/443 and nginx-xhttp on TCP/8443" in flat["blank_exception"]
+
+
+def test_rendered_inventory_marks_a_named_workspace_as_production(tmp_path: Path) -> None:
+    """`make inventory` writes the build environment as a shell-quoted JSON string; Ansible must read it as prod."""
+    (task,) = yaml.safe_load(PREFLIGHT.read_text())
+    inventory = tmp_path / "hosts.ini"
+    inventory.write_text("[vpn]\nnode ansible_connection=local env=p0-workspace vpn_build_environment="
+                         + shlex.quote(json.dumps("prod")) + "\n")
+    play = tmp_path / "preflight.yml"
+    play.write_text(yaml.safe_dump([{
+        "hosts": "all", "gather_facts": False, "become": False,
+        "vars": {"ansible_python_interpreter": sys.executable, "vpn": {**P0, "enable_hysteria": True}},
+        "tasks": [{**task, "tags": []}]}]))
+    result = subprocess.run(["ansible-playbook", "-i", str(inventory), str(play)],
+                            env={**os.environ, "ANSIBLE_RETRY_FILES_ENABLED": "0"}, cwd=tmp_path,
+                            capture_output=True, text=True, timeout=120)
+    assert result.returncode != 0
+    assert "REALITY on TCP/443" in " ".join(result.stdout.split())
 
 
 def test_one_identity_an_exception_or_a_non_production_host_passes(tmp_path: Path) -> None:

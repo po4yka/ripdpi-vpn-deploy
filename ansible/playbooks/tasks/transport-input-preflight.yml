@@ -24,6 +24,7 @@
                           'enable_hysteria': false, 'enable_amneziawg': false}
                          if vpn_subscription_only | default(false) | bool else {}),
                       'env': env | default(''),
+                      'build_environment': vpn_build_environment | default(''),
                       'require_transport_egress': not (vpn_subscription_only | default(false) | bool),
                       'amneziawg': amneziawg | default({}),
                       'amneziawg_cohort': amneziawg_cohort | default({}),

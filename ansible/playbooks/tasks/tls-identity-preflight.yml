@@ -21,7 +21,7 @@
       - tls_identity_exception | default('') is string
       - reality_target_network | default('') in ['', 'same_asn', 'different_asn', 'unknown']
       - >-
-        (env | default('')) != 'prod'
+        'prod' not in [env | default(''), vpn_build_environment | default('')]
         or not (_tls_identity_borrowed | bool)
         or (tls_identity_exception | default('') | trim | length > 0)
         or (_tls_identity_operator_listeners | length == 0

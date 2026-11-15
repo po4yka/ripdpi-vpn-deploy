@@ -947,7 +947,7 @@ def transport_errors(doc: object, context: object = None, *, sections: list[str]
         errors.extend(xhttp_errors(doc, context))
     if "awg" in sections:
         errors.extend(awg_errors(doc.get("amneziawg_secrets"), context.get("amneziawg"), context.get("amneziawg_cohort"), allow_placeholders=allow_placeholders, source=doc,
-                                 production=context.get("env") == "prod"))
+                                 production="prod" in (context.get("env"), context.get("build_environment"))))
 
     if "hysteria" in sections:
         errors.extend(hysteria_errors(doc.get("hysteria"), context.get("public_site_canonical_url")))

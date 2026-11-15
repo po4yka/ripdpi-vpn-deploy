@@ -101,13 +101,13 @@ echo 'nginx_xhttp_public_site_dir: "/path/to/owned-site"' >> secrets/local/decoy
 
 Use an absolute path with safe owner-controlled directories and regular files. Links, hard links, hidden entries and special files are refused. The tree is limited to 1024 entries, 16 path components, 4 MiB per file and 16 MiB in total. The controller uses a private snapshot and rechecks the source before host writes.
 
-A host whose inventory `env` is `prod` refuses convergence while the variable is empty; staging, lab and Molecule hosts may keep the bundled pages.
+A production host is one whose inventory `env` or `vpn_build_environment` is `prod`. `make inventory` writes `vpn_build_environment` from the Terraform `build_env` variable, so a permanent workspace with its own name is a production host too. A production host refuses convergence while the variable is empty; staging, lab and Molecule hosts may keep the bundled pages.
 
 The REALITY self-steal site follows the same contract through `reality_self_steal_public_site_dir`. Its tree must contain `index.html` and `404.html`; the three pages bundled under `ansible/roles/reality-self-steal/` are refused on a production host and removed where the operator tree does not provide them.
 
 ### One TLS identity for each production address
 
-A borrowed REALITY target shows the target's certificate on TCP/443. When Hysteria or nginx-xhttp presents the operator certificate on the same address, one scan finds two unrelated names. A host whose inventory `env` is `prod` refuses that layout before any host change, and also refuses a borrowed target that the validator reported in a different network. The failure message names the listeners. Choose one of these:
+A borrowed REALITY target shows the target's certificate on TCP/443. When Hysteria or nginx-xhttp presents the operator certificate on the same address, one scan finds two unrelated names. A production host refuses that layout before any host change, and also refuses a borrowed target that the validator reported in a different network. The failure message names the listeners. Choose one of these:
 
 | Choice | Input |
 |---|---|

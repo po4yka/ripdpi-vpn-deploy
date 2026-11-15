@@ -18,6 +18,11 @@ The watchdog MUST send no notification when the operator configured no destinati
 - **WHEN** `env` is `prod` and the notification URL is the public notification service
 - **THEN** the role fails before it changes the host
 
+#### Scenario: Public service on a named production workspace
+
+- **WHEN** `env` is the workspace name, `vpn_build_environment` is `prod` and the notification URL is the public notification service
+- **THEN** the role fails before it changes the host
+
 #### Scenario: Alert content
 
 - **WHEN** the watchdog sends an alert to a configured destination

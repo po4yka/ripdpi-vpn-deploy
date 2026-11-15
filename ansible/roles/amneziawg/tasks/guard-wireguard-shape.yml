@@ -11,7 +11,7 @@
     that:
       - >-
         (_awg_wireguard_shaped | length == 0)
-        or ((env | default('')) != 'prod')
+        or ('prod' not in [env | default(''), vpn_build_environment | default('')])
         or ((awg_wireguard_shaped_measurement | default('')) | trim | length > 0)
     quiet: true
     fail_msg: |

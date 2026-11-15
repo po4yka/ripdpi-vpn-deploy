@@ -104,7 +104,9 @@
 - name: Pre-flight — production hosts serve an operator-owned public site
   ansible.builtin.assert:
     that:
-      - (nginx_xhttp_public_site_dir | default('') | length > 0) or ((env | default('')) != 'prod')
+      - >-
+        (nginx_xhttp_public_site_dir | default('') | length > 0)
+        or 'prod' not in [env | default(''), vpn_build_environment | default('')]
     fail_msg: >-
       Production hosts refuse the repository-bundled decoy site: set
       nginx_xhttp_public_site_dir to a controller-local directory holding the

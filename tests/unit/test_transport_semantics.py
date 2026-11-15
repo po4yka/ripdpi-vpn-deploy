@@ -382,6 +382,9 @@ def test_production_refuses_the_published_port_and_value_set(change, refused):
     assert not transport_errors({"amneziawg_secrets": {"instances": [raw]}}, {"env": "staging"})
     errors = transport_errors({"amneziawg_secrets": {"instances": [raw]}}, {"env": "prod"})
     assert [path for path, _ in errors] == refused
+    # A permanent workspace has its own name as env; inventory marks it with the build environment.
+    named = {"env": "p2-workspace", "build_environment": "prod"}
+    assert transport_errors({"amneziawg_secrets": {"instances": [raw]}}, named) == errors
     assert all("then redeliver every device configuration" in message for _, message in errors)
 
 
