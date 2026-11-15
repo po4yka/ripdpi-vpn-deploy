@@ -335,6 +335,88 @@ def test_sudden_size_change_refuses(feed, config, count):
         refresh_module.refresh(config, now=2000)
 
 
+DENY_NAMES_URL = 'https://deny.example.net/names.txt'
+DENY_RANGES_URL = 'https://deny.example.net/ranges.txt'
+DENY_NAMES = (b'# comment\nBad.Service.example.net\nexact.example.net\nx.extra.example.net\n'
+              b'tunnel.example.org\nfine.allowed.service.example.net\n')
+DENY_RANGES = b'198.51.100.0/23\n10.1.0.0/16\n9.9.9.0/24\n2001:db8::/32\n'
+
+
+def use_deny_data(feed, config, names=DENY_NAMES, ranges=DENY_RANGES):
+    feed['overrides'].update({DENY_NAMES_URL: names, DENY_RANGES_URL: ranges})
+    config['profile']['RouteOrder'] = 'block-proxy-direct'
+    config['block'] = {
+        'domains_url': DENY_NAMES_URL, 'domains_sha256': hashlib.sha256(names).hexdigest(),
+        'ranges_url': DENY_RANGES_URL, 'ranges_sha256': hashlib.sha256(ranges).hexdigest(),
+        'allow_domains': ['Allowed.Service.example.net.'],
+    }
+
+
+def published_profile(config):
+    return json.loads(served(config, 'profile.json').read_text())
+
+
+def test_denied_names_and_ranges_on_direct_rules_are_blocked_on_the_client(feed, config):
+    feed['ips'] = {'allow': GOOD_IPS['allow'] + [('2001:db8:1::', 48)]}
+    use_deny_data(feed, config)
+    config['profile']['BlockSites'] = ['domain:own.example.org']
+    refresh_module.refresh(config, now=1000)
+    profile = published_profile(config)
+    # The allowed name stays usable; tunnel.example.org is not direct.
+    assert profile['BlockSites'] == ['domain:own.example.org', 'domain:bad.service.example.net',
+                                     'domain:x.extra.example.net', 'full:exact.example.net']
+    # Only the direct part of a deny range; the literal 10.0.0.0/8 local rule is not checked.
+    assert profile['BlockIp'] == ['198.51.100.0/24', '2001:db8:1::/48']
+
+
+def test_deny_entry_above_direct_rules_blocks_only_their_direct_names(feed, config):
+    use_deny_data(feed, config, names=b'example.net\n', ranges=b'')
+    refresh_module.refresh(config, now=1000)
+    # service.example.net holds an allowed name, and a block rule cannot carry the exception.
+    assert published_profile(config)['BlockSites'] == ['domain:extra.example.net', 'full:exact.example.net']
+
+
+def test_unchanged_deny_data_keeps_the_timestamp(feed, config):
+    use_deny_data(feed, config)
+    refresh_module.refresh(config, now=1000)
+    assert refresh_module.refresh(config, now=2000) == 'unchanged'
+    assert published_profile(config)['LastUpdated'] == '1000'
+
+
+def test_changed_deny_data_republishes_an_unchanged_feed(feed, config):
+    use_deny_data(feed, config)
+    refresh_module.refresh(config, now=1000)
+    use_deny_data(feed, config, names=b'exact.example.net\n')
+    assert refresh_module.refresh(config, now=2000) == 'published'
+    assert published_profile(config)['BlockSites'] == ['full:exact.example.net']
+
+
+def _unreachable(feed, config):
+    def fail(url, limit):
+        raise Refused('feed-unreachable')
+    original = refresh_module.download
+    refresh_module.download = lambda url, limit: fail(url, limit) if url == DENY_RANGES_URL else original(url, limit)
+
+
+@pytest.mark.parametrize('change, category', [
+    (lambda feed, config: feed['overrides'].update({DENY_NAMES_URL: b'other.example.net\n'}), 'block-digest-mismatch'),
+    (lambda feed, config: feed['overrides'].update({DENY_RANGES_URL: b'192.0.2.0/24\n'}), 'block-digest-mismatch'),
+    (lambda feed, config: config['profile'].update({'RouteOrder': 'direct-proxy-block'}), 'block-order'),
+    (lambda feed, config: use_deny_data(feed, config, ranges=b'not-a-range\n'), 'block-malformed'),
+    (lambda feed, config: config['profile']['DirectSites'].append('keyword:bank'), 'block-unbounded-direct'),
+    (_unreachable, 'block-unreachable'),
+])
+def test_unusable_deny_data_keeps_the_previous_generation(feed, config, monkeypatch, change, category):
+    monkeypatch.setattr(refresh_module, 'download', refresh_module.download)
+    use_deny_data(feed, config)
+    refresh_module.refresh(config, now=1000)
+    before = served(config, 'profile.json').read_text()
+    change(feed, config)
+    with pytest.raises(Refused, match=category):
+        refresh_module.refresh(config, now=2000)
+    assert served(config, 'profile.json').read_text() == before
+
+
 def test_redirect_to_plain_http_is_refused():
     handler = refresh_module._HttpsOnlyRedirects()
     with pytest.raises(Refused, match='feed-redirect-not-https'):

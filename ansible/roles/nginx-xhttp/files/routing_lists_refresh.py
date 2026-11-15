@@ -6,11 +6,13 @@ a candidate must satisfy the operator's policy before it replaces served files.
 Any refusal leaves the previous generation in place.
 """
 
+import bisect
 import hashlib
 import http.client
 import ipaddress
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -29,6 +31,11 @@ PLAIN, REGEX, DOMAIN, FULL = 0, 1, 2, 3
 # GeoIP entry field that makes a clean-looking list match everything else.
 INVERSE_MATCH = 3
 MAPPED_IPV4 = ipaddress.ip_network('::ffff:0:0/96')
+# The server destination filter admits deny files up to this size.
+BLOCK_MAX_BYTES = 32 << 20
+# Bounds the profile that every client downloads.
+MAX_BLOCK_RULES = 10000
+BLOCK_NAME = re.compile(r'[a-z0-9_-]+(\.[a-z0-9_-]+)*')
 
 
 class Refused(Exception):
@@ -198,6 +205,119 @@ def admit(config, sites, addresses):
             raise Refused('feed-direct-canary')
 
 
+def _suffixes(name):
+    labels = name.split('.')
+    return ['.'.join(labels[index:]) for index in range(len(labels))]
+
+
+def _deny_lines(block, key):
+    try:
+        body = download(block[f'{key}_url'], BLOCK_MAX_BYTES)
+    except Refused as refusal:
+        # Name the deny source, not the routing feed, in the refusal category.
+        raise Refused(str(refusal).replace('feed-', 'block-', 1)) from refusal
+    if hashlib.sha256(body).hexdigest() != block[f'{key}_sha256']:
+        raise Refused('block-digest-mismatch')
+    try:
+        return [line.decode('ascii').lower() for line in map(bytes.strip, body.splitlines())
+                if line and not line.startswith(b'#')]
+    except UnicodeDecodeError as error:
+        raise Refused('block-malformed') from error
+
+
+def _intervals(networks):
+    merged = {4: [], 6: []}
+    for network in sorted(networks, key=lambda item: (item.version, int(item.network_address))):
+        low, high = int(network.network_address), int(network.broadcast_address)
+        spans = merged[network.version]
+        if spans and low <= spans[-1][1] + 1:
+            spans[-1][1] = max(spans[-1][1], high)
+        else:
+            spans.append([low, high])
+    return {version: ([low for low, _ in spans], [high for _, high in spans]) for version, spans in merged.items()}
+
+
+def _allow_name(value):
+    """Match the server's allow-list spelling: lowercase IDNA A-labels."""
+    try:
+        return _host(value).encode('idna').decode('ascii').lower()
+    except UnicodeError:
+        return None
+
+
+def block_rules(config, sites, addresses):
+    """Client block rules for deny entries that direct rules would route around the server."""
+    block = config.get('block')
+    if not block:
+        return [], []
+    profile = config['profile']
+    if not profile.get('RouteOrder', '').startswith('block'):
+        raise Refused('block-order')
+    domains, exact = set(), set()
+    for rule in profile['DirectSites']:
+        scheme, _, value = rule.partition(':')
+        if scheme == 'geosite':
+            continue
+        # A keyword or regular expression could route deny names direct unseen.
+        if scheme not in ('domain', 'full'):
+            raise Refused('block-unbounded-direct')
+        (domains if scheme == 'domain' else exact).add(_host(value))
+    for tag in _tags(profile['DirectSites'], 'geosite'):
+        for kind, value in sites[tag]:
+            (domains if kind == DOMAIN else exact).add(value)
+
+    deny = set(_deny_lines(block, 'domains'))
+    rules = {f'domain:{name}' for name in deny if any(suffix in domains for suffix in _suffixes(name))}
+    # A deny entry above a direct rule: block only what that rule sends direct.
+    rules.update(f'domain:{value}' for value in domains if any(suffix in deny for suffix in _suffixes(value)))
+    rules.update(f'full:{value}' for value in exact if any(suffix in deny for suffix in _suffixes(value)))
+    allow = {name for name in map(_allow_name, block.get('allow_domains', [])) if name}
+
+    def allowed(rule):
+        # Block rules cannot carry exceptions, so a rule above an allowed name is dropped.
+        name = rule.partition(':')[2]
+        return any(suffix in allow for suffix in _suffixes(name)) or any(
+            value.endswith('.' + name) for value in allow)
+
+    names = sorted(rule for rule in rules if not allowed(rule))
+    if not all(BLOCK_NAME.fullmatch(rule.partition(':')[2]) for rule in names):
+        raise Refused('block-malformed')
+
+    # Literal DirectIp rules are the operator's local networks; only feed ranges are checked.
+    starts, ends = {}, {}
+    for version, (low, high) in _intervals(
+            [network for tag in _tags(profile['DirectIp'], 'geoip') for network in addresses[tag]]).items():
+        starts[version], ends[version] = low, high
+    pieces = []
+    for line in _deny_lines(block, 'ranges'):
+        try:
+            network = ipaddress.ip_network(line, strict=False)
+        except ValueError as error:
+            raise Refused('block-malformed') from error
+        low, high = int(network.network_address), int(network.broadcast_address)
+        version = network.version
+        first = bisect.bisect_left(ends[version], low)
+        last = bisect.bisect_right(starts[version], high)
+        address = ipaddress.IPv4Address if version == 4 else ipaddress.IPv6Address
+        for index in range(first, last):
+            pieces.extend(ipaddress.summarize_address_range(
+                address(max(low, starts[version][index])), address(min(high, ends[version][index]))))
+    ranges = [str(network) for version in (4, 6)
+              for network in ipaddress.collapse_addresses(piece for piece in pieces if piece.version == version)]
+    if len(names) + len(ranges) > MAX_BLOCK_RULES:
+        raise Refused('block-too-large')
+    return names, ranges
+
+
+def served_profile(config, sites, addresses):
+    profile = dict(config['profile'])
+    block_sites, block_ips = block_rules(config, sites, addresses)
+    for key, rules in (('BlockSites', block_sites), ('BlockIp', block_ips)):
+        own = list(profile.get(key, []))
+        profile[key] = own + [rule for rule in rules if rule not in own]
+    return profile
+
+
 def _counts(config, sites, addresses):
     profile = config['profile']
     return {
@@ -246,7 +366,7 @@ def _sync_directory(path):
         os.close(descriptor)
 
 
-def publish(config, payloads, digests, counts, now):
+def publish(config, profile, payloads, digests, counts, now):
     root, token = config['root'], config['token']
     generations = os.path.join(root, GENERATIONS)
     os.makedirs(generations, mode=0o750, exist_ok=True)
@@ -258,7 +378,7 @@ def publish(config, payloads, digests, counts, now):
     stage = os.path.join(generations, f'.stage-{os.getpid()}')
     os.mkdir(stage)
     try:
-        profile = dict(config['profile'])
+        profile = dict(profile)
         for key, name in (('Geositeurl', 'geosite.dat'), ('Geoipurl', 'geoip.dat')):
             profile[key] = f"{config['base_url']}/{name}"
         # INCY reloads the lists when this timestamp grows.
@@ -307,17 +427,18 @@ def refresh(config, now=None):
     addresses = parse_geoip(payloads['geoip.dat'])
     admit(config, sites, addresses)
     counts = _counts(config, sites, addresses)
+    profile = served_profile(config, sites, addresses)
     previous = _current(config['root'])
-    # A new policy must be republished even when the feed did not move.
+    # A new policy or block result must be republished even when the feed did not move.
     identity = hashlib.sha256(
-        json.dumps([config['profile'], config['base_url']], sort_keys=True).encode()).hexdigest()
+        json.dumps([profile, config['base_url']], sort_keys=True).encode()).hexdigest()
     digests['profile'] = identity
     if previous.get('digests') == digests:
         return 'unchanged'
     check_drift(config, previous, counts)
     # INCY reloads only when the timestamp grows, even after a clock step.
     stamp = max(int(time.time()) if now is None else now, previous.get('published', 0) + 1)
-    publish(config, payloads, digests, counts, stamp)
+    publish(config, profile, payloads, digests, counts, stamp)
     return 'published'
 
 

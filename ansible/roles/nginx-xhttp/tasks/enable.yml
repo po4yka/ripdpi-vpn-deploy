@@ -314,6 +314,9 @@
       - nginx_xhttp_routing_lists.profile.DirectIp is defined
       - nginx_xhttp_routing_lists.profile.ProxySites is defined
       - nginx_xhttp_routing_lists.profile.ProxyIp is defined
+      # Deny-list entries on direct rules are published as block rules, which INCY applies in RouteOrder.
+      - not (vpn.enable_destination_filter | default(false) | bool)
+        or (nginx_xhttp_routing_lists.profile.RouteOrder | default('')) is match('block')
       - nginx_xhttp_routing_lists.policy.must_direct | length > 0
       - nginx_xhttp_routing_lists.policy.must_not_direct | length > 0
       - nginx_xhttp_routing_lists.policy.max_change_ratio | float > 1
