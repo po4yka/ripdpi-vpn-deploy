@@ -121,6 +121,7 @@ Dated findings. Not normative; a research page never authorizes a change.
 | [Android client research for the deployed VPN fleet](research/android-client.md) (Research) | Android client research for the deployed fleet, including the physical AmneziaWG acceptance matrix | — |
 | [iOS client research for the deployed VPN fleet](research/ios-client.md) (Research) | iOS client research for the deployed fleet | — |
 | [iOS split routing: curated direct allowlist, fail-closed VPN default](research/ios-split-routing.md) (Research) | iOS split routing: curated direct allowlist with a fail-closed VPN default | — |
+| [Fleet-wide transport signatures — 2026-11-15](research/fleet-transport-signatures-2026-11.md) (Research) | Lab measurement and verdict for each transport signature that is the same on every node | — |
 | [REALITY target selection — 2026-07-12](research/reality-target-selection-2026-07.md) (Research) | REALITY target selection findings from July 2026 | — |
 
 ## Archive
