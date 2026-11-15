@@ -2,7 +2,7 @@
 id: SEC-1794729595622909
 title: Measure fleet-wide transport signatures before changing defaults
 kind: research
-status: backlog
+status: review
 area: security
 priority: medium
 risk: standard
