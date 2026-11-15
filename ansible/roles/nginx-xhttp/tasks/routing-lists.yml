@@ -49,7 +49,14 @@
           'geosite_url': nginx_xhttp_routing_lists.geosite_url,
           'geoip_url': nginx_xhttp_routing_lists.geoip_url,
           'profile': nginx_xhttp_routing_lists.profile,
-          'policy': nginx_xhttp_routing_lists.policy} | to_json(ensure_ascii=false) }}
+          'policy': nginx_xhttp_routing_lists.policy,
+          'block': ({'domains_url': destination_filter.domains_url,
+                     'domains_sha256': destination_filter.domains_sha256,
+                     'ranges_url': destination_filter.ranges_url,
+                     'ranges_sha256': destination_filter.ranges_sha256,
+                     'allow_domains': destination_filter.allow_domains | default([])}
+                    if vpn.enable_destination_filter | default(false) | bool else none)}
+         | to_json(ensure_ascii=false) }}
     dest: /etc/vpn-routing-lists.json
     owner: root
     group: vpn-routing-lists

@@ -129,7 +129,7 @@ The paired client changes are merged in [RIPDPI #709](https://github.com/po4yka/
 
 ## Destinations that the server filter does not cover
 
-The optional server destination filter (see [the transport egress reference](transport-egress.md#destination-filter)) applies only to P0, P1 and Hysteria2 traffic that reaches the server. It does not apply to AmneziaWG or to traffic that a client sends directly. To block unsafe sites on direct traffic, add a block rule for those domains in the client routing profile, before the direct rule. Then confirm on the device that a test name in the rule fails.
+The optional server destination filter (see [the transport egress reference](transport-egress.md#destination-filter)) applies only to P0, P1 and Hysteria2 traffic that reaches the server. It does not apply to AmneziaWG or to traffic that a client sends directly. A profile served by [client routing lists](subscription-plane.md#client-routing-lists) blocks the deny entries that its direct rules cover. For another profile, add a block rule for those domains before the direct rule, then confirm on the device that a test name in the rule fails.
 
 ## INCY share links
 

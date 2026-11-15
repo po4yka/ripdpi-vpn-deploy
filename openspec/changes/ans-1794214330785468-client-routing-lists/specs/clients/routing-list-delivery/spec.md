@@ -41,6 +41,40 @@ The delivery host MUST serve only `profile.json`, `geosite.dat`, `geoip.dat` and
 - **WHEN** a client requests `manifest.json` under the routing path
 - **THEN** the route does not match
 
+### Requirement: REQ-ROUTING-LISTS-BLOCK — Direct rules do not bypass the server deny filter
+
+When the profile enables the destination deny filter, the refresher MUST admit the filter's pinned files by SHA-256 and MUST publish, after the operator's block rules, a client block rule for each direct destination that the filter denies. It MUST leave out a rule that covers an `allow_domains` name and MUST NOT check literal `DirectIp` ranges. An unusable deny file, a keyword or pattern direct rule, or more than 10,000 rules MUST refuse the run.
+
+#### Scenario: Deny name under a direct domain
+
+- **WHEN** the deny list contains a subdomain of a direct domain
+- **THEN** the published profile has a `domain:` entry for it in `BlockSites`
+
+#### Scenario: Direct domain under a deny name
+
+- **WHEN** a direct domain or exact name is at or under a deny name
+- **THEN** that direct domain or exact name becomes a block rule, not the deny name
+
+#### Scenario: Deny range on a direct feed network
+
+- **WHEN** a deny range overlaps a direct feed network
+- **THEN** only the overlapping part becomes a `BlockIp` rule
+
+#### Scenario: Allowed name under a deny entry
+
+- **WHEN** a direct domain under a deny name holds an `allow_domains` name
+- **THEN** no block rule covers that direct domain
+
+#### Scenario: Deny range on a local network rule
+
+- **WHEN** a deny range overlaps only a literal `DirectIp` range
+- **THEN** it does not become a client block rule
+
+#### Scenario: Deny data does not match its pin
+
+- **WHEN** a downloaded deny file has another SHA-256 digest
+- **THEN** the run refuses with `block-digest-mismatch` and the served generation stays
+
 ### Requirement: REQ-ROUTING-LISTS-RETIRE — Disabling removes only owned runtime
 
 Disabling the feature or the role MUST retire the routing list units, refresher, policy file and published data, and MUST preserve an administrative unit mask.

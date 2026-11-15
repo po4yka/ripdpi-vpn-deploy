@@ -50,11 +50,11 @@ A denied request gets the same bounded failure as a private destination, and the
 | P0 and P1 through Xray | Yes. Validation refuses `enable_destination_filter` together with `enable_cascade_ingress`, because the cascade classifier receives Xray TCP instead of the normalizer. |
 | Hysteria2 | Yes |
 | AmneziaWG | No. It uses kernel forwarding and does not reach the normalizer. |
-| Traffic that the client sends directly | No. It does not reach the server. |
+| Traffic that the client sends directly | No. It does not reach the server. When the node also serves client routing lists, the published profile blocks the deny entries that its direct rules cover; see [client routing lists](subscription-plane.md#client-routing-lists). |
 
 The filter inspects only the destination that the normalizer receives. It does not inspect encrypted content. If a client sends an address instead of a name, only the range check applies. A name that reaches a listed name through an unlisted CNAME is not matched, but the range check still applies to its addresses.
 
-To block unsafe sites on traffic that a client sends directly, add a block rule for those domains in the client routing profile. Put the rule before the direct rule, and confirm on the device that a test name in the rule fails.
+A profile from [client routing lists](subscription-plane.md#client-routing-lists) gets these block rules automatically. For another client profile, add a block rule for those domains, put it before the direct rule, and confirm on the device that a test name in the rule fails.
 
 ## Protected deployment and recovery
 
