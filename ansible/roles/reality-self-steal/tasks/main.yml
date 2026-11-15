@@ -49,7 +49,9 @@
 - name: Require an operator-owned self-steal site on production hosts
   ansible.builtin.assert:
     that:
-      - (reality_self_steal_public_site_dir | length > 0) or ((env | default('')) != 'prod')
+      - >-
+        (reality_self_steal_public_site_dir | length > 0)
+        or 'prod' not in [env | default(''), vpn_build_environment | default('')]
     fail_msg: >-
       Production hosts refuse the repository-bundled self-steal site: set
       reality_self_steal_public_site_dir to a controller-local directory holding the

@@ -255,7 +255,7 @@
       - watchdog_node_alias is match('^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$')
       - watchdog.provider != 'ntfy' or watchdog_ntfy_host | length > 0
       - >-
-        watchdog.provider != 'ntfy' or (env | default('')) != 'prod'
+        watchdog.provider != 'ntfy' or 'prod' not in [env | default(''), vpn_build_environment | default('')]
         or not (watchdog_ntfy_host == 'ntfy.sh' or watchdog_ntfy_host.endswith('.ntfy.sh'))
     fail_msg: >-
       A watchdog notification provider needs watchdog.node_alias (letters,

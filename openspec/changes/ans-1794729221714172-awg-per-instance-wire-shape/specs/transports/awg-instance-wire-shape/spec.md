@@ -44,12 +44,17 @@ Secrets validation MUST refuse, for every environment, an instance that omits an
 
 ### Requirement: REQ-PROTO-AWG-SHAPE-HEADERS — Refuse WireGuard message types as header values on production
 
-On a host whose inventory `env` is `prod`, the AmneziaWG role MUST refuse an instance in which any of `h1` to `h4` is a value from 1 to 4, whatever its padding values are, unless a recorded measurement exists for that instance.
+On a production host (inventory `env` or `vpn_build_environment` is `prod`), the AmneziaWG role MUST refuse an instance in which any of `h1` to `h4` is a value from 1 to 4, whatever its padding values are, unless a recorded measurement exists for that instance.
 
 #### Scenario: Standard headers with padding
 
 - **WHEN** `env` is `prod`, an instance has `h4` equal to `4` and non-zero `s1` and `s2`, and no measurement is recorded
 - **THEN** the role fails before any host mutation
+
+#### Scenario: Standard headers on a named production workspace
+
+- **WHEN** `env` is the workspace name, `vpn_build_environment` is `prod`, an instance has `h4` equal to `4`, and no measurement is recorded
+- **THEN** the role fails before it changes the host
 
 #### Scenario: Recorded measurement
 

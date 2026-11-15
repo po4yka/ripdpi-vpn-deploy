@@ -963,8 +963,9 @@ def _run_site_staging(tmp_path: Path, variables: dict) -> tuple[subprocess.Compl
     return result, staged
 
 
-def test_production_hosts_refuse_the_bundled_decoy_before_staging(tmp_path: Path) -> None:
-    result, staged = _run_site_staging(tmp_path, {"env": "prod", "nginx_xhttp_public_site_dir": ""})
+@pytest.mark.parametrize("production", [{"env": "prod"}, {"env": "p0-workspace", "vpn_build_environment": "prod"}], ids=["env", "named-workspace"])
+def test_production_hosts_refuse_the_bundled_decoy_before_staging(tmp_path: Path, production) -> None:
+    result, staged = _run_site_staging(tmp_path, {**production, "nginx_xhttp_public_site_dir": ""})
     assert result.returncode != 0
     assert staged is None
     assert "set\nnginx_xhttp_public_site_dir" in result.stdout.replace("\n      ", "\n") or "nginx_xhttp_public_site_dir" in result.stdout

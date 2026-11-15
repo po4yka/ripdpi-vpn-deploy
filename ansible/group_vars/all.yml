@@ -161,7 +161,7 @@ public_site_canonical_url: "https://vpn.example.com:8443"
 # decoy. A controller-local directory holding at least 404.html; every regular
 # file below it is published at the same relative path. The bundled pages are
 # committed in a public repository, so every deployment that keeps them serves
-# one byte-identical identity; production hosts (inventory env: prod) refuse
+# one byte-identical identity; production hosts (inventory env or vpn_build_environment: prod) refuse
 # convergence while this is empty. Supply it in the same private extra-vars
 # file as public_site_canonical_url.
 nginx_xhttp_public_site_dir: ""

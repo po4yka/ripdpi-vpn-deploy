@@ -145,6 +145,8 @@ def test_alerts_name_the_node_by_alias_and_never_by_hostname(alias, node_id, exp
         ({"provider": "ntfy", "node_alias": "edge-a", "ntfy_url": "https://eu.NTFY.sh/"}, "prod", False),
         ({"provider": "ntfy", "node_alias": "edge-a", "ntfy_url": "https://ntfy.sh./"}, "prod", False),
         ({"provider": "ntfy", "node_alias": "edge-a", "ntfy_url": "https://ntfy.sh"}, "staging", True),
+        ({"provider": "ntfy", "node_alias": "edge-a", "ntfy_url": "https://ntfy.sh"},
+         {"env": "p0-workspace", "vpn_build_environment": "prod"}, False),
         ({"provider": "ntfy", "node_alias": "edge-a", "ntfy_url": ""}, "staging", False),
         ({"provider": "ntfy", "node_alias": "", "ntfy_url": "https://alerts.example"}, "prod", False),
         ({"provider": "pushover", "node_alias": "host.example.net"}, "prod", False),
@@ -156,7 +158,8 @@ def test_notification_destination_needs_an_alias_and_refuses_the_public_service_
 
     tasks = yaml.safe_load((TEMPLATES.parent / "tasks" / "enable.yml").read_text())
     guard = next(task for task in tasks if task["name"] == "Validate watchdog notification destination")
-    variables = {"watchdog": watchdog, "env": env, "observability_agent": {"node_id": ""}}
+    variables = {"watchdog": watchdog, **(env if isinstance(env, dict) else {"env": env}),
+                 "observability_agent": {"node_id": ""}}
     for name, source in guard["vars"].items():
         variables[name] = render_fragment(name, source, variables)
     environment = template_environment(None)

@@ -113,7 +113,7 @@ entry for standalone invocation. It delegates to localhost without privilege,
 executes read-only in check mode, and sends private values only on stdin under
 `no_log`. Disabled-role reconciliation bypasses unused transport inputs.
 
-**One TLS identity for each production address** — site pre-tasks and the enabled Xray, Hysteria and nginx-xhttp roles import `playbooks/tasks/tls-identity-preflight.yml`. On `env: prod` it refuses a borrowed REALITY target beside Hysteria or nginx-xhttp, and a recorded `reality_target_network: different_asn`, unless `tls_identity_exception` holds a reason. It reads variables only and contacts no service; the operator records the validator result.
+**One TLS identity for each production address** — site pre-tasks and the enabled Xray, Hysteria and nginx-xhttp roles import `playbooks/tasks/tls-identity-preflight.yml`. On a production host it refuses a borrowed REALITY target beside Hysteria or nginx-xhttp, and a recorded `reality_target_network: different_asn`, unless `tls_identity_exception` holds a reason. It reads variables only and contacts no service; the operator records the validator result.
 
 **Exporter endpoint verification shares installation admission** — `verify.yml`
 gathers only local network facts and reuses monitoring's literal private endpoint
@@ -250,6 +250,8 @@ count in `docs/reference/testing.md`.
   pre-task refuses older releases before any host change. Hetzner, Vultr and
   Scaleway image allowlists admit only these releases; UpCloud selects a
   template UUID, so there the pre-task is the only guard.
+
+- **A production gate tests two inventory markers** — `'prod' in [env, vpn_build_environment]`. A permanent workspace has its own name as `env`, and `make inventory` marks it with `vpn_build_environment: prod`; a gate that tests only `env` never applies to such a fleet.
 
 - **`changed_when:` on `command:` is mandatory** — otherwise it reports
   changed every run, breaking idempotency assertions.

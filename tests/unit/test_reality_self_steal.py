@@ -492,8 +492,9 @@ def _stage_self_steal_site(tmp_path: Path, variables: dict) -> tuple[subprocess.
     return result, json.loads(result_file.read_text()) if result_file.exists() else None
 
 
-def test_production_refuses_the_bundled_self_steal_site_before_staging(tmp_path: Path) -> None:
-    result, staged = _stage_self_steal_site(tmp_path, {"env": "prod"})
+@pytest.mark.parametrize("production", [{"env": "prod"}, {"env": "p0-workspace", "vpn_build_environment": "prod"}], ids=["env", "named-workspace"])
+def test_production_refuses_the_bundled_self_steal_site_before_staging(tmp_path: Path, production) -> None:
+    result, staged = _stage_self_steal_site(tmp_path, production)
     assert result.returncode != 0
     assert staged is None
     assert "reality_self_steal_public_site_dir" in result.stdout

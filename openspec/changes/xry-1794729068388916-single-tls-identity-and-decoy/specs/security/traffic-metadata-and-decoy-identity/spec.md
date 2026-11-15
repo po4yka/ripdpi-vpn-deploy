@@ -2,7 +2,7 @@
 
 ### Requirement: REQ-TMD-SELF-STEAL-OWNED-DECOY — The self-steal site is operator-owned on production
 
-The self-steal role MUST publish its static site from `reality_self_steal_public_site_dir` when that variable is set, and MUST remove bundled pages that the operator tree does not provide. It MUST refuse convergence on a host whose inventory `env` is `prod` when the variable is empty.
+The self-steal role MUST publish its static site from `reality_self_steal_public_site_dir` when that variable is set, and MUST remove bundled pages that the operator tree does not provide. It MUST refuse convergence on a production host (inventory `env` or `vpn_build_environment` is `prod`) when the variable is empty.
 
 #### Scenario: Production host without an operator tree
 
@@ -21,12 +21,17 @@ The self-steal role MUST publish its static site from `reality_self_steal_public
 
 ### Requirement: REQ-TMD-SINGLE-IDENTITY — One TLS identity for each public address on production
 
-On a host whose inventory `env` is `prod`, the transport preflight MUST refuse a borrowed REALITY target when Hysteria or nginx-xhttp is enabled on the same address, on any port, or when the operator recorded `reality_target_network: different_asn`, unless `tls_identity_exception` records a non-empty reason. The preflight MUST NOT contact a lookup service.
+On a production host (inventory `env` or `vpn_build_environment` is `prod`), the transport preflight MUST refuse a borrowed REALITY target when Hysteria or nginx-xhttp is enabled on the same address, on any port, or when the operator recorded `reality_target_network: different_asn`, unless `tls_identity_exception` records a non-empty reason. The preflight MUST NOT contact a lookup service.
 
 #### Scenario: Borrowed target beside Hysteria on UDP/443
 
 - **WHEN** `env` is `prod`, REALITY uses a borrowed target, Hysteria listens on UDP/443 of the same address, and no exception is recorded
 - **THEN** preflight fails before any host mutation, names the two listeners and names the three ways to pass
+
+#### Scenario: Borrowed target on a named production workspace
+
+- **WHEN** `env` is the workspace name, `vpn_build_environment` is `prod`, REALITY uses a borrowed target, Hysteria listens on UDP/443 of the same address, and no exception is recorded
+- **THEN** preflight fails before any host mutation
 
 #### Scenario: Borrowed target recorded in a different network
 

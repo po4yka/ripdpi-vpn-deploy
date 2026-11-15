@@ -348,6 +348,7 @@ _RANDOM_HEADERS = {"name": "awg0", "s1": 37, "s2": 121, "h1": "1000-1999", "h2":
     ("variables", "accepted"),
     [
         ({"_awg_instances": [_WIREGUARD_SHAPED], "env": "prod"}, False),
+        ({"_awg_instances": [_WIREGUARD_SHAPED], "env": "p2-workspace", "vpn_build_environment": "prod"}, False),
         ({"_awg_instances": [_WIREGUARD_SHAPED], "env": "prod", "awg_wireguard_shaped_measurement": "  "}, False),
         ({"_awg_instances": [_WIREGUARD_SHAPED], "env": "prod",
           "awg_wireguard_shaped_measurement": "measurements/2026-10-plain-initiation: passes"}, True),
@@ -361,7 +362,7 @@ _RANDOM_HEADERS = {"name": "awg0", "s1": 37, "s2": 121, "h1": "1000-1999", "h2":
         ({"_awg_instances": [_RANDOM_HEADERS], "env": "prod"}, True),
         ({"_awg_instances": [{**_RANDOM_HEADERS, "s1": 0, "s2": 0}], "env": "prod"}, True),
     ],
-    ids=["prod-unmeasured", "prod-blank-measurement", "prod-measured", "staging", "padded-handshake",
+    ids=["prod-unmeasured", "named-workspace-unmeasured", "prod-blank-measurement", "prod-measured", "staging", "padded-handshake",
          "padded-transport-type", "second-instance-low-header", "padded-transport-type-measured",
          "padded-transport-type-staging", "random-headers", "random-headers-no-padding"],
 )
