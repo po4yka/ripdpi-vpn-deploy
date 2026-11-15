@@ -13,8 +13,20 @@ import pytest
 from doh_fixture import doh_server
 
 ROOT = Path(__file__).resolve().parents[2]
-ORIGIN = ("TXT", "7.2.0.192.origin.asn.cymru.com")
-ORIGIN6 = ("TXT", "7.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.origin6.asn.cymru.com")
+
+
+def reversed_labels(address: str) -> str:
+    """Reverse-DNS labels by string work, independent of the scripts under test."""
+    if ":" not in address:
+        return ".".join(reversed(address.split(".")))
+    head, _, tail = address.partition("::")
+    groups = head.split(":") + ["0"] * (8 - len(head.split(":")) - len(tail.split(":"))) + tail.split(":")
+    return ".".join(reversed("".join(group.rjust(4, "0") for group in groups)))
+
+
+ORIGIN = ("TXT", reversed_labels("192.0.2.7") + ".origin.asn.cymru.com")
+ORIGIN6 = ("TXT", reversed_labels("2001:db8::7") + ".origin6.asn.cymru.com")
+BLOCK_LIST = ("A", reversed_labels("192.0.2.9") + ".zen.spamhaus.org")
 AS_RECORD = ("TXT", "AS64500.asn.cymru.com")
 CYMRU = {
     ORIGIN: ['"64500 | 192.0.2.0/24 | XX | fixture | 2026-01-01"'],
@@ -135,11 +147,11 @@ def test_asn_probe_fails_closed_without_the_encrypted_resolver(tmp_path):
 )
 def test_reputation_check_reads_the_block_list_over_the_encrypted_resolver(tmp_path, answer, status, text):
     queries: list = []
-    with doh_server({("A", "9.2.0.192.zen.spamhaus.org"): answer}, queries) as url:
+    with doh_server({BLOCK_LIST: answer}, queries) as url:
         result = run(["bash", str(ROOT / "scripts/check-ip-reputation.sh")], url, tmp_path, IP="192.0.2.9", NTFY_TOPIC="")
     assert result.returncode == status, result.stderr
     assert text in result.stdout
-    assert queries == [("A", "9.2.0.192.zen.spamhaus.org")]
+    assert queries == [BLOCK_LIST]
     assert not (tmp_path / "cleartext-calls").exists()
 
 
@@ -151,7 +163,7 @@ def test_reputation_check_fails_closed_without_the_encrypted_resolver(tmp_path):
 
 
 def test_reputation_check_is_incomplete_when_the_block_list_refuses_the_resolver(tmp_path):
-    with doh_server({("A", "9.2.0.192.zen.spamhaus.org"): ["127.255.255.254"]}) as url:
+    with doh_server({BLOCK_LIST: ["127.255.255.254"]}) as url:
         result = run(["bash", str(ROOT / "scripts/check-ip-reputation.sh")], url, tmp_path, IP="192.0.2.9", NTFY_TOPIC="")
     assert result.returncode == 2
     assert "not measured" in result.stderr and "clean" not in result.stdout
