@@ -91,6 +91,7 @@
 ## Research
 
 - [Android client research for the deployed VPN fleet](/md/research/android-client.md)
+- [Fleet-wide transport signatures — 2026-11-15](/md/research/fleet-transport-signatures-2026-11.md)
 - [iOS client research for the deployed VPN fleet](/md/research/ios-client.md)
 - [iOS split routing: curated direct allowlist, fail-closed VPN default](/md/research/ios-split-routing.md)
 - [REALITY target selection — 2026-07-12](/md/research/reality-target-selection-2026-07.md)
