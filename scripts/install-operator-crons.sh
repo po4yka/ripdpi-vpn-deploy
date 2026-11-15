@@ -46,6 +46,10 @@ LIVENESS_CONFIG="${LIVENESS_CONFIG:-}"
 SOPS_FILE="${SOPS_FILE:-}"
 SOPS_AGE_KEY_FILE="${SOPS_AGE_KEY_FILE:-}"
 OPERATOR_PATH="${OPERATOR_PATH:-}"
+# Optional: the notification service for scheduled alerts, and the DNS-over-HTTPS
+# resolver for the reputation and ASN checks. Neither has a public default here.
+NTFY_URL="${NTFY_URL:-}"
+DOH_URL="${DOH_URL:-}"
 
 DRY_RUN=0
 REMOVE=0
@@ -127,12 +131,25 @@ make_block() {
   }
   path_escaped="${operator_path//\\/\\\\}"
   path_escaped="${path_escaped//\"/\\\"}"
+  local name value service_env=""
+  for name in NTFY_URL DOH_URL; do
+    value="${!name}"
+    [[ -n "$value" ]] || continue
+    [[ "$value" =~ ^https://[A-Za-z0-9._:/-]+$ ]] || {
+      echo "${name} must be an https URL of letters, digits, dot, underscore, colon, slash or hyphen" >&2
+      return 1
+    }
+    service_env+="${name}=\"${value}\""$'\n'
+  done
+  if [[ -z "$NTFY_URL" && ( -n "$LIVENESS_CONFIG" || -n "$REALITY_TARGET_VANTAGE" ) ]]; then
+    echo "NTFY_URL is not set: the scheduled monitors record alerts but cannot deliver them" >&2
+  fi
   cat <<EOF
 ${MARKER_BEGIN}
 # Operator-side cron jobs for ${PROVIDER}:${ENV}. Re-run
 # scripts/install-operator-crons.sh to refresh, --remove to uninstall.
 PATH="${path_escaped}"
-
+${service_env}
 */30 * * * *   cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} make burn-check          2>&1 | logger -t vpn-burn
 7 3 * * *      cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} make asn-drift           2>&1 | logger -t vpn-asn
 17 3 * * *     cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} make check-ip-reputation 2>&1 | logger -t vpn-iprep

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Resolve an IP or hostname through Team Cymru's whois interface and print
+# Resolve an IP or hostname through Team Cymru's DNS interface over HTTPS and print
 # a single tab-separated line: IP<TAB>ASN<TAB>PREFIX<TAB>COUNTRY<TAB>ORG.
-# Empty fields stay empty; the row always has five columns. Exit 1 if
-# Cymru is unreachable or returns an error envelope.
+# Empty fields stay empty; the row always has five columns. Exit 1 if the
+# encrypted lookup did not run or returned an unexpected record.
 #
 # Usage:
 #   scripts/probe-asn.sh mirror.example.com
@@ -49,25 +49,46 @@ elif ! [[ "$target" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   fi
 fi
 
-line="$(whois -h whois.cymru.com " -v $ip" 2>/dev/null | tail -1 || true)"
-if [[ -z "$line" ]] || echo "$line" | grep -qiE '^bulk|^error|<html'; then
+# Team Cymru's DNS interface, queried over HTTPS: the address never crosses the
+# network in cleartext, and a failed lookup has no cleartext fallback.
+lookup() { python3 "$(dirname "$0")/doh-lookup.py" TXT "$1"; }
+field() { printf '%s' "$1" | awk -F'|' -v n="$2" '{gsub(/^ +| +$/,"",$n); print $n}'; }
+
+origin_name="$(python3 - "$ip" <<'PY'
+import ipaddress, sys
+
+address = ipaddress.ip_address(sys.argv[1])
+zone = ".origin6" if address.version == 6 else ".origin"
+print(address.reverse_pointer.rsplit(".", 2)[0] + zone + ".asn.cymru.com")
+PY
+)"
+
+# Origin records: "ASN | PREFIX | COUNTRY | REGISTRY | DATE", one for each
+# announced prefix that covers the address, in no fixed order. Take the most
+# specific prefix and the lowest origin, so that repeated runs agree. Any other
+# shape (no data, truncated line, format change) is a lookup failure.
+if ! origins="$(lookup "$origin_name")" || ! line="$(printf '%s\n' "$origins" | python3 -c '
+import ipaddress, sys
+
+rows = [[part.strip() for part in line.split("|")] for line in sys.stdin if line.strip()]
+if not rows or any(len(row) != 5 or not all(item.isdigit() for item in row[0].split()) or not row[0] for row in rows):
+    sys.exit(1)
+row = max(rows, key=lambda row: (ipaddress.ip_network(row[1]).prefixlen, row[1]))
+row[0] = str(min(int(item) for item in row[0].split()))
+print(" | ".join(row))
+')"; then
   echo "Team Cymru lookup failed for $ip" >&2
   exit 1
 fi
+asn="$(field "$line" 1)"
+prefix="$(field "$line" 2)"
+country="$(field "$line" 3)"
 
-# Guard: the result line must have exactly 7 pipe-delimited fields and the
-# first field (ASN) must be numeric. Any other shape (NO_DATA, truncated
-# line, format change) is treated as a lookup failure rather than silently
-# returning a wrong value.
-_nf="$(echo "$line" | awk -F'|' '{print NF}')"
-_asn_raw="$(echo "$line" | awk -F'|' '{gsub(/^ +| +$/,"",$1); print $1}')"
-if [[ "$_nf" -ne 7 ]] || ! [[ "$_asn_raw" =~ ^[0-9]+$ ]]; then
-  echo "Team Cymru lookup failed for $ip (unexpected response format)" >&2
+# AS record: "ASN | COUNTRY | REGISTRY | DATE | ORG".
+if ! as_line="$(lookup "AS${asn}.asn.cymru.com" | head -1)" \
+   || [[ "$(printf '%s' "$as_line" | awk -F'|' '{print NF}')" -ne 5 || "$(field "$as_line" 1)" != "$asn" ]]; then
+  echo "Team Cymru lookup failed for AS${asn}" >&2
   exit 1
 fi
-
-asn="$(   echo "$line" | awk -F'|' '{gsub(/^ +| +$/,"",$1); print $1}')"
-prefix="$(echo "$line" | awk -F'|' '{gsub(/^ +| +$/,"",$3); print $3}')"
-country="$(echo "$line" | awk -F'|' '{gsub(/^ +| +$/,"",$4); print $4}')"
-org="$(   echo "$line" | awk -F'|' '{gsub(/^ +| +$/,"",$7); print $7}')"
+org="$(field "$as_line" 5)"
 printf '%s\t%s\t%s\t%s\t%s\n' "$ip" "$asn" "$prefix" "$country" "$org"

@@ -8,7 +8,9 @@
 #   PROVIDER=upcloud ENV=prod scripts/probing-summary.sh
 #
 # After run:
-#   reports/probing-<host>-YYYY-MM-DD.md is on the workstation
+#   ${XDG_STATE_HOME:-~/.local/state}/vpn-provision/reports/probing-<provider>-<env>-YYYY-MM-DD.md
+#   is on the workstation, mode 0600. It is outside the repository and its
+#   name has no address, so a node address cannot reach a commit this way.
 #   the Prometheus textfile is updated on the VPS
 # IP optionally selects an explicit public IPv4 address instead of the primary node.
 set -euo pipefail
@@ -29,9 +31,14 @@ fi
 
 today="$(date -u +%Y-%m-%d)"
 host_suffix=""
-[[ -z "${IP:-}" ]] || host_suffix="-${ip}"
-local_out="${REPO_ROOT}/reports/probing-${PROVIDER}-${ENV}${host_suffix}-${today}.md"
-mkdir -p "${REPO_ROOT}/reports"
+# An explicit host gets its own report. Its name carries nothing derived from the address.
+[[ -z "${IP:-}" ]] || host_suffix="-explicit-host"
+umask 077
+report_dir="${XDG_STATE_HOME:-${HOME}/.local/state}/vpn-provision/reports"
+mkdir -p "$report_dir"
+local_out="${report_dir}/probing-${PROVIDER}-${ENV}${host_suffix}-${today}.md"
+: > "$local_out"
+chmod 0600 "$local_out"   # a report from an earlier version can have a wider mode
 
 # StrictHostKeyChecking=accept-new: trusts the host key on first connect and
 # rejects changed keys thereafter. This lowers friction on reprovisioned nodes

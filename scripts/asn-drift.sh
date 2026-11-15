@@ -7,7 +7,7 @@
 #   1. Read the current public IP from terraform output (or $IP).
 #   2. Look up its ASN via scripts/probe-asn.sh.
 #   3. Compare against the last known value stored at $STATE_FILE.
-#   4. On change, push an alert via ntfy.sh using the same channel the
+#   4. On change, push an alert through the operator notification service, the channel the
 #      VPS-side watchdog uses, so on-call doesn't have to learn a new
 #      pager surface.
 #
@@ -70,19 +70,13 @@ send_alert() {
   local msg="$1"
   local title="$2"
   echo "$msg"
-  if [[ -n "${NTFY_URL:-${NTFY_TOPIC:-}}" ]]; then
-    NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
-    if [[ -n "${NTFY_TOPIC:-}" ]]; then
-      auth=()
-      [[ -n "${NTFY_TOKEN:-}" ]] && auth=(-H "Authorization: Bearer ${NTFY_TOKEN}")
-      curl -fsS --connect-timeout 5 --max-time 15 -X POST \
-        -H "Title: ${title}" \
-        -H "Priority: high" \
-        -H "Tags: warning,vpn,asn-drift" \
-        "${auth[@]}" \
-        --data "$msg" \
-        "${NTFY_URL%/}/${NTFY_TOPIC}" >/dev/null || true
-    fi
+  if [[ -n "${NTFY_TOPIC:-}" ]]; then
+    "${REPO_ROOT}/scripts/ntfy-curl-config.sh" | curl -fsS --connect-timeout 5 --max-time 15 -X POST \
+      --config - \
+      -H "Title: ${title}" \
+      -H "Priority: high" \
+      -H "Tags: warning,vpn,asn-drift" \
+      --data-raw "$msg" >/dev/null || true
   fi
 }
 

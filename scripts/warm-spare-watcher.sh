@@ -50,11 +50,7 @@ python3 "$REPO_ROOT/scripts/private-operator-lock.py" "${STATE_DIR}/promotion.lo
 notify_operator() {
   local title="$1" priority="$2" tags="$3" body="$4"
   if [[ -n "${NTFY_TOPIC:-}" ]]; then
-    local ntfy_url="${NTFY_URL:-https://ntfy.sh}"
-    local auth=()
-    [[ -n "${NTFY_TOKEN:-}" ]] && auth=(-H "Authorization: Bearer ${NTFY_TOKEN}")
-    # bash 3.2 (macOS): expand an empty array safely under set -u.
-    curl -fsS --connect-timeout 5 --max-time 15 -X POST -H "Title: ${title}" -H "Priority: ${priority}" -H "Tags: ${tags}" ${auth[@]+"${auth[@]}"} --data "$body" "${ntfy_url%/}/${NTFY_TOPIC}" >/dev/null || echo "warm-spare: ntfy push failed (will retry next run)" >&2
+    "${REPO_ROOT}/scripts/ntfy-curl-config.sh" | curl -fsS --connect-timeout 5 --max-time 15 -X POST --config - -H "Title: ${title}" -H "Priority: ${priority}" -H "Tags: ${tags}" --data-raw "$body" >/dev/null || echo "warm-spare: ntfy push failed (will retry next run)" >&2
   else
     echo "$body"
   fi
@@ -225,17 +221,12 @@ OTP expires in $((OTP_TTL_SECONDS / 60)) min. Re-running watch-spare
 keeps refreshing the OTP until consumed."
 
 if [[ -n "${NTFY_TOPIC:-}" ]]; then
-  NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
-  auth=()
-  [[ -n "${NTFY_TOKEN:-}" ]] && auth=(-H "Authorization: Bearer ${NTFY_TOKEN}")
-  # bash 3.2 (macOS): expand an empty array safely under set -u.
-  curl -fsS --connect-timeout 5 --max-time 15 -X POST \
+  "${REPO_ROOT}/scripts/ntfy-curl-config.sh" | curl -fsS --connect-timeout 5 --max-time 15 -X POST \
+    --config - \
     -H "Title: warm-spare: promote required ${PROVIDER}:${BLUE_ENV}" \
     -H "Priority: urgent" \
     -H "Tags: rotating_light,vpn,warm-spare" \
-    ${auth[@]+"${auth[@]}"} \
-    --data "$msg" \
-    "${NTFY_URL%/}/${NTFY_TOPIC}" >/dev/null || \
+    --data-raw "$msg" >/dev/null || \
     echo "warm-spare: ntfy push failed (will retry next run)" >&2
 else
   echo "$msg"

@@ -22,7 +22,7 @@
 #
 # Usage:
 #   scripts/scan-reality-targets.sh --seeds my-seeds.txt
-#   scripts/scan-reality-targets.sh --cidr 107.172.103.0/24
+#   scripts/scan-reality-targets.sh --cidr 198.51.100.0/24
 #   scripts/scan-reality-targets.sh --crawl https://launchpad.net/ubuntu/+archivemirrors
 #   scripts/scan-reality-targets.sh --seeds seeds.txt --threads 20 --timeout 5
 #   scripts/scan-reality-targets.sh --seeds seeds.txt --top 5 --validate

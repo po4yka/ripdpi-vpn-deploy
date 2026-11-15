@@ -85,7 +85,7 @@ There is no safe default for `xray.target` — see the inline criteria in the se
 
 ```bash
 # Discover candidates inside a CIDR or by crawling a public mirror list.
-make scan-targets CIDR=107.172.103.0/24
+make scan-targets CIDR=198.51.100.0/24
 make scan-targets CRAWL=https://launchpad.net/ubuntu/+archivemirrors
 
 # Re-validate any candidate end-to-end (9 steps including ASN cross-check).
@@ -248,7 +248,7 @@ Then connect with the real client and run a real-life traffic test (curl through
 Add to your operator's cron / launchd:
 
 ```bash
-# Every 30 min — external IP reachability probe (catches IP burns early)
+# Every 30 min — direct TCP reachability probe from this workstation
 */30 * * * *  cd ~/GitRep/ripdpi-vpn-deploy && make burn-check >> /tmp/vpn-burn.log 2>&1
 
 # Every 2 min — authenticated protocol quorum (requires managed sentinels)
@@ -258,7 +258,9 @@ Add to your operator's cron / launchd:
 47 3 * * *   cd ~/GitRep/ripdpi-vpn-deploy && make backup-state >> /tmp/vpn-tfstate-backup.log 2>&1
 ```
 
-The VPS itself runs a local watchdog every 5 minutes (the `watchdog` Ansible role) that pushes alerts to ntfy.sh / Pushover when probes fail. Set `watchdog_secrets.ntfy_topic` in your secrets file before deploy. The local watchdog covers process, listener, and configuration state only. Configure at least two client-path sentinels per `docs/reference/protocol-liveness.md` before treating liveness as an infrastructure-rotation signal.
+The scheduled checks give the node address to no probe service. The reputation and ASN checks (`make check-ip-reputation`, `make asn-drift`) send it only inside DNS-over-HTTPS queries and stop when that lookup fails; set `DOH_URL` to choose the resolver. Spamhaus does not answer public resolvers, so with the default resolver that check ends as incomplete, not clean; it needs a resolver of your own. Operator alerts go only to the service that `NTFY_URL` names. `make install-operator-crons NTFY_URL=… DOH_URL=…` writes both into the cron block, so that the scheduled monitors can deliver alerts. `TCP_PORT` selects the port for `make burn-check` when REALITY does not listen on 443.
+
+The VPS itself runs a local watchdog every 5 minutes (the `watchdog` Ansible role) that probes the transports and restarts a failed one. It sends no alert until you set `watchdog.provider`, `watchdog.node_alias` and, for ntfy, `watchdog.ntfy_url` and `watchdog_secrets.ntfy_topic`; production refuses the public ntfy service, because it would receive the node address with every alert. The local watchdog covers process, listener, and configuration state only. Configure at least two client-path sentinels per `docs/reference/protocol-liveness.md` before treating liveness as an infrastructure-rotation signal.
 
 On a filtered probe host, install daily active-target ASN/path monitoring with `make install-operator-crons REALITY_TARGET_VANTAGE=filtered-cohort-a`. The label must describe a technical cohort, not a carrier, operator, or geography. See `docs/reference/reality-target-monitoring.md` for the two-strike alert and acknowledgement flow.
 

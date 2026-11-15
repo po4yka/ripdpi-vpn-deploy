@@ -44,19 +44,26 @@ IFS=. read -r a b c d <<< "$IP"
 rev="${d}.${c}.${b}.${a}"
 
 findings=()
+unmeasured=0
 
 # ---------------------------------------------------------------------------
 # Spamhaus zen — DNS query; A response means listed.
 # ---------------------------------------------------------------------------
 spamhaus_q="${rev}.zen.spamhaus.org"
-spam_resp="$(dig +short "$spamhaus_q" A 2>/dev/null | head -1 || true)"
+# The query name contains the node address, so it goes over HTTPS only. A
+# failed lookup stops the check: there is no cleartext fallback.
+if ! spam_resp="$(python3 "${REPO_ROOT}/scripts/doh-lookup.py" A "$spamhaus_q" | head -1)"; then
+  echo "reputation check did not run: the encrypted lookup failed" >&2
+  exit 2
+fi
 if [[ -n "$spam_resp" ]]; then
   # Spamhaus refuses responses to public/open resolvers and signals it with
   # 127.255.255.x sentinel codes. Don't treat those as a real listing —
   # they mean "lookup unreliable from this resolver".
   if [[ "$spam_resp" =~ ^127\.255\.255\. ]]; then
-    echo "  (info) Spamhaus zen returned the open-resolver sentinel ${spam_resp};" \
-         "lookup unreliable — use a private DNS resolver or DNSBL contributor account" >&2
+    echo "Spamhaus zen was not measured: it refuses this resolver (${spam_resp});" \
+         "set DOH_URL to a resolver of your own" >&2
+    unmeasured=1
   else
     findings+=("Spamhaus zen: listed (response=$spam_resp)")
   fi
@@ -110,6 +117,10 @@ fi
 
 echo "IP=${IP}  provider=${PROVIDER}  env=${ENV}"
 if (( ${#findings[@]} == 0 )); then
+  if (( unmeasured )); then
+    echo "INCOMPLETE — no finding, but a block list was not measured" >&2
+    exit 2
+  fi
   echo "OK — IP reputation clean"
   exit 0
 fi
@@ -117,17 +128,13 @@ fi
 printf '  - %s\n' "${findings[@]}"
 
 if [[ -n "${NTFY_TOPIC:-}" ]]; then
-  NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
-  auth=()
-  [[ -n "${NTFY_TOKEN:-}" ]] && auth=(-H "Authorization: Bearer ${NTFY_TOKEN}")
   msg="IP reputation finding on ${PROVIDER}:${ENV} IP=${IP}
 $(printf '%s\n' "${findings[@]}")"
-  curl -fsS --connect-timeout 5 --max-time 15 -X POST \
+  "${REPO_ROOT}/scripts/ntfy-curl-config.sh" | curl -fsS --connect-timeout 5 --max-time 15 -X POST \
+    --config - \
     -H "Title: IP reputation: ${PROVIDER}:${ENV}" \
     -H "Priority: high" \
     -H "Tags: warning,vpn,ip-reputation" \
-    "${auth[@]}" \
-    --data "$msg" \
-    "${NTFY_URL%/}/${NTFY_TOPIC}" >/dev/null || true
+    --data-raw "$msg" >/dev/null || true
 fi
 exit 1

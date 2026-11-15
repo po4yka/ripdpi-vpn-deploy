@@ -153,15 +153,12 @@ if [[ -f "$yest_file" ]]; then
     echo "DRIFT — verdicts changed since yesterday:"
     echo "$diff_out"
     if [[ -n "${NTFY_TOPIC:-}" ]]; then
-      auth=()
-      [[ -n "${NTFY_TOKEN:-}" ]] && auth=(-H "Authorization: Bearer ${NTFY_TOKEN}")
-      curl -fsS --connect-timeout 5 --max-time 15 -X POST \
+      "$(dirname "$0")/ntfy-curl-config.sh" | curl -fsS --connect-timeout 5 --max-time 15 -X POST \
+        --config - \
         -H "Title: DPI canary drift" \
         -H "Priority: high" \
         -H "Tags: warning,tspu,canary" \
-        "${auth[@]}" \
-        --data "$diff_out" \
-        "${NTFY_URL:-https://ntfy.sh}/${NTFY_TOPIC}" >/dev/null || true
+        --data-raw "$diff_out" >/dev/null || true
     fi
   else
     echo

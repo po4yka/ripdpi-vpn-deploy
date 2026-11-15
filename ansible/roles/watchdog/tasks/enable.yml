@@ -238,8 +238,35 @@
 - name: Validate watchdog notification provider
   ansible.builtin.assert:
     that:
-      - watchdog.provider in ['ntfy', 'pushover']
-    fail_msg: Watchdog notification provider must be ntfy or pushover.
+      - watchdog.provider in ['none', 'ntfy', 'pushover']
+    fail_msg: Watchdog notification provider must be none, ntfy or pushover.
+
+- name: Validate watchdog notification destination
+  when: watchdog.provider != 'none'
+  vars:
+    watchdog_node_alias: >-
+      {{ (watchdog.node_alias | default('', true))
+         or ((observability_agent | default({})).node_id | default('', true)) }}
+    watchdog_ntfy_host: >-
+      {{ (watchdog.ntfy_url | default('', true) | urlsplit('hostname')) | default('', true)
+         | lower | regex_replace('[.]$', '') }}
+  ansible.builtin.assert:
+    that:
+      - watchdog_node_alias is match('^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$')
+      - watchdog.provider != 'ntfy' or watchdog_ntfy_host | length > 0
+      - >-
+        watchdog.provider != 'ntfy' or (env | default('')) != 'prod'
+        or not (watchdog_ntfy_host == 'ntfy.sh' or watchdog_ntfy_host.endswith('.ntfy.sh'))
+    fail_msg: >-
+      A watchdog notification provider needs watchdog.node_alias (letters,
+      digits, hyphen, underscore; it replaces the hostname in alerts). The ntfy
+      provider also needs watchdog.ntfy_url, and production refuses the public
+      ntfy service as the destination.
+
+- name: Report that watchdog alerts stay on the node
+  when: watchdog.provider == 'none'
+  ansible.builtin.debug:
+    msg: No watchdog notification destination is set; probe results stay in the journal.
 
 - name: Install credential-aware watchdog notification sender
   ansible.builtin.file:

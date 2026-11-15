@@ -166,7 +166,7 @@ def send_notification(event: str, report: dict) -> str:
         priority = "urgent" if decision == "rotation_candidate" else "high"
         tags = "warning,vpn,vless,protocol-liveness"
     try:
-        base_url = https_origin(os.environ.get("NTFY_URL", "https://ntfy.sh"))
+        base_url = https_origin(os.environ.get("NTFY_URL", ""))
     except ValueError:
         return "failed"
     url = f"{base_url}/{urllib.parse.quote(topic, safe='')}"

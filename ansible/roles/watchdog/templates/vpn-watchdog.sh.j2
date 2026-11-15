@@ -24,7 +24,8 @@ set -euo pipefail
 : "${XRAY_REALITY_SNI:=}"
 : "${WATCHDOG_STATE_BIN:=/usr/local/libexec/vpn-watchdog-state.py}"
 : "${WATCHDOG_NOTIFY_BIN:=/usr/local/libexec/vpn-watchdog-notify.py}"
-HOSTNAME="${HOSTNAME:-$(hostname -f 2>/dev/null || hostname)}"
+# Alerts name the node by its operator alias; the hostname never leaves the node.
+: "${WATCHDOG_NODE_ALIAS:=}"
 
 mkdir -p "$(dirname "$STATE_FILE")"
 
@@ -458,9 +459,9 @@ done
 if (( should_alert )); then
   fail_list="$(printf '%s, ' "${probe_failures[@]}" | sed 's/, $//')"
   if [[ -n "$fail_list" ]]; then
-    title="VPN[$HOSTNAME] failing: ${fail_list}"
+    title="VPN[$WATCHDOG_NODE_ALIAS] failing: ${fail_list}"
   else
-    title="VPN[$HOSTNAME] class signal: ${class_summary}"
+    title="VPN[$WATCHDOG_NODE_ALIAS] class signal: ${class_summary}"
   fi
   body="consecutive_fails=${STATE[consecutive_fails]}
 ${class_lines}${result_text}"
@@ -469,7 +470,7 @@ ${class_lines}${result_text}"
   STATE[alerts_this_hour]=$(( STATE[alerts_this_hour] + 1 ))
   persist_state
   if ! printf '%s' "$body" | "$WATCHDOG_NOTIFY_BIN" \
-    --title "$title" --tags "warning,vpn,${HOSTNAME}${class_tags}" --timeout 10; then
+    --title "$title" --tags "warning,vpn,${WATCHDOG_NODE_ALIAS}${class_tags}" --timeout 10; then
     echo "watchdog: notification delivery failed" >&2
   fi
 

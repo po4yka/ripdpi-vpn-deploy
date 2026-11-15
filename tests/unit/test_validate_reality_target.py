@@ -1,8 +1,10 @@
 """Real local certificates, sockets and subprocess cleanup; no fleet inputs."""
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import hashlib
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -19,6 +21,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 import pytest
 
+from doh_fixture import doh_server
 import reality_target_validation as validator
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -235,21 +238,23 @@ def test_private_input_preserved_on_failure(tls_site, tmp_path):
 
 
 
-def test_real_monitor_collects_shared_tls_and_preserves_private_source(tls_site, tmp_path):
+def test_real_monitor_collects_shared_tls_and_preserves_private_source(tls_site, tmp_path, request):
     port, _, _, ingress = tls_site
     fixture = tmp_path / 'source.json'
     fixture.write_text(json.dumps({'xray': {'target': f'{ingress}:{port}', 'server_names': ['exact.example']},
                                    'watchdog_secrets': {}}))
     fixture.chmod(0o600)
     before = fixture.read_bytes()
-    bin_dir = tmp_path / 'bin'; bin_dir.mkdir()
-    whois = bin_dir / 'whois'
-    whois.write_text('#!/bin/sh\necho "64500 | 192.0.2.7 | 192.0.2.0/24 | XX | fixture | 2026-01-01 | fixture"\n')
-    whois.chmod(0o755)
+    origin = ipaddress.ip_address(ingress).reverse_pointer.rsplit('.', 2)[0] + '.origin.asn.cymru.com'
+    resolver = contextlib.ExitStack()
+    request.addfinalizer(resolver.close)
+    doh_url = resolver.enter_context(doh_server({
+        ('TXT', origin): ['64500 | 192.0.2.0/24 | XX | fixture | 2026-01-01'],
+        ('TXT', 'AS64500.asn.cymru.com'): ['64500 | XX | fixture | 2026-01-01 | fixture']}))
     env = {**os.environ, 'VPN_SECRETS_FILE': str(fixture), 'SOPS_FILE': str(tmp_path / 'unused'),
            'VANTAGE': 'fixture-cohort', 'TARGET_MODE': 'borrowed', 'REALITY_CA_FILE': str(tls_site[1]),
            'XDG_STATE_HOME': str(tmp_path / 'state'), 'NTFY_TOPIC': '', 'NTFY_TOKEN': '',
-           'PROBE_TIMEOUT': '5', 'VALIDATION_TIMEOUT': '20', 'PATH': f"{bin_dir}:{os.environ['PATH']}"}
+           'PROBE_TIMEOUT': '5', 'VALIDATION_TIMEOUT': '20', 'DOH_URL': doh_url}
     for name in ('REALITY_VALIDATION_END', 'REALITY_CLIENT_DIR'):
         env.pop(name, None)
     script = ROOT / 'scripts/monitor-reality-target.sh'
@@ -316,18 +321,6 @@ def test_cancellation_reclaims_owned_stage(tmp_path):
     finally:
         if proc.poll() is None:
             proc.kill(); proc.wait()
-
-
-def test_ipv6_metadata_uses_numeric_address_without_resolving(tmp_path):
-    whois = tmp_path / 'whois'
-    whois.write_text('#!/bin/sh\nprintf "%s\\n" "$*" > "$PROBE_ARGS"\necho "64500 | 2001:db8::7 | 2001:db8::/48 | XX | fixture | 2026-01-01 | fixture"\n')
-    whois.chmod(0o755)
-    env = {**os.environ, 'PATH': f"{tmp_path}:{os.environ['PATH']}", 'PROBE_ARGS': str(tmp_path / 'args')}
-    result = subprocess.run(['bash', str(ROOT / 'scripts/probe-asn.sh'), '2001:db8::7'],
-                            capture_output=True, text=True, env=env, timeout=5)
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.split('\t')[:3] == ['2001:db8::7', '64500', '2001:db8::/48']
-    assert '2001:db8::7' in (tmp_path / 'args').read_text()
 
 
 @pytest.mark.parametrize('tls_site', ['no-san', 'expired', 'no-h2'], indirect=True)

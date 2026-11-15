@@ -272,8 +272,10 @@ to stderr; non-zero exit reads as `error` to orchestrators. Emit `unknown`
 
 - **`probe-asn.sh` column order is the printf, not the header.** It prints
   5 TAB columns `IP ASN PREFIX COUNTRY ORG`; parse ASN with
-  `awk -F'\t' '{print $2}'`, prefix with `$3`. Reuse it — never re-implement
-  whois. Its exit 1 (Cymru unreachable) is an `error` verdict, not a crash.
+  `awk -F'\t' '{print $2}'`, prefix with `$3`. Reuse it. It queries Team
+  Cymru's DNS interface over HTTPS through `doh-lookup.py`, because the query
+  can carry a node address; never add a cleartext whois or DNS lookup beside
+  it. Its exit 1 (lookup did not run) is an `error` verdict, not a crash.
 - **Key verdicts by `AS<num>` + technical signature only.** The ORG/COUNTRY
   columns MUST NOT leak into slugs, filenames, state paths, or verdict
   output — no carrier/ISP/geographic brand names anywhere (root AGENTS.md).

@@ -2,7 +2,7 @@
 id: SEC-1794728606515594
 title: Stop nodes and operator tools from disclosing node addresses
 kind: bug
-status: backlog
+status: doing
 area: security
 priority: high
 risk: high

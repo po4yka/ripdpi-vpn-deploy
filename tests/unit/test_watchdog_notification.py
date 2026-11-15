@@ -109,6 +109,14 @@ def test_ntfy_delivery_uses_private_credential_without_diagnostic_disclosure(
     assert not result.stdout and not result.stderr
 
 
+def test_provider_none_sends_nothing(tmp_path, receiver):
+    port, records, _ = receiver
+    credentials(tmp_path, port, provider="none")
+    result = run_sender(tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert not records and not result.stdout and not result.stderr
+
+
 def test_stalled_notification_has_absolute_deadline_and_no_secret_argv(
     tmp_path, receiver
 ):

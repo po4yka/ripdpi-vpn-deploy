@@ -2216,7 +2216,7 @@ scan-targets:
 	@test -n "$(SEEDS)$(CIDR)$(CRAWL)" || { \
 	  echo "scan-targets needs one of:"; \
 	  echo "  make scan-targets SEEDS=path/to/seeds.txt"; \
-	  echo "  make scan-targets CIDR=107.172.103.0/24"; \
+	  echo "  make scan-targets CIDR=198.51.100.0/24"; \
 	  echo "  make scan-targets CRAWL=https://launchpad.net/ubuntu/+archivemirrors"; \
 	  exit 1; }
 	./scripts/scan-reality-targets.sh \

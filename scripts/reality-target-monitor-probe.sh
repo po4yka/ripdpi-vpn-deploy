@@ -7,7 +7,7 @@ ENV="${ENV:-prod}"
 SOPS_FILE="${SOPS_FILE:-${HOME}/.config/vpn-provision/${ENV}.secrets.sops.yaml}"
 VANTAGE="${VANTAGE:-}"
 PROBE_TIMEOUT="${PROBE_TIMEOUT:-12}"
-NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
+NTFY_URL="${NTFY_URL:-}"
 ACCEPT_BASELINE=0
 
 usage() { echo "usage: VANTAGE=<technical-label> $0 [--accept-baseline]" >&2; }
@@ -116,7 +116,7 @@ alert_event="$(jq -r '.alert_event' "$FINAL_REPORT")"
 alert_delivery="not_requested"
 delivery_result=0
 if [[ "$alert_event" == "alert" || "$alert_event" == "recovery" ]]; then
-  if [[ -z "$NTFY_TOPIC" ]]; then
+  if [[ -z "$NTFY_TOPIC" || -z "$NTFY_URL" ]]; then
     echo "REALITY target monitor: alert channel unavailable" >&2
     alert_delivery="failed"; delivery_result=4
   else
@@ -126,8 +126,9 @@ if [[ "$alert_event" == "alert" || "$alert_event" == "recovery" ]]; then
       alert_title="REALITY target ASN/path recovered ${ENV}"; alert_priority="default"; alert_tags="white_check_mark,vpn,reality-target"
     fi
     alert_body="$(jq -r '"vantage=" + .vantage + " verdict=" + .verdict + " consecutive=" + (.consecutive_unhealthy|tostring) + " asns=" + (.asns|join(",")) + " prefixes=" + (.prefixes|join(",")) + " reasons=" + (.reason_codes|join(","))' "$FINAL_REPORT")"
-    auth_args=(); [[ -z "$NTFY_TOKEN" ]] || auth_args=(-H "Authorization: Bearer ${NTFY_TOKEN}")
-    if python3 "${REPO_ROOT}/scripts/reality_target_validation.py" bounded alert curl -fsS --connect-timeout 5 --max-time 12 -X POST -H "Title: ${alert_title}" -H "Priority: ${alert_priority}" -H "Tags: ${alert_tags}" "${auth_args[@]}" --data "$alert_body" "${NTFY_URL%/}/${NTFY_TOPIC}" >/dev/null; then
+    # The private config file keeps the topic and the token out of the argument list.
+    if NTFY_URL="$NTFY_URL" NTFY_TOPIC="$NTFY_TOPIC" NTFY_TOKEN="$NTFY_TOKEN" "${REPO_ROOT}/scripts/ntfy-curl-config.sh" > "${WORK}/alert.curl" \
+       && python3 "${REPO_ROOT}/scripts/reality_target_validation.py" bounded alert curl -fsS --connect-timeout 5 --max-time 12 -X POST --config "${WORK}/alert.curl" -H "Title: ${alert_title}" -H "Priority: ${alert_priority}" -H "Tags: ${alert_tags}" --data-raw "$alert_body" >/dev/null; then
       alert_delivery="sent"
     else
       echo "REALITY target monitor: alert delivery failed" >&2

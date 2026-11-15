@@ -52,6 +52,7 @@ def load_credentials(directory: Path) -> dict:
         raise DeliveryError("invalid-credential")
     document = json.loads(raw, object_pairs_hook=_pairs)
     if not isinstance(document, dict) or document.get("provider") not in {
+        "none",
         "ntfy",
         "pushover",
     }:
@@ -140,6 +141,8 @@ def main(argv=None) -> int:
         if len(body) > MAX_BYTES:
             raise DeliveryError("invalid-message")
         config = load_credentials(Path(directory))
+        if config["provider"] == "none":
+            return 0
         signal.signal(signal.SIGALRM, _expired)
         signal.setitimer(signal.ITIMER_REAL, args.timeout)
         try:

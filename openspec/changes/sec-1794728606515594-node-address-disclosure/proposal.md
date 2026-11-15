@@ -16,6 +16,7 @@ The 2026-11-15 audit found defaults that give node addresses to parties outside 
 
 - BREAKING: the watchdog sends no notification unless the operator configures a destination. Production refuses the public notification service. Alert titles and tags carry a node alias, not the hostname.
 - Notification tokens and topics no longer appear in process arguments.
+- BREAKING: operator scripts and the protocol liveness monitor send alerts only when `NTFY_URL` names a service; they have no public default.
 - BREAKING: the burn check uses no third-party vantage point and sends no UDP probe unless the operator asks for it on the command line. The scheduled entry never does.
 - Scheduled reputation and ASN lookups use an encrypted transport, or do not run.
 - Node reports are written to the private operator state directory, with mode `0600`.
@@ -34,7 +35,7 @@ The 2026-11-15 audit found defaults that give node addresses to parties outside 
 ## Impact
 
 - Ansible: `ansible/roles/watchdog/`, `ansible/group_vars/all.yml`.
-- Scripts: `scripts/burn-check.sh`, `scripts/install-operator-crons.sh`, `scripts/check-ip-reputation.sh`, `scripts/probe-asn.sh`, `scripts/asn-drift.sh`, `scripts/warm-spare-watcher.sh`, `scripts/reality-target-monitor-probe.sh`, `scripts/monitor-protocol-liveness.py`, `scripts/probing-summary.sh`.
+- Scripts: new `scripts/ntfy-curl-config.sh` and `scripts/doh-lookup.py`; `scripts/tspu-canary.sh`, `scripts/burn-check.sh`, `scripts/install-operator-crons.sh`, `scripts/check-ip-reputation.sh`, `scripts/probe-asn.sh`, `scripts/asn-drift.sh`, `scripts/warm-spare-watcher.sh`, `scripts/reality-target-monitor-probe.sh`, `scripts/monitor-protocol-liveness.py`, `scripts/probing-summary.sh`.
 - Tests: `tests/unit/test_repository_identifier_policy.py` and the tests of the changed scripts and role.
 - Secrets: `watchdog_secrets` keeps its keys. A deployment that relied on the default destination must set one.
 - Operations: installed operator cron entries change after `make install-operator-crons` runs again.
