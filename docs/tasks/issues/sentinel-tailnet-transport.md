@@ -2,7 +2,7 @@
 id: SCR-1794726174976734
 title: Reach the cloud liveness sentinel over its Tailnet address
 kind: feature
-status: doing
+status: review
 area: scripts
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: scr-1794726174976734-sentinel-tailnet-transport
 created: 2026-11-15
 updated: 2026-11-15
 related_tasks: []
+status_detail: Production node-b prepare, dry-run and deploy at da6fb86d passed over the Tailnet sentinel route
 ---
 
 ## Goal
