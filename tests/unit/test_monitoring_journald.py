@@ -27,3 +27,16 @@ def test_journald_policy_keeps_fourteen_days_within_a_one_gigabyte_budget() -> N
         "MaxRetentionSec": "14day",
         "ForwardToSyslog": "no",
     }
+
+
+def test_journal_is_flushed_to_disk_after_the_policy_is_written() -> None:
+    tasks = yaml.safe_load(TASKS.read_text(encoding="utf-8"))
+    names = [task["name"] for task in tasks]
+    flush = tasks[names.index("Move the journal to persistent storage")]
+
+    assert names.index("Drop journald hardening config") < names.index(flush["name"])
+    assert flush["ansible.builtin.command"] == {
+        "argv": ["journalctl", "--flush"],
+        "creates": "/run/systemd/journal/flushed",
+    }
+    assert "when" not in flush

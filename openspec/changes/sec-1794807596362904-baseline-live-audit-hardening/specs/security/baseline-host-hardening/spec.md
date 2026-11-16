@@ -44,3 +44,17 @@ The journald policy MUST set a 1G size budget and keep the 14-day retention limi
 
 - **WHEN** the monitoring role renders the journald policy
 - **THEN** the policy file states `SystemMaxUse=1G` and `MaxRetentionSec=14day`
+
+### Requirement: REQ-JOURNAL-ON-DISK — Journal is written to persistent storage
+
+The monitoring role MUST move the journal to persistent storage on every run, without a reboot.
+
+#### Scenario: Host image has no journal directory
+
+- **WHEN** the role runs on a host where journald writes only to `/run`
+- **THEN** the role requests a journal flush and journald writes to `/var/log/journal`
+
+#### Scenario: Journal already on disk
+
+- **WHEN** the flush marker `/run/systemd/journal/flushed` exists
+- **THEN** the role reports no change
