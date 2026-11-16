@@ -18,3 +18,7 @@ file://
 # release-please compare links point at release tags that are created only
 # when the release PR merges; lychee sees them as 404 until then.
 ^https://github\.com/po4yka/ripdpi-vpn-deploy/compare/
+
+# release-please commit and issue links: the changelog sends several hundred
+# requests to one host in each run, and GitHub answers some with 502 or 503.
+^https://github\.com/po4yka/ripdpi-vpn-deploy/(commit|issues)/
