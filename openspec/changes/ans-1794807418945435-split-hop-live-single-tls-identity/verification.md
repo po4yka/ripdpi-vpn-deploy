@@ -1,7 +1,7 @@
 ---
 task_id: ANS-1794807418945435
 change: ans-1794807418945435-split-hop-live-single-tls-identity
-commit_sha: null
+commit_sha: c7706de571a8c43eefde9d7a8a124ea9a35c25c8
 local: passed
 local_evidence: "On the working tree of the change, based on 11b50083: pytest for test_tls_identity_preflight.py, test_deploy_profile_guard.py, test_reality_self_steal.py and the profile tests test_split_hop_live_node_a_keeps_the_production_device_transports, test_committed_profiles_carry_only_the_neutral_placeholder_origin and test_disposable_staging_profiles_serve_the_generated_masquerade_origin: 64 passed, exit 0. scripts/check-deploy-profile.py exit 0. Not run: make check, Molecule and the snapshot suite (no template or role changed)."
 remote_ci: required
