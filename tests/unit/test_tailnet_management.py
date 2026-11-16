@@ -101,12 +101,14 @@ def test_split_hop_node_a_profiles_keep_the_staging_transports(name, toggles) ->
                         "vpn": {**staging, **toggles}}
 
 
-@pytest.mark.parametrize(("name", "toggles"), [
-    ("vpn-split-hop-ingress-live.yml", {"enable_split_hop_ingress": True}),
+@pytest.mark.parametrize(("name", "toggles", "extra"), [
+    ("vpn-split-hop-ingress-live.yml", {"enable_split_hop_ingress": True}, {}),
+    # Self-steal gives the address one TLS identity; its port must differ from the public nginx-xhttp port.
     ("vpn-split-hop-family-egress-live.yml",
-     {"enable_split_hop_ingress": True, "split_hop_family_egress": True}),
+     {"enable_split_hop_ingress": True, "split_hop_family_egress": True, "enable_reality_self_steal": True},
+     {"reality_self_steal_port": 8444}),
 ])
-def test_split_hop_live_node_a_keeps_the_production_device_transports(name, toggles) -> None:
+def test_split_hop_live_node_a_keeps_the_production_device_transports(name, toggles, extra) -> None:
     # A live Node A serves real devices, so it keeps device-full-tailnet transports, monitoring and backup.
     group_vars = ROOT / "ansible" / "group_vars"
     baseline = yaml.safe_load((group_vars / "all.yml").read_text())["vpn"]
@@ -117,8 +119,12 @@ def test_split_hop_live_node_a_keeps_the_production_device_transports(name, togg
     # The served origin, not the all.yml placeholder, or the transport preflight refuses the masquerade URL.
     assert document == {"allow_research_roles": ["split-hop-ingress"],
                         "public_site_canonical_url": staging["public_site_canonical_url"],
-                        "vpn": {key: expected[key] for key in staging["vpn"]}}
+                        "vpn": {key: expected[key] for key in staging["vpn"]}, **extra}
     assert all(document["vpn"][key] for key in ("enable_monitoring", "enable_watchdog", "enable_backup"))
+    all_vars = yaml.safe_load((group_vars / "all.yml").read_text())
+    public_ports = [all_vars[key] for key in ("xray_port", "xray_fallback_port", "nginx_xhttp_port",
+                                              "nginx_xhttp_public_port", "nginx_xhttp_fallback_port")]
+    assert extra.get("reality_self_steal_port") not in public_ports
 
 
 def test_split_hop_live_node_b_matches_the_listener_free_staging_node_b() -> None:
