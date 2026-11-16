@@ -1878,7 +1878,12 @@ def test_role_pins_the_official_signed_stable_package_source() -> None:
     )
     assert "https://pkgs.tailscale.com/stable/" in tasks
     assert "signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg" in tasks
-    assert "Pin-Priority: 1001" in tasks
+    # The version is a first-install input only: the node then updates itself.
+    assert "preferences.d" not in tasks
+    ordinary = yaml.safe_load((ROLE / "tasks/main.yml").read_text())
+    assert {"path": "/etc/apt/preferences.d/tailscale", "state": "absent"} in [
+        task.get("ansible.builtin.file") for task in ordinary
+    ]
     assert 'name: "tailscale={{ tailnet_management_package_version }}"' in tasks
     assert defaults["tailnet_management"] == {"approved_sources": []}
     assert "tailnet_management.install_package" not in tasks

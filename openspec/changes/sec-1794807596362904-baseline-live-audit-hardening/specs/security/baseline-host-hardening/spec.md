@@ -58,3 +58,17 @@ The monitoring role MUST move the journal to persistent storage on every run, wi
 
 - **WHEN** the flush marker `/run/systemd/journal/flushed` exists
 - **THEN** the role reports no change
+
+### Requirement: REQ-TAILSCALE-NO-APT-HOLD — Tailscale is not held at the first-install version
+
+The Tailnet management role MUST install the reviewed Tailscale version on first enrollment only, and MUST NOT leave an apt version pin for the `tailscale` package on an enrolled node.
+
+#### Scenario: Node enrolled by an earlier bootstrap
+
+- **WHEN** the ordinary Tailnet tasks run on a node that has `/etc/apt/preferences.d/tailscale`
+- **THEN** the role removes that file
+
+#### Scenario: First enrollment
+
+- **WHEN** the bootstrap tasks install the package
+- **THEN** they install the exact reviewed version and write no apt preference

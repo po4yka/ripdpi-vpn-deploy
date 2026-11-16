@@ -13,6 +13,7 @@ A read-only audit of the live fleet on 2026-11-16 compared running hosts with th
 - The baseline role purges `modemmanager`, `apport`, `open-vm-tools` and `snapd` together with the existing hardware-management packages.
 - The monitoring journald policy raises the size budget from 500M to 1G; the 14-day retention is unchanged.
 - The monitoring role requests a journal flush after it writes the policy. On an image without `/var/log/journal`, a restarted journald otherwise keeps the journal in `/run`: three live hosts held between 35 minutes and 9 hours of history.
+- The Tailnet management role stops holding the Tailscale package at the first-install version and removes the apt pin from enrolled nodes. Every live node updates Tailscale automatically, and four of six already ran a later version than the pin, so apt proposed a downgrade. The owner chose automatic updates over an exact pin on 2026-11-16.
 
 No breaking change to an operator interface, secret schema or client contract.
 

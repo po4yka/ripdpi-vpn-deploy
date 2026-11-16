@@ -36,6 +36,9 @@ persistent timer. Revalidate their results under the transaction lock.
 ## What's done well
 
 - Exact stable package and repository key pins fail closed.
+  The version pin covers the first install only. Enrolled nodes update
+  Tailscale themselves, so the ordinary tasks remove the apt version pin and
+  a running node can be newer than the default.
 - Existing running nodes without a matching confirmed identity are refused
   without writes, including when their preferences look correct.
 - Resolver bytes, default route and full `sshd -G` policy are compared across

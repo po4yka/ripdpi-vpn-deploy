@@ -26,3 +26,10 @@
     _tailnet_verified.rc != 0 or
     (_tailnet_verified.stdout | from_json).status != 'configured'
   no_log: true
+
+# The node updates Tailscale itself. An exact apt pin from an earlier bootstrap
+# would make apt propose a downgrade of the running daemon.
+- name: Remove the Tailscale apt version pin
+  ansible.builtin.file:
+    path: /etc/apt/preferences.d/tailscale
+    state: absent
