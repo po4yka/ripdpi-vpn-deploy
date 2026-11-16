@@ -49,3 +49,7 @@ selection. Native APT merge regressions verify the effective lists.
   operator has a separate rollout and alerting plan.
 - **Do not add full upgrades to convergence** — routine `site.yml` deploys must
   not turn an application change into an implicit OS upgrade or reboot.
+- **Ubuntu pockets differ only in the archive field** — every Ubuntu pocket
+  has the release codename, so an Ubuntu pattern must select with `archive=`.
+  A `codename=<release>-security` pattern matches nothing and silently stops
+  security updates. Debian security does carry the `-security` codename.

@@ -11,14 +11,14 @@ Unattended-Upgrade::Origins-Pattern {
 {% if package_updates.security_only | default(true) %}
   "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";
   "origin=Debian,codename=${distro_codename},label=Debian-Security";
-  "origin=Ubuntu,codename=${distro_codename}-security,label=Ubuntu";
+  "origin=Ubuntu,archive=${distro_codename}-security,label=Ubuntu";
 {% else %}
   "origin=Debian,codename=${distro_codename},label=Debian";
   "origin=Debian,codename=${distro_codename}-updates,label=Debian";
   "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";
-  "origin=Ubuntu,codename=${distro_codename},label=Ubuntu";
-  "origin=Ubuntu,codename=${distro_codename}-updates,label=Ubuntu";
-  "origin=Ubuntu,codename=${distro_codename}-security,label=Ubuntu";
+  "origin=Ubuntu,archive=${distro_codename},label=Ubuntu";
+  "origin=Ubuntu,archive=${distro_codename}-updates,label=Ubuntu";
+  "origin=Ubuntu,archive=${distro_codename}-security,label=Ubuntu";
 {% endif %}
 };
 
