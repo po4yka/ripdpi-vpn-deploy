@@ -2,7 +2,7 @@
 id: SEC-1794807596362904
 title: Close baseline hardening gaps from the live fleet audit
 kind: bug
-status: doing
+status: review
 area: security
 priority: medium
 risk: high
