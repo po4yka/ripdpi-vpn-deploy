@@ -8,11 +8,14 @@ allow_research_roles: [split-hop-ingress]
 # Served XHTTP origin; the live pair's bootstrap-secrets run sets hysteria.masquerade_url to the same origin.
 public_site_canonical_url: >-
   https://{{ nginx_xhttp.server_name }}{{ ':' ~ nginx_xhttp_public_port if nginx_xhttp_public_port | int != 443 else '' }}
+# The role default equals nginx_xhttp_public_port, and the role refuses a self-steal port that is a public listener.
+reality_self_steal_port: 8444
 vpn:
   enable_transport_egress: true
   enable_destination_filter: false
   enable_xray_reality: true
-  enable_reality_self_steal: false
+  # One TLS identity on the address: TCP/443 presents the operator certificate that nginx-xhttp and Hysteria present.
+  enable_reality_self_steal: true
   enable_nginx_xhttp: true
   enable_naive: false
   enable_hysteria: true
