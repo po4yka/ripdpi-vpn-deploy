@@ -1,7 +1,7 @@
 ---
 task_id: ANS-1794807418945435
 change: ans-1794807418945435-split-hop-live-single-tls-identity
-commit_sha: c7706de571a8c43eefde9d7a8a124ea9a35c25c8
+commit_sha: 95dce88b7c31bc79af2a6344e44b384de3d1975e
 local: passed
 local_evidence: "On the working tree of the change, based on 11b50083: pytest for test_tls_identity_preflight.py, test_deploy_profile_guard.py, test_reality_self_steal.py and the profile tests test_split_hop_live_node_a_keeps_the_production_device_transports, test_committed_profiles_carry_only_the_neutral_placeholder_origin and test_disposable_staging_profiles_serve_the_generated_masquerade_origin: 64 passed, exit 0. scripts/check-deploy-profile.py exit 0. Not run: make check, Molecule and the snapshot suite (no template or role changed)."
 remote_ci: passed
@@ -12,8 +12,8 @@ staging: not_applicable
 staging_evidence: The staging profiles do not change, and the changed profile is used only by the live pair.
 live: passed
 live_evidence: "On 2026-11-16 the live Node A was deployed at 441c02b4 (deployable digest bb1c786578ee): deploy exit 0 with 30 changed and 0 failed, then make verify, source-drift and security-verify exit 0. The node manifest records no TLS identity exception. An outside scan showed one certificate on TCP/443 with and without SNI, on TCP/8443 and on QUIC/443, the operator site on both HTTPS ports, and the self-steal endpoint bound to loopback only. The liveness sentinel on Node B was reinstalled from 441c02b4 for the new Node A identity, and scripts/sshd-promotion-proof.py returned status passed for that identity. A first deploy attempt failed at the nginx-xhttp publication, because the site journal admitted only the bundled page paths for nginx-xhttp and the first operator site used other names; the protected stage restored the accepted generation. That defect is fixed by ANS-1794811064145966. The deploy that passed used an operator site with the admitted paths."
-client: required
-client_evidence: "Partly done on 2026-11-16. The device-lifecycle refresh of the one device on the live Node A completed (1 node written, 1 adopted), and its native probes accepted all four credential profiles. In the new delivery the REALITY and AmneziaWG entries changed; the XHTTP and Hysteria2 entries are byte-identical to the previous delivery. Pending: import of the two changed entries on the device and one handshake for each transport from it."
+client: passed
+client_evidence: "On 2026-11-16 the device-lifecycle refresh of the one device on the live Node A completed (1 node written, 1 adopted), and its native probes accepted all four credential profiles. In the new delivery the REALITY and AmneziaWG entries changed; the XHTTP and Hysteria2 entries are byte-identical to the previous delivery. The same day the two changed entries were imported on the device. REALITY, XHTTP, Hysteria2 and AmneziaWG each connected from it through Node A, and an address echo page loaded through each tunnel showed the Node B address. The previous REALITY and AmneziaWG entries no longer connected and were removed from the client; a repeat of the REALITY and AmneziaWG tests after the removal passed. At the time of the test the pair ran 643a7717, which keeps the profile of this change. Not covered: IPv6 egress, the DNS path, a filtered mobile network without Wi-Fi, long-run stability and a newly issued device identity."
 artifact: not_applicable
 artifact_evidence: No release artifact changes.
 ---
