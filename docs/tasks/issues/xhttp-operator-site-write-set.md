@@ -2,7 +2,7 @@
 id: ANS-1794811064145966
 title: Declare the operator-owned XHTTP site in the protected site write set
 kind: bug
-status: doing
+status: review
 area: ansible
 priority: high
 risk: standard
