@@ -2,7 +2,7 @@
 id: ANS-1794811064145966
 title: Declare the operator-owned XHTTP site in the protected site write set
 kind: bug
-status: review
+status: done
 area: ansible
 priority: high
 risk: standard
@@ -15,6 +15,9 @@ created: 2026-11-16
 updated: 2026-11-16
 spec_reason: regression-tested-single-module
 related_tasks: []
+closed_at: "2026-11-16T17:57:16Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "Merged as 9d7adf8e with CI run 43821302181 green. The operator-site case of test_actual_ingress_declaration_has_exact_candidate_paths_and_optional_secret_boundaries runs the real declaration tasks and requires a page outside the bundled layout in the nginx-xhttp paths. The live split-hop Node A, which has an operator-owned site, was deployed at 643a7717 with the fix: deploy, verify, source-drift and security-verify exit 0. Every file of that site has a bundled layout name, so no live deploy published a file outside the bundled layout; that case rests on the test."
 ---
 
 ## Goal

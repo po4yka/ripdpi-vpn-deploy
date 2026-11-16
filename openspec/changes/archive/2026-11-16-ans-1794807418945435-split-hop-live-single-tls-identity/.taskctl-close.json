@@ -1,0 +1,11 @@
+{
+  "change": "ans-1794807418945435-split-hop-live-single-tls-identity",
+  "evidence_summary": "Merged as 95dce88b with CI run 43812776555 green. The live Node A was deployed at 441c02b4 with REALITY self-steal: deploy, verify, source-drift and security-verify exit 0, one certificate on TCP/443, TCP/8443 and QUIC/443, and a passed liveness proof from the sentinel on Node B. The device imported the changed entries, and REALITY, XHTTP, Hysteria2 and AmneziaWG each connected from it with the Node B address as egress.",
+  "execution_sha256": "11571110cf49faa7dcc0572c10f3d8fd570acaedb4efc85994eedfb07cc4fd13",
+  "issue_sha256": "0086aa3185160620fd697f96f8f26117ea8c224b5b283541dfdf780319d6ec32",
+  "outcome": "done",
+  "prepared_at": "2026-11-16T17:55:18Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "ANS-1794807418945435"
+}
