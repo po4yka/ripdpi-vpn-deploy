@@ -76,6 +76,24 @@ def test_mptcp_disable_is_mandatory_only_on_supported_kernels(present):
     assert check["ansible.builtin.assert"]["that"] == ["_baseline_mptcp_effective.stdout == '0'"]
 
 
+@pytest.mark.parametrize("present", [False, True])
+def test_bpf_jit_hardening_is_mandatory_only_where_the_kernel_exposes_it(present):
+    from scripts.template_render import render_template
+
+    template = ROOT / "ansible/roles/baseline/templates/sysctl-vpn.conf.j2"
+    rendered = render_template(template, {"_baseline_bpf_jit_sysctl": {"stat": {"exists": present}},
+        "baseline_udp_receive_buffer_max": 7500000, "baseline_udp_send_buffer_max": 7500000})
+    settings = [line for line in rendered.splitlines() if line and not line.startswith("#")]
+    assert ("net.core.bpf_jit_harden = 2" in settings) is present
+    assert not any(line.startswith("-net.core.bpf_jit_harden") for line in settings)
+    for mandatory in (
+        "net.ipv6.conf.all.accept_redirects = 0",
+        "net.ipv6.conf.default.accept_redirects = 0",
+        "kernel.kexec_load_disabled = 1",
+    ):
+        assert mandatory in settings
+
+
 def test_security_verification_requires_disabled_mptcp_only_where_supported():
     tasks = yaml.safe_load((ROOT / "ansible/playbooks/security-verify.yml").read_text())[0]["tasks"]
     check = next(t for t in tasks if t.get("name") == "Verify MPTCP is disabled when the kernel provides it")
