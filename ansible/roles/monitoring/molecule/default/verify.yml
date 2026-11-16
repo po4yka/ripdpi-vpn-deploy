@@ -116,6 +116,12 @@
       register: jc
       failed_when: not jc.stat.exists
 
+    - name: journal is written to persistent storage
+      ansible.builtin.stat:
+        path: /run/systemd/journal/flushed
+      register: journal_flushed
+      failed_when: not journal_flushed.stat.exists
+
     - name: logrotate xray config present
       ansible.builtin.stat:
         path: /etc/logrotate.d/xray

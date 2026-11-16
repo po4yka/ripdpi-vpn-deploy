@@ -12,6 +12,7 @@ A read-only audit of the live fleet on 2026-11-16 compared running hosts with th
 - The baseline role locks the root account password.
 - The baseline role purges `modemmanager`, `apport`, `open-vm-tools` and `snapd` together with the existing hardware-management packages.
 - The monitoring journald policy raises the size budget from 500M to 1G; the 14-day retention is unchanged.
+- The monitoring role requests a journal flush after it writes the policy. On an image without `/var/log/journal`, a restarted journald otherwise keeps the journal in `/run`: three live hosts held between 35 minutes and 9 hours of history.
 
 No breaking change to an operator interface, secret schema or client contract.
 

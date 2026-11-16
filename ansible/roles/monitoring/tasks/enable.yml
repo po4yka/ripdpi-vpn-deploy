@@ -267,6 +267,14 @@
       ForwardToSyslog=no
   notify: Restart journald
 
+# A restarted journald keeps writing to /run until a flush is requested, and the
+# boot-time flush leaves no marker on an image without /var/log/journal. This
+# task repairs a host that already has the policy; the handler covers a change.
+- name: Move the journal to persistent storage
+  ansible.builtin.command:
+    argv: [journalctl, --flush]
+    creates: /run/systemd/journal/flushed
+
 - name: Drop logrotate config for xray
   ansible.builtin.template:
     src: logrotate-xray.j2

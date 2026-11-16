@@ -27,6 +27,9 @@ egresses unless the operator runs it.
 that could be seized. No syslog forwarding. The size budget must hold the
 retention: live nodes filled 500M in 7 to 9 days, so the smaller budget cut
 the stated 14 days short.
+A restart alone does not make the journal persistent: journald writes to
+`/run` until `journalctl --flush`, and the boot-time flush leaves no marker
+on an image without `/var/log/journal`. The role flushes on every run.
 
 **Textfile producers use a shared writer group** — monitoring owns the
 root-owned setgid and sticky directory, while unprivileged producers such as
