@@ -19,3 +19,9 @@
           deploy ALL=(ALL) NOPASSWD:ALL
           ubuntu ALL=(ALL) NOPASSWD:ALL
         mode: "0440"
+
+    # A provider can create the node with a usable root password.
+    - name: Give root a usable password hash as a provider image does
+      ansible.builtin.command:
+        cmd: usermod -p '$6$moleculefixture$notarealhash' root
+      changed_when: true

@@ -117,6 +117,7 @@ NON_SECRET_TOPLEVEL = {
     # role-local facts and inventory values read only inside statements or
     # parenthesized expressions
     "_awg_instances",
+    "_baseline_bpf_jit_sysctl",
     "_baseline_mptcp_sysctl",
     "_filter",
     "_honeypot_secondary_required",

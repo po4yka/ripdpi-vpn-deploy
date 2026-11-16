@@ -88,9 +88,22 @@
           value: "1"
         - key: "net.ipv4.conf.all.accept_redirects"
           value: "0"
+        - key: "net.ipv6.conf.all.accept_redirects"
+          value: "0"
+        - key: "net.core.bpf_jit_harden"
+          value: "2"
+        - key: "kernel.kexec_load_disabled"
+          value: "1"
       register: security_sysctl_value
       changed_when: false
       failed_when: security_sysctl_value.stdout != item.value
+
+    - name: Root account password is locked
+      ansible.builtin.command:
+        cmd: passwd -S root
+      register: security_root_password_status
+      changed_when: false
+      failed_when: security_root_password_status.stdout.split()[1] != 'L'
 
     - name: Inspect optional kernel MPTCP control
       ansible.builtin.stat:

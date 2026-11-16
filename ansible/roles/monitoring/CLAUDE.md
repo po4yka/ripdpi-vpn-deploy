@@ -22,9 +22,11 @@ reader grant. Naive logs and watchdog budgets have no group reader and stay 0600
 only. `scripts/probing-summary.sh` pulls metrics via SSH on demand. Nothing
 egresses unless the operator runs it.
 
-**Journald retention policy** — a drop-in sets `SystemMaxUse=500M` and
+**Journald retention policy** — a drop-in sets `SystemMaxUse=1G` and
 `MaxRetentionSec=14day`. Keeps logs useful without accumulating a corpus
-that could be seized. No syslog forwarding.
+that could be seized. No syslog forwarding. The size budget must hold the
+retention: live nodes filled 500M in 7 to 9 days, so the smaller budget cut
+the stated 14 days short.
 
 **Textfile producers use a shared writer group** — monitoring owns the
 root-owned setgid and sticky directory, while unprivileged producers such as

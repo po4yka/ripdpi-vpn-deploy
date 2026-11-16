@@ -43,11 +43,15 @@
 - name: Reconcile persistent unused kernel module denial
   ansible.builtin.import_tasks: module-policy.yml
 
-- name: Remove unsupported VPS hardware management packages
+- name: Remove unsupported hardware management and unused distribution packages
   ansible.builtin.apt:
     name:
       - fwupd
       - openipmi
+      - modemmanager
+      - apport
+      - open-vm-tools
+      - snapd
     state: absent
     purge: true
 
@@ -101,6 +105,12 @@
     remove: true
   loop: "{{ baseline_stock_accounts | difference([ansible_user] + baseline_ssh_extra_allowed_users) }}"
 
+# Providers can set a root password at creation; SSH never uses it, the console can.
+- name: Lock the root account password
+  ansible.builtin.user:
+    name: root
+    password_lock: true
+
 - name: Ensure sshd drop-in directory exists
   ansible.builtin.file:
     path: /etc/ssh/sshd_config.d
@@ -129,6 +139,12 @@
   ansible.builtin.stat:
     path: /proc/sys/net/mptcp/enabled
   register: _baseline_mptcp_sysctl
+
+# The BPF JIT controls exist only in the initial network namespace.
+- name: Detect the kernel BPF JIT hardening control
+  ansible.builtin.stat:
+    path: /proc/sys/net/core/bpf_jit_harden
+  register: _baseline_bpf_jit_sysctl
 
 - name: Drop sysctl tuning
   ansible.builtin.template:

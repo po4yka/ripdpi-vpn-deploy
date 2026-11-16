@@ -83,6 +83,23 @@ success writes nothing, and the receipt cannot authorize confirmation.
 hypervisor firmware. Baseline removes `fwupd` instead of leaving an irrelevant
 daemon able to degrade systemd after a partial package update.
 
+**Unused distribution services are purged, storage and provider agents are
+not** — `modemmanager`, `apport`, `open-vm-tools` and `snapd` have no role on
+a node. `open-iscsi` and `multipath-tools` stay because removal rebuilds the
+initramfs and the storage path differs by provider; `acpid` and the KVM
+provider agents stay because providers use them for shutdown and console
+functions. The purge also removes the `ubuntu-server` metapackages.
+
+**BPF JIT hardening follows the kernel control** — `net.core.bpf_jit_harden`
+exists only in the initial network namespace, so it is mandatory on a node
+and not rendered in a container. `kernel.kexec_load_disabled` is not
+namespaced: a privileged Molecule run sets it on the container host until
+that host restarts.
+
+**Root password is locked** — a provider can create a node with a usable root
+password. SSH never accepts it, but the provider console does, so baseline
+locks it. A node that has lost management access is recreated.
+
 **Legacy SSH ownership migration is a separate transaction** — the opt-in
 recovery installer does not import baseline or edit SSH configuration. Its
 planner preserves full effective policy for known 10/20/50 layouts; the durable

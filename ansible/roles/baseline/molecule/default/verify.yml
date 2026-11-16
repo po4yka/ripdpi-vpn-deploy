@@ -51,12 +51,25 @@
         cmd: nft --version
       changed_when: false
 
-    - name: Host-firmware tooling is absent from the VPS baseline
+    - name: Host-firmware and unused distribution packages are absent
       ansible.builtin.command:
-        cmd: dpkg-query -W fwupd
-      register: fwupd_package
+        cmd: "dpkg-query -W -f '${db:Status-Status}' {{ item }}"
+      loop:
+        - fwupd
+        - modemmanager
+        - apport
+        - open-vm-tools
+        - snapd
+      register: removed_package
       changed_when: false
-      failed_when: fwupd_package.rc == 0
+      failed_when: removed_package.stdout not in ['', 'not-installed']
+
+    - name: Root account password is locked
+      ansible.builtin.command:
+        cmd: passwd -S root
+      register: root_password_status
+      changed_when: false
+      failed_when: root_password_status.stdout.split()[1] != 'L'
 
     - name: ordinary resolved stub remains enabled when service exists
       ansible.builtin.stat:
@@ -130,6 +143,12 @@
           value: "2"
         - key: "kernel.yama.ptrace_scope"
           value: "2"
+        - key: "net.ipv6.conf.all.accept_redirects"
+          value: "0"
+        - key: "net.ipv6.conf.default.accept_redirects"
+          value: "0"
+        - key: "kernel.kexec_load_disabled"
+          value: "1"
       register: verify_sysctl_value
       changed_when: false
       failed_when: verify_sysctl_value.stdout != item.value

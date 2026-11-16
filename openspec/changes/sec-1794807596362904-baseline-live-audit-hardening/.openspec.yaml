@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-11-16
+goal: SEC-1794807596362904 Close baseline hardening gaps from the live fleet audit

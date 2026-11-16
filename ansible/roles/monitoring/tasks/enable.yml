@@ -262,7 +262,7 @@
     content: |
       [Journal]
       Storage=persistent
-      SystemMaxUse=500M
+      SystemMaxUse=1G
       MaxRetentionSec=14day
       ForwardToSyslog=no
   notify: Restart journald

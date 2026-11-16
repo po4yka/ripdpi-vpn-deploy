@@ -19,6 +19,8 @@ net.ipv4.conf.all.rp_filter = 1
 net.ipv4.conf.default.rp_filter = 1
 net.ipv4.conf.all.accept_redirects = 0
 net.ipv4.conf.default.accept_redirects = 0
+net.ipv6.conf.all.accept_redirects = 0
+net.ipv6.conf.default.accept_redirects = 0
 net.ipv4.conf.all.secure_redirects = 0
 net.ipv4.conf.default.secure_redirects = 0
 net.ipv4.conf.all.accept_source_route = 0
@@ -53,3 +55,8 @@ kernel.randomize_va_space = 2
 kernel.kptr_restrict = 2
 kernel.yama.ptrace_scope = 2
 kernel.unprivileged_userns_clone = 0
+# Unprivileged BPF is disabled on the supported kernels, so level 2 is the
+# only JIT hardening level that has an effect.
+net.core.bpf_jit_harden = 2
+# One-way until reboot; no component loads a kernel image at runtime.
+kernel.kexec_load_disabled = 1

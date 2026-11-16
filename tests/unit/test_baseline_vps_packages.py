@@ -1,4 +1,4 @@
-"""VPS baseline must not run host-firmware services inside virtual guests."""
+"""VPS baseline must not keep host-firmware or unused distribution services."""
 
 from pathlib import Path
 
@@ -10,12 +10,19 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 TASKS = REPO_ROOT / "ansible" / "roles" / "baseline" / "tasks" / "main.yml"
 
 
-def test_baseline_removes_fwupd_and_clears_obsolete_failed_units() -> None:
+def test_baseline_removes_unused_packages_and_clears_obsolete_failed_units() -> None:
     tasks = yaml.safe_load(TASKS.read_text(encoding="utf-8"))
-    removal = next(task for task in tasks if task["name"] == "Remove unsupported VPS hardware management packages")
+    removal = next(task for task in tasks if task["name"] == "Remove unsupported hardware management and unused distribution packages")
     package = removal["ansible.builtin.apt"]
 
-    assert package["name"] == ["fwupd", "openipmi"]
+    assert package["name"] == [
+        "fwupd",
+        "openipmi",
+        "modemmanager",
+        "apport",
+        "open-vm-tools",
+        "snapd",
+    ]
     assert package["state"] == "absent"
     assert package["purge"] is True
 
