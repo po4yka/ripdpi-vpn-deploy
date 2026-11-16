@@ -11,7 +11,7 @@ A production host in the profile `vpn-split-hop-family-egress-live` passes the T
 ## Execution
 
 - [x] ANS-1794807559120996 Enable self-steal and a private self-steal port in the live family-egress profile, with its tests and profile reference #feature @item:ANS-1794807418945435
-- [ ] ANS-1794807590109058 Roll the live Node A out with self-steal: dry-run, deploy, sentinel reinstall and device refresh #feature @item:ANS-1794807418945435
+- [x] ANS-1794807590109058 Roll the live Node A out with self-steal: dry-run, deploy, sentinel reinstall and device refresh #feature @item:ANS-1794807418945435
 
 ## Verification
 
