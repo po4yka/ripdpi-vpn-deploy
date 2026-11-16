@@ -14,6 +14,16 @@
 - name: Read the operator-owned self-steal site layout before declaring its paths
   ansible.builtin.include_tasks: ../../roles/reality-self-steal/tasks/operator-site.yml
 
+- name: Read the operator-owned public site layout before declaring its paths
+  ansible.builtin.find:
+    paths: ['{{ nginx_xhttp_public_site_dir }}']
+    recurse: true
+    file_type: file
+  register: _transport_ingress_public_site
+  delegate_to: localhost
+  become: false
+  when: nginx_xhttp_public_site_dir | default('') | length > 0
+
 - name: Declare bounded desired ingress paths without reading runtime secrets
   ansible.builtin.set_fact:
     _transport_ingress_request:
@@ -25,7 +35,7 @@
           paths: >-
             {{ ['/etc/nginx/sites-available/vpn-xhttp.conf', '/etc/nginx/sites-enabled/vpn-xhttp.conf',
                 '/etc/nginx/sites-enabled/default']
-               + (['/var/www/public-site/favicon.svg', '/var/www/public-site/logo.svg',
+               + ((['/var/www/public-site/favicon.svg', '/var/www/public-site/logo.svg',
                 '/var/www/public-site/404.html', '/var/www/public-site/assets/site.css',
                 '/var/www/public-site/index.html', '/var/www/public-site/about.html',
                 '/var/www/public-site/methodology.html', '/var/www/public-site/updates.html',
@@ -39,6 +49,9 @@
                 '/var/www/public-site/glossary.html',
                 '/var/www/public-site/feed.xml', '/var/www/public-site/robots.txt',
                 '/var/www/public-site/sitemap.xml', '/var/www/public-site/.well-known/security.txt']
+                   + ((_transport_ingress_public_site.files | default([])) | map(attribute='path')
+                      | map('relpath', nginx_xhttp_public_site_dir | default('/'))
+                      | map('regex_replace', '^', '/var/www/public-site/') | list)) | unique
                   if ((vpn.enable_nginx_xhttp | default(true) | bool)
                       and not (vpn_subscription_only | default(false) | bool)) else [])
                + (['/etc/nginx/tls/' ~ nginx_xhttp.server_name ~ '.fullchain.pem',

@@ -816,6 +816,7 @@ def test_actual_ingress_declaration_has_exact_candidate_paths_and_optional_secre
     tasks.mkdir(parents=True)
     shutil.copy(ROOT / 'ansible/roles/reality-self-steal/tasks/operator-site.yml', tasks)
     variables = {'reality_self_steal_public_site_dir': str(root / 'operator-site') if operator else '',
+                 'nginx_xhttp_public_site_dir': str(root / 'operator-site') if operator else '',
                  'vpn': {'enable_nginx_xhttp': mode != 'disabled', 'enable_reality_self_steal': mode != 'disabled'},
                  'vpn_subscription_only': mode == 'subscription',
                  'reality_self_steal_site_root': '/var/www/reality-self-steal',
@@ -834,12 +835,14 @@ def test_actual_ingress_declaration_has_exact_candidate_paths_and_optional_secre
             'notes/reading-an-open-weight-model-card.html', 'notes/serving-mixture-of-experts-models.html',
             'notes/tokenizer-efficiency-for-chinese-text.html', 'notes/index.html', 'models.html',
             'glossary.html', 'feed.xml', 'robots.txt', 'sitemap.xml', '.well-known/security.txt']]
+        # Regression: an operator page outside the bundled layout was undeclared, and the site journal refused it.
+        expected_xhttp += ['/var/www/public-site/notes/first.html'] if operator else []
     if enabled:
         expected_xhttp += ['/etc/nginx/tls/' + name + suffix for name in ['primary.example.invalid', 'alternate.example.invalid'] for suffix in ['.fullchain.pem', '.key']]
         authority = variables['reality_self_steal']
         release = hashlib.sha256(''.join(hashlib.sha256(authority[key].encode()).hexdigest() for key in ['cert_pem', 'key_pem']).encode()).hexdigest()
         expected_self += ['/etc/nginx/reality-self-steal/releases/' + release + '/' + name for name in ['fullchain.pem', 'privkey.pem']]
-    source = yaml.safe_load((ROOT / 'ansible/playbooks/tasks/transport-ingress-begin.yml').read_text())[:3]
+    source = yaml.safe_load((ROOT / 'ansible/playbooks/tasks/transport-ingress-begin.yml').read_text())[:4]
     # The real task file lives in playbooks/tasks; its relative include resolves from there.
     _write(root / 'playbooks/tasks/begin.yml', source)
     _write(root / 'playbooks/play.yml', [{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False, 'become': False, 'vars': {**variables, 'expected_xhttp': sorted(expected_xhttp), 'expected_self': sorted(expected_self)},
