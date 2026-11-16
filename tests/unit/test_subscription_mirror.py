@@ -596,7 +596,6 @@ def test_concurrent_publishers_are_serialized_and_keep_current_pointer_valid(
 
 def test_atomic_document_survives_complete_mirror_generation(tmp_path):
     import base64
-    import json
     source = _private_directory(tmp_path / "source")
     for route in ("sub", "bootstrap"):
         _private_directory(source / route)
