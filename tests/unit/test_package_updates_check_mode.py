@@ -4,6 +4,8 @@ from pathlib import Path
 
 import yaml
 
+from template_render import render_template
+
 ROOT = Path(__file__).resolve().parents[2]
 TASKS = ROOT / "ansible" / "roles" / "package_updates" / "tasks" / "main.yml"
 
@@ -24,3 +26,52 @@ def test_fresh_host_check_mode_defers_binary_validation_until_install() -> None:
         "_package_updates_effective_enabled",
         "not ansible_check_mode or not (package_updates_packages.changed | default(false))",
     ]
+
+
+# Release-file fields of the Ubuntu pockets. Every pocket has the release
+# codename; only the archive (suite) field names the pocket.
+UBUNTU_POCKETS = {
+    pocket: {
+        "origin": "Ubuntu",
+        "label": "Ubuntu",
+        "codename": "noble",
+        "archive": pocket,
+    }
+    for pocket in (
+        "noble",
+        "noble-updates",
+        "noble-security",
+        "noble-backports",
+        "noble-proposed",
+    )
+}
+
+
+def _selected_pockets(security_only: bool) -> set[str]:
+    policy = render_template(
+        ROOT
+        / "ansible/roles/package_updates/templates/51ripdpi-unattended-upgrades.j2",
+        dict(package_updates={"enabled": True, "security_only": security_only}),
+    ).replace("${distro_codename}", "noble")
+    patterns = [
+        dict(field.split("=", 1) for field in line.strip(' ";').split(","))
+        for line in policy.splitlines()
+        if line.strip().startswith('"origin=')
+    ]
+    return {
+        pocket
+        for pocket, release in UBUNTU_POCKETS.items()
+        if any(
+            all(release[key] == value for key, value in pattern.items())
+            for pattern in patterns
+        )
+    }
+
+
+def test_origin_patterns_select_the_intended_ubuntu_pockets() -> None:
+    assert _selected_pockets(security_only=True) == {"noble-security"}
+    assert _selected_pockets(security_only=False) == {
+        "noble",
+        "noble-updates",
+        "noble-security",
+    }
