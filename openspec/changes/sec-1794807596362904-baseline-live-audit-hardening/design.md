@@ -5,7 +5,7 @@ The baseline role renders `/etc/sysctl.d/90-vpn.conf` from `sysctl-vpn.conf.j2` 
 ## Goals / Non-Goals
 
 - Goal: a recreated or redeployed VPN node holds the four properties in the spec without operator action.
-- Non-goal: Tailscale update and pin policy, nginx sandboxing, observer host parity, auditd, the split-hop egress filter, and any live action (reboot, firewall source change, cleanup).
+- Non-goal: setting the Tailscale auto-update preference from the repository, nginx sandboxing, observer host parity, auditd, the split-hop egress filter, and any live action (reboot, firewall source change, cleanup).
 
 ## Decisions
 

@@ -15,6 +15,7 @@ Managed VPN nodes converge to the kernel, account, package and journal-budget pr
 - [x] SEC-1794807812667879 Purge modemmanager, apport, open-vm-tools and snapd in the baseline role with Molecule coverage #bug @item:SEC-1794807596362904
 - [x] SEC-1794807838451591 Raise the journald size budget to 1G in the monitoring role with a test that pins the policy #bug @item:SEC-1794807596362904
 - [x] SEC-1794815487021281 Flush the journal to persistent storage in the monitoring role with Molecule and unit coverage #bug @item:SEC-1794807596362904
+- [x] SEC-1794825780144669 Stop holding Tailscale at the first-install version and remove the apt pin from enrolled nodes #bug @item:SEC-1794807596362904
 - [x] SEC-1794807863934919 Run the narrow checks and make check, then record evidence in verification.md #bug @item:SEC-1794807596362904
 
 ## Verification

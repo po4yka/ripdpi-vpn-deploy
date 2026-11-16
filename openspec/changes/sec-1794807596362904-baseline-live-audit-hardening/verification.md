@@ -29,3 +29,4 @@ artifact_evidence: No built or published artifact changes.
 | REQ-BASELINE-UNUSED-PACKAGES | SEC-1794807812667879 | `pytest tests/unit/test_baseline_vps_packages.py`; simulated purge with autoremove on two live nodes; Molecule `baseline` in CI | local passed; CI and live pending |
 | REQ-JOURNAL-BUDGET | SEC-1794807838451591 | `pytest tests/unit/test_monitoring_journald.py` | local passed; live pending |
 | REQ-JOURNAL-ON-DISK | SEC-1794815487021281 | `pytest tests/unit/test_monitoring_journald.py`; Molecule `monitoring` verify in CI; journal location on a live node | local passed; CI and live pending |
+| REQ-TAILSCALE-NO-APT-HOLD | SEC-1794825780144669 | `pytest tests/unit/test_tailnet_management.py`; Molecule `tailnet-management` in CI; `apt-cache policy tailscale` on a live node | local passed; CI and live pending |

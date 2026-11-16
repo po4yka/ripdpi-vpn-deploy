@@ -294,18 +294,6 @@
       {{ ansible_facts['distribution_release'] }} main
   when: tailnet_management_install_package | bool
 
-- name: Pin the exact Tailscale package release
-  ansible.builtin.copy:
-    dest: /etc/apt/preferences.d/tailscale
-    owner: root
-    group: root
-    mode: "0644"
-    content: |
-      Package: tailscale
-      Pin: version {{ tailnet_management_package_version }}
-      Pin-Priority: 1001
-  when: tailnet_management_install_package | bool
-
 - name: Install exact stable Tailscale package
   ansible.builtin.apt:
     name: "tailscale={{ tailnet_management_package_version }}"

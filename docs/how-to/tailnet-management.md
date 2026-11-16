@@ -126,9 +126,9 @@ Molecule exercises configuration, credential cleanup, exact flags and idempotenc
 
 An offline boot inspection on the pre-rollout P0 node found no Tailscale binary, service, recovery unit or state. That is a clean missing-foundation boundary, not a daemon boot failure: rebooting alone cannot create this management path. Installation and enrollment must use the canonical one-node bootstrap flow above; do not install ad hoc through the provider console.
 
-The package defaults pin Tailscale stable `1.104.4` and the official repository key digest. Updating either pin requires reviewing the official stable package repository, focused controller tests, the role's Molecule scenario, full CI and fresh staging proof before production use.
+The package defaults pin the first-install Tailscale stable version `1.104.4` and the official repository key digest. After enrollment the node updates Tailscale itself from that signed repository: automatic update is on for every node, and the role does not hold the installed version. The role does not set that preference; `tailscale debug prefs` shows it as `AutoUpdate`. Updating either pin requires reviewing the official stable package repository, focused controller tests, the role's Molecule scenario, full CI and fresh staging proof before production use.
 
-An existing-node package update must also reconcile the root-owned APT preference with the accepted version. Verify both the installed version and `apt-cache policy tailscale`; an old priority-1001 pin can propose a downgrade even while the daemon runs the new binary. Ordinary verify-only Tailnet role execution does not repair the bootstrap package policy. Keep enrollment, routes and the daemon unchanged when only correcting an accepted package pin.
+Ordinary Tailnet role execution removes `/etc/apt/preferences.d/tailscale`. Earlier bootstraps wrote an exact priority-1001 pin there, which made apt propose a downgrade after the daemon updated itself. A node can thus run a later stable version than the first-install pin; record the running version from `tailscale version` when you need it as evidence.
 
 
 ## Existing managed firewall bootstrap
