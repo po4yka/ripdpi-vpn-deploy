@@ -84,6 +84,8 @@ def merge_render_vars() -> dict:
     merged.setdefault("hysteria_sha256", "0" * 64)
     merged.setdefault("node_manifest_source_revision", "1" * 40)
     merged.setdefault("node_manifest_deployable_digest", "2" * 64)
+    merged.setdefault("observability_agent_expected_source_revision", "1" * 40)
+    merged.setdefault("observability_agent_expected_deployable_digest", "2" * 64)
     merged.setdefault(
         "p0_reality_shape_template",
         str(SHARED_TEMPLATES_DIR / "p0-reality-shape.json.j2"),

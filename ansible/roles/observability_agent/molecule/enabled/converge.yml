@@ -73,8 +73,8 @@
       node_exporter_textfile_dir: /var/lib/node_exporter/textfile
     node_manifest:
       path: /var/lib/ripdpi-vpn-deploy/manifest.json
-    node_manifest_source_revision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-    node_manifest_deployable_digest: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    observability_agent_expected_source_revision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    observability_agent_expected_deployable_digest: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
     observability_agent:
       enabled: true
       version: v1.155.0

@@ -6,8 +6,8 @@
     observability_push: '{{ fixture.observability_push }}'
     monitoring: '{{ fixture.monitoring }}'
     node_manifest: '{{ fixture.node_manifest }}'
-    node_manifest_source_revision: '{{ fixture.node_manifest_source_revision }}'
-    node_manifest_deployable_digest: '{{ fixture.node_manifest_deployable_digest }}'
+    observability_agent_expected_source_revision: '{{ fixture.observability_agent_expected_source_revision }}'
+    observability_agent_expected_deployable_digest: '{{ fixture.observability_agent_expected_deployable_digest }}'
     observability_alert_policy: >-
       {{ (lookup('ansible.builtin.file', playbook_dir ~ '/../../../../group_vars/all.yml') | from_yaml).observability_alert_policy }}
   vars:

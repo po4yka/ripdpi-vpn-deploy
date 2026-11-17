@@ -194,9 +194,9 @@ First check: Check the agent and adapter timers on this target.
 
 ### source-identity
 
-The node manifest reports a source revision or deployable digest that differs from the expected candidate. A rollout causes this until every node has the new revision.
+The node manifest reports a source revision or deployable digest that differs from the expected candidate. The node's agent takes the expected candidate from the clean checkout of its last `make observability-deploy` or `make observability-rotate`; `make deploy` does not change it. A rollout causes this alert until you rotate the agent from the deployed checkout. `make verify` compares the node with your current checkout only, so it does not clear this alert.
 
-First check: Expected during a rollout. If it persists after the deploy, run make verify for this node.
+First check: Expected during a rollout. After the deploy, run make observability-rotate for this node from the deployed checkout.
 
 ### control-plane-health
 
