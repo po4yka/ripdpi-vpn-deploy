@@ -2,7 +2,7 @@
 """Inventory-bound readiness, convergence and source parity for Make deploys."""
 
 import ast
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar
 import hashlib
 import json
@@ -18,6 +18,7 @@ import unicodedata
 
 import yaml
 
+import deployment_silence
 import fleet_inspection
 from public_site_inputs import SiteInputError, read_site
 from bootstrap_readiness import (CommandTimeout, ReadinessError, SshTransportError,
@@ -934,7 +935,9 @@ def controller(mode):
                     check_directory = directory / ('check-' + host['name'])
                     check_directory.mkdir(mode=0o700)
                     checked_environment = check_statistics_environment(root, check_directory, site_environment)
-                checked(site, environment=checked_environment, cwd=directory, timeout=7200, stream=True)
+                with (deployment_silence.coverage_silence(metadata[host["name"]].get("observability_node_id"))
+                      if mode == "deploy" else nullcontext()):
+                    checked(site, environment=checked_environment, cwd=directory, timeout=7200, stream=True)
                 if strict_check == '1':
                     require_no_check_changes(check_directory / 'check-statistics.json')
                 if mode == "deploy":

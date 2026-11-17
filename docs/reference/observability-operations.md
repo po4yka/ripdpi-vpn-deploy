@@ -235,6 +235,8 @@ export OBSERVABILITY_SILENCE_ID="<returned-uuid>"
 make observability-silence-delete
 ```
 
+`make deploy` and the device-lifecycle rotation can also create a finite coverage-only silence for the node under change through the same gateway and owner token; see [coverage silence during the transport restart](../how-to/deploy.md#coverage-silence-during-the-transport-restart). That path keeps exact-host, collector-capability and environment admission but does not bind the collector topology to the deploy's source revision, because a deploy usually runs newer source.
+
 These explicit mutation commands use the already-selected exact inventory host and environment. They do not deploy, alter metrics, reset incident times, or claim recovery. Alertmanager expires a silence at its finite end even if the gateway is temporarily down. The private bounded audit retains categorical creation, expiry and deletion records without bearer tokens. A successful API response is not the required real alert delivery/expiry staging evidence.
 
 ## Migration and acceptance

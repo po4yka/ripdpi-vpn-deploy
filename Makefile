@@ -1145,6 +1145,11 @@ deploy dry-run: export DEPLOY_PROMOTION_CONFIG_FILE := $(DEPLOY_PROMOTION_CONFIG
 deploy dry-run: export DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE := $(DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE)
 deploy dry-run: export DEPLOY_ENV = $(ENV)
 deploy dry-run: export DEPLOY_PROVIDER = $(PROVIDER)
+# Optional finite coverage silence on the collector (docs/how-to/deploy.md); literal values.
+deploy: export DEPLOY_SILENCE_OWNER := $(value DEPLOY_SILENCE_OWNER)
+deploy: export DEPLOY_SILENCE_COLLECTOR := $(value DEPLOY_SILENCE_COLLECTOR)
+deploy: export DEPLOY_SILENCE_ENVIRONMENT := $(value DEPLOY_SILENCE_ENVIRONMENT)
+deploy: export DEPLOY_SILENCE_INVENTORY := $(value DEPLOY_SILENCE_INVENTORY)
 dry-run:
 	@python3 scripts/deploy-controller.py dry-run
 

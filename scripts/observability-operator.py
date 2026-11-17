@@ -990,6 +990,46 @@ print(json.dumps({{"schema_version": 1, "component": "control-plane", "state": {
     return source.encode("utf-8")
 
 
+def maintenance_silence(
+    inventory: Path,
+    collector: str,
+    known_hosts: Path,
+    owner: str,
+    *,
+    request: bytes | None = None,
+    silence_id: str | None = None,
+) -> str:
+    """Create (request) or delete (silence_id) one owner silence for a deploy.
+
+    A deploy runs newer source than the collector topology, so this path keeps
+    exact host, capability and environment admission without source binding.
+    """
+    if (request is None) == (silence_id is None) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", owner):
+        raise OperatorError("maintenance silence rejected")
+    args = argparse.Namespace(inventory=inventory, host=collector, component="control-plane",
+                              known_hosts=known_hosts, silence_id=silence_id, environment="")
+    host = _selected_host(args)
+    args.environment = str(host.get("variables", {}).get("env", ""))
+    _require_inventory_scope(args, host)
+    try:
+        fleet_inspection._local_file(known_hosts)
+    except fleet_inspection.InspectionError:
+        raise OperatorError("known-hosts rejected") from None
+    if request is not None:
+        # A silence for a node this collector does not monitor would match nothing.
+        try:
+            topology = json.loads(base64.b64decode(host["variables"]["observability_topology_b64"]))
+            monitored = {node["node_id"] for node in topology["nodes"]}
+            if json.loads(request)["matchers"]["node"] not in monitored:
+                raise ValueError
+        except (KeyError, TypeError, ValueError, binascii.Error):
+            raise OperatorError("maintenance silence node not monitored") from None
+    operation = "silence-create" if request is not None else "silence-delete"
+    value = _remote(args, host, _silence_program(owner, request=request, silence_id=silence_id),
+                    operation=operation)
+    return value["silence_id"]
+
+
 def _silence_request(path: Path | None) -> bytes:
     path = _private_file(path, "private silence request required")
     try:

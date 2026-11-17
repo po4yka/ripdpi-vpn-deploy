@@ -196,6 +196,20 @@ Readiness, convergence and the automatic source-drift check use the same private
 
 Do not waive a failed `dry-run` because an older release had a check-mode limitation. Diagnose the exact current source, toolchain and node state. A successful live deploy does not turn a failed local check into a pass; record the distinction in [the deployment snapshot](../reference/deployment-status.md#evidence-and-refresh-boundary).
 
+### Coverage silence during the transport restart
+
+A deploy restarts the node's transports for about one minute. The node heartbeat refuses while a declared service is down, so without a silence `ObservabilityExternalCoverageUnavailable` fires as `critical` for the node. To prevent this false alert, set all three of these values in the environment or in `.fleet.mk`:
+
+| Setting | Value |
+|---|---|
+| `DEPLOY_SILENCE_OWNER` | Gateway owner slug that already exists in `observability_secrets.silence_gateway` |
+| `DEPLOY_SILENCE_COLLECTOR` | Exact inventory alias of the collector host |
+| `DEPLOY_SILENCE_ENVIRONMENT` | The gateway's `environment` label, the same value the alerts carry |
+
+`DEPLOY_SILENCE_INVENTORY` selects the inventory that contains the collector; the default is `ansible/inventory/generated.ini`. `DEPLOY_KNOWN_HOSTS` gives the host key pins. `make deploy` and the `rotate-credentials` step of `make device-lifecycle` then silence only the coverage alert of each node with an `observability_node_id`: before that node's mutating playbook starts, they create a silence that matches `environment`, `node` and `component=observability-external-coverage` for about two hours (the site timeout plus a short margin). After success they create a five-minute tail silence and delete the main one; after a failure or interruption they delete the main one at once, so a broken transport still alerts. `make dry-run`, `verify` and check runs never create a silence.
+
+A silence failure prints `deploy: warning: maintenance silence <category>` and the deploy continues; the worst case is the old false alert. If the controller dies, the silence stays only until its finite end. A node that the collector's topology does not list is not silenced and prints a warning. A deploy of the collector node itself also silences the fleet `pipeline` and `delivery` coverage alerts for its window, because they carry the collector's node id. With none of the three settings the deploy behaves as before. `device-lifecycle` does not read `.fleet.mk`; export the settings in its shell.
+
 ### Managed public TLS during DNS cutover
 
 The ordinary full deployment prepares the real nginx HTTP-01 vhost, then waits up to 600 seconds for public DNS before it requests a certificate. Keep that deployment running. Do not start another deployment or publisher for the host.

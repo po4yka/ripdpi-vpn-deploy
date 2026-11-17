@@ -11,7 +11,7 @@ import re
 import shlex
 import stat
 import tempfile
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack, contextmanager, nullcontext
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -19,6 +19,7 @@ import yaml
 from authenticated_http import https_origin
 from bootstrap_readiness import check_cancelled, run_command
 from client_payload import HOST, ROOT, context, read_document
+from deployment_silence import coverage_silence
 from device_lifecycle_publishers import probe as publisher_probe
 from device_migration_io import encoded, private_bytes, sha
 from device_migration_receipt import HEX, UUID, matches, unique_object
@@ -312,13 +313,16 @@ class LocalIO:
             goals = ['verify'] if verify_only else ['rotate-credentials-check'] if check else ['rotate-credentials', 'verify']
             for goal in goals:
                 self.revalidate()
-                status, _ = run_command(['make', '-C', str(ROOT), goal, 'PROVIDER=' + provider, 'ENV=' + env,
-                    'SOPS_FILE=' + node['secrets_file'], 'SECRETS_FILE=' + str(secret_file),
-                    'ANSIBLE_INVENTORY=' + str(inventory), 'ANSIBLE_EXTRA_VARS_FILE=' + extra_vars, 'SKIP_PRECHECK=0',
-                    'ANSIBLE_LIMIT=' + node['alias'], 'COHORTS=' + node['cohort'], 'TAG_ON_SUCCESS=0'],
-                    environment=environment, timeout=3600, capture=True, output_limit=1_048_576)
-                if status:
-                    raise ValueError('device-runtime-adoption-unconfirmed')
+                with (coverage_silence(frozen['variables'].get('observability_node_id'))
+                      if goal == 'rotate-credentials' else nullcontext()):
+                    status, _ = run_command(['make', '-C', str(ROOT), goal, 'PROVIDER=' + provider, 'ENV=' + env,
+                        'SOPS_FILE=' + node['secrets_file'], 'SECRETS_FILE=' + str(secret_file),
+                        'ANSIBLE_INVENTORY=' + str(inventory), 'ANSIBLE_EXTRA_VARS_FILE=' + extra_vars, 'SKIP_PRECHECK=0',
+                        'ANSIBLE_LIMIT=' + node['alias'], 'COHORTS=' + node['cohort'], 'TAG_ON_SUCCESS=0'],
+                        environment=environment, timeout=3600, capture=True, output_limit=1_048_576)
+                    # Inside the silence: a failed rotation must drop it without a tail.
+                    if status:
+                        raise ValueError('device-runtime-adoption-unconfirmed')
                 self.revalidate()
 
     def output(self, path, expected):
