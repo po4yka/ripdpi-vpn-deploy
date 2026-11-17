@@ -516,6 +516,43 @@ def test_authenticated_roles_have_only_fixed_routes(
     assert bool(calls) is (expected == 200)
 
 
+DRILL_LABELS = {
+    "alertname": "ObservabilitySyntheticDrill",
+    "component": "control-plane",
+    "environment": "staging",
+    "node": "collector",
+    "policy": "drill-" + "a" * 32,
+    "severity": "warning",
+}
+DRILL = {"labels": DRILL_LABELS, "annotations": {"summary": "drill"}, "endsAt": "2023-11-14T22:13:20Z"}
+FLEET = {"labels": {**DRILL_LABELS, "alertname": "NodeDown"}}
+
+
+@pytest.mark.parametrize(
+    "token,alerts,expected",
+    [
+        (OWNER_TOKEN, [DRILL], 200),
+        (OWNER_TOKEN, [FLEET], 400),
+        (OWNER_TOKEN, [DRILL, FLEET], 400),
+        (OWNER_TOKEN, ["not-an-alert"], 400),
+        (OWNER_TOKEN, [{**DRILL, "labels": {**DRILL_LABELS, "environment": "production"}}], 400),
+        (OWNER_TOKEN, [{**DRILL, "labels": {**DRILL_LABELS, "policy": "fleet-coverage"}}], 400),
+        (OWNER_TOKEN, [{**DRILL, "labels": {**DRILL_LABELS, "severity": "critical"}}], 400),
+        (OWNER_TOKEN, [{**DRILL, "labels": {**DRILL_LABELS, "extra": "x"}}], 400),
+        # Alertmanager decodes field names case-insensitively.
+        (OWNER_TOKEN, [{**DRILL, "Labels": FLEET["labels"]}], 400),
+        (SENDER_TOKEN, [FLEET], 200),
+    ],
+)
+def test_owner_alert_posts_are_limited_to_the_synthetic_drill(
+    gateway, token, alerts, expected
+):
+    url, calls = gateway
+    status, _ = _request(url, alerts, token, "POST", "/api/v2/alerts")
+    assert status == expected
+    assert bool(calls) is (expected == 200)
+
+
 def test_only_creator_can_delete_and_audit_excludes_credentials(gateway, tmp_path):
     url, calls = gateway
     assert _request(url, _silence())[0] == 201

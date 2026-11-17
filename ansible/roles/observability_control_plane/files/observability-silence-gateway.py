@@ -38,6 +38,29 @@ class GatewayError(ValueError):
     """Only categorical errors may cross the HTTP boundary."""
 
 
+DRILL_LABELS = {"alertname", "component", "environment", "node", "policy", "severity"}
+
+
+def validate_drill_alerts(alerts, environment):
+    """Owners may post only the operator's synthetic drill, never fleet alerts."""
+    for alert in alerts:
+        labels = alert.get("labels") if isinstance(alert, dict) else None
+        annotations = alert.get("annotations", {}) if isinstance(alert, dict) else None
+        if (
+            not isinstance(labels, dict)
+            or set(alert) - {"labels", "annotations", "startsAt", "endsAt"}
+            or set(labels) != DRILL_LABELS
+            or not all(isinstance(value, str) for value in labels.values())
+            or labels["alertname"] != "ObservabilitySyntheticDrill"
+            or labels["environment"] != environment
+            or labels["severity"] != "warning"
+            or not re.fullmatch(r"drill-[0-9a-f]{32}", labels["policy"])
+            or not isinstance(annotations, dict)
+            or not all(isinstance(value, str) for value in annotations.values())
+        ):
+            raise GatewayError("alerts-scope")
+
+
 def validate_silence(request, policy, now):
     if (
         not isinstance(request, dict)
@@ -361,8 +384,14 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 allowed.add(("GET", "/api/v2/alerts"))
             if route in allowed:
                 body = self.body(262144) if self.command == "POST" else None
-                if body is not None and not isinstance(json.loads(body), list):
+                alerts = json.loads(body) if body is not None else None
+                if body is not None and not isinstance(alerts, list):
                     raise GatewayError("alerts-shape")
+                if body is not None and owner is not None:
+                    validate_drill_alerts(alerts, self.server.policy["environment"])
+                    # Forward only the checked document: Alertmanager matches
+                    # field names case-insensitively, so raw bytes could differ.
+                    body = json.dumps(alerts).encode()
                 if body is None and (
                     self.headers.get("Content-Length") not in (None, "0")
                     or self.headers.get("Transfer-Encoding")
