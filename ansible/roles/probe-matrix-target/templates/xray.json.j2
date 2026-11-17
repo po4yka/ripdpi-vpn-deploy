@@ -5,5 +5,8 @@
     {"listen": "0.0.0.0", "port": {{ probe_matrix_target.ports.xhttp_trojan }}, "protocol": "trojan", "settings": {"clients": [{"password": {{ probe_matrix_target_secrets.xhttp_trojan_password | to_json }}}]}, "streamSettings": {"network": "xhttp", "security": "tls", "tlsSettings": {"certificates": [{"certificateFile": "/etc/probe-matrix/tls.crt", "keyFile": "/etc/probe-matrix/tls.key"}]}, "xhttpSettings": {"path": "{{ probe_matrix_target.paths.xhttp_trojan }}"}}},
     {"listen": "0.0.0.0", "port": {{ probe_matrix_target.ports.tcp_trojan }}, "protocol": "trojan", "settings": {"clients": [{"password": {{ probe_matrix_target_secrets.tcp_trojan_password | to_json }}}]}, "streamSettings": {"network": "tcp", "security": "tls", "tlsSettings": {"certificates": [{"certificateFile": "/etc/probe-matrix/tls.crt", "keyFile": "/etc/probe-matrix/tls.key"}]}}}
   ],
-  "outbounds": [{"protocol": "freedom", "tag": "direct", "settings": {"finalRules": [{"action": "allow"}]}}]
+  "outbounds": [{"protocol": "freedom", "tag": "direct", "settings": {"finalRules": [
+    {"action": "block", "ip": ["0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16", "198.18.0.0/15", "224.0.0.0/4", "240.0.0.0/4", "::/128", "::1/128", "64:ff9b::/96", "2002::/16", "fc00::/7", "fe80::/10", "ff00::/8"]},
+    {"action": "allow"}
+  ]}}]
 }

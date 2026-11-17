@@ -303,6 +303,9 @@ def test_real_snell_variants_authentication_and_connection_reuse(
             assert inbound["psk"] == secret["psk"], "server PSK changed during rendering"
             assert inbound["users"] == secret["users"], "server userkeys changed during rendering"
         server["log"] = {"level": "info"}
+        # This fixture needs a loopback echo; test_real_snell_refuses_loopback_recipients
+        # keeps the role's recipient policy.
+        assert server.pop("route")["rules"][-1]["action"] == "reject"
         stack.enter_context(engine(snell_binary, tmp_path / "server.json", server, reservations[:-2]))
         echo = stack.enter_context(service(Echo))
         echo.connections, echo.counter_lock = 0, threading.Lock()
@@ -364,3 +367,37 @@ def test_real_snell_variants_authentication_and_connection_reuse(
         assert (
             echo.connections == 2
         ), "wrong Snell userkey reached the application destination"
+
+
+def test_real_snell_refuses_loopback_recipients(tmp_path, snell_binary):
+    # Snell egresses directly, so an authenticated device must not reach the
+    # node's loopback services (for example the unauthenticated Xray stats API).
+    defaults = yaml.safe_load(
+        (ROOT / "ansible/roles/snell/defaults/main.yml").read_text()
+    )["snell"]
+    with ExitStack() as stack:
+        reservations = stack.enter_context(reserved_ports(2))
+        variant = {**defaults["variants"][0], "listen_port": reservations[0].getsockname()[1]}
+        secret = {"id": variant["id"], "psk": token_hex(32),
+                  "users": [{"name": "native-device", "userkey": token_hex(32)}]}
+        values = {
+            "snell": {**defaults, "listen_addr": "127.0.0.1", "variants": [variant]},
+            "snell_secrets": {"variants": [secret]},
+        }
+        server = json.loads(
+            render_template(ROOT / "ansible/roles/snell/templates/config.json.j2", values)
+        )
+        server["log"] = {"level": "info"}
+        stack.enter_context(engine(snell_binary, tmp_path / "server.json", server, reservations[:1]))
+        echo = stack.enter_context(service(Echo))
+        echo.connections, echo.counter_lock = 0, threading.Lock()
+        client = json.loads(
+            render_template(ROOT / "ansible/roles/snell/templates/smoke-client.json.j2", values)
+        )
+        client["inbounds"][0]["listen_port"] = reservations[1].getsockname()[1]
+        client["log"] = {"level": "info"}
+        stack.enter_context(engine(snell_binary, tmp_path / "client.json", client, reservations[1:]))
+        socks_echo(client["inbounds"][0]["listen_port"], echo.server_address[1],
+                   b"loopback-recipient", allowed=False)
+        time.sleep(0.2)
+        assert echo.connections == 0, "Snell device reached a loopback recipient"

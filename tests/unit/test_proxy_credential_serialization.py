@@ -69,6 +69,28 @@ def test_snell_server_smoke_and_recipient_preserve_exact_credentials(tmp_path, m
                    and outbound["userkey"] == expected["users"][0]["userkey"] for outbound in emitted)
 
 
+def test_snell_and_naive_refuse_canonical_private_destinations():
+    # Neither transport egresses through the guarded normalizer, so each must
+    # enforce the recipient boundary itself (loopback admin APIs, metadata, Tailnet).
+    from scripts.transport_destination_policy import IPV4_DENY, IPV6_DENY
+    deny = list(IPV4_DENY) + list(IPV6_DENY)
+    snell = yaml.safe_load((ROOT / "ansible/roles/snell/defaults/main.yml").read_text())["snell"]
+    secrets = {"variants": [{"id": variant["id"], "psk": "psk", "users": [{"name": "d", "userkey": "k"}]}
+                            for variant in snell["variants"]]}
+    server = json.loads(render_template(ROOT / "ansible/roles/snell/templates/config.json.j2",
+                                        {"snell": snell, "snell_secrets": secrets}))
+    assert server["route"]["rules"] == [{"action": "resolve"}, {"ip_cidr": deny, "action": "reject"}]
+
+    naive = yaml.safe_load((ROOT / "ansible/roles/naive/defaults/main.yml").read_text())["naive"]
+    caddy = json.loads(render_template(ROOT / "ansible/roles/naive/templates/caddy.json.j2", {
+        "naive": naive, "naive_secrets": {"probe_resistance_secret": "p",
+                                          "clients": [{"username": "u", "password": "p"}]}}))
+    proxies = [handler for server in caddy["apps"]["http"]["servers"].values()
+               for route in server["routes"] for outer in route["handle"] if outer["handler"] == "subroute"
+               for inner in outer["routes"] for handler in inner["handle"] if handler["handler"] == "forward_proxy"]
+    assert [proxy["acl"] for proxy in proxies] == [[{"subjects": deny, "allow": False}]]
+
+
 @pytest.mark.parametrize("credential", CREDENTIALS, ids=IDS)
 def test_trojan_target_and_actual_probe_driver_preserve_exact_passwords(credential):
     schema = json.loads((ROOT / "secrets/schema.json").read_text())
@@ -91,3 +113,7 @@ def test_trojan_target_and_actual_probe_driver_preserve_exact_passwords(credenti
         client = json.loads(json.dumps(driver.xray_outbound(protocol, "192.0.2.90", settings)))
         assert server["inbounds"][index]["settings"]["clients"][0]["password"] == authority[field]
         assert client["settings"]["servers"][0]["password"] == authority[field]
+    # Probe credentials must not reach the node's loopback, metadata or private networks.
+    from scripts.transport_destination_policy import IPV4_DENY, IPV6_DENY
+    assert server["outbounds"][0]["settings"]["finalRules"] == [
+        {"action": "block", "ip": list(IPV4_DENY) + list(IPV6_DENY)}, {"action": "allow"}]
