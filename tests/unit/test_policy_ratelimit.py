@@ -31,7 +31,7 @@ ERROR_LOG = FIXTURES / "xray-error-sample.log"
 NOW = 1000.0  # constant logical clock — all events land inside one window
 
 
-def _render_daemon() -> dict:
+def _render_daemon(**overrides) -> dict:
     """Render the .j2 against role defaults and exec it into a namespace.
 
     Rendering here also asserts the template has no Jinja syntax break and
@@ -40,7 +40,7 @@ def _render_daemon() -> dict:
     jinja2 = pytest.importorskip("jinja2")
     defaults = yaml.safe_load(DEFAULTS.read_text())
     env = jinja2.Environment(keep_trailing_newline=True)
-    src = env.from_string(TEMPLATE.read_text()).render(**defaults)
+    src = env.from_string(TEMPLATE.read_text()).render(**{**defaults, **overrides})
     ns: dict = {"__name__": "policy_ratelimit_rendered"}
     exec(compile(src, str(TEMPLATE), "exec"), ns)  # noqa: S102 — trusted template
     return ns
@@ -141,6 +141,14 @@ def test_private_ips_are_exempt(daemon, ip):
 )
 def test_public_ips_are_not_exempt(daemon, ip):
     assert daemon["is_exempt_ip"](ip) is False
+
+
+@pytest.mark.parametrize("cidrs", [["203.0.113.0/24", "2001:db8::/48"], "203.0.113.0/24"])
+def test_ssh_allowlist_sources_are_never_banned(cidrs):
+    exempt = _render_daemon(allowed_ssh_cidrs=cidrs)["is_exempt_ip"]
+    assert exempt("203.0.113.55") is True
+    assert exempt("198.51.100.10") is False
+    assert exempt("2001:db8::7") is (not isinstance(cidrs, str))
 
 
 # ---------------------------------------------------------------------------

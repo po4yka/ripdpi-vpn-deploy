@@ -102,11 +102,15 @@ def classify_line(line: str) -> str | None:
     return None
 
 
+# A client sharing the operator's egress IP must not ban public SSH (fail2ban ignoreip parity).
+SSH_ALLOWLIST = tuple(ipaddress.ip_network(cidr, strict=False) for cidr in ["198.51.100.42/32"])
+
+
 def is_exempt_ip(ip: str) -> bool:
-    """RFC1918 / loopback / null — never ban an internal address."""
+    """RFC1918 / loopback / null / SSH allowlist — never ban these sources."""
     try:
         parsed = ipaddress.ip_address(ip)
-        return parsed.is_loopback or parsed.is_unspecified or parsed.is_link_local or (parsed.version == 4 and (parsed in ipaddress.ip_network("10.0.0.0/8") or parsed in ipaddress.ip_network("172.16.0.0/12") or parsed in ipaddress.ip_network("192.168.0.0/16")))
+        return parsed.is_loopback or parsed.is_unspecified or parsed.is_link_local or (parsed.version == 4 and (parsed in ipaddress.ip_network("10.0.0.0/8") or parsed in ipaddress.ip_network("172.16.0.0/12") or parsed in ipaddress.ip_network("192.168.0.0/16"))) or any(parsed in network for network in SSH_ALLOWLIST if network.version == parsed.version)
     except ValueError:
         return True
 
