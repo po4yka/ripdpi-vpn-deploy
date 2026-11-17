@@ -171,8 +171,8 @@ def test_complete_agent_check_mode_never_publishes_private_candidates(
         observability_alert_policy=yaml.safe_load(
             (ROOT / "ansible/group_vars/all.yml").read_text()
         )["observability_alert_policy"],
-        node_manifest_source_revision="a" * 40,
-        node_manifest_deployable_digest="b" * 64,
+        observability_agent_expected_source_revision="a" * 40,
+        observability_agent_expected_deployable_digest="b" * 64,
         observability_push={
             "node_id": "node-fixture",
             "origin": "https://10.23.0.2:9444",

@@ -78,7 +78,7 @@ groups:
           source_generation: "{{ observability_control_plane.expected_targets.expected_source_revision }}"
           summary: Node runs a different source revision or deployable digest than expected.
           runbook: docs/how-to/monitoring-alerts.md#source-identity
-          action: "Expected during a rollout. If it persists after the deploy, run make verify for this node."
+          action: "Expected during a rollout. After the deploy, run make observability-rotate for this node from the deployed checkout."
       - alert: ObservabilityControlPlaneResourceOrPipelineUnhealthy
         expr: >-
           vpn_observability_evidence_state{role=~"tsdb-capacity|expected-target-pipeline",state!="fresh"} == 1

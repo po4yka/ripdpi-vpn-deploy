@@ -143,6 +143,15 @@
         name: observability_kuma
         tasks_from: producers-contract
 
+    # Expect the clean checkout the operator converges from, not a static vars value,
+    # so observability-rotate after a rollout declares the deployed candidate.
+    - name: Capture expected node source identity from the operator checkout
+      ansible.builtin.set_fact:
+        observability_agent_expected_source_revision: >-
+          {{ observability_agent_expected_source_revision | default(lookup('env', 'DEPLOY_SOURCE_REVISION'), true) }}
+        observability_agent_expected_deployable_digest: >-
+          {{ observability_agent_expected_deployable_digest | default(lookup('env', 'DEPLOYABLE_SOURCE_DIGEST'), true) }}
+
     - name: Assert observability agent contract and exact runtime pins
       ansible.builtin.assert:
         that:
@@ -164,8 +173,8 @@
           - observability_agent.queue_max_disk_bytes | default(0) | int == 536870912
           - observability_agent.web_listen | default('') is match('^127\\.0\\.0\\.1:[1-9][0-9]{0,4}$')
           - observability_agent.web_listen.split(':')[-1] | int <= 65535
-          - node_manifest_source_revision | default('') is match('^[0-9a-f]{40}$')
-          - node_manifest_deployable_digest | default('') is match('^[0-9a-f]{64}$')
+          - observability_agent_expected_source_revision | default('') is match('^[0-9a-f]{40}$')
+          - observability_agent_expected_deployable_digest | default('') is match('^[0-9a-f]{64}$')
           - observability_agent.scrape_sample_limit | default(0) | int == 2000
           - observability_agent.scrape_label_limit | default(0) | int >= 1
           - observability_agent.scrape_label_limit | default(0) | int <= 64

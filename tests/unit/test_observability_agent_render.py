@@ -1485,3 +1485,42 @@ def test_adapter_restart_notifications_follow_sender_acceptance():
                     "Restart observability agent health adapter timer"):
         positions = [match.start() for match in re.finditer(handler, tasks)]
         assert positions and all(position > accepted for position in positions)
+
+
+@pytest.mark.parametrize(
+    ("variables", "expected"),
+    [
+        ({}, ("c" * 40, "d" * 64)),
+        (
+            {
+                "observability_agent_expected_source_revision": "a" * 40,
+                "observability_agent_expected_deployable_digest": "b" * 64,
+            },
+            ("a" * 40, "b" * 64),
+        ),
+    ],
+)
+def test_expected_source_identity_follows_operator_checkout(monkeypatch, variables, expected):
+    # Regression: a static vars value kept the agent on an old candidate after every rollout.
+    from ansible.parsing.dataloader import DataLoader
+    from ansible.template import Templar, trust_as_template
+
+    monkeypatch.setenv("DEPLOY_SOURCE_REVISION", "c" * 40)
+    monkeypatch.setenv("DEPLOYABLE_SOURCE_DIGEST", "d" * 64)
+    block = next(
+        t
+        for t in yaml.safe_load((ROLE / "tasks/main.yml").read_text())
+        if t.get("name") == "Configure observability agent when feature is enabled"
+    )["block"]
+    task = next(
+        t for t in block if t.get("name") == "Capture expected node source identity from the operator checkout"
+    )["ansible.builtin.set_fact"]
+    templar = Templar(loader=DataLoader(), variables=variables)
+
+    assert tuple(
+        templar.template(trust_as_template(task[key])).strip()
+        for key in (
+            "observability_agent_expected_source_revision",
+            "observability_agent_expected_deployable_digest",
+        )
+    ) == expected

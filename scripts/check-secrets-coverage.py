@@ -98,6 +98,8 @@ NON_SECRET_TOPLEVEL = {
     "node_manifest_host_class",
     "node_manifest_source_revision",
     "node_manifest_deployable_digest",
+    "observability_agent_expected_source_revision",
+    "observability_agent_expected_deployable_digest",
     # Task-local path to the shared P0 shape renderer.
     "p0_reality_shape_template",
     # real-vps-awg-nat template context assembled by role tasks/pre_tasks

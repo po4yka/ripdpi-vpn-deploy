@@ -349,7 +349,7 @@ def test_collector_adapter_state_alerts_match_relabeled_ingest_node(tmp_path: Pa
              {"incident_family": "source-identity", "evidence_class": "identity-mismatch", "source_generation": "c" * 40,
               "summary": "Node runs a different source revision or deployable digest than expected.",
               "runbook": "docs/how-to/monitoring-alerts.md#source-identity",
-              "action": "Expected during a rollout. If it persists after the deploy, run make verify for this node."}),
+              "action": "Expected during a rollout. After the deploy, run make observability-rotate for this node from the deployed checkout."}),
             ("ObservabilityControlPlaneResourceOrPipelineUnhealthy", "tsdb-capacity", "stale",
              {"incident_family": "control-plane-health", "evidence_class": "resource-or-pipeline-unhealthy",
               "source_generation": "c" * 40,
