@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-11-17
+goal: MON-1794937115554282 Silence external coverage alert during transport deploys

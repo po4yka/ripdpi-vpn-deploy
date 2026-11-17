@@ -183,6 +183,37 @@ def test_runtime_uses_exact_private_inventory_and_removes_plaintext_after_failur
     assert calls[0][3] == 'rotate-credentials' and all(not path.exists() for path in outputs)
 
 
+@pytest.mark.parametrize('check,status,expected', [
+    (False, 0, ['enter:node-id', 'rotate-credentials', 'exit', 'verify']),
+    (False, 1, ['enter:node-id', 'rotate-credentials', 'failed']),
+    (True, 0, ['rotate-credentials-check']),
+])
+def test_runtime_silences_node_coverage_only_around_rotation(manifest, monkeypatch, check, status, expected):
+    from contextlib import contextmanager
+    _value, path = manifest
+    admitted = io.LocalIO(io.load_manifest(path), path)
+    admitted.hosts['upcloud:green']['variables']['observability_node_id'] = 'node-id'
+    events = []
+
+    @contextmanager
+    def silence(node):
+        events.append('enter:' + node)
+        try:
+            yield
+        except ValueError:
+            events.append('failed')
+            raise
+        events.append('exit')
+    monkeypatch.setattr(io, 'coverage_silence', silence)
+    monkeypatch.setattr(io, 'run_command', lambda argv, **_: (events.append(argv[3]), (status, b''))[1])
+    if status:
+        with pytest.raises(ValueError, match='adoption-unconfirmed'):
+            admitted.runtime('upcloud:green', {'private': 'test-only-secret'}, check=check)
+    else:
+        admitted.runtime('upcloud:green', {'private': 'test-only-secret'}, check=check)
+    assert events == expected
+
+
 @pytest.mark.parametrize('action', ['plan', 'prepare', 'run', 'resume', 'status'])
 def test_make_dispatches_literal_inputs_without_operator_configuration(tmp_path, action):
     shutil.copy2(ROOT / 'Makefile', tmp_path / 'Makefile')

@@ -40,7 +40,7 @@ def workspace(tmp_path):
                  "sshd_transaction_limits.py",
                  "validate-ansible-extra-vars.py", "firewall_collector_ingress.py", "transport_semantics.py",
                  "public_site_inputs.py",
-                 "deploy-controller.py", "bootstrap_readiness.py",
+                 "deploy-controller.py", "deployment_silence.py", "bootstrap_readiness.py",
                  "network-exposure-gate.py", "ci_deployment.py", "tailnet_management.py",
                  "no_listener_promotion.py"):
         source = ROOT / "scripts" / name
@@ -253,6 +253,39 @@ os.execv({sys.executable!r}, [{sys.executable!r}, *sys.argv[1:]])
     result = invoke(workspace, target=target, limit="node-one")
     assert result.returncode == 0, result.stderr
     assert json.loads(record.read_text()) == {"timeout": 7200, "stream": True}
+
+
+@pytest.mark.parametrize("target,expected", [("deploy", ["enter", "site", "exit"]), ("dry-run", ["site"])])
+def test_only_deploy_mode_wraps_site_in_the_node_coverage_silence(workspace, target, expected):
+    record = workspace["root"].parent / "site-silence.json"
+    binary = Path(workspace["env"]["PATH"].split(os.pathsep)[0])
+    write(binary / "python3", f"""#!{sys.executable}
+import contextlib, json, os, pathlib, runpy, sys, types
+if len(sys.argv) > 1 and sys.argv[1] == 'scripts/deploy-controller.py':
+    sys.argv = sys.argv[1:]
+    sys.path.insert(0, str(pathlib.Path(sys.argv[0]).resolve().parent))
+    namespace = runpy.run_path(sys.argv[0])
+    globals_ = namespace['controller'].__wrapped__.__globals__
+    events, original = [], globals_['checked']
+    @contextlib.contextmanager
+    def silence(node):
+        events.append('enter')
+        yield
+        events.append('exit')
+    globals_['deployment_silence'] = types.SimpleNamespace(coverage_silence=silence)
+    def record_site(command, **options):
+        if command[0] == 'ansible-playbook' and pathlib.Path(command[1]).name.endswith('-site.json'):
+            events.append('site')
+        return original(command, **options)
+    globals_['checked'] = record_site
+    status = namespace['main']()
+    pathlib.Path({str(record)!r}).write_text(json.dumps(events))
+    raise SystemExit(status)
+os.execv({sys.executable!r}, [{sys.executable!r}, *sys.argv[1:]])
+""", 0o700)
+    result = invoke(workspace, target=target, limit="node-one")
+    assert result.returncode == 0, result.stderr
+    assert json.loads(record.read_text()) == expected
 
 
 def test_restore_runtime_secrets_reach_the_first_tagged_deploy(workspace):
