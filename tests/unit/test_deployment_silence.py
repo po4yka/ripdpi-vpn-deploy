@@ -78,8 +78,12 @@ def test_success_tails_before_deleting_the_exact_coverage_silence(silence, capsy
 
 def test_failed_mutation_deletes_without_tail_and_keeps_its_error(silence):
     gateway = Gateway()
-    with pytest.raises(KeyboardInterrupt), silence(gateway).coverage_silence("node-id", CONFIGURED):
-        raise KeyboardInterrupt
+
+    def interrupted_mutation():
+        with silence(gateway).coverage_silence("node-id", CONFIGURED):
+            raise KeyboardInterrupt
+    with pytest.raises(KeyboardInterrupt):
+        interrupted_mutation()
     assert [call[0] for call in gateway.calls] == ["create", "delete"]
 
 
