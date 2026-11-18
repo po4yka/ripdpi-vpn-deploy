@@ -305,7 +305,8 @@ def test_real_snell_variants_authentication_and_connection_reuse(
         server["log"] = {"level": "info"}
         # This fixture needs a loopback echo; test_real_snell_refuses_loopback_recipients
         # keeps the role's recipient policy.
-        assert server.pop("route")["rules"][-1]["action"] == "reject"
+        route = server.pop("route")
+        assert route["rules"][-1]["action"] == "reject"
         stack.enter_context(engine(snell_binary, tmp_path / "server.json", server, reservations[:-2]))
         echo = stack.enter_context(service(Echo))
         echo.connections, echo.counter_lock = 0, threading.Lock()
