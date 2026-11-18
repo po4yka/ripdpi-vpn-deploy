@@ -103,7 +103,8 @@ def classify_line(line: str) -> str | None:
 
 
 # A client sharing the operator's egress IP must not ban public SSH (fail2ban ignoreip parity).
-SSH_ALLOWLIST = tuple(ipaddress.ip_network(cidr, strict=False) for cidr in {{ ([allowed_ssh_cidrs] if allowed_ssh_cidrs is string else (allowed_ssh_cidrs | default([]))) | list | tojson }})
+{% set _allowed_ssh = allowed_ssh_cidrs | default([]) %}
+SSH_ALLOWLIST = tuple(ipaddress.ip_network(cidr, strict=False) for cidr in {{ ([_allowed_ssh] if _allowed_ssh is string else _allowed_ssh) | list | tojson }})
 
 
 def is_exempt_ip(ip: str) -> bool:
