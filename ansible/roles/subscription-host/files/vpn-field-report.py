@@ -10,9 +10,9 @@ no address, token, header or body reaches a log line, a metric label or a
 file.
 
 Status codes: 202 accepted, 400 invalid body, 401 unknown cohort token,
-404 other path, 411 missing length, 413 body over the limit, 429 over the
-process-wide rate. nginx applies its own per-address rate and size limits
-before this process.
+404 other path, 411 missing length, 413 body over the limit. Rate limiting
+is nginx limit_req per address (429) in front of this process and nowhere
+else, so an unauthenticated flood cannot use up intake for token holders.
 """
 from __future__ import annotations
 
@@ -189,28 +189,10 @@ def write_textfile(path: str, text: str) -> None:
         raise
 
 
-class Bucket:
-    """Process-wide token bucket; it holds no per-client state."""
-
-    def __init__(self, rate: float, burst: int) -> None:
-        self.rate, self.burst = rate, burst
-        self.tokens, self.stamp = float(burst), time.monotonic()
-
-    def take(self) -> bool:
-        now = time.monotonic()
-        self.tokens = min(self.burst, self.tokens + (now - self.stamp) * self.rate)
-        self.stamp = now
-        if self.tokens < 1:
-            return False
-        self.tokens -= 1
-        return True
-
-
 class Ingest:
     def __init__(self, config: dict, tokens: tuple, validate, bounds: list) -> None:
         self.config, self.validate = config, validate
         self.current, self.previous, self.previous_until = tokens
-        self.limiter = Bucket(config["rate_per_second"], config["rate_burst"])
         self.aggregate = Aggregate(config, bounds)
 
     def token_ok(self, header: str | None, now: float) -> bool:
@@ -232,8 +214,6 @@ class Ingest:
             return 411
         if length > self.config["max_body_bytes"]:
             return 413
-        if not self.limiter.take():
-            return 429
         now = time.time()
         if not self.token_ok(headers.get("Authorization"), now):
             return 401

@@ -101,12 +101,10 @@ subscription_field_report:
   # Largest accepted body. nginx keeps a body of this size in memory, so a
   # report never reaches a temporary file on disk.
   max_body_bytes: 65536
-  # Per-address nginx limit. Devices behind one shared address all count.
+  # Per-address nginx limit, the only rate limit on this route. Devices
+  # behind one shared address all count.
   nginx_rate: "30r/m"
   nginx_burst: 20
-  # Process-wide limit behind nginx; it holds no per-client state.
-  app_rate_per_second: 5
-  app_burst: 50
   # Buckets under this many attempts are dropped and counted.
   min_attempts: 5
   # asn/country label a value only when it was in the top N of the previous

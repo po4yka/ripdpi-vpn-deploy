@@ -36,8 +36,6 @@ subscription_field_report:
   max_body_bytes: 65536
   nginx_rate: "30r/m"
   nginx_burst: 20
-  app_rate_per_second: 5
-  app_burst: 50
   min_attempts: 5
   asn_top_n: 20
   country_top_n: 10

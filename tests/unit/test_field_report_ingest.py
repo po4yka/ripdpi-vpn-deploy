@@ -34,8 +34,6 @@ def _config(tmp_path: Path, **overrides) -> dict:
         "listen": "127.0.0.1",
         "path": FIELD_REPORT_PATH,
         "max_body_bytes": 65536,
-        "rate_per_second": 100,
-        "rate_burst": 100,
         "min_attempts": 5,
         "asn_top_n": 20,
         "country_top_n": 10,
@@ -109,7 +107,7 @@ def _samples(text: str) -> dict[str, float]:
 
 
 def test_status_codes_and_only_an_accepted_report_changes_metrics(ingest):
-    _, config = ingest(rate_per_second=0.001, rate_burst=4)
+    _, config = ingest()
     empty = _metrics(config)
     assert _post(config, json.dumps(GOLDEN).encode()) == 202
     accepted = _metrics(config)
@@ -121,10 +119,14 @@ def test_status_codes_and_only_an_accepted_report_changes_metrics(ingest):
     assert _post(config, json.dumps(extra).encode()) == 400
     assert _post(config, json.dumps(GOLDEN).encode(), token="wrongTokenValue_00000000000") == 401
     assert _post(config, b"", length=config["max_body_bytes"] + 1) == 413
-    # 413 is refused before the limiter; this request takes the fourth and last burst token.
-    assert _post(config, json.dumps(GOLDEN).encode()) == 202
-    assert _post(config, json.dumps(GOLDEN).encode()) == 429
     assert _post(config, b"{}", path="/other") == 404
+
+
+def test_unauthenticated_requests_never_starve_a_valid_report(ingest):
+    _, config = ingest()
+    for _ in range(300):
+        assert _post(config, json.dumps(GOLDEN).encode(), token="wrongTokenValue_00000000000") == 401
+    assert _post(config, json.dumps(GOLDEN).encode()) == 202
 
 
 def test_rejections_leave_metrics_unchanged(ingest):

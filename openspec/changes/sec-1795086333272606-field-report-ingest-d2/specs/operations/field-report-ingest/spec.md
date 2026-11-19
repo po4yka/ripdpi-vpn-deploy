@@ -6,12 +6,21 @@ Define how the subscription host accepts, validates, limits and aggregates anony
 
 ### Requirement: REQ-INGEST-VALIDATE — Schema validation and rejection codes
 
-The endpoint MUST accept a POST whose body validates against `contract/client-field-report.schema.json` and whose `cohort_token` is accepted, and MUST respond 400 for schema failure, 401 for a bad cohort token, 413 for a body over the size limit and 429 when the rate limit is exceeded.
+The endpoint MUST accept a POST whose body validates against `contract/client-field-report.schema.json` and whose `cohort_token` is accepted, and MUST respond 400 for schema failure, 401 for a bad cohort token, 413 for a body over the size limit and 429 when the nginx per-address rate limit is exceeded.
 
 #### Scenario: schema validation and rejection codes
 
 - **WHEN** a valid report, a report with an extra property, a bad token, a body over the limit and a burst over the rate limit are posted
 - **THEN** the responses are 2xx, 400, 401, 413 and 429 respectively and only the first changes any metric
+
+### Requirement: REQ-INGEST-AUTHFIRST — One rate-limit layer and authentication first
+
+The nginx `limit_req` per address MUST be the only rate limit on the route, and the ingest MUST check the cohort token before any other work, so unauthenticated requests cannot use up intake for token holders.
+
+#### Scenario: unauthenticated flood does not starve intake
+
+- **WHEN** 300 requests with a bad cohort token reach the ingest and then a valid report follows
+- **THEN** every bad request gets 401 and the valid report gets 202
 
 ### Requirement: REQ-INGEST-NOIP — No IP in logs or labels
 
