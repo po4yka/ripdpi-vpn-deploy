@@ -38,6 +38,7 @@ Complete one task against real infrastructure. Every guide names its preconditio
 | [Device migration during server replacement](how-to/device-migration.md) | Prepare replacement device authority, preserve subscription URLs and gate retirement on explicit path evidence | CORE |
 | [Recreate a lost node and resume after failure](how-to/executable-recovery.md) | Execute reviewed UpCloud replacement, reconcile interruptions and gate completion on device readiness | CORE |
 | [Issue, refresh or revoke a device](how-to/device-lifecycle.md) | Reconcile per-device protocol access and every published grant across the declared fleet | CORE |
+| [Field analytics staging acceptance](how-to/field-analytics-acceptance.md) | Block one protocol on staging with DROP and RST and record classification, ingest, alert, bundle health and client failover | TACTICAL |
 | [Runbook: idle-cycle access-attempt measurement spike](how-to/idle-cycle-measurement.md) | Measurement spike for the bare-HTTPS idle-cycle access-attempt pattern: driver, log collection, correlation | RESEARCH |
 | [Runbook — monitoring alerts](how-to/monitoring-alerts.md) | What each primary Telegram alert means and what to check first | CORE |
 | [Runbook — incidents](how-to/incident.md) | Decision matrix for lost SSH, lost age key, state loss and suspected compromise | CORE |
