@@ -403,11 +403,11 @@ def test_one_report_adds_at_most_the_attempts_cap(tmp_path):
     assert samples['vpn_field_report_network_reports_total{protocol="hysteria2",network="other"}'] == 1
 
 
-def _rendered(name: str, **field_report) -> str:
+def _rendered(name: str, _inventory: dict | None = None, **field_report) -> str:
     spec = importlib.util.spec_from_file_location("field_report_renderer", ROOT / "scripts/check-templates-render.py")
     renderer = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(renderer)
-    variables = renderer.merge_render_vars()
+    variables = {**renderer.merge_render_vars(), **(_inventory or {})}
     defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())["subscription_field_report"]
     variables["subscription_field_report"] = {**defaults, "enabled": True, **field_report}
     return renderer.render_template(ROLE / "templates" / name, variables)
@@ -523,14 +523,14 @@ DATASET_ROWS = (b"1.0.0.0\t1.0.0.255\t0\tNone\tNot routed\n"
 HINT_PATH = "/v1/network-hint"
 
 
-def _dataset(tmp_path: Path, rows: bytes = DATASET_ROWS) -> dict:
+def _dataset(tmp_path: Path, rows: bytes = DATASET_ROWS, fleet_addresses: list[str] | None = None) -> dict:
     import gzip
     import hashlib
 
     path = tmp_path / "ip2asn-combined.tsv.gz"
     path.write_bytes(gzip.compress(rows))
     return {"path": HINT_PATH, "ttl_seconds": 21600, "database": str(path),
-            "database_sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+            "database_sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "fleet_addresses": fleet_addresses or []}
 
 
 def _get(config: dict, peer: str | None, token: str | None = TOKEN, path: str = HINT_PATH) -> tuple[int, bytes, dict]:
@@ -553,7 +553,8 @@ def test_network_hint_answers_from_the_peer_header_and_never_keeps_the_address(i
     contract = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(contract)
     checker = contract.validator(json.loads((ROOT / "contract/client-network-hint.schema.json").read_text()))
-    process, config = ingest(network_hint=_dataset(tmp_path))
+    # 192.0.2.10 and 2001:db8::10 stand for fleet nodes: a fetch through the tunnel arrives from one of them.
+    process, config = ingest(network_hint=_dataset(tmp_path, fleet_addresses=["192.0.2.10", "2001:db8::10"]))
     before = _metrics(config)
     assert _samples(before)["vpn_field_report_network_hint_available"] == 1
 
@@ -566,8 +567,10 @@ def test_network_hint_answers_from_the_peer_header_and_never_keeps_the_address(i
     assert hint["observed_at"].endswith(":00:00Z") and b"192.0.2.77" not in body
     assert json.loads(_get(config, "2001:db8::1")[1])["asn"] == 64501
     assert json.loads(_get(config, "::ffff:192.0.2.1")[1])["asn"] == 64500
-    # Not routed, no country, outside every range, malformed or missing: no hint.
-    for peer in ("198.51.100.9", "203.0.113.9", "10.0.0.1", "192.0.2.1, 203.0.113.9", "not-an-address", None):
+    # A fleet address, not routed, no country, outside every range, malformed or missing: no hint. A fleet
+    # node's own ASN would name the hosting network, never the device's.
+    for peer in ("192.0.2.10", "::ffff:192.0.2.10", "2001:db8::10", "198.51.100.9", "203.0.113.9", "10.0.0.1",
+                 "192.0.2.1, 203.0.113.9", "not-an-address", None):
         assert _get(config, peer)[:2] == (204, b"")
     assert _get(config, "192.0.2.77", token="wrongTokenValue_00000000000")[:2] == (401, b"")
     assert _get(config, "192.0.2.77", token=None)[0] == 401
@@ -618,6 +621,15 @@ def test_a_damaged_or_unpinned_dataset_turns_off_only_the_hint(ingest, tmp_path,
     assert "network hint dataset" in stderr and "network hint is off" in stderr and "Traceback" not in stderr
 
 
+def test_a_malformed_fleet_address_turns_off_only_the_hint(ingest, tmp_path):
+    process, config = ingest(network_hint=_dataset(tmp_path, fleet_addresses=["192.0.2.0/24"]))
+    assert _get(config, "192.0.2.77")[0] == 404
+    assert _samples(_metrics(config))["vpn_field_report_network_hint_available"] == 0
+    process.terminate()
+    _, stderr = process.communicate(timeout=5)
+    assert stderr == "vpn-field-report: network hint fleet address list has a malformed entry; the network hint is off\n"
+
+
 def test_a_gzip_bomb_line_is_refused_inside_the_unit_memory_limit(tmp_path):
     import gzip
     import hashlib
@@ -626,7 +638,7 @@ def test_a_gzip_bomb_line_is_refused_inside_the_unit_memory_limit(tmp_path):
     path = tmp_path / "ip2asn-combined.tsv.gz"
     path.write_bytes(gzip.compress(b"1" * (256 << 20), compresslevel=1))
     hint = {"path": HINT_PATH, "ttl_seconds": 21600, "database": str(path),
-            "database_sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+            "database_sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "fleet_addresses": []}
     config = _config(tmp_path, network_hint=hint)
     _write_config(tmp_path, config)
     # A wrapper runs the service as its only child until the first aggregate is written, so the
@@ -683,10 +695,15 @@ def test_nginx_hint_location_uses_only_the_peer_address_and_refuses_forwarding_h
             '$vpn_network_hint_forwarded {\n    ""      0;\n    default 1;\n}') in limits
     assert "network-hint" not in _rendered("subscription.conf.j2")
     assert "vpn_network_hint" not in _rendered("rate-limit.conf.j2")
-    config = json.loads(_rendered("vpn-field-report.json.j2", network_hint={**defaults, "enabled": True}))
+    inventory = {"groups": {"all": ["vpn-a", "vpn-b", "sub-only"]},
+                 "hostvars": {"vpn-a": {"vpn_service_address": "192.0.2.10", "server_ipv6": "2001:db8::10"},
+                              "vpn-b": {"vpn_service_address": "198.51.100.20"},
+                              "sub-only": {"vpn_service_address": "192.0.2.10", "server_ipv6": ""}}}
+    config = json.loads(_rendered("vpn-field-report.json.j2", _inventory=inventory, network_hint={**defaults, "enabled": True}))
     assert config["network_hint"] == {"path": HINT_PATH, "ttl_seconds": 21600,
                                       "database": "/usr/local/lib/vpn-field-report/ip2asn-combined.tsv.gz",
-                                      "database_sha256": defaults["dataset_sha256"]}
+                                      "database_sha256": defaults["dataset_sha256"],
+                                      "fleet_addresses": ["192.0.2.10", "198.51.100.20", "2001:db8::10"]}
     assert json.loads(_rendered("vpn-field-report.json.j2"))["network_hint"] is None
 
 

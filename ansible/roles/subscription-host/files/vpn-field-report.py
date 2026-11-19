@@ -21,7 +21,8 @@ else, so an unauthenticated flood cannot use up intake for token holders.
 
 The network hint answers GET with the same cohort token: 200 with the ASN
 and country of the request address, 204 when the pinned offline dataset has
-no routed ASN for it, 401 for an unknown token. The address arrives only in
+no routed ASN for it or the address belongs to a fleet node (a fetch through
+the tunnel), 401 for an unknown token. The address arrives only in
 the X-Network-Hint-Peer header that nginx sets from the TCP peer; it is
 looked up in memory and dropped, never logged, counted or stored. A dataset
 that fails its pin or parse check turns off only the hint route (404): report
@@ -124,18 +125,27 @@ class AsnTable:
         if not self.families[4][0]:
             raise ValueError("network hint dataset has no routed IPv4 range")
 
-    def lookup(self, address: str) -> tuple[int, str] | None:
-        try:
-            ip = ipaddress.ip_address(address)
-        except ValueError:
-            return None
-        if ip.version == 6 and ip.ipv4_mapped:
-            ip = ip.ipv4_mapped
+    def lookup(self, ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> tuple[int, str] | None:
         starts, ends, asns, countries = self.families[ip.version]
         index = bisect.bisect_right(starts, int(ip)) - 1
         if index < 0 or int(ip) > ends[index]:
             return None
         return asns[index], countries[2 * index:2 * index + 2].decode("ascii")
+
+
+def peer_address(text: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    try:
+        ip = ipaddress.ip_address(text)
+    except ValueError:
+        return None
+    return ip.ipv4_mapped if ip.version == 6 and ip.ipv4_mapped else ip
+
+
+def fleet_address(text: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
+    address = peer_address(text)
+    if address is None:
+        raise ValueError("network hint fleet address list has a malformed entry")
+    return address
 
 
 def load_tokens(path: str) -> tuple[bytes, bytes | None, float]:
@@ -323,11 +333,14 @@ def write_textfile(path: str, text: str) -> None:
 
 
 class Ingest:
-    def __init__(self, config: dict, tokens: tuple, validate, bounds: list, asn_table: AsnTable | None = None) -> None:
+    def __init__(self, config: dict, tokens: tuple, validate, bounds: list, asn_table: AsnTable | None = None,
+                 fleet: frozenset = frozenset()) -> None:
         self.config, self.validate = config, validate
         self.current, self.previous, self.previous_until = tokens
         self.aggregate = Aggregate(config, bounds)
         self.hint, self.asn_table = config.get("network_hint"), asn_table
+        # A request from a fleet node came through the tunnel: its ASN names the hosting network, never the device's.
+        self.fleet = fleet
         if self.hint:
             self.aggregate.hint_available = int(asn_table is not None)
 
@@ -374,7 +387,8 @@ class Ingest:
         now = time.time()
         if not self.token_ok(headers.get("Authorization"), now):
             return 401, b""
-        found = self.asn_table.lookup(headers.get(HINT_PEER_HEADER, ""))
+        peer = peer_address(headers.get(HINT_PEER_HEADER, ""))
+        found = self.asn_table.lookup(peer) if peer is not None and peer not in self.fleet else None
         if found is None:
             return 204, b""
         observed = datetime.fromtimestamp(now, timezone.utc).strftime("%Y-%m-%dT%H:00:00Z")
@@ -472,16 +486,18 @@ def main(argv: list[str] | None = None) -> int:
         print(f"vpn-field-report: {error if isinstance(error, ValueError) else 'inherited socket is unusable'}", file=sys.stderr)
         return 2
     validate, bounds = load_validator(config["validator"], config["schema"])
-    hint, asn_table = config.get("network_hint"), None
+    hint, asn_table, fleet = config.get("network_hint"), None, frozenset()
     try:
-        asn_table = AsnTable(hint["database"], hint["database_sha256"]) if hint else None
+        if hint:
+            fleet = frozenset(map(fleet_address, hint["fleet_addresses"]))
+            asn_table = AsnTable(hint["database"], hint["database_sha256"])
     except (OSError, EOFError, ValueError) as error:
         # Report intake does not depend on the hint, so it keeps running without the hint route and the
         # gauge shows the loss. A truncated or corrupt gzip stream raises EOFError or OSError; the
         # message never quotes file content.
         reason = error if isinstance(error, ValueError) else "network hint dataset is unreadable"
         print(f"vpn-field-report: {reason}; the network hint is off", file=sys.stderr)
-    ingest = Ingest(config, tokens, validate, bounds, asn_table)
+    ingest = Ingest(config, tokens, validate, bounds, asn_table, fleet)
     ingest.flush()
     server = QuietServer(listener, make_handler(ingest))
     server.serve_forever()
