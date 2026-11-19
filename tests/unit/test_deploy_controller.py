@@ -22,6 +22,10 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[2]
+# Replaces the recorder's exit in the stub `tailscale`: one reply line per answered probe.
+ROUTE_REPLY = ("for _ in range({lines}):\n"
+               "    print('pong from fixture-peer-host (100.64.0.1) via {path} in {rtt}ms')\n"
+               "sys.exit(0)")
 
 
 def write(path, content, mode=0o600):
@@ -107,6 +111,9 @@ sys.exit(0)
 """
     for name in ("ssh", "ansible-playbook", "ansible-inventory"):
         write(binary / name, program, 0o700)
+    # A healthy relayed management route; route-gate tests replace this reply.
+    write(binary / "tailscale", program.replace("sys.exit(0)", ROUTE_REPLY.format(lines=10, path="DERP(fixture)",
+                                                                                   rtt=180)), 0o700)
     for name in ("validate-secrets.py", "spot-check-secrets.py", "check-certs.sh", "audit-log.sh"):
         write(root / "scripts" / name, program, 0o700)
     write(root / "scripts/sshd-promotion-proof.py", program.replace(
@@ -345,7 +352,7 @@ with pathlib.Path({str(workspace['calls'])!r}).open('a') as stream:
     observed = calls(workspace)
     assert [entry["program"] for entry in observed] == [
         "sops", "sshd-promotion-proof.py", "validate-secrets.py", "spot-check-secrets.py", "check-certs.sh", "ssh",
-        "ssh", "ansible-playbook", "ansible-playbook", "audit-log.sh"]
+        "ssh", "tailscale", "ansible-playbook", "ansible-playbook", "audit-log.sh"]
     assert_bootstrap_readiness(observed[5], "100.64.0.1")
     assert_recovery_preflight(observed[6], "100.64.0.1")
     consumers = [entry for entry in observed if "secret" in entry]
@@ -1440,6 +1447,98 @@ def test_multigoal_make_keeps_source_identity_outside_controller_targets(workspa
     assert len([entry for entry in observed if entry["program"] == "audit-log.sh"]) == 1
 
 
+@pytest.mark.parametrize(("lines", "rtt", "path", "category"), [
+    (10, 180, "DERP(fixture)", None),
+    (10, 20, "198.51.100.9:41641", None),
+    (9, 180, "DERP(fixture)", "management-route-lossy"),
+    (10, 650, "DERP(fixture)", "management-route-slow"),
+    (0, 0, "DERP(fixture)", "management-route-unmeasured"),
+], ids=["relayed", "direct", "lossy", "slow", "unmeasured"])
+def test_deploy_measures_tailnet_route_before_mutation(workspace, lines, rtt, path, category):
+    binary = Path(workspace["env"]["PATH"].split(os.pathsep)[0])
+    stub = binary / "tailscale"
+    stub.write_text(stub.read_text().replace(ROUTE_REPLY.format(lines=10, path="DERP(fixture)", rtt=180),
+                                             ROUTE_REPLY.format(lines=lines, path=path, rtt=rtt)))
+    result = invoke(workspace, target="deploy", limit="node-one")
+    observed = calls(workspace)
+    probes = [entry["args"] for entry in observed if entry["program"] == "tailscale"]
+    assert probes == [["ping", "--until-direct=false", "--c", "10", "--timeout", "5s", "100.64.0.1"]]
+    playbooks = [entry for entry in observed if entry["program"] == "ansible-playbook"]
+    if category is None:
+        assert result.returncode == 0, result.stderr
+        kind = "relayed" if path.startswith("DERP(") else "direct"
+        assert f"deploy: management route {kind}, median {rtt} ms" in result.stderr
+        assert "100.64.0.1" not in result.stderr and "fixture-peer-host" not in result.stderr
+        assert len(playbooks) == 2
+    else:
+        assert result.returncode != 0 and "deploy: " + category in result.stderr
+        assert playbooks == []
+
+
+def pong(via, latency):
+    return f"pong from fixture-peer-host (100.64.0.9) via {via} in {latency}"
+
+
+@pytest.mark.parametrize(("transport", "status", "lines", "expected"), [
+    # Median, not mean: six fast and four slow replies average 460 ms but have a 100 ms median.
+    ("100.64.0.9", 0, [pong("DERP(x)", "100ms")] * 6 + [pong("DERP(x)", "1s")] * 4, "relayed, median 100 ms"),
+    ("100.64.0.9", 0, [pong("DERP(x)", "1.2s")] * 10, "management-route-slow"),
+    ("100.64.0.9", 0, [pong("198.51.100.9:41641", "0s")] * 10, "direct, median 0 ms"),
+    ("100.64.0.9", 0, [pong("[2001:db8::9]:41641", "12ms")] * 10, "direct, median 12 ms"),
+    ("100.64.0.9", 0, [pong("peer-relay(198.51.100.7:7777:vni:1)", "40ms")] * 10, "relayed, median 40 ms"),
+    ("100.64.0.9", 1, [pong("DERP(x)", "180ms")] * 10, "management-route-unmeasured"),
+    ("fd7a:115c:a1e0::9", 0, [pong("DERP(x)", "180ms")] * 3, "management-route-lossy"),
+    ("::ffff:100.64.0.9", 0, [], "management-route-unmeasured"),
+    ("100.64.0.9", None, [], "management-route-unmeasured"),
+    ("198.51.100.9", 0, [], None),
+    ("node.example.invalid", 0, [], None),
+], ids=["median", "seconds-slow", "zero-direct", "ipv6-direct", "peer-relay", "cli-failed", "ula-lossy",
+        "mapped-probed", "cli-missing", "public-skipped", "name-skipped"])
+def test_route_gate_parses_cli_replies(monkeypatch, capsys, transport, status, lines, expected):
+    spec = importlib.util.spec_from_file_location("deploy_controller_route", ROOT / "scripts/deploy-controller.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, str(ROOT / "scripts"))
+    spec.loader.exec_module(module)
+    probes = []
+
+    def fake_run(command, **_options):
+        probes.append(command)
+        if status is None:
+            raise module.ReadinessError("command unavailable")
+        return status, "\n".join(lines).encode()
+
+    monkeypatch.setattr(module, "run_command", fake_run)
+    monkeypatch.delenv("DEPLOY_CI_TAILNET_HANDOFF", raising=False)
+    if expected is None:
+        module.require_management_route(transport, {})
+        assert probes == []
+    elif expected.startswith("management-route-"):
+        with pytest.raises(module.DeployError, match="^" + expected + "$"):
+            module.require_management_route(transport, {})
+        assert probes and probes[0][-1] == transport
+    else:
+        module.require_management_route(transport, {})
+        assert capsys.readouterr().err == f"deploy: management route {expected}\n"
+    monkeypatch.setenv("DEPLOY_CI_TAILNET_HANDOFF", "handoff.json")
+    probes.clear()
+    module.require_management_route("100.64.0.9", {})
+    assert probes == [], "CI uses its own tailscaled socket and is not an operator channel"
+
+
+@pytest.mark.parametrize("target", ["dry-run", "deploy-public"])
+def test_route_gate_skips_dry_run_and_public_transport(workspace, target):
+    values = {}
+    if target == "deploy-public":
+        values["ANSIBLE_EXTRA_VARS_FILE"] = str(write(workspace["root"].parent / "overrides.yaml",
+                                                      "ansible_host: 198.51.100.8\n"))
+    context = {"user": "deploy", "host": "node-one", "addr": "198.51.100.44", "laddr": "192.0.2.1", "lport": 2222}
+    pairs = {"node-one": [context, {**context, "laddr": "198.51.100.8"}]} if values else None
+    result = invoke(workspace, target="dry-run" if target == "dry-run" else "deploy", limit="node-one",
+                    context_pairs=pairs, **values)
+    assert result.returncode == 0, result.stderr
+    assert not any(entry["program"] == "tailscale" for entry in calls(workspace))
+
+
 def test_frozen_transport_is_portable_and_retains_original_host_key_identity(workspace):
     root = workspace["root"]
     overrides = write(root.parent / "overrides.yaml", "ansible_host: 198.51.100.8\nansible_port: 2022\n")
@@ -1477,12 +1576,17 @@ pathlib.Path({str(record)!r}).write_text(json.dumps({{'config': config, 'transpo
     assert config["identityagent"] == "none"
     # Ansible shares one run-owned master; readiness keeps a fresh connection.
     assert config["controlmaster"] == "auto" and config["controlpersist"] == "300"
+    # The shared master survives a short relay stall and retries only its initial connection.
+    assert config["serveraliveinterval"] == "15" and config["serveralivecountmax"] == "8"
+    assert config["connectionattempts"] == "3"
+    assert transport["ansible_ssh_timeout"] == 90 and "ansible_ssh_retries" not in transport
     sockets = Path(config["controlpath"]).parent
     assert observed["mode"] == 0o700 and not sockets.exists()
     # ssh binds ControlPath plus a 17-byte random suffix; macOS limits socket paths to 104 bytes.
     assert len(config["controlpath"]) + 17 < 104
     proof = transport["deploy_fresh_ssh_argv"]
-    assert {"ControlPath=none", "ControlMaster=no", "ControlPersist=no"} <= set(proof)
+    assert {"ControlPath=none", "ControlMaster=no", "ControlPersist=no", "ConnectionAttempts=1"} <= set(proof)
+    assert not any(option.startswith("ServerAlive") for option in proof)
     assert proof[-1] == "sudo -n /usr/bin/python3 -I -B -S -"
     assert transport["ansible_ssh_common_args"] == transport["ansible_ssh_extra_args"] == ""
     ssh = next(entry["args"] for entry in calls(workspace) if entry["program"] == "ssh")

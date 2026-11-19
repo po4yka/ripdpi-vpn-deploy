@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-11-19
+goal: SCR-1795082568279731 Tolerate a slow operator channel during deploy
