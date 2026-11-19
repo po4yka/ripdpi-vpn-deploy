@@ -391,3 +391,22 @@ def test_settings_assert_refuses_a_trailing_newline(key):
     value = {"path": FIELD_REPORT_PATH, "cohort_token": TOKEN, "previous_cohort_token": PREVIOUS,
              "previous_cohort_token_valid_until": "2999-01-01T00:00:00Z", "server_refs": "p0-reality-upcloud-prod"}[key]
     assert not _settings_assert_holds(**{key: [value + "\n"] if key == "server_refs" else value + "\n"})
+
+
+@pytest.mark.parametrize(("release", "package"), [("trixie", "python3-jsonschema=4.19.2-6"),
+                                                  ("noble", "python3-jsonschema=4.10.3-2ubuntu1")])
+def test_validator_package_is_pinned_for_each_supported_release(release, package):
+    from ansible.parsing.dataloader import DataLoader
+    from ansible.template import Templar, trust_as_template
+
+    tasks = yaml.safe_load((ROLE / "tasks/field-report.yml").read_text())
+    install = next(task for task in tasks if task["name"] == "Install the field-report contract validator package")
+    guard = next(task for task in tasks if task["name"] == "Require a pinned validator package for this release")
+    defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())["subscription_field_report"]
+    for facts, admitted in (({"distribution_release": release}, True), ({"distribution_release": "bookworm"}, False)):
+        templar = Templar(loader=DataLoader(), variables={"subscription_field_report": defaults, "ansible_facts": facts})
+        assert all(templar.template(trust_as_template("{{ " + condition + " }}"))
+                   for condition in guard["ansible.builtin.assert"]["that"]) is admitted
+    templar = Templar(loader=DataLoader(), variables={"subscription_field_report": defaults,
+                                                      "ansible_facts": {"distribution_release": release}})
+    assert templar.template(trust_as_template(install["ansible.builtin.apt"]["name"])) == package

@@ -53,9 +53,16 @@
     group: "{{ (monitoring | default({})).node_exporter_textfile_group | default('node_exporter_textfile') }}"
     mode: "3775"
 
+- name: Require a pinned validator package for this release
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution_release'] in subscription_field_report.jsonschema_package_versions
+    fail_msg: Add the python3-jsonschema version of this release to subscription_field_report.jsonschema_package_versions.
+    quiet: true
+
 - name: Install the field-report contract validator package
   ansible.builtin.apt:
-    name: python3-jsonschema
+    name: "python3-jsonschema={{ subscription_field_report.jsonschema_package_versions[ansible_facts['distribution_release']] }}"
     state: present
     update_cache: true
     cache_valid_time: 3600

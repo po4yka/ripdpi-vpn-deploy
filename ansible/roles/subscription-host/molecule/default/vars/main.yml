@@ -43,6 +43,9 @@ subscription_field_report:
   country_top_n: 10
   window_seconds: 3600
   max_series: 400
+  jsonschema_package_versions:
+    trixie: "4.19.2-6"
+    noble: "4.10.3-2ubuntu1"
   server_refs: [p0-reality-upcloud-prod]
 field_report:
   cohort_token: "{{ 'molecule-current-cohort' | hash('sha1') }}"
