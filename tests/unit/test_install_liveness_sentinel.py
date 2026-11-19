@@ -226,6 +226,33 @@ def test_required_emitter_failure_refuses_before_remote_writes(setup, monkeypatc
     assert not any(path.exists() for path in s["plaintexts"])
 
 
+@pytest.mark.parametrize(("stderr", "category"), [
+    ("client-payload: payload-input-unavailable", "payload-input-unavailable"),
+    ("client-payload: payload-deadline-exceeded", "payload-deadline-exceeded"),
+    ("client-payload: plaintext secrets unavailable", "command-failed"),
+    ("workspace missing at /private/path", "command-failed"),
+])
+def test_emitter_refusal_reports_only_its_fixed_category(setup, monkeypatch, tmp_path, stderr, category):
+    s = setup
+    real = load(ROOT / "scripts/install_liveness_sentinel.py", "install_liveness_sentinel_real_run")
+    real.InstallError = s["module"].InstallError
+    emitter = tmp_path / "emit-singbox.sh"
+    emitter.write_text(f"#!/bin/sh\nprintf '%s\\n' '{stderr}' >&2\nexit 2\n")
+    emitter.chmod(0o700)
+    original = s["module"]._run
+
+    def emitting_run(command, **kwargs):
+        if Path(command[0]).name == "emit-singbox.sh":
+            return real._run([str(emitter), *command[1:]], **kwargs)
+        return original(command, **kwargs)
+
+    monkeypatch.setattr(s["module"], "_run", emitting_run)
+    with pytest.raises(s["module"].InstallError) as refused:
+        s["install"]()
+    assert str(refused.value) == category
+    assert not s["bundles"]
+
+
 def test_awg_context_resolves_canonical_listener_default(monkeypatch):
     module = load(ROOT / "scripts/install_liveness_sentinel.py", "installer_awg_context")
     monkeypatch.setattr(module, "_run", lambda *_args, **_kwargs: b"192.0.2.3\n")

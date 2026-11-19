@@ -50,6 +50,11 @@ class InstallError(ValueError):
     """Categorical diagnostics only; subprocess/config contents stay private."""
 
 
+# The emitter's own fixed refusal lines; every other emitter failure stays command-failed.
+EMITTER_REFUSALS = {b"client-payload: " + category.encode() + b"\n": category
+                    for category in ("payload-input-unavailable", "payload-deadline-exceeded")}
+
+
 def _read_awg_private_key(stream):
     try:
         if not stream.isatty():
@@ -69,11 +74,13 @@ def _read_awg_private_key(stream):
         raise InstallError("private-key-terminal-unavailable") from None
 
 
-def _run(command, *, environment=None, input_bytes=b"", timeout=30):
+def _run(command, *, environment=None, input_bytes=b"", timeout=30, refusals=None):
     try:
-        return bounded_command(command, environment=environment, input_bytes=input_bytes, timeout=timeout, limit=LIMIT)
-    except InspectionError:
-        raise InstallError("command-failed") from None
+        return bounded_command(command, environment=environment, input_bytes=input_bytes, timeout=timeout, limit=LIMIT,
+                               refusals=refusals)
+    except InspectionError as error:
+        category = str(error)
+        raise InstallError(category if refusals and category in refusals.values() else "command-failed") from None
 
 
 def _read(path, private=False):
@@ -712,7 +719,7 @@ def install(config_path, sid, client, registry_path, *, read_awg_stdin=False, st
                     # sing-box ECH/BBR recipient. Select that intermediate explicitly.
                     selection = ["--xhttp-only"] if fmt == "ripdpi" else []
                     emitted[fmt] = _json(_run([str(REPO / "scripts/emit-singbox.sh"), client, *selection, "--profile-format", fmt],
-                                             environment=emit_env, timeout=120))
+                                             environment=emit_env, timeout=120, refusals=EMITTER_REFUSALS))
             defaults, cohort, endpoint = {}, {}, None
             if "p2-amneziawg" in required:
                 defaults, cohort, endpoint = _awg_context(secrets, sentinel, mapping, env)

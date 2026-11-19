@@ -327,5 +327,11 @@ def finalize(intent, environment, *, clock=None):
                     raise ValueError
             _ensure(paths['proof'], proof)
             return paths['proof']
+    except PromotionError:
+        raise
+    except installer.InstallError as error:
+        category = str(error)
+        raise PromotionError('recovery-promotion-' + category if category in installer.EMITTER_REFUSALS.values()
+                             else 'recovery-promotion-finalization-refused') from None
     except (OSError, ValueError, TypeError, KeyError):
         raise PromotionError('recovery-promotion-finalization-refused') from None

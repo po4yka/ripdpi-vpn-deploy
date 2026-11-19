@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-19
+goal: OPS-1795083694897534 Report specific onboarding refusal categories in SSH
+  baseline failure receipts

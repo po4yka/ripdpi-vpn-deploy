@@ -918,6 +918,26 @@ def test_emit_singbox_missing_client_exits_nonzero(tmp_path):
     ), "script should exit non-zero for an unknown client name"
 
 
+@pytest.mark.parametrize("plaintext", [False, True], ids=["sops", "plaintext"])
+def test_unavailable_terraform_endpoint_reports_its_fixed_category(tmp_path, plaintext):
+    # A fresh worktree without the Terraform workspace data makes `output` fail.
+    secrets_json = _secrets_as_json(tmp_path)
+    env = _build_env(tmp_path, secrets_json)
+    failing = tmp_path / "bin" / "terraform"
+    failing.write_text("#!/bin/sh\necho 'workspace missing at /private/path' >&2\nexit 1\n")
+    failing.chmod(0o700)
+    if plaintext:
+        env.pop("SOPS_FILE")
+        env["VPN_SECRETS_FILE"] = str(secrets_json)
+
+    result = subprocess.run(["bash", str(SCRIPT), "laptop"], capture_output=True, text=True, env=env,
+                            cwd=str(REPO_ROOT))
+
+    assert result.returncode == 2
+    assert not result.stdout
+    assert result.stderr == "client-payload: payload-input-unavailable\n"
+
+
 @pytest.mark.parametrize('credential', ['psk', 'userkey'])
 def test_snell_empty_consumed_credentials_refuse_without_partial_output(tmp_path, credential):
     result = _run_snell_only_script(tmp_path, empty_credential=credential)

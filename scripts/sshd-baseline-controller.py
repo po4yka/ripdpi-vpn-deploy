@@ -45,6 +45,19 @@ FAILURE_REASONS = {
     "transaction-receipt-invalid",
     "status-rpc-failed",
 }
+# Fixed recovery/cloud promotion refusals reported as themselves instead of onboarding-refused.
+PROMOTION_REASONS = {
+    "recovery-promotion-clean-source-required",
+    "recovery-promotion-finalization-refused",
+    "recovery-promotion-intent-refused",
+    "recovery-promotion-journal-mismatch",
+    "recovery-promotion-output-conflict",
+    "recovery-promotion-payload-deadline-exceeded",
+    "recovery-promotion-payload-input-unavailable",
+    "recovery-promotion-source-mismatch",
+    "recovery-promotion-target-mismatch",
+}
+FAILURE_REASONS |= PROMOTION_REASONS
 REQUEST_FIELDS = {
     "schema_version", "mode", "inventory_alias", "inventory_path", "known_hosts_path",
     "contexts", "hardening_b64", "bundle_generation", "timeout_seconds",
@@ -311,8 +324,12 @@ def prepare_promotion(path, environment):
             from disposable_promotion import finalize
             return finalize(document, environment), True
         if isinstance(document, dict) and document.get("kind") in {"recovery-promotion-intent", "cloud-promotion-intent"}:
-            from recovery_promotion import finalize
-            return finalize(document, environment), True
+            from recovery_promotion import PromotionError, finalize
+            try:
+                return finalize(document, environment), True
+            except PromotionError as error:
+                category = str(error)
+                raise BaselineError(category if category in PROMOTION_REASONS else "onboarding-refused") from None
         if no_listener_promotion.is_kind(document):
             # A dict, not a path: the caller binds it to the target and runs no external proof.
             return document, False

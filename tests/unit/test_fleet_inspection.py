@@ -379,6 +379,11 @@ def test_command_input_stderr_and_exit_are_bounded():
         m.bounded_command([sys.executable, "-c", "import sys;sys.stderr.write('x'*1024)"], limit=100)
     with pytest.raises(m.InspectionError, match="command-failed"):
         m.bounded_command([sys.executable, "-c", "raise SystemExit(2)"])
+    refusals = {b"known\n": "fixed-category"}
+    for stderr, category in ((r"known\n", "fixed-category"), (r"known /private/path\n", "command-failed")):
+        with pytest.raises(m.InspectionError, match=f"^{category}$"):
+            m.bounded_command([sys.executable, "-c", f"import sys;sys.stderr.write('{stderr}');raise SystemExit(2)"],
+                              refusals=refusals)
 
 
 @pytest.mark.parametrize("operation", ["read", "write"])
