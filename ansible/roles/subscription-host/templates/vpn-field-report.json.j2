@@ -12,6 +12,12 @@
   'max_series': subscription_field_report.max_series | int,
   'window_seconds': subscription_field_report.window_seconds | int,
   'server_refs': subscription_field_report.server_refs | list,
+  'network_hint': ({
+    'path': subscription_field_report.network_hint.path,
+    'ttl_seconds': subscription_field_report.network_hint.ttl_seconds | int,
+    'database': '/usr/local/lib/vpn-field-report/ip2asn-combined.tsv.gz',
+    'database_sha256': subscription_field_report.network_hint.dataset_sha256,
+  } if subscription_field_report.network_hint.enabled | default(false) else none),
   'textfile': '/var/lib/vpn-field-report/vpn_field_report.prom',
   'schema': '/usr/local/lib/vpn-field-report/client-field-report.schema.json',
   'validator': '/usr/local/lib/vpn-field-report/validate_field_report.py',

@@ -86,6 +86,10 @@ Thumbs.db
 # Public immutable inputs for the local AWG source-candidate lab.
 /.cache/awg-source-candidate/
 
+# Pinned offline IP-to-ASN dataset for the subscription-host network hint
+# (scripts/refresh-ip-asn-dataset.sh); deploy copies it from here.
+/.cache/ip-asn/
+
 # Claude Code / oh-my-claudecode local state
 # Track project-scoped skills and shared settings only; ignore runtime state under .claude/.
 /.claude/*

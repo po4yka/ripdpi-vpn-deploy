@@ -67,6 +67,33 @@ The field reports are unauthenticated client input under one shared cohort token
 - **WHEN** one report holds 4000 attempts with a cap of 1000, and one network sends a single report with 100000 attempts while 20 other networks send three or more small reports
 - **THEN** the report adds 1000 attempts in its original proportions and is counted as capped, and only the 20 networks with enough reports receive their own label
 
+### Requirement: REQ-HINT-RESPONSE — Network hint answer
+
+The ingest MUST answer `GET` on the network-hint path, after the same cohort-token check as the report route, with 200 and a body that validates against `contract/client-network-hint.schema.json`, 204 with no body when the address has no routed ASN and country, 401 for a bad token and 404 when the hint is off. The hint MUST NOT change a report counter.
+
+#### Scenario: network hint answer
+
+- **WHEN** hints are requested for an address in a routed range, an IPv6 and an IPv4-mapped address, a not-routed, country-less, unknown or malformed address, a bad or missing token, and with the hint off
+- **THEN** the answers are 200 with a valid hint, 204, 401 and 404 respectively and the metrics are unchanged
+
+### Requirement: REQ-HINT-PEER — Only the TCP peer address is looked up and none is kept
+
+nginx MUST pass the TCP peer address in its own header, MUST NOT pass a forwarding header and MUST refuse with 400 a request that carries `X-Forwarded-For`, `Forwarded`, `X-Real-IP` or the peer header, under its own per-address `limit_req` zone. The ingest MUST NOT write the address to a response, log, metric or file.
+
+#### Scenario: only the tcp peer address is looked up and none is kept
+
+- **WHEN** the vhost is rendered with the hint on, and hints are served and the service output and state are searched for the requested addresses
+- **THEN** the location sets the peer header from `$remote_addr`, clears the forwarding headers, refuses their presence and has no `real_ip` directive, and no address is found
+
+### Requirement: REQ-HINT-DATASET — Pinned offline dataset
+
+The IP-to-ASN dataset MUST carry a license compatible with the repository, recorded in a third-party notice, and MUST be pinned by version and SHA-256. Deploy MUST copy only the controller file matching the pin and never fetch the dataset; the ingest MUST verify the SHA-256 and refuse a malformed, overlapping or truncated dataset at start; an operator script MUST refresh it and pin only a file the ingest loads.
+
+#### Scenario: pinned offline dataset
+
+- **WHEN** the service starts with a pin mismatch, an overlapping range, a non-numeric AS, a reversed range, a short line, no IPv4 range or a truncated gzip, and the refresh script receives a good and an overlapping download
+- **THEN** the service exits 2 with a categorical message, the good download is stored with its printed pin and the bad one is refused
+
 ### Requirement: REQ-INGEST-SECREVIEW — Security review is recorded
 
 The verification file MUST record the `security-review` skill result for the endpoint covering authentication, abuse limits, input validation, log content and denial of service.

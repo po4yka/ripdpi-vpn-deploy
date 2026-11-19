@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Aggregate anonymous client field reports into bounded Prometheus counters.
 
-One loopback POST route behind the subscription vhost. A request carries the
+One loopback POST route behind the subscription vhost, and an optional GET
+network hint route (contract/client-network-hint.schema.json). A request carries the
 cohort token as ``Authorization: Bearer <token>`` and one report body that
 follows contract/client-field-report.schema.json. The shared contract
 validator checks the body; the aggregate is written to the node_exporter
@@ -13,12 +14,23 @@ Status codes: 202 accepted, 400 invalid body, 401 unknown cohort token,
 404 other path, 411 missing length, 413 body over the limit. Rate limiting
 is nginx limit_req per address (429) in front of this process and nowhere
 else, so an unauthenticated flood cannot use up intake for token holders.
+
+The network hint answers GET with the same cohort token: 200 with the ASN
+and country of the request address, 204 when the pinned offline dataset has
+no routed ASN for it, 401 for an unknown token. The address arrives only in
+the X-Network-Hint-Peer header that nginx sets from the TCP peer; it is
+looked up in memory and dropped, never logged, counted or stored.
 """
 from __future__ import annotations
 
 import argparse
+import bisect
+import gzip
+import hashlib
 import hmac
 import importlib.util
+import io
+import ipaddress
 import json
 import os
 import re
@@ -27,6 +39,7 @@ import sys
 import tempfile
 import threading
 import time
+from array import array
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -52,6 +65,61 @@ def load_validator(validator_path: str, schema_path: str):
     checker = module.validator(schema)
     bounds = schema["x-latency-bounds-ms"]
     return (lambda report: module.violations(report, checker)), bounds
+
+
+HINT_PEER_HEADER = "X-Network-Hint-Peer"
+COUNTRY = re.compile(rb"^[A-Z]{2}$")
+
+
+class AsnTable:
+    """Routed address ranges of the pinned iptoasn ip2asn-combined TSV, held compactly for bisect lookups.
+
+    Each line is range_start, range_end, AS number, country and description, tab separated and
+    sorted by range_start within each address family. AS 0 (not routed) and rows without a
+    two-letter country are skipped. Anything else that does not parse, or a range that overlaps
+    the one before it, refuses the whole file: a damaged dataset must not answer.
+    """
+
+    def __init__(self, path: str, sha256: str) -> None:
+        data = Path(path).read_bytes()
+        if hashlib.sha256(data).hexdigest() != sha256:
+            raise ValueError("network hint dataset does not match its pinned SHA-256")
+        self.families = {4: (array("I"), array("I"), array("I"), bytearray()), 6: ([], [], array("I"), bytearray())}
+        last_end = {4: -1, 6: -1}
+        # Stream the lines: the decompressed table is several times the 128M unit memory limit as one list.
+        for line in gzip.GzipFile(fileobj=io.BytesIO(data)):
+            try:
+                first, last, asn, country, _ = line.split(b"\t", 4)
+                start, end = ipaddress.ip_address(first.decode("ascii")), ipaddress.ip_address(last.decode("ascii"))
+                number = int(asn)
+            except ValueError:
+                raise ValueError("network hint dataset has a malformed line") from None
+            if start.version != end.version or int(start) > int(end) or int(start) <= last_end[start.version] \
+                    or not 0 <= number <= 4294967295:
+                raise ValueError("network hint dataset has a malformed or overlapping range")
+            last_end[start.version] = int(end)
+            if number == 0 or not COUNTRY.fullmatch(country):
+                continue
+            starts, ends, asns, countries = self.families[start.version]
+            starts.append(int(start))
+            ends.append(int(end))
+            asns.append(number)
+            countries += country
+        if not self.families[4][0]:
+            raise ValueError("network hint dataset has no routed IPv4 range")
+
+    def lookup(self, address: str) -> tuple[int, str] | None:
+        try:
+            ip = ipaddress.ip_address(address)
+        except ValueError:
+            return None
+        if ip.version == 6 and ip.ipv4_mapped:
+            ip = ip.ipv4_mapped
+        starts, ends, asns, countries = self.families[ip.version]
+        index = bisect.bisect_right(starts, int(ip)) - 1
+        if index < 0 or int(ip) > ends[index]:
+            return None
+        return asns[index], countries[2 * index:2 * index + 2].decode("ascii")
 
 
 def load_tokens(path: str) -> tuple[bytes, bytes | None, float]:
@@ -233,10 +301,11 @@ def write_textfile(path: str, text: str) -> None:
 
 
 class Ingest:
-    def __init__(self, config: dict, tokens: tuple, validate, bounds: list) -> None:
+    def __init__(self, config: dict, tokens: tuple, validate, bounds: list, asn_table: AsnTable | None = None) -> None:
         self.config, self.validate = config, validate
         self.current, self.previous, self.previous_until = tokens
         self.aggregate = Aggregate(config, bounds)
+        self.hint, self.asn_table = config.get("network_hint"), asn_table
 
     def token_ok(self, header: str | None, now: float) -> bool:
         scheme, _, value = (header or "").partition(" ")
@@ -275,6 +344,20 @@ class Ingest:
         self.flush()
         return 202
 
+    def network_hint(self, path: str, headers) -> tuple[int, bytes]:
+        if not self.hint or path != self.hint["path"]:
+            return 404, b""
+        now = time.time()
+        if not self.token_ok(headers.get("Authorization"), now):
+            return 401, b""
+        found = self.asn_table.lookup(headers.get(HINT_PEER_HEADER, ""))
+        if found is None:
+            return 204, b""
+        observed = datetime.fromtimestamp(now, timezone.utc).strftime("%Y-%m-%dT%H:00:00Z")
+        hint = {"schema_version": 1, "asn": found[0], "country": found[1], "observed_at": observed,
+                "ttl_seconds": self.hint["ttl_seconds"]}
+        return 200, json.dumps(hint, separators=(",", ":")).encode()
+
     def flush(self) -> None:
         write_textfile(self.config["textfile"], self.aggregate.render())
 
@@ -304,6 +387,17 @@ def make_handler(ingest: Ingest):
         def finish(self):
             self.deadline.cancel()
             super().finish()
+
+        def do_GET(self):
+            status, body = ingest.network_hint(self.path, self.headers)
+            self.send_response(status)
+            if body:
+                self.send_header("Content-Type", "application/json")
+            if status != 204:
+                self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
 
         def do_POST(self):
             status = ingest.handle(self.path, self.headers, self.rfile.read)
@@ -336,7 +430,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"vpn-field-report: {error if isinstance(error, ValueError) else 'cohort token file is unreadable'}", file=sys.stderr)
         return 2
     validate, bounds = load_validator(config["validator"], config["schema"])
-    ingest = Ingest(config, tokens, validate, bounds)
+    hint = config.get("network_hint")
+    try:
+        asn_table = AsnTable(hint["database"], hint["database_sha256"]) if hint else None
+    except (OSError, EOFError, ValueError) as error:
+        # A truncated or corrupt gzip stream raises EOFError or OSError; the message never quotes file content.
+        print(f"vpn-field-report: {error if isinstance(error, ValueError) else 'network hint dataset is unreadable'}", file=sys.stderr)
+        return 2
+    ingest = Ingest(config, tokens, validate, bounds, asn_table)
     ingest.flush()
     server = QuietServer((config["listen"], config["port"]), make_handler(ingest))
     server.serve_forever()

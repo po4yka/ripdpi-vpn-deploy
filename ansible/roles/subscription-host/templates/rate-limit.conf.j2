@@ -3,6 +3,15 @@ limit_req_zone $binary_remote_addr zone=vpn_sub_per_ip:10m rate={{ subscription.
 {% if subscription_field_report.enabled | default(false) %}
 # Field reports: a separate per-address zone held in nginx shared memory only.
 limit_req_zone $binary_remote_addr zone=vpn_field_report_per_ip:10m rate={{ subscription_field_report.nginx_rate }};
+{% if subscription_field_report.network_hint.enabled | default(false) %}
+# Network hint: its own per-address zone. The hint uses only the TCP peer address, so any
+# client-supplied forwarding header, or a copy of the peer header, marks the request for refusal.
+limit_req_zone $binary_remote_addr zone=vpn_network_hint_per_ip:10m rate={{ subscription_field_report.network_hint.nginx_rate }};
+map "$http_x_forwarded_for$http_forwarded$http_x_real_ip$http_x_network_hint_peer" $vpn_network_hint_forwarded {
+    ""      0;
+    default 1;
+}
+{% endif %}
 {% endif %}
 
 # Never include URI, headers, addresses, or token-bearing fields here.
