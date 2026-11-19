@@ -42,6 +42,7 @@ import json
 import os
 import re
 import socket
+import socketserver
 import sys
 import tempfile
 import threading
@@ -458,9 +459,9 @@ def inherited_listener() -> socket.socket:
 
 class QuietServer(HTTPServer):
     def __init__(self, listener: socket.socket, handler) -> None:
-        # The socket unit owns the address and its permissions; the server only accepts on it.
-        super().__init__(None, handler, bind_and_activate=False)
-        self.socket.close()
+        # The socket unit owns the address and its permissions; the server only accepts on it. TCPServer.__init__
+        # would create an AF_INET socket, which RestrictAddressFamilies=AF_UNIX refuses, so it is skipped.
+        socketserver.BaseServer.__init__(self, None, handler)
         self.socket = listener
 
     def handle_error(self, request, client_address):
