@@ -26,6 +26,7 @@ import argparse
 import base64
 import binascii
 import copy
+import importlib.util
 import ipaddress
 import json
 import os
@@ -44,6 +45,15 @@ from transport_semantics import hysteria_hopping_matches, hysteria_port_hopping 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = REPO_ROOT / "contract" / "ripdpi-bundle.schema.json"
 DEFAULT_TARGET = REPO_ROOT / "contract" / "ripdpi-bundle.example.json"
+
+
+def _contract_validator(schema: dict):
+    """The field-report validator's Draft 2020-12 checker: ``pattern`` anchors ``$`` at end of input."""
+    spec = importlib.util.spec_from_file_location(
+        "validate_field_report", Path(__file__).resolve().parent / "validate-field-report.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.validator(schema)
 
 
 def _read_runtime_materialized(path: Path) -> str:
@@ -314,7 +324,7 @@ def main() -> int:
         return 2
 
     try:
-        import jsonschema
+        import jsonschema  # noqa: F401 - availability check before the shared validator imports it
     except ImportError:
         print(
             "validate-bundle: missing 'jsonschema' — `pip install jsonschema`",
@@ -343,7 +353,7 @@ def main() -> int:
     runtime_errors: list[str] = []
     if args.runtime_materialized:
         ripdpi, runtime_errors = _normalize_runtime_materialized(ripdpi)
-    validator = jsonschema.Draft202012Validator(schema)
+    validator = _contract_validator(schema)
     errors = sorted(validator.iter_errors(ripdpi), key=lambda e: list(e.absolute_path))
 
     fp_errors = ([] if errors else _fingerprint_errors(ripdpi) + _address_errors(ripdpi) + _semantic_errors(ripdpi))
