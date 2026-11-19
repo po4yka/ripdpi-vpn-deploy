@@ -54,9 +54,17 @@ The existing nginx binary runs with its own configuration, pid and temporary
 directory; shared VPN nginx units, sites and 80/443 listeners are never touched.
 Its IP SAN is verified without DNS or SNI. Ingress forwards only to a loopback
 vmagent relay (`127.0.0.1:19091`, own pin and `/opt/observability-collector-vmagent`
-root) with `extra_label=ingress_node=<cert-bound id>`. vmagent appends extra labels
-instead of replacing them, so its relabel file drops any payload `node` and maps
-`ingress_node` to `node`. Do not use `$1` after the `rewrite ^` regex, which resets captures.
+root) with `extra_label=<ingress label>=<cert-bound id>`. vmagent appends extra labels
+after the payload labels instead of replacing them, and a payload may repeat any
+label name; reads then see the payload copy first. The ingress label name is
+`ingress_` plus 32 hex characters of a SHA-256 over the collector's private TLS key,
+rendered into both the nginx route and the relay file, so no sender can supply it;
+the relay drops payload `node` and `ingress_node` and reads identity only from it.
+This depends on vmagent adding extra labels at ingestion: if a release stops
+adding them, the relay keep rule drops every series (loud loss, never a forged
+identity). Rotating the server key renames the label; both files render
+in one converge, and series that cross the gap are dropped, not mislabelled.
+Do not use `$1` after the `rewrite ^` regex, which resets captures.
 The same file then repeats the sender's literal metric and label allowlist, so a
 node cannot store what its own sender would drop; a unit test fails when the two
 templates differ. The relay unit bounds labels (16, 64-byte names, 128-byte
@@ -101,8 +109,9 @@ existence and do not need read access to its contents.
 When explicitly enabled, expected targets are validated from a repository
 inventory and rendered as bounded contract metrics; source/deploy identity,
 TSDB capacity, and pipeline status use the existing bounded evidence families.
-The relay keeps payload `node` only for `vpn_protocol_probe_*` from the collector's
-own agent identity, so probe series name the probed node; other senders cannot.
+The relay keeps payload `node` only for `vpn_protocol_probe_*` whose ingress label
+holds the collector's own agent identity, so probe series name the probed node;
+other senders cannot.
 The protocol-liveness adapter consumes only the canonical evaluator's published
 redacted evidence. It maps that evidence to bounded one-hot metrics and never
 executes probes or recomputes sentinel, variant, profile, or quorum semantics.

@@ -1,5 +1,8 @@
 # Write-only ingestion. Prometheus, status and administrative APIs stay loopback-only.
 # The loopback relay replaces any payload node label with the certificate-bound path id.
+# The identity travels under a label name derived from the collector's private TLS key,
+# so a sender cannot put a second copy of it in its payload; the relay derives the same name.
+{% set ingress_label = 'ingress_' ~ (('observability-ingress-label:' ~ (observability_control_plane.tls | default({})).server_key_pem | default('')) | hash('sha256'))[:32] %}
 limit_req_zone $ssl_client_s_dn zone=observability_remote_write_rate:10m rate={{ observability_control_plane.request_rate }};
 limit_conn_zone $ssl_client_s_dn zone=observability_remote_write_conn:10m;
 limit_conn_zone $server_addr zone=observability_remote_write_total:1m;
@@ -35,8 +38,8 @@ server {
         limit_conn observability_remote_write_total {{ observability_control_plane.request_concurrency }};
         limit_req zone=observability_remote_write_rate burst={{ observability_control_plane.request_rate_burst }} nodelay;
         # The rewrite regex resets $1; use the certificate map value already equal to it.
-        # The relay relabels ingress_node to node and drops any payload node label.
-        rewrite ^ /api/v1/write?extra_label=ingress_node=$observability_remote_write_node break;
+        # The relay maps the private ingress label to node and drops any payload node label.
+        rewrite ^ /api/v1/write?extra_label={{ ingress_label }}=$observability_remote_write_node break;
         proxy_pass http://{{ observability_control_plane.relay_listen }};
         proxy_request_buffering off;
         proxy_buffering off;
