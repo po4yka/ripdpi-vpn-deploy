@@ -455,18 +455,18 @@ groups:
         expr: >-
           (
             (
-              sum by (environment, protocol, network) (increase(vpn_field_report_failures_total{node=~""}[1h]))
-              / sum by (environment, protocol, network) (increase(vpn_field_report_attempts_total{node=~""}[1h]))
+              sum by (environment, protocol, network) (increase(vpn_field_report_failures_total{node=~"",network!~"other|unknown"}[1h]))
+              / sum by (environment, protocol, network) (increase(vpn_field_report_attempts_total{node=~"",network!~"other|unknown"}[1h]))
             ) > 0.5
             and on (environment, protocol, network)
-            sum by (environment, protocol, network) (increase(vpn_field_report_attempts_total{node=~""}[1h])) >= 100
+            sum by (environment, protocol, network) (increase(vpn_field_report_attempts_total{node=~"",network!~"other|unknown"}[1h])) >= 100
             and on (environment, protocol, network)
-            sum by (environment, protocol, network) (increase(vpn_field_report_network_reports_total{node=~""}[1h])) >= 10
+            sum by (environment, protocol, network) (increase(vpn_field_report_network_reports_total{node=~"",network!~"other|unknown"}[1h])) >= 10
             and on (environment, protocol)
             (min by (environment, protocol) (vpn_protocol_probe_success) == 1)
           )
           * on (environment, protocol, network) group_left (country)
-          (0 * topk by (environment, protocol, network) (1, sum by (environment, protocol, network, country) (increase(vpn_field_report_attempts_total{node=~""}[1h]))) + 1)
+          (0 * topk by (environment, protocol, network) (1, sum by (environment, protocol, network, country) (increase(vpn_field_report_attempts_total{node=~"",network!~"other|unknown"}[1h]))) + 1)
         for: 30m
         keep_firing_for: 3m
         labels: {severity: "warning", component: field-report, node: field-reports}

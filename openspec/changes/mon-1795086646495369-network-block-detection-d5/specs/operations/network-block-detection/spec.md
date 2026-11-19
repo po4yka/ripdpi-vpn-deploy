@@ -45,6 +45,15 @@ The field-report alerts MUST read field-report series only from the configured s
 - **WHEN** an enrolled node that is no configured subscription host sends field-report series for a full divergence
 - **THEN** neither field-report alert fires
 
+### Requirement: REQ-BLOCK-NAMED-NETWORK — Only a named network can be blocked
+
+The block alert MUST NOT evaluate the folded `network` values `other` and `unknown` in any of its selectors, because each folds many networks and names none to rotate away from. The fleet-wide failure-ratio alert MUST keep counting them.
+
+#### Scenario: the folded values pass every threshold
+
+- **WHEN** reports labelled `network="other"` or `network="unknown"` show a full divergence while the sentinel sees the protocol healthy
+- **THEN** the block alert does not fire and the failure-ratio alert fires for that value
+
 ### Requirement: REQ-BLOCK-HINT — Rotation hint is advisory
 
 The alert annotation MUST include the failure-stage mix and a rotation hint, and `scripts/fleet-rotate.sh` PLAN mode MUST be able to show the hint while MUST NOT start any rotation from it.
