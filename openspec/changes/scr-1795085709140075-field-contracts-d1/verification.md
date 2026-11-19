@@ -1,9 +1,9 @@
 ---
 task_id: SCR-1795085709140075
 change: scr-1795085709140075-field-contracts-d1
-commit_sha: 207bb88153af9fe7b0748a2590cbb97acace1724
+commit_sha: e29d801c
 local: passed
-local_evidence: Second security review fixes at 8ed78023 and 820ffaab pass the local checks in the section of that name at cba6b1e8. At 207bb881, `python3 -m pytest tests/unit/test_bundle_schema.py tests/unit/test_emit_singbox_roundtrip.py tests/unit/test_xhttp_alternate_profiles.py tests/unit/test_docs_index.py tests/unit/test_agent_instructions.py tests/unit/test_client_payload_recipient_boundaries.py tests/unit/test_device_migration_receipt.py tests/unit/test_client_drift.py` exit 0 (460 passed); every contract fixture validated by its validator (6 accepted, 31 negatives rejected); `make snapshot-check` exit 0; `make docs-check` exit 0; `./taskctl openspec cli validate scr-1795085709140075-field-contracts-d1 --strict --no-interactive` exit 0; `./taskctl validate` exit 0. The full `tests/unit` run had 161 failures and 54 errors, all in privileged or host-runtime tests; the same tests fail identically on a clean export of the base revision. `make check` was not run, because its unit stage carries those local host failures.
+local_evidence: Network-source and network-hint amendment: At 57891014 (logs in the session run directory runs-nethint): focused pytest of 14 files (ingest, contract, bundle generation, secrets schema, alert rules with promtool, control-plane and agent render, fleet rotation, acceptance, agent instructions, docs index, governance, sing-box round trip, audit hooks) exit 0, 776 passed; `ansible-lint --offline` on subscription-host, observability_control_plane and observability_agent exit 0; yamllint on the same roles exit 0; `make shellcheck` exit 0; `scripts/check-templates-render.py` exit 0; `make snapshot-check` exit 0; `make docs-check` exit 0; every contract golden validates and every report, hint and bundle negative is rejected for its named reason; `./taskctl openspec cli validate --strict` exit 0 for D1 and D2; `./taskctl validate` exit 0. `test_typed_role_guard_capture_times_out_and_reaps_owned_process` failed once inside a long run and passed alone (timing-sensitive, unrelated). `make molecule-test` and `make check` were not run. Second security review fixes at 8ed78023 and 820ffaab pass the local checks in the section of that name at cba6b1e8. At 207bb881, `python3 -m pytest tests/unit/test_bundle_schema.py tests/unit/test_emit_singbox_roundtrip.py tests/unit/test_xhttp_alternate_profiles.py tests/unit/test_docs_index.py tests/unit/test_agent_instructions.py tests/unit/test_client_payload_recipient_boundaries.py tests/unit/test_device_migration_receipt.py tests/unit/test_client_drift.py` exit 0 (460 passed); every contract fixture validated by its validator (6 accepted, 31 negatives rejected); `make snapshot-check` exit 0; `make docs-check` exit 0; `./taskctl openspec cli validate scr-1795085709140075-field-contracts-d1 --strict --no-interactive` exit 0; `./taskctl validate` exit 0. The full `tests/unit` run had 161 failures and 54 errors, all in privileged or host-runtime tests; the same tests fail identically on a clean export of the base revision. `make check` was not run, because its unit stage carries those local host failures.
 remote_ci: required
 remote_ci_evidence: Not run; no push is authorized. The contract-sync workflow will fail until RIPDPI R2 vendors the new and changed contract files.
 dry_run: not_applicable
@@ -13,9 +13,9 @@ staging_evidence: Contract-only change; staging proof is owned by D7.
 live: not_applicable
 live_evidence: Contract-only change; no live system is affected.
 client: required
-client_evidence: Pending RIPDPI R2, which vendors the schemas and fixtures byte-identically and runs the golden and negative fixtures.
+client_evidence: Pending RIPDPI R2, which vendors the schemas and fixtures byte-identically and runs the golden and negative fixtures, including the network-hint contract and the sim golden.
 artifact: required
-artifact_evidence: Pending the verified merge SHA. Canonical files at 207bb88153af9fe7b0748a2590cbb97acace1724: contract/client-field-report.schema.json and contract/ripdpi-bundle.schema.json.
+artifact_evidence: Pending the verified merge SHA. Canonical files at e29d801c: contract/client-field-report.schema.json, contract/client-network-hint.schema.json and contract/ripdpi-bundle.schema.json, with the goldens and the report-*, hint-* and neg-* negatives.
 ---
 
 # Verification
