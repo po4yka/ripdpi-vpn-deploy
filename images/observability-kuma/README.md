@@ -8,7 +8,7 @@ managers are not installed in the runtime. The unused Apprise/Python and SQLite
 CLI packages are removed; the Node SQLite binding remains. Cloudflared is absent: administration
 must stay private.
 
-The upstream health probe is rebuilt with Go 1.27.3 and normal TLS verification.
+The upstream health probe is rebuilt with Go 1.27.4 and normal TLS verification.
 `LICENSE.upstream` covers the upstream files. The Dockerfile pins both base image
 indexes. The publisher builds each native architecture, loads SQLite, and rejects
 fixed HIGH/CRITICAL findings before publishing. Runtime roles consume only the
