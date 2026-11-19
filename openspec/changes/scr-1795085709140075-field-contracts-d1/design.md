@@ -24,6 +24,10 @@
 - `contract/client-field-report.schema.json` (new), `contract/ripdpi-bundle.schema.json`, fixtures, `scripts/validate-bundle.py`, `docs/reference/ripdpi-bundle.md`, `AGENTS.md` source-of-truth table.
 - Serialized lane: this change is first; D4 changes `scripts/emit-bundle.sh` after it.
 
+## Contract validation
+
+- `scripts/validate-field-report.py` `validator()` is the one Draft 2020-12 checker for both contracts: `pattern` keeps the ECMA-262 end-of-input meaning of `$`, and `integer` admits only a JSON integer. `scripts/validate-bundle.py` loads it, and the ingest copies it. Clients must apply the same two rules to their vendored copies.
+
 ## Risks / Trade-offs
 
 - Breaking v2 rejection strands old clients -> the break is named here and in D4; RIPDPI R2 and R4 ship before the generator emits v3.
