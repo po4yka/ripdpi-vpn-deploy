@@ -945,7 +945,9 @@ while True:
     except (ValueError, TypeError, AttributeError):
         started = None
     delivered_at = delivered.get("delivered_at")
-    if (set(delivered) == {"policy", "starts_at", "source_generation", "delivered_at"}
+    message_id = delivered.get("message_id")
+    if (set(delivered) - {"message_id"} == {"policy", "starts_at", "source_generation", "delivered_at"}
+        and (message_id is None or (type(message_id) is int and 0 < message_id <= 2147483647))
         and delivered.get("policy") == policy
         and delivered.get("source_generation") == source_generation
         and started == now
@@ -958,7 +960,11 @@ while True:
 resolved = dict(base)
 resolved["endsAt"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
 send(resolved)
-print(json.dumps({"schema_version": 1, "component": "control-plane", "receiver": "telegram-primary", "state": "api-delivered"}, sort_keys=True))
+report = {"schema_version": 1, "component": "control-plane", "receiver": "telegram-primary", "state": "api-delivered"}
+# The receipt names only the alert, the UTC send time and the Telegram message id.
+if message_id is not None:
+    report["receipt"] = {"schema_version": 1, "kind": "telegram-delivery-receipt", "environment": "staging", "receiver": "telegram-primary", "alert_name": labels["alertname"], "sent_at": datetime.datetime.fromtimestamp(delivered_at, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "telegram_message_id": message_id}
+print(json.dumps(report, sort_keys=True))
 """
     )
     return source.encode("utf-8")
@@ -1045,6 +1051,32 @@ def _silence_request(path: Path | None) -> bytes:
     return raw
 
 
+def _receipt_errors(receipt: object) -> list[str]:
+    """Validate a Telegram delivery receipt against its contract definition."""
+    import jsonschema
+
+    schema = json.loads(
+        (ROOT / "contract/observability-evidence.schema.json").read_text(encoding="utf-8")
+    )
+    validator = jsonschema.Draft202012Validator(
+        {"$ref": "#/$defs/deliveryReceipt", "$defs": schema["$defs"]}
+    )
+    return [error.validator for error in validator.iter_errors(receipt)]
+
+
+def _write_receipt(path: Path, receipt: dict[str, Any]) -> None:
+    """Publish the receipt once, owner-private; an existing file is never replaced."""
+    try:
+        descriptor = os.open(
+            path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600
+        )
+    except OSError:
+        raise OperatorError("receipt path rejected") from None
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        json.dump(receipt, handle, sort_keys=True)
+        handle.write("\n")
+
+
 def _remote(
     args: argparse.Namespace,
     host: dict[str, Any],
@@ -1108,10 +1140,12 @@ def _remote(
     elif operation == "drill":
         expected_state = "api-delivered"
         if (
-            set(value) != {"schema_version", "component", "receiver", "state"}
+            set(value) - {"receipt"} != {"schema_version", "component", "receiver", "state"}
             or value.get("state") != expected_state
             or value.get("receiver") != "telegram-primary"
         ):
+            raise OperatorError("remote report rejected")
+        if "receipt" in value and _receipt_errors(value["receipt"]):
             raise OperatorError("remote report rejected")
     elif operation in {"silence-create", "silence-delete"}:
         identifier = value.get("silence_id")
@@ -1274,6 +1308,7 @@ def _parser() -> argparse.ArgumentParser:
     drill = commands.add_parser("drill", parents=[common])
     drill.add_argument("--confirm-notification", action="store_true")
     drill.add_argument("--silence-owner")
+    drill.add_argument("--receipt", type=Path)
     for command in ("silence-create", "silence-delete"):
         silence = commands.add_parser(command, parents=[common])
         silence.add_argument("--confirm", action="store_true")
@@ -1318,6 +1353,11 @@ def main(argv: list[str] | None = None) -> int:
                 r"[a-z][a-z0-9_-]{0,63}", args.silence_owner
             ):
                 raise OperatorError("valid --silence-owner required")
+            if args.receipt is not None and (
+                os.path.lexists(args.receipt) or not args.receipt.parent.is_dir()
+            ):
+                # Refuse before the notification is sent, not after it is delivered.
+                raise OperatorError("receipt path rejected")
         silence_request = None
         if args.command in {"silence-create", "silence-delete"}:
             if not args.confirm:
@@ -1363,6 +1403,10 @@ def main(argv: list[str] | None = None) -> int:
             result = _remote(
                 args, host, _drill_program(args.silence_owner, source_revision), operation="drill"
             )
+            if args.receipt is not None:
+                if "receipt" not in result:
+                    raise OperatorError("delivery receipt lacks a Telegram message id")
+                _write_receipt(args.receipt, result["receipt"])
         elif args.command in {"silence-create", "silence-delete"}:
             result = _remote(
                 args,

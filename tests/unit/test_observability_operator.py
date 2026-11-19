@@ -578,6 +578,19 @@ def test_drill_rejects_unsafe_gateway_owner_before_transport(operator, owner):
     assert _calls(operator) == []
 
 
+def test_drill_refuses_an_existing_receipt_path_before_transport(operator, tmp_path):
+    existing = tmp_path / "receipt.json"
+    existing.write_text("{}")
+    result = _run(
+        operator, "drill", "--confirm-notification", "--silence-owner", "operator",
+        "--receipt", str(existing),
+    )
+    assert result.returncode == 2
+    assert result.stderr == "observability-operator: receipt path rejected\n"
+    assert existing.read_text() == "{}"
+    assert _calls(operator) == []
+
+
 def test_rotate_is_explicit_exact_host_role_convergence(
     operator: dict[str, object],
 ) -> None:
@@ -1508,6 +1521,47 @@ def test_drill_rejects_other_stale_or_malformed_receipt(monkeypatch, change):
         _run_drill_program(monkeypatch, alerts, receipt_change=change)
 
 
+def test_drill_reports_a_schema_valid_receipt_without_token_or_chat_id(monkeypatch, capsys):
+    alerts = [{"labels": {}, "status": {"state": "active"}, "receivers": [{"name": "telegram-primary"}]}]
+
+    _run_drill_program(monkeypatch, alerts, receipt_change={"message_id": 4242})
+
+    result = json.loads(capsys.readouterr().out)
+    receipt = result.pop("receipt")
+    assert result == {
+        "component": "control-plane", "receiver": "telegram-primary", "schema_version": 1, "state": "api-delivered",
+    }
+    assert receipt["alert_name"] == "ObservabilitySyntheticDrill"
+    assert receipt["telegram_message_id"] == 4242
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", receipt["sent_at"])
+    assert _operator_module()._receipt_errors(receipt) == []
+    serialized = json.dumps(receipt)
+    for forbidden in ("a" * 64, "token", "chat"):
+        assert forbidden not in serialized
+
+
+@pytest.mark.parametrize("message_id", [0, -1, True, "4242", 2**31])
+def test_drill_rejects_a_malformed_telegram_message_id(monkeypatch, message_id):
+    alerts = [{"labels": {}, "status": {"state": "active"}, "receivers": [{"name": "telegram-primary"}]}]
+    with pytest.raises(RuntimeError, match="delivery receipt missing"):
+        _run_drill_program(monkeypatch, alerts, receipt_change={"message_id": message_id})
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [{"bot_token": "123456:secret"}, {"chat_id": "-100123"}, {"telegram_message_id": 0}, {"sent_at": "2026-11-19 12:00"}],
+)
+def test_receipt_contract_forbids_identifiers_and_malformed_values(extra):
+    receipt = {
+        "schema_version": 1, "kind": "telegram-delivery-receipt", "environment": "staging",
+        "receiver": "telegram-primary", "alert_name": "ObservabilitySyntheticDrill",
+        "sent_at": "2026-11-19T12:00:00Z", "telegram_message_id": 4242,
+    }
+    module = _operator_module()
+    assert module._receipt_errors(receipt) == []
+    assert module._receipt_errors({**receipt, **extra}) != []
+
+
 def test_drill_cannot_succeed_when_gateway_accepts_but_relay_send_fails(monkeypatch):
     alerts = [
         {
@@ -1851,3 +1905,47 @@ def test_silence_remote_program_validates_response_without_echoing_request(
             "DELETE" if deleting else "POST",
         )
     ]
+
+
+def test_receipt_is_written_owner_private_and_never_replaced(tmp_path):
+    module = _operator_module()
+    path = tmp_path / "receipt.json"
+    module._write_receipt(path, {"telegram_message_id": 4242})
+    assert json.loads(path.read_text()) == {"telegram_message_id": 4242}
+    assert path.stat().st_mode & 0o777 == 0o600
+    with pytest.raises(module.OperatorError, match="receipt path rejected"):
+        module._write_receipt(path, {"telegram_message_id": 1})
+    assert json.loads(path.read_text()) == {"telegram_message_id": 4242}
+
+
+@pytest.mark.parametrize("receipt", ["existing", "missing-parent/$(shell touch MON_UNSAFE_MARKER)"])
+def test_make_drill_forwards_the_receipt_path_literally(operator, receipt):
+    common = operator["common"]
+    values = dict(zip(common[::2], common[1::2]))
+    marker = ROOT / "MON_UNSAFE_MARKER"
+    path = operator["tmp"] / "receipt.json"
+    path.write_text("{}")
+    result = subprocess.run(
+        [
+            "make",
+            "observability-drill",
+            f"OBSERVABILITY_INVENTORY={values['--inventory']}",
+            f"OBSERVABILITY_HOST={values['--host']}",
+            f"OBSERVABILITY_ENVIRONMENT={values['--environment']}",
+            f"OBSERVABILITY_COMPONENT={values['--component']}",
+            f"OBSERVABILITY_KNOWN_HOSTS={values['--known-hosts']}",
+            "OBSERVABILITY_SILENCE_OWNER=operator",
+            f"OBSERVABILITY_DRILL_RECEIPT={path if receipt == 'existing' else operator['tmp'] / receipt}",
+        ],
+        cwd=ROOT,
+        env=operator["env"],
+        text=True,
+        capture_output=True,
+        timeout=20,
+    )
+    assert not marker.exists()
+    assert result.returncode != 0
+    # An existing file and a path under a missing directory both refuse before any transport.
+    assert "receipt path rejected" in result.stderr
+    assert path.read_text() == "{}"
+    assert _calls(operator) == []
