@@ -27,3 +27,12 @@
 ## Migration Plan
 
 Forward only. Land after D1 and D3, release the client with bundle v3 support, then regenerate bundles. Rollback is a revert of the generator and the schema together.
+
+## Implementation decisions
+
+- Health source (first step): the operator names a JSON health configuration in `BUNDLE_HEALTH_FILE` that points at the protocol-liveness result (`last-evidence.json`), maps each bundle host to its liveness policy id, and may name a cascade leg health record per host. `scripts/bundle_health.py` derives the status; `scripts/client_payload.py` calls it only for `--bundle` with that file.
+- Without `BUNDLE_HEALTH_FILE` the generator omits `ripdpi.endpoints`. Subscription delivery, device lifecycle and drift checks materialize the same bundle without it, and a generation-time `observed_at` would make every drift check report a change. `unknown` covers absent, stale or unmapped input when the file is given.
+- The cohort token rotation is `scripts/rotate-cohort-token.sh`, not a subcommand of `scripts/rotate-secrets.sh`: `scripts/CLAUDE.md` keeps one job per script. It reuses that script's writer lock, killed-run backup contract and audit record, and writes through `sops set --value-stdin`, so no token reaches argv, the environment or output. A real sops 3.13.3 run against a throwaway age key generated, then twice rotated a token, kept unrelated keys and printed no token.
+- One previous token is kept: a rotation replaces any older previous token, so a token is accepted for at most one overlap (`OVERLAP_DAYS`, 1 to 30, default 7) after it is replaced.
+- The SOPS key `field_report` holds both the client fields (`enabled`, `endpoint`, `max_reports_per_day`) and the ingest tokens; the bundle carries only the current token.
+- The v2 emission path was already removed by D1 (`113ae3aa`); this change adds the test that a generated bundle is v3 and validates.
