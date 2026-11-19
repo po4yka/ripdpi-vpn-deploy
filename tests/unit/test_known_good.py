@@ -125,8 +125,7 @@ def test_receipts_from_an_older_revision_do_not_count(repo, tmp_path):
     record(repo, receipts)
     old = head(repo)
     (repo / "ansible/site.yml").write_text("- hosts: vpn\n  gather_facts: false\n")
-    subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@example.invalid",
-                    "commit", "-q", "-am", "change"], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-q", "-am", "change"], check=True)
 
     refused = run(repo, "tag", "--inventory", "fleet.ini", "--receipts", receipts)
     assert refused.returncode == 1 and "node-a: no verification receipt" in refused.stderr
