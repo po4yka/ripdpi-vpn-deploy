@@ -2,7 +2,7 @@
 id: SEC-1795086333272606
 title: Ingest opt-in client field reports into bounded Prometheus metrics
 kind: feature
-status: review
+status: doing
 area: security
 priority: high
 risk: high
@@ -14,7 +14,7 @@ openspec_change: sec-1795086333272606-field-report-ingest-d2
 created: 2026-11-19
 updated: 2026-11-19
 related_tasks: []
-status_detail: Network label and network-hint endpoint verified locally; self security review recorded
+status_detail: Fix the independent network-hint security review findings
 ---
 
 ## Goal
