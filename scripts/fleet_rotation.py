@@ -335,13 +335,13 @@ def block_hints(path):
         if labels.get("alertname") != "FieldReportNetworkBlocked" or state not in ("firing", "active"):
             continue
         stage_mix = annotations.get("stage_mix", "")
-        fields = [labels.get("protocol"), labels.get("asn"), labels.get("country"),
+        fields = [labels.get("protocol"), labels.get("network"), labels.get("country"),
                   (stage_mix.strip() or "-") if isinstance(stage_mix, str) else stage_mix, annotations.get("rotation_hint")]
         if not all(isinstance(field, str) and HINT_TEXT.match(field) for field in fields):
             lines.append("  hint: one blocked-network alert has unprintable fields; read it in the alert panel")
             continue
-        protocol, asn, country, stages, hint = fields
-        lines.append(f"  hint: {protocol} blocked in AS{asn} ({country}); stages {stages}; {hint}")
+        protocol, network, country, stages, hint = fields
+        lines.append(f"  hint: {protocol} blocked in {network} ({country}); stages {stages}; {hint}")
     return lines
 
 

@@ -33,12 +33,12 @@ The endpoint MUST NOT write a client IP, device ID or token to any log line, met
 
 ### Requirement: REQ-INGEST-LABELS — Bounded metric labels
 
-The aggregation MUST expose counters and a histogram with only the labels protocol, failure_stage, asn, country and server_ref; `asn` MUST be one of the configured top-N values else "other"; `server_ref` MUST be accepted only if it is in the current bundle endpoint list, else "other".
+The aggregation MUST expose counters and a histogram with only the labels protocol, failure_stage, network, country and server_ref; `network` MUST be `<mcc>-<mnc>` for a `sim` report and `as<asn>` for a `server_hint` report when that value is one of the configured top-N values, else "other", and "unknown" for a `none` report; `server_ref` MUST be accepted only if it is in the current bundle endpoint list, else "other".
 
 #### Scenario: bounded metric labels
 
-- **WHEN** reports arrive for 1000 distinct ASNs and unknown `server_ref` values
-- **THEN** the exported series count stays at or below the configured bound
+- **WHEN** reports arrive for 1000 distinct ASNs and unknown `server_ref` values, and `sim`, `server_hint` and `none` reports arrive with top-N bounds of 1
+- **THEN** the exported series count stays at or below the configured bound, and one operator, one ASN, "other" and "unknown" are the only network labels
 
 ### Requirement: REQ-INGEST-MINATTEMPT — Buckets under 5 attempts are dropped
 
@@ -49,18 +49,18 @@ The ingest MUST validate the whole report before it changes any counter, MUST re
 - **WHEN** a report holds one bucket with 4 attempts and one with 5, and with a configured floor of 10 a report holds one bucket with 7 attempts and one with 10
 - **THEN** the first report is refused with 400 and changes no counter, and from the second only the bucket with 10 attempts changes the aggregate while the drop counter grows by one
 
-### Requirement: REQ-INGEST-ALERT — Failure-rate alert by protocol and ASN
+### Requirement: REQ-INGEST-ALERT — Failure-rate alert by protocol and network
 
-The alert rules MUST include a rule that fires when the client failure ratio for a protocol and ASN exceeds the configured threshold over the window with at least the configured attempts, and a promtool test MUST prove the firing and non-firing cases.
+The alert rules MUST include a rule that fires when the client failure ratio for a protocol and network (a SIM operator or an ASN) exceeds the configured threshold over the window with at least the configured attempts, and a promtool test MUST prove the firing and non-firing cases.
 
-#### Scenario: failure-rate alert by protocol and asn
+#### Scenario: failure-rate alert by protocol and network
 
-- **WHEN** promtool replays a series with 60 percent failures for one protocol and ASN and one with 5 percent
-- **THEN** the first fires and the second does not
+- **WHEN** promtool replays 60 percent failures for one protocol and ASN, 70 percent for one protocol and SIM operator, and 5 percent for another protocol in that operator
+- **THEN** the first two fire and the third does not
 
 ### Requirement: REQ-INGEST-POISON-BOUNDS — One report cannot dominate the aggregate
 
-The field reports are unauthenticated client input under one shared cohort token. The ingest MUST add at most `max_attempts_per_report` attempts from one report, scaling a larger report down and counting it, MUST rank asn and country top-N candidates by accepted reports and require `top_n_min_reports` of them, and MUST export accepted reports by protocol and ASN so alerts can require several reports.
+The field reports are unauthenticated client input under one shared cohort token. The ingest MUST add at most `max_attempts_per_report` attempts from one report, scaling a larger report down and counting it, MUST rank operator, ASN and country top-N candidates by accepted reports, with operators and ASNs in separate rankings, and require `top_n_min_reports` of them, and MUST export accepted reports by protocol and network so alerts can require several reports.
 
 #### Scenario: one large report is bounded
 

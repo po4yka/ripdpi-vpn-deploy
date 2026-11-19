@@ -50,7 +50,7 @@ export SOURCE=<client public address>
 4. On the collector, save the ingest evidence and check it. The Prometheus API is loopback-only, so query it over SSH:
 
    ```bash
-   ssh <admin>@<collector> "curl -fsS 'http://127.0.0.1:9090/api/v1/query' --data-urlencode 'query=sum by (node, environment, protocol, failure_stage, asn) (vpn_field_report_failures_total)'" > "$RUN/drop-ingest.json"
+   ssh <admin>@<collector> "curl -fsS 'http://127.0.0.1:9090/api/v1/query' --data-urlencode 'query=sum by (node, environment, protocol, failure_stage, network) (vpn_field_report_failures_total)'" > "$RUN/drop-ingest.json"
    python3 scripts/field-analytics-evidence.py ingest "$RUN/drop-ingest.json" --protocol <protocol> --stage <expected stage>
    ```
 
@@ -64,7 +64,7 @@ export SOURCE=<client public address>
 
    ```bash
    ssh <admin>@<collector> "curl -fsS http://127.0.0.1:9090/api/v1/alerts" > "$RUN/drop-alerts.json"
-   python3 scripts/field-analytics-evidence.py alert "$RUN/drop-alerts.json" --protocol <protocol> --asn <client ASN>
+   python3 scripts/field-analytics-evidence.py alert "$RUN/drop-alerts.json" --protocol <protocol> --network <network label: as<ASN> or <MCC>-<MNC>>
    ```
 
    If Telegram delivery is authorized for staging, record the delivered message separately; a firing rule is not a delivery receipt.

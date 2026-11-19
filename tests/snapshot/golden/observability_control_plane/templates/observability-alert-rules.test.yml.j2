@@ -396,18 +396,25 @@ tests:
             exp_annotations: {incident_family: protocol-probe, evidence_class: probe-stale, source_generation: "", summary: A protocol probe stopped reporting; health of this protocol is unknown., runbook: docs/how-to/monitoring-alerts.md#protocol-probe, action: "Check the liveness sentinel for this vantage and the published evidence. Do not treat the protocol as healthy."}
   - interval: 1m
     input_series:
-      # 60 percent of xhttp attempts fail in one network; 5 percent of vless-reality attempts fail in another.
-      - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-sub",protocol="xhttp",asn="64500",country="ZZ"}'
+      # 60 percent of xhttp attempts fail in one ASN and 70 percent of hysteria2 attempts in one SIM operator;
+      # 5 percent of vless-reality attempts fail in that operator.
+      - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-sub",protocol="hysteria2",network="001-01",country="unknown"}'
         values: '0+100x120'
-      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tls_handshake",asn="64500"}'
-        values: '0+60x120'
-      - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-sub",protocol="vless-reality",asn="64501",country="ZZ"}'
-        values: '0+100x120'
-      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="vless-reality",failure_stage="tcp_reset",asn="64501"}'
-        values: '0+5x120'
-      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",asn="64500"}'
+      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="hysteria2",failure_stage="quic_handshake",network="001-01"}'
+        values: '0+70x120'
+      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="hysteria2",network="001-01"}'
         values: '0+1x120'
-      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="vless-reality",asn="64501"}'
+      - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-sub",protocol="xhttp",network="as64500",country="ZZ"}'
+        values: '0+100x120'
+      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tls_handshake",network="as64500"}'
+        values: '0+60x120'
+      - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-sub",protocol="vless-reality",network="001-01",country="ZZ"}'
+        values: '0+100x120'
+      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="vless-reality",failure_stage="tcp_reset",network="001-01"}'
+        values: '0+5x120'
+      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",network="as64500"}'
+        values: '0+1x120'
+      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="vless-reality",network="001-01"}'
         values: '0+1x120'
     alert_rule_test:
       - eval_time: 5m
@@ -416,22 +423,24 @@ tests:
       - eval_time: 30m
         alertname: FieldReportClientFailureRatioHigh
         exp_alerts:
-          - exp_labels: {component: field-report, environment: staging, node: field-reports, protocol: xhttp, asn: "64500", severity: warning}
-            exp_annotations: {value: "xhttp AS64500 60% failed", incident_family: field-report-failure, evidence_class: client-failure-ratio, source_generation: "", summary: Client field reports show a high failure ratio for one protocol and network., runbook: docs/how-to/monitoring-alerts.md#field-report-failure, action: "Compare with the protocol probe for this protocol. If the probe is healthy, read the failure stages for this network before you rotate."}
+          - exp_labels: {component: field-report, environment: staging, node: field-reports, protocol: xhttp, network: as64500, severity: warning}
+            exp_annotations: {value: "xhttp in as64500 60% failed", incident_family: field-report-failure, evidence_class: client-failure-ratio, source_generation: "", summary: Client field reports show a high failure ratio for one protocol and network., runbook: docs/how-to/monitoring-alerts.md#field-report-failure, action: "Compare with the protocol probe for this protocol. If the probe is healthy, read the failure stages for this network before you rotate."}
+          - exp_labels: {component: field-report, environment: staging, node: field-reports, protocol: hysteria2, network: "001-01", severity: warning}
+            exp_annotations: {value: "hysteria2 in 001-01 70% failed", incident_family: field-report-failure, evidence_class: client-failure-ratio, source_generation: "", summary: Client field reports show a high failure ratio for one protocol and network., runbook: docs/how-to/monitoring-alerts.md#field-report-failure, action: "Compare with the protocol probe for this protocol. If the probe is healthy, read the failure stages for this network before you rotate."}
   - interval: 1m
     input_series:
       - series: 'vpn_protocol_probe_success{environment="staging",node="vpn-path",protocol="xhttp",vantage="sentinel-a"}'
         values: '1x120'
       # 70 percent of 6000 attempts per hour fail: 50 per minute in TLS, 20 per minute by reset.
-      - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-sub",protocol="xhttp",asn="64500",country="ZZ"}'
+      - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-sub",protocol="xhttp",network="as64500",country="ZZ"}'
         values: '0+100x120'
-      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tls_handshake",asn="64500"}'
+      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tls_handshake",network="as64500"}'
         values: '0+50x120'
-      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tcp_reset",asn="64500"}'
+      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tcp_reset",network="as64500"}'
         values: '0+20x120'
       # One report each minute, except one large report that carries every attempt. In untrusted-origin
       # an enrolled node that is no configured subscription host sends the whole divergence.
-      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",asn="64500"}'
+      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",network="as64500"}'
         values: '0+1x120'
     alert_rule_test:
       - eval_time: 10m
@@ -440,11 +449,11 @@ tests:
       - eval_time: 60m
         alertname: FieldReportNetworkBlocked
         exp_alerts:
-          - exp_labels: {component: field-report, environment: staging, node: field-reports, protocol: xhttp, asn: "64500", country: ZZ, severity: warning}
+          - exp_labels: {component: field-report, environment: staging, node: field-reports, protocol: xhttp, network: as64500, country: ZZ, severity: warning}
             exp_annotations:
-              value: "xhttp AS64500 ZZ 70% failed"
+              value: "xhttp in as64500 ZZ 70% failed"
               stage_mix: "tls_handshake=3000 tcp_reset=1200 "
-              rotation_hint: "AS64500 blocks xhttp while the sentinel sees it healthy, by unauthenticated client reports. Consider a fresh endpoint for this network in the next fleet-rotate plan. This alert never starts a rotation."
+              rotation_hint: "Network as64500 blocks xhttp while the sentinel sees it healthy, by unauthenticated client reports. Consider a fresh endpoint for this network in the next fleet-rotate plan. This alert never starts a rotation."
               incident_family: field-report-network-block
               evidence_class: sentinel-client-divergence
               source_generation: ""
@@ -456,15 +465,15 @@ tests:
       - series: 'vpn_protocol_probe_success{environment="staging",node="vpn-path",protocol="xhttp",vantage="sentinel-a"}'
         values: '0x120'
       # 70 percent of 6000 attempts per hour fail: 50 per minute in TLS, 20 per minute by reset.
-      - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-sub",protocol="xhttp",asn="64500",country="ZZ"}'
+      - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-sub",protocol="xhttp",network="as64500",country="ZZ"}'
         values: '0+100x120'
-      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tls_handshake",asn="64500"}'
+      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tls_handshake",network="as64500"}'
         values: '0+50x120'
-      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tcp_reset",asn="64500"}'
+      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tcp_reset",network="as64500"}'
         values: '0+20x120'
       # One report each minute, except one large report that carries every attempt. In untrusted-origin
       # an enrolled node that is no configured subscription host sends the whole divergence.
-      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",asn="64500"}'
+      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",network="as64500"}'
         values: '0+1x120'
     alert_rule_test:
       - eval_time: 10m
@@ -477,20 +486,20 @@ tests:
       - eval_time: 60m
         alertname: FieldReportClientFailureRatioHigh
         exp_alerts:
-          - exp_labels: {component: field-report, environment: staging, node: field-reports, protocol: xhttp, asn: "64500", severity: warning}
-            exp_annotations: {value: "xhttp AS64500 70% failed", incident_family: field-report-failure, evidence_class: client-failure-ratio, source_generation: "", summary: Client field reports show a high failure ratio for one protocol and network., runbook: docs/how-to/monitoring-alerts.md#field-report-failure, action: "Compare with the protocol probe for this protocol. If the probe is healthy, read the failure stages for this network before you rotate."}
+          - exp_labels: {component: field-report, environment: staging, node: field-reports, protocol: xhttp, network: as64500, severity: warning}
+            exp_annotations: {value: "xhttp in as64500 70% failed", incident_family: field-report-failure, evidence_class: client-failure-ratio, source_generation: "", summary: Client field reports show a high failure ratio for one protocol and network., runbook: docs/how-to/monitoring-alerts.md#field-report-failure, action: "Compare with the protocol probe for this protocol. If the probe is healthy, read the failure stages for this network before you rotate."}
   - interval: 1m
     input_series:
       - series: 'vpn_protocol_probe_success{environment="staging",node="vpn-path",protocol="xhttp",vantage="sentinel-a"}'
         values: '1x120'
       # 100 percent failures, but 60 attempts per hour stay under the floor of 100.
-      - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-sub",protocol="xhttp",asn="64500",country="ZZ"}'
+      - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-sub",protocol="xhttp",network="as64500",country="ZZ"}'
         values: '0+1x120'
-      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tcp_reset",asn="64500"}'
+      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tcp_reset",network="as64500"}'
         values: '0+1x120'
       # One report each minute, except one large report that carries every attempt. In untrusted-origin
       # an enrolled node that is no configured subscription host sends the whole divergence.
-      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",asn="64500"}'
+      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",network="as64500"}'
         values: '0+1x120'
     alert_rule_test:
       - eval_time: 10m
@@ -504,15 +513,15 @@ tests:
       - series: 'vpn_protocol_probe_success{environment="staging",node="vpn-path",protocol="xhttp",vantage="sentinel-a"}'
         values: '1x120'
       # 70 percent of 6000 attempts per hour fail: 50 per minute in TLS, 20 per minute by reset.
-      - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-sub",protocol="xhttp",asn="64500",country="ZZ"}'
+      - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-sub",protocol="xhttp",network="as64500",country="ZZ"}'
         values: '0+100x120'
-      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tls_handshake",asn="64500"}'
+      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tls_handshake",network="as64500"}'
         values: '0+50x120'
-      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tcp_reset",asn="64500"}'
+      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tcp_reset",network="as64500"}'
         values: '0+20x120'
       # One report each minute, except one large report that carries every attempt. In untrusted-origin
       # an enrolled node that is no configured subscription host sends the whole divergence.
-      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",asn="64500"}'
+      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",network="as64500"}'
         values: '0 1x120'
     alert_rule_test:
       - eval_time: 10m
@@ -529,15 +538,15 @@ tests:
       - series: 'vpn_protocol_probe_success{environment="staging",node="vpn-path",protocol="xhttp",vantage="sentinel-a"}'
         values: '1x120'
       # 70 percent of 6000 attempts per hour fail: 50 per minute in TLS, 20 per minute by reset.
-      - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-p0",protocol="xhttp",asn="64500",country="ZZ"}'
+      - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-p0",protocol="xhttp",network="as64500",country="ZZ"}'
         values: '0+100x120'
-      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-p0",protocol="xhttp",failure_stage="tls_handshake",asn="64500"}'
+      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-p0",protocol="xhttp",failure_stage="tls_handshake",network="as64500"}'
         values: '0+50x120'
-      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-p0",protocol="xhttp",failure_stage="tcp_reset",asn="64500"}'
+      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-p0",protocol="xhttp",failure_stage="tcp_reset",network="as64500"}'
         values: '0+20x120'
       # One report each minute, except one large report that carries every attempt. In untrusted-origin
       # an enrolled node that is no configured subscription host sends the whole divergence.
-      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-p0",protocol="xhttp",asn="64500"}'
+      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-p0",protocol="xhttp",network="as64500"}'
         values: '0+1x120'
     alert_rule_test:
       - eval_time: 10m

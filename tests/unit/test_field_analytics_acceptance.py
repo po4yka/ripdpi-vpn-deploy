@@ -109,7 +109,7 @@ def _vector(*metrics: dict, value: str = "12") -> dict:
 
 
 SERIES = {"__name__": "vpn_field_report_failures_total", "environment": "staging", "node": "vpn-sub",
-          "protocol": "xhttp", "failure_stage": "tcp_reset", "asn": "64500"}
+          "protocol": "xhttp", "failure_stage": "tcp_reset", "network": "as64500"}
 
 
 @pytest.mark.parametrize(("document", "code"), [
@@ -118,7 +118,7 @@ SERIES = {"__name__": "vpn_field_report_failures_total", "environment": "staging
     (_vector({**SERIES, "failure_stage": "tls_handshake"}), 1),
     (_vector({**SERIES, "node": ""}), 1),
     # An address in any label, or a label outside the contract, fails the privacy claim.
-    (_vector(SERIES, {**SERIES, "failure_stage": "tls_handshake", "asn": "198.51.100.23"}), 1),
+    (_vector(SERIES, {**SERIES, "failure_stage": "tls_handshake", "network": "198.51.100.23"}), 1),
     (_vector({**SERIES, "device": "phone-1"}), 1),
     ({"data": []}, 2),
 ])
@@ -129,13 +129,13 @@ def test_ingest_evidence_checks_the_series_and_its_privacy(tmp_path, document, c
     assert result.returncode == code, result.stdout + result.stderr
 
 
-@pytest.mark.parametrize(("state", "asn", "code"), [("active", "64500", 0), ("suppressed", "64500", 1),
-                                                   ("active", "64501", 1)])
-def test_alert_evidence_needs_the_active_block_alert(tmp_path, state, asn, code):
+@pytest.mark.parametrize(("state", "network", "code"), [("active", "as64500", 0), ("suppressed", "as64500", 1),
+                                                   ("active", "as64501", 1)])
+def test_alert_evidence_needs_the_active_block_alert(tmp_path, state, network, code):
     path = tmp_path / "alerts.json"
     path.write_text(json.dumps([{"labels": {"alertname": "FieldReportNetworkBlocked", "protocol": "xhttp",
-                                            "asn": asn, "country": "ZZ"}, "status": {"state": state}}]))
-    result = _evidence("alert", str(path), "--protocol", "xhttp", "--asn", "64500")
+                                            "network": network, "country": "ZZ"}, "status": {"state": state}}]))
+    result = _evidence("alert", str(path), "--protocol", "xhttp", "--network", "as64500")
     assert result.returncode == code, result.stdout + result.stderr
     assert ("PASS" in result.stdout) is (code == 0)
 
@@ -144,5 +144,5 @@ def test_alert_evidence_needs_the_active_block_alert(tmp_path, state, asn, code)
 def test_alert_evidence_reads_a_prometheus_alert_export(tmp_path, state, code):
     path = tmp_path / "alerts.json"
     path.write_text(json.dumps({"status": "success", "data": {"alerts": [
-        {"labels": {"alertname": "FieldReportNetworkBlocked", "protocol": "xhttp", "asn": "64500"}, "state": state}]}}))
-    assert _evidence("alert", str(path), "--protocol", "xhttp", "--asn", "64500").returncode == code
+        {"labels": {"alertname": "FieldReportNetworkBlocked", "protocol": "xhttp", "network": "as64500"}, "state": state}]}}))
+    assert _evidence("alert", str(path), "--protocol", "xhttp", "--network", "as64500").returncode == code

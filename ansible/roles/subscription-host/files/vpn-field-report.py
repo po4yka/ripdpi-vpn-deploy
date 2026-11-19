@@ -35,6 +35,8 @@ TOKEN = re.compile(r"^[A-Za-z0-9_-]{22,64}$")
 # Candidate keys tracked per window for the top-N choice; bounds memory under a flood of distinct values.
 CANDIDATE_CAP = 4096
 OTHER = "other"
+# A report with network.source none, or with no country, has no identity to rank.
+UNKNOWN = "unknown"
 # The server handles one connection at a time, so each connection gets a total deadline: a client that
 # sends one byte inside every per-read timeout would otherwise hold the process. nginx buffers the whole
 # body before it connects, so a real request finishes far inside it.
@@ -105,7 +107,9 @@ class TopN:
 class Aggregate:
     def __init__(self, config: dict, bounds: list) -> None:
         self.server_refs = frozenset(config["server_refs"])
+        # Operators and ASNs rank separately, so many Wi-Fi ASNs cannot push every SIM operator into "other".
         self.asn = TopN(config["asn_top_n"], config["window_seconds"], config["top_n_min_reports"])
+        self.operator = TopN(config["operator_top_n"], config["window_seconds"], config["top_n_min_reports"])
         self.country = TopN(config["country_top_n"], config["window_seconds"], config["top_n_min_reports"])
         self.max_attempts = config["max_attempts_per_report"]
         self.bounds = ["+Inf" if bound == "+Inf" else f"{bound / 1000:g}" for bound in bounds]
@@ -121,35 +125,46 @@ class Aggregate:
         self.max_series = config["max_series"]
         self.series = 0
 
+    def _network(self, network: dict) -> tuple[TopN | None, str | None]:
+        """The ranking and key of the one identity that network.source names; the contract forbids the others."""
+        if network["source"] == "sim":
+            return self.operator, f'{network["operator"]["mcc"]}-{network["operator"]["mnc"]}'
+        if network["source"] == "server_hint":
+            return self.asn, f'as{network["asn"]}'
+        return None, None
+
     def add(self, report: dict, now: float) -> None:
         network = report["network"]
-        asn_key = str(network["asn"])
-        asn = self.asn.label(asn_key, now)
-        country = self.country.label(network["country"], now)
+        ranking, network_key = self._network(network)
+        network_label = ranking.label(network_key, now) if ranking else UNKNOWN
+        country_key = network.get("country")
+        country = self.country.label(country_key, now) if country_key else UNKNOWN
         # One report adds at most max_attempts attempts: past it every bucket and histogram count is
         # scaled down by the same factor, so one token holder's report cannot outweigh many devices.
         total = sum(bucket["attempts"] for bucket in report["buckets"])
         scale = (lambda count: count * self.max_attempts // total) if total > self.max_attempts else (lambda count: count)
         self.capped_reports += total > self.max_attempts
         for protocol in sorted({bucket["protocol"] for bucket in report["buckets"]}):
-            self._bump(self.network_reports, (protocol, asn), (protocol, OTHER), 1)
+            self._bump(self.network_reports, (protocol, network_label), (protocol, OTHER), 1)
         for bucket in report["buckets"]:
             protocol, attempts = bucket["protocol"], scale(bucket["attempts"])
             if not attempts:
                 continue
             server_ref = bucket["server_ref"] if bucket["server_ref"] in self.server_refs else OTHER
-            self._bump(self.attempts, (protocol, asn, country), (protocol, OTHER, OTHER), attempts)
+            self._bump(self.attempts, (protocol, network_label, country), (protocol, OTHER, OTHER), attempts)
             self._bump(self.endpoint_attempts, (protocol, server_ref), (protocol, OTHER), attempts)
             if bucket["outcome"] == "failure":
                 stage = bucket["failure_stage"]
-                self._bump(self.failures, (protocol, stage, asn), (protocol, stage, OTHER), attempts)
+                self._bump(self.failures, (protocol, stage, network_label), (protocol, stage, OTHER), attempts)
                 self._bump(self.endpoint_failures, (protocol, server_ref), (protocol, OTHER), attempts)
             counts = self.latency.setdefault(protocol, [0] * len(self.bounds))
             for index, count in enumerate(bucket["latency_ms_histogram"]):
                 counts[index] += scale(count)
         if report["buckets"]:
-            self.asn.observe(asn_key, now)
-            self.country.observe(network["country"], now)
+            if ranking:
+                ranking.observe(network_key, now)
+            if country_key:
+                self.country.observe(country_key, now)
         self.reports += 1
 
     def _bump(self, table: dict, key: tuple, overflow: tuple, value: int) -> None:
@@ -176,12 +191,12 @@ class Aggregate:
         family("vpn_field_report_capped_reports_total", "counter",
                "Accepted reports scaled down to the per-report attempts cap.", [((), self.capped_reports)])
         family("vpn_field_report_network_reports_total", "counter",
-               "Accepted reports by protocol and network; alerts need several reports, not one large one.",
-               [((("protocol", p), ("asn", a)), v) for (p, a), v in sorted(self.network_reports.items())])
+               "Accepted reports by protocol and network (MCC-MNC, AS number, other or unknown); alerts need several reports, not one large one.",
+               [((("protocol", p), ("network", a)), v) for (p, a), v in sorted(self.network_reports.items())])
         family("vpn_field_report_attempts_total", "counter", "Client connection attempts by protocol and network.",
-               [((("protocol", p), ("asn", a), ("country", c)), v) for (p, a, c), v in sorted(self.attempts.items())])
+               [((("protocol", p), ("network", a), ("country", c)), v) for (p, a, c), v in sorted(self.attempts.items())])
         family("vpn_field_report_failures_total", "counter", "Failed client attempts by protocol, stage and network.",
-               [((("protocol", p), ("failure_stage", s), ("asn", a)), v) for (p, s, a), v in sorted(self.failures.items())])
+               [((("protocol", p), ("failure_stage", s), ("network", a)), v) for (p, s, a), v in sorted(self.failures.items())])
         family("vpn_field_report_endpoint_attempts_total", "counter", "Client attempts by protocol and endpoint.",
                [((("protocol", p), ("server_ref", r)), v) for (p, r), v in sorted(self.endpoint_attempts.items())])
         family("vpn_field_report_endpoint_failures_total", "counter", "Failed client attempts by protocol and endpoint.",

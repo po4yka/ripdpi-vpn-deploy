@@ -436,18 +436,18 @@ groups:
         # client input under one shared cohort token, so both an attempts floor and a floor of distinct reports apply.
         expr: >-
           (
-            sum by (environment, protocol, asn) (increase(vpn_field_report_failures_total{node=~""}[1h]))
-            / sum by (environment, protocol, asn) (increase(vpn_field_report_attempts_total{node=~""}[1h]))
+            sum by (environment, protocol, network) (increase(vpn_field_report_failures_total{node=~""}[1h]))
+            / sum by (environment, protocol, network) (increase(vpn_field_report_attempts_total{node=~""}[1h]))
           ) > 0.5
-          and on (environment, protocol, asn)
-          sum by (environment, protocol, asn) (increase(vpn_field_report_attempts_total{node=~""}[1h])) >= 50
-          and on (environment, protocol, asn)
-          sum by (environment, protocol, asn) (increase(vpn_field_report_network_reports_total{node=~""}[1h])) >= 5
+          and on (environment, protocol, network)
+          sum by (environment, protocol, network) (increase(vpn_field_report_attempts_total{node=~""}[1h])) >= 50
+          and on (environment, protocol, network)
+          sum by (environment, protocol, network) (increase(vpn_field_report_network_reports_total{node=~""}[1h])) >= 5
         for: 15m
         keep_firing_for: 3m
         # Reports from all subscription hosts count together, so the node label names the report stream; the relay requires one.
         labels: {severity: "warning", component: field-report, node: field-reports}
-        annotations: {value: "{{ $labels.protocol }} AS{{ $labels.asn }} {{ $value | humanizePercentage }} failed", incident_family: field-report-failure, evidence_class: client-failure-ratio, source_generation: "", summary: Client field reports show a high failure ratio for one protocol and network., runbook: docs/how-to/monitoring-alerts.md#field-report-failure, action: "Compare with the protocol probe for this protocol. If the probe is healthy, read the failure stages for this network before you rotate."}
+        annotations: {value: "{{ $labels.protocol }} in {{ $labels.network }} {{ $value | humanizePercentage }} failed", incident_family: field-report-failure, evidence_class: client-failure-ratio, source_generation: "", summary: Client field reports show a high failure ratio for one protocol and network., runbook: docs/how-to/monitoring-alerts.md#field-report-failure, action: "Compare with the protocol probe for this protocol. If the probe is healthy, read the failure stages for this network before you rotate."}
       - alert: FieldReportNetworkBlocked
         # The sentinel sees the protocol healthy on every node and vantage while clients in one network fail:
         # the network blocks the path. A failing or missing sentinel series keeps this silent, so a server
@@ -455,25 +455,25 @@ groups:
         expr: >-
           (
             (
-              sum by (environment, protocol, asn) (increase(vpn_field_report_failures_total{node=~""}[1h]))
-              / sum by (environment, protocol, asn) (increase(vpn_field_report_attempts_total{node=~""}[1h]))
+              sum by (environment, protocol, network) (increase(vpn_field_report_failures_total{node=~""}[1h]))
+              / sum by (environment, protocol, network) (increase(vpn_field_report_attempts_total{node=~""}[1h]))
             ) > 0.5
-            and on (environment, protocol, asn)
-            sum by (environment, protocol, asn) (increase(vpn_field_report_attempts_total{node=~""}[1h])) >= 100
-            and on (environment, protocol, asn)
-            sum by (environment, protocol, asn) (increase(vpn_field_report_network_reports_total{node=~""}[1h])) >= 10
+            and on (environment, protocol, network)
+            sum by (environment, protocol, network) (increase(vpn_field_report_attempts_total{node=~""}[1h])) >= 100
+            and on (environment, protocol, network)
+            sum by (environment, protocol, network) (increase(vpn_field_report_network_reports_total{node=~""}[1h])) >= 10
             and on (environment, protocol)
             (min by (environment, protocol) (vpn_protocol_probe_success) == 1)
           )
-          * on (environment, protocol, asn) group_left (country)
-          (0 * topk by (environment, protocol, asn) (1, sum by (environment, protocol, asn, country) (increase(vpn_field_report_attempts_total{node=~""}[1h]))) + 1)
+          * on (environment, protocol, network) group_left (country)
+          (0 * topk by (environment, protocol, network) (1, sum by (environment, protocol, network, country) (increase(vpn_field_report_attempts_total{node=~""}[1h]))) + 1)
         for: 30m
         keep_firing_for: 3m
         labels: {severity: "warning", component: field-report, node: field-reports}
         annotations:
-          value: "{{ $labels.protocol }} AS{{ $labels.asn }} {{ $labels.country }} {{ $value | humanizePercentage }} failed"
-          stage_mix: '{{ range query (printf "sort_desc(sum by (failure_stage) (increase(vpn_field_report_failures_total{environment=%q,protocol=%q,asn=%q,node=~%q}[1h])))" $labels.environment $labels.protocol $labels.asn "") }}{{ .Labels.failure_stage }}={{ .Value | printf "%.0f" }} {{ end }}'
-          rotation_hint: "AS{{ $labels.asn }} blocks {{ $labels.protocol }} while the sentinel sees it healthy, by unauthenticated client reports. Consider a fresh endpoint for this network in the next fleet-rotate plan. This alert never starts a rotation."
+          value: "{{ $labels.protocol }} in {{ $labels.network }} {{ $labels.country }} {{ $value | humanizePercentage }} failed"
+          stage_mix: '{{ range query (printf "sort_desc(sum by (failure_stage) (increase(vpn_field_report_failures_total{environment=%q,protocol=%q,network=%q,node=~%q}[1h])))" $labels.environment $labels.protocol $labels.network "") }}{{ .Labels.failure_stage }}={{ .Value | printf "%.0f" }} {{ end }}'
+          rotation_hint: "Network {{ $labels.network }} blocks {{ $labels.protocol }} while the sentinel sees it healthy, by unauthenticated client reports. Consider a fresh endpoint for this network in the next fleet-rotate plan. This alert never starts a rotation."
           incident_family: field-report-network-block
           evidence_class: sentinel-client-divergence
           source_generation: ""

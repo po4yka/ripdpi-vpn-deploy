@@ -38,6 +38,7 @@ def _config(tmp_path: Path, **overrides) -> dict:
         "max_attempts_per_report": 1000,
         "top_n_min_reports": 3,
         "asn_top_n": 20,
+        "operator_top_n": 20,
         "country_top_n": 10,
         "window_seconds": 3600,
         "max_series": 400,
@@ -114,7 +115,7 @@ def test_status_codes_and_only_an_accepted_report_changes_metrics(ingest):
     assert _post(config, json.dumps(GOLDEN).encode()) == 202
     accepted = _metrics(config)
     assert accepted != empty
-    assert _samples(accepted)['vpn_field_report_attempts_total{protocol="vless-reality",asn="other",country="other"}'] == 49
+    assert _samples(accepted)['vpn_field_report_attempts_total{protocol="vless-reality",network="other",country="other"}'] == 49
 
     extra = copy.deepcopy(GOLDEN)
     extra["device_id"] = "x"
@@ -208,7 +209,7 @@ def test_buckets_under_the_configured_floor_are_dropped_and_counted(ingest):
     report["buckets"] = [_bucket(7), _bucket(10)]
     assert _post(config, json.dumps(report).encode()) == 202
     samples = _samples(_metrics(config))
-    assert samples['vpn_field_report_attempts_total{protocol="xhttp",asn="other",country="other"}'] == 10
+    assert samples['vpn_field_report_attempts_total{protocol="xhttp",network="other",country="other"}'] == 10
     assert samples['vpn_field_report_endpoint_attempts_total{protocol="xhttp",server_ref="p0-reality-upcloud-prod"}'] == 10
     assert samples["vpn_field_report_dropped_buckets_total"] == 1
     assert samples["vpn_field_report_reports_total"] == 1
@@ -238,8 +239,8 @@ def test_label_strings_with_a_newline_or_quote_are_rejected(ingest, field, suffi
 
 def test_rendered_label_values_are_escaped(tmp_path):
     aggregate = _module().Aggregate(_config(tmp_path), [50, 100, 250, 500, 1000, 2500, 5000, "+Inf"])
-    aggregate.attempts[("xhttp", "64500", 'Z"\\\n')] = 5
-    assert 'vpn_field_report_attempts_total{protocol="xhttp",asn="64500",country="Z\\"\\\\\\n"} 5' in aggregate.render()
+    aggregate.attempts[("xhttp", "as64500", 'Z"\\\n')] = 5
+    assert 'vpn_field_report_attempts_total{protocol="xhttp",network="as64500",country="Z\\"\\\\\\n"} 5' in aggregate.render()
 
 
 def _module():
@@ -258,13 +259,14 @@ def test_labels_stay_bounded_for_many_networks_and_unknown_endpoints(tmp_path):
     for window in (0, 3600):
         # One large report: the most attempts of any network, but too few reports to earn its own label.
         report = copy.deepcopy(GOLDEN)
-        report["network"] = {"asn": 63999, "country": "ZX", "network_type": "wifi"}
+        report["network"] = {"source": "server_hint", "asn": 63999, "country": "ZX", "network_type": "wifi"}
         report["buckets"] = [{"server_ref": "unknown", "protocol": "xhttp", "outcome": "success", "attempts": 100000,
                               "latency_ms_histogram": [100000, 0, 0, 0, 0, 0, 0, 0]}]
         aggregate.add(report, window)
         for index in range(1000):
             report = copy.deepcopy(GOLDEN)
-            report["network"] = {"asn": 64000 + index, "country": "ZZ" if index % 2 else "ZY", "network_type": "wifi"}
+            report["network"] = {"source": "server_hint", "asn": 64000 + index, "country": "ZZ" if index % 2 else "ZY",
+                                 "network_type": "wifi"}
             report["buckets"] = [
                 {"server_ref": f"unknown-{index}", "protocol": protocols[index % 6], "outcome": "failure",
                  "failure_stage": "tcp_reset", "attempts": 5 + index, "latency_ms_histogram": [0, 0, 0, 0, 0, 0, 0, 5 + index]},
@@ -272,9 +274,9 @@ def test_labels_stay_bounded_for_many_networks_and_unknown_endpoints(tmp_path):
             for _ in range(3 + index % 2 if index >= 980 else 1):
                 aggregate.add(copy.deepcopy(report), window + index * 0.001)
     samples = _samples(aggregate.render())
-    asns = {key.split('asn="')[1].split('"')[0] for key in samples if 'asn="' in key}
+    networks = {key.split('network="')[1].split('"')[0] for key in samples if 'network="' in key}
     # The 20 networks that sent at least three reports in the first window, and "other".
-    assert asns == {str(64000 + index) for index in range(980, 1000)} | {"other"}
+    assert networks == {f"as{64000 + index}" for index in range(980, 1000)} | {"other"}
     assert {key.split('server_ref="')[1].split('"')[0] for key in samples if "server_ref=" in key} == {"other"}
     # Label-bearing counters: the budget plus one overflow set per protocol for
     # attempts, failures per stage and both endpoint families; then 6 latency
@@ -284,10 +286,48 @@ def test_labels_stay_bounded_for_many_networks_and_unknown_endpoints(tmp_path):
     assert len(samples) <= max_series + 6 * (1 + 11 + 2 + 1) + 6 * 9 + 3
 
 
+SIM = {"source": "sim", "operator": {"mcc": "001", "mnc": "01"}, "network_type": "cellular"}
+
+
+def test_network_label_follows_the_report_source_and_operators_rank_apart_from_asns(tmp_path):
+    aggregate = _module().Aggregate(_config(tmp_path, asn_top_n=1, operator_top_n=1),
+                                    [50, 100, 250, 500, 1000, 2500, 5000, "+Inf"])
+    sources = [SIM, {**SIM, "operator": {"mcc": "001", "mnc": "010"}},
+               {"source": "server_hint", "asn": 64500, "country": "ZZ", "network_type": "wifi"},
+               {"source": "none", "network_type": "other"}]
+    for window in (0, 3600):
+        # Three reports from each source in each window; a three-digit MNC is a different operator.
+        for index, network in enumerate(sources * 3):
+            report = copy.deepcopy(GOLDEN)
+            report["network"] = copy.deepcopy(network)
+            aggregate.add(report, window + index)
+    samples = _samples(aggregate.render())
+    networks = {key.split('network="')[1].split('"')[0] for key in samples if "network_reports_total" in key}
+    # One ASN and one operator earned their own label although asn_top_n and operator_top_n are both 1: the
+    # rankings are separate. The other operator ties and loses on order, and a none report is "unknown".
+    assert networks == {"001-01", "as64500", "other", "unknown"}
+    second_window = 'vpn_field_report_network_reports_total{protocol="hysteria2",network="%s"}'
+    assert samples[second_window % "001-01"] == 3
+    assert samples[second_window % "unknown"] == 6
+    # Only the server_hint report carries a country; the others have none to label.
+    assert samples['vpn_field_report_attempts_total{protocol="hysteria2",network="001-01",country="unknown"}'] == 15
+    assert samples['vpn_field_report_failures_total{protocol="hysteria2",failure_stage="quic_handshake",network="as64500"}'] == 15
+
+
+def test_sim_and_none_reports_are_accepted_and_a_report_with_two_identities_is_not(ingest):
+    _, config = ingest()
+    for network, status in ((SIM, 202), ({"source": "none", "network_type": "wifi"}, 202),
+                            ({**SIM, "asn": 64500}, 400), ({"source": "none", "asn": 64500, "network_type": "wifi"}, 400)):
+        report = copy.deepcopy(GOLDEN)
+        report["network"] = network
+        assert _post(config, json.dumps(report).encode()) == status
+    assert _samples(_metrics(config))["vpn_field_report_reports_total"] == 2
+
+
 def test_one_report_adds_at_most_the_attempts_cap(tmp_path):
     aggregate = _module().Aggregate(_config(tmp_path, max_attempts_per_report=1000), [50, 100, 250, 500, 1000, 2500, 5000, "+Inf"])
     report = copy.deepcopy(GOLDEN)
-    report["network"] = {"asn": 64500, "country": "ZZ", "network_type": "wifi"}
+    report["network"] = {"source": "server_hint", "asn": 64500, "country": "ZZ", "network_type": "wifi"}
     report["buckets"] = [
         {"server_ref": "p0-reality-upcloud-prod", "protocol": "xhttp", "outcome": "failure", "failure_stage": "tcp_reset",
          "attempts": 3000, "latency_ms_histogram": [0, 0, 0, 0, 0, 0, 0, 3000]},
@@ -298,16 +338,16 @@ def test_one_report_adds_at_most_the_attempts_cap(tmp_path):
     aggregate.add(copy.deepcopy(GOLDEN), 1)
     samples = _samples(aggregate.render())
     # 4000 attempts scale by 1000/4000: 750 failures and 250 successes, in the same proportion.
-    assert samples['vpn_field_report_attempts_total{protocol="xhttp",asn="other",country="other"}'] == 1000
-    assert samples['vpn_field_report_failures_total{protocol="xhttp",failure_stage="tcp_reset",asn="other"}'] == 750
+    assert samples['vpn_field_report_attempts_total{protocol="xhttp",network="other",country="other"}'] == 1000
+    assert samples['vpn_field_report_failures_total{protocol="xhttp",failure_stage="tcp_reset",network="other"}'] == 750
     assert samples['vpn_field_report_latency_seconds_count{protocol="xhttp"}'] == 1000
     assert samples["vpn_field_report_capped_reports_total"] == 1
     # The golden report holds 49 vless-reality attempts and stays under the cap.
-    assert samples['vpn_field_report_attempts_total{protocol="vless-reality",asn="other",country="other"}'] == 49
+    assert samples['vpn_field_report_attempts_total{protocol="vless-reality",network="other",country="other"}'] == 49
     # Each report counts once for each protocol it holds, whatever its size or bucket count.
-    assert samples['vpn_field_report_network_reports_total{protocol="xhttp",asn="other"}'] == 1
-    assert samples['vpn_field_report_network_reports_total{protocol="vless-reality",asn="other"}'] == 1
-    assert samples['vpn_field_report_network_reports_total{protocol="hysteria2",asn="other"}'] == 1
+    assert samples['vpn_field_report_network_reports_total{protocol="xhttp",network="other"}'] == 1
+    assert samples['vpn_field_report_network_reports_total{protocol="vless-reality",network="other"}'] == 1
+    assert samples['vpn_field_report_network_reports_total{protocol="hysteria2",network="other"}'] == 1
 
 
 def _rendered(name: str, **field_report) -> str:

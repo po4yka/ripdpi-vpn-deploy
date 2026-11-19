@@ -449,7 +449,7 @@ def test_scrapes_have_explicit_sample_and_label_bounds() -> None:
     assert "observability_push_.*" in template
     assert "node_load(1|5|15)" in template
     assert (
-        "^(__name__|job|cpu|mode|device|fstype|mountpoint|node|role|state|kind|protocol|vantage|le|failure_stage|asn|country|server_ref)$"
+        "^(__name__|job|cpu|mode|device|fstype|mountpoint|node|role|state|kind|protocol|vantage|le|failure_stage|network|country|server_ref)$"
         in template
     )
     assert 'node: "{{ observability_agent.node_id }}"' in template
