@@ -81,3 +81,24 @@ def test_raw_blocks_do_not_contribute_literal_go_template_tokens() -> None:
         template = f"{raw_block}\n{{{{ unknown_outside_raw }}}}"
 
         assert checker.extract_toplevel_vars(template) == {"unknown_outside_raw"}
+
+
+def test_hostvars_reads_only_the_listed_non_secret_keys(tmp_path, monkeypatch, capsys) -> None:
+    listed = "{% for h in groups['all'] %}{{ hostvars[h]['vpn_service_address'] | default('') }}{{ hostvars[h]['server_ipv6'] }}{% endfor %}"
+    assert checker.extract_toplevel_vars(listed) == {"groups"}
+
+    templates = tmp_path / "role" / "templates"
+    templates.mkdir(parents=True)
+    monkeypatch.setattr(checker, "ROLES_DIR", tmp_path)
+    monkeypatch.setattr(checker, "REPO_ROOT", tmp_path)
+    # Another host's secret, a computed key and attribute access all bypass the example-file check.
+    for template in ("{% for h in groups['all'] %}{{ hostvars[h]['some_secret'] }}{% endfor %}",
+                     "{% for h in groups['all'] %}{{ hostvars[h]['xray'] }}{% endfor %}",
+                     "{% for h in groups['all'] %}{% for k in ['server_ipv6'] %}{{ hostvars[h][k] }}{% endfor %}{% endfor %}",
+                     "{% for h in groups['all'] %}{{ hostvars[h].server_ipv6 }}{% endfor %}"):
+        (templates / "fleet.j2").write_text(template)
+        assert checker.main() == 1, template
+        assert "  hostvars\n" in capsys.readouterr().out
+
+    (templates / "fleet.j2").write_text(listed)
+    assert checker.main() == 0
