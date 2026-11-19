@@ -2,7 +2,7 @@
 id: SCR-1795085709140075
 title: Define client field-report v1 and ripdpi-bundle v3 contracts
 kind: feature
-status: backlog
+status: review
 area: scripts
 priority: high
 risk: high
