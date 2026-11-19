@@ -40,6 +40,8 @@ def validator(schema: dict):
 
     Python's ``$`` also matches before one trailing newline, so ``"ZZ\\n"`` would
     pass ``^[A-Z]{2}$``; ECMA-262 and this check anchor at the end of input.
+    ``integer`` admits only a JSON integer: Draft 2020-12 also accepts ``64500.0``,
+    which would reach a metric label as the distinct text ``"64500.0"``.
     """
     import re
 
@@ -51,7 +53,9 @@ def validator(schema: dict):
             if not re.search(anchored, instance):
                 yield jsonschema.ValidationError(f"{instance!r} does not match {value!r}")
 
-    strict = jsonschema.validators.extend(jsonschema.Draft202012Validator, {"pattern": pattern})
+    types = jsonschema.Draft202012Validator.TYPE_CHECKER.redefine(
+        "integer", lambda _checker, instance: type(instance) is int)
+    strict = jsonschema.validators.extend(jsonschema.Draft202012Validator, {"pattern": pattern}, type_checker=types)
     return strict(schema)
 
 
