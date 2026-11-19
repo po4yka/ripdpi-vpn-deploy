@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import base64
 import copy
+import importlib.util
 import json
 import subprocess
 import sys
@@ -44,6 +45,9 @@ VALIDATOR = REPO_ROOT / "scripts" / "validate-bundle.py"
 HEALTH_EXPIRED = REPO_ROOT / "contract" / "ripdpi-bundle.health-expired.json"
 REPORT_SCHEMA = REPO_ROOT / "contract" / "client-field-report.schema.json"
 REPORT_GOLDEN = REPO_ROOT / "contract" / "client-field-report.golden.json"
+REPORT_GOLDEN_SIM = REPO_ROOT / "contract" / "client-field-report.golden-sim.json"
+HINT_SCHEMA = REPO_ROOT / "contract" / "client-network-hint.schema.json"
+HINT_GOLDEN = REPO_ROOT / "contract" / "client-network-hint.golden.json"
 REPORT_VALIDATOR = REPO_ROOT / "scripts" / "validate-field-report.py"
 
 
@@ -710,6 +714,21 @@ REPORT_NEGATIVE_REASONS = {
     "report-country-trailing-newline.json": "pattern constraint failed at /network/country\n",
     # Draft 2020-12 counts 64500.0 as an integer; the contract admits only a JSON integer.
     "report-asn-float.json": "type constraint failed at /network/asn\n",
+    # network.source names the one identity a report carries (sim operator, server hint or none).
+    "report-missing-source.json": "required constraint failed at /network\n",
+    "report-unknown-source.json": "enum constraint failed at /network/source\n",
+    "report-sim-without-operator.json": "required constraint failed at /network\n",
+    "report-sim-with-asn.json": "not constraint failed at /network\n",
+    "report-sim-on-wifi.json": "const constraint failed at /network/network_type\n",
+    "report-server-hint-without-asn.json": "required constraint failed at /network\n",
+    "report-server-hint-with-operator.json": "not constraint failed at /network\n",
+    "report-none-with-asn.json": "not constraint failed at /network\n",
+    "report-none-with-operator.json": "not constraint failed at /network\n",
+    "report-extra-operator-property.json": "additionalProperties constraint failed at /network/operator\n",
+    "report-operator-mcc-two-digits.json": "pattern constraint failed at /network/operator/mcc\n",
+    "report-operator-mnc-four-digits.json": "pattern constraint failed at /network/operator/mnc\n",
+    "report-operator-mnc-trailing-newline.json": "pattern constraint failed at /network/operator/mnc\n",
+    "report-operator-mcc-number.json": "type constraint failed at /network/operator/mcc\n",
 }
 
 
@@ -720,8 +739,9 @@ def test_report_schema_version_pin():
     assert schema["x-latency-bounds-ms"] == [50, 100, 250, 500, 1000, 2500, 5000, "+Inf"]
 
 
-def test_report_golden_validates_via_cli():
-    proc = _run_report_validator(REPORT_GOLDEN)
+@pytest.mark.parametrize("golden", [REPORT_GOLDEN, REPORT_GOLDEN_SIM], ids=["server-hint", "sim"])
+def test_report_golden_validates_via_cli(golden):
+    proc = _run_report_validator(golden)
     assert proc.returncode == 0, proc.stderr
 
 
@@ -767,3 +787,41 @@ def test_report_diagnostics_never_echo_values_or_crash(tmp_path, doc):
     assert proc.returncode == 1
     assert "synthetic-secret-marker" not in proc.stderr
     assert "Traceback" not in proc.stderr
+
+
+# ---------------------------------------------------------------------------
+# Client network hint v1: the subscription host's ASN answer for the request
+# source address. The same strict checker as the field report applies.
+# ---------------------------------------------------------------------------
+HINT_NEGATIVE_REASONS = {
+    "hint-extra-property.json": ("additionalProperties", []),
+    "hint-observed-at-minutes.json": ("pattern", ["observed_at"]),
+    "hint-asn-float.json": ("type", ["asn"]),
+    "hint-country-trailing-newline.json": ("pattern", ["country"]),
+    "hint-ttl-below-floor.json": ("minimum", ["ttl_seconds"]),
+    "hint-schema-version-2.json": ("const", ["schema_version"]),
+}
+
+
+def _hint_errors(doc):
+    spec = importlib.util.spec_from_file_location("validate_field_report_for_hint", REPORT_VALIDATOR)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    checker = module.validator(json.loads(HINT_SCHEMA.read_text()))
+    return [(error.validator, list(error.absolute_path)) for error in checker.iter_errors(doc)]
+
+
+def test_hint_schema_version_pin_and_golden():
+    schema = json.loads(HINT_SCHEMA.read_text())
+    assert schema["x-contract-version"] == 1
+    assert schema["properties"]["schema_version"]["const"] == 1
+    assert _hint_errors(json.loads(HINT_GOLDEN.read_text())) == []
+
+
+def test_every_hint_negative_fixture_has_a_reason():
+    assert sorted(path.name for path in NEGATIVE_DIR.glob("hint-*.json")) == sorted(HINT_NEGATIVE_REASONS)
+
+
+@pytest.mark.parametrize("name,reason", sorted(HINT_NEGATIVE_REASONS.items()))
+def test_hint_negative_fixture_is_rejected_for_its_reason(name, reason):
+    assert _hint_errors(json.loads((NEGATIVE_DIR / name).read_text())) == [reason]
