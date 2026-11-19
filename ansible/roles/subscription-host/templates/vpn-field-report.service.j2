@@ -17,6 +17,8 @@ UMask=0022
 # Aggregates live in memory; a runaway process is stopped instead of swapping.
 MemoryMax=128M
 TasksMax=8
+# A core file would keep cohort tokens and request data on disk.
+LimitCORE=0
 
 # Hardening
 NoNewPrivileges=true

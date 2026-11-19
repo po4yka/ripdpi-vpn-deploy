@@ -385,7 +385,7 @@ def test_unit_delivers_tokens_as_credential_and_keeps_the_hardening_floor():
                       "ProtectControlGroups=true", "RestrictNamespaces=true", "LockPersonality=true",
                       "RestrictRealtime=true", "RestrictSUIDSGID=true", "SystemCallArchitectures=native",
                       "CapabilityBoundingSet=\n", "IPAddressDeny=any", "IPAddressAllow=localhost",
-                      "StateDirectory=vpn-field-report\n", "StateDirectoryMode=0755\n"):
+                      "StateDirectory=vpn-field-report\n", "StateDirectoryMode=0755\n", "LimitCORE=0\n"):
         assert directive in unit
     # The ingest writes only its own state directory; it is no member of the shared textfile writer group.
     assert "SupplementaryGroups=" not in unit and "ReadWritePaths=" not in unit

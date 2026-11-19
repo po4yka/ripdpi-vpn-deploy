@@ -11,6 +11,8 @@ CapabilityBoundingSet=CAP_NET_ADMIN
 AmbientCapabilities=CAP_NET_ADMIN
 ExecStart=/usr/local/sbin/awg-handshake-exporter --awg-bin /usr/bin/awg --fresh-window {{ amneziawg_handshake_exporter_fresh_window_seconds }} --output {{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/vpn_awg.prom
 
+# A core file of this root process would keep device-socket data on disk.
+LimitCORE=0
 NoNewPrivileges=true
 PrivateDevices=true
 PrivateTmp=true
