@@ -492,6 +492,7 @@ def test_network_hint_answers_from_the_peer_header_and_never_keeps_the_address(i
     checker = contract.validator(json.loads((ROOT / "contract/client-network-hint.schema.json").read_text()))
     process, config = ingest(network_hint=_dataset(tmp_path))
     before = _metrics(config)
+    assert _samples(before)["vpn_field_report_network_hint_available"] == 1
 
     # The socket peer is loopback; only the header that nginx sets names the client address.
     status, body, headers = _get(config, "192.0.2.77")
@@ -521,6 +522,7 @@ def test_network_hint_answers_from_the_peer_header_and_never_keeps_the_address(i
 def test_network_hint_route_is_absent_without_a_dataset(ingest):
     _, config = ingest()
     assert _get(config, "192.0.2.77")[0] == 404
+    assert "vpn_field_report_network_hint_available" not in _metrics(config)
 
 
 @pytest.mark.parametrize("rows,pin_matches", [
@@ -532,7 +534,7 @@ def test_network_hint_route_is_absent_without_a_dataset(ingest):
     (b"2001:db8::\t2001:db8::ffff\t64501\tZY\tno IPv4\n", True),
     (None, True),
 ], ids=["pin-mismatch", "overlap", "asn-text", "reversed", "short-line", "no-ipv4", "truncated-gzip"])
-def test_a_damaged_or_unpinned_dataset_stops_the_service(tmp_path, rows, pin_matches):
+def test_a_damaged_or_unpinned_dataset_turns_off_only_the_hint(ingest, tmp_path, rows, pin_matches):
     hint = _dataset(tmp_path, rows or DATASET_ROWS)
     if rows is None:
         # A truncated gzip stream whose pin matches its bytes.
@@ -542,14 +544,15 @@ def test_a_damaged_or_unpinned_dataset_stops_the_service(tmp_path, rows, pin_mat
         hint["database_sha256"] = hashlib.sha256(data).hexdigest()
     if not pin_matches:
         hint["database_sha256"] = "0" * 64
-    config = _config(tmp_path, port=_free_port(), network_hint=hint)
-    (tmp_path / "config.json").write_text(json.dumps(config))
-    (tmp_path / "tokens.json").write_text(json.dumps({"current": TOKEN}))
-    result = subprocess.run([sys.executable, "-I", "-B", str(SERVICE), "--config", str(tmp_path / "config.json"),
-                             "--tokens", str(tmp_path / "tokens.json")], capture_output=True, text=True, timeout=20)
-    assert result.returncode == 2
-    assert "network hint dataset" in result.stderr and "Traceback" not in result.stderr
-    assert not Path(config["textfile"]).exists()
+    process, config = ingest(network_hint=hint)
+    # A damaged dataset never answers, and report intake keeps working.
+    assert _get(config, "192.0.2.77")[0] == 404
+    assert _samples(_metrics(config))["vpn_field_report_network_hint_available"] == 0
+    assert _post(config, json.dumps(GOLDEN).encode()) == 202
+    assert _samples(_metrics(config))["vpn_field_report_reports_total"] == 1
+    process.terminate()
+    _, stderr = process.communicate(timeout=5)
+    assert "network hint dataset" in stderr and "network hint is off" in stderr and "Traceback" not in stderr
 
 
 def test_a_gzip_bomb_line_is_refused_inside_the_unit_memory_limit(tmp_path):
@@ -564,17 +567,25 @@ def test_a_gzip_bomb_line_is_refused_inside_the_unit_memory_limit(tmp_path):
     config = _config(tmp_path, port=_free_port(), network_hint=hint)
     (tmp_path / "config.json").write_text(json.dumps(config))
     (tmp_path / "tokens.json").write_text(json.dumps({"current": TOKEN}))
-    # A wrapper runs the service as its only child, so the child peak RSS is the service's own.
-    wrapper = ("import resource, subprocess, sys\n"
-               "result = subprocess.run(sys.argv[1:], capture_output=True, text=True)\n"
+    # A wrapper runs the service as its only child until the first aggregate is written, so the
+    # child peak RSS is the service's own, measured after the dataset load.
+    wrapper = ("import os, resource, subprocess, sys, time\n"
+               "textfile, command = sys.argv[1], sys.argv[2:]\n"
+               "child = subprocess.Popen(command, stderr=subprocess.PIPE, text=True)\n"
+               "deadline = time.monotonic() + 30\n"
+               "while not os.path.exists(textfile) and child.poll() is None and time.monotonic() < deadline:\n"
+               "    time.sleep(0.05)\n"
+               "child.terminate()\n"
+               "_, stderr = child.communicate(timeout=10)\n"
                "peak = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss\n"
-               "print(result.returncode, peak if sys.platform == 'darwin' else peak * 1024)\n"
-               "sys.stderr.write(result.stderr)\n")
-    result = subprocess.run([sys.executable, "-I", "-c", wrapper, sys.executable, "-I", "-B", str(SERVICE),
-                             "--config", str(tmp_path / "config.json"), "--tokens", str(tmp_path / "tokens.json")],
+               "print(int(os.path.exists(textfile)), peak if sys.platform == 'darwin' else peak * 1024)\n"
+               "sys.stderr.write(stderr)\n")
+    result = subprocess.run([sys.executable, "-I", "-c", wrapper, config["textfile"], sys.executable, "-I", "-B",
+                             str(SERVICE), "--config", str(tmp_path / "config.json"),
+                             "--tokens", str(tmp_path / "tokens.json")],
                             capture_output=True, text=True, timeout=60)
-    returncode, peak = (int(value) for value in result.stdout.split())
-    assert returncode == 2 and "network hint dataset has an over-long line" in result.stderr
+    served, peak = (int(value) for value in result.stdout.split())
+    assert served == 1 and "network hint dataset has an over-long line" in result.stderr
     assert peak < 128 << 20
 
 
