@@ -142,11 +142,16 @@ def peer_address(text: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | N
     return ip.ipv4_mapped if ip.version == 6 and ip.ipv4_mapped else ip
 
 
-def fleet_address(text: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
+def fleet_key(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> ipaddress.IPv4Address | ipaddress.IPv6Network:
+    """An IPv6 node can send tunnel traffic from any address in its /64, so IPv6 matches by /64."""
+    return address if address.version == 4 else ipaddress.IPv6Network((address, 64), strict=False)
+
+
+def fleet_address(text: str) -> ipaddress.IPv4Address | ipaddress.IPv6Network:
     address = peer_address(text)
     if address is None:
         raise ValueError("network hint fleet address list has a malformed entry")
-    return address
+    return fleet_key(address)
 
 
 def load_tokens(path: str) -> tuple[bytes, bytes | None, float]:
@@ -389,7 +394,7 @@ class Ingest:
         if not self.token_ok(headers.get("Authorization"), now):
             return 401, b""
         peer = peer_address(headers.get(HINT_PEER_HEADER, ""))
-        found = self.asn_table.lookup(peer) if peer is not None and peer not in self.fleet else None
+        found = self.asn_table.lookup(peer) if peer is not None and fleet_key(peer) not in self.fleet else None
         if found is None:
             return 204, b""
         observed = datetime.fromtimestamp(now, timezone.utc).strftime("%Y-%m-%dT%H:00:00Z")
