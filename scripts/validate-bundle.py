@@ -8,11 +8,14 @@ emit-bundle.sh surfaces only as a silent handshake/subscription failure on a
 real device. This script catches that drift at PR time, and the client repo
 runs an equivalent contract test against a vendored copy of the same schema.
 
-Two checks:
-  1. jsonschema validation against contract/ripdpi-bundle.schema.json.
+Checks:
+  1. jsonschema validation against contract/ripdpi-bundle.schema.json (v3).
   2. cohort_fingerprint correctness — every amneziawg[] entry that carries a
      cohort_fingerprint must match the fingerprint recomputed from its own
      resolved params (catches an emit-side hash bug the schema cannot see).
+  3. Semantics the schema cannot express: key and endpoint syntax, calendar
+     instants, port hopping, and, for a full bundle, that every endpoints key
+     names an outbound or AWG tag of the same bundle.
 
 Input may be a full RIPDPI profile (the `ripdpi` key is extracted) or a bare
 `ripdpi` object. Default target: contract/ripdpi-bundle.example.json.
@@ -207,7 +210,22 @@ def _semantic_errors(ripdpi: dict) -> list[str]:
                 date.fromisoformat(value)
         except ValueError:
             errors.append("expires: requires a valid calendar instant")
+    for index, endpoint in enumerate(ripdpi.get("endpoints", {}).values()):
+        try:
+            datetime.fromisoformat(endpoint["health"]["observed_at"])
+        except ValueError:
+            errors.append(f"endpoints[{index}].health.observed_at: requires a valid calendar instant")
     return errors
+
+
+def _endpoint_ref_errors(doc: dict, ripdpi: dict) -> list[str]:
+    if not isinstance(doc.get("ripdpi"), dict):
+        return []  # A bare ripdpi object has no outbounds to resolve against.
+    outbounds = doc.get("outbounds") if isinstance(doc.get("outbounds"), list) else []
+    tags = {value.get("tag") for value in outbounds if isinstance(value, dict)}
+    tags |= {entry["tag"] for entry in ripdpi["amneziawg"]}
+    return [f"endpoints[{index}]: key names no outbound or AWG tag in this bundle"
+            for index, ref in enumerate(ripdpi.get("endpoints", {})) if ref not in tags]
 
 
 def _hysteria_hopping_errors(doc: dict, ripdpi: dict) -> list[str]:
@@ -330,7 +348,7 @@ def main() -> int:
 
     fp_errors = ([] if errors else _fingerprint_errors(ripdpi) + _address_errors(ripdpi) + _semantic_errors(ripdpi))
     if not errors and not fp_errors:
-        fp_errors = _hysteria_hopping_errors(doc, ripdpi)
+        fp_errors = _hysteria_hopping_errors(doc, ripdpi) + _endpoint_ref_errors(doc, ripdpi)
 
     if errors or fp_errors or runtime_errors:
         print(

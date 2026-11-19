@@ -12,6 +12,9 @@ Threats caught here:
      ripdpi_cohort_fingerprint.py) and the parse side (Kotlin): the paired
      golden pins the exact hash both must produce.
   3. The schema's contract version drifts from the version the client supports.
+  4. The client field-report v1 contract (contract/client-field-report.schema.json
+     plus scripts/validate-field-report.py) admits identifying data, a
+     mis-paired failure_stage or a histogram that does not sum to attempts.
 
 The executable emitter guarantee lives in test_emit_singbox_roundtrip.py: it
 runs emit-bundle.sh through emit-singbox.sh, then validates the emitted result
@@ -38,6 +41,10 @@ GOLDEN = REPO_ROOT / "contract" / "cohort-fingerprint.golden.json"
 GOLDEN_FULL = REPO_ROOT / "contract" / "ripdpi-bundle.golden-full.json"
 NEGATIVE_DIR = REPO_ROOT / "contract" / "negative"
 VALIDATOR = REPO_ROOT / "scripts" / "validate-bundle.py"
+HEALTH_EXPIRED = REPO_ROOT / "contract" / "ripdpi-bundle.health-expired.json"
+REPORT_SCHEMA = REPO_ROOT / "contract" / "client-field-report.schema.json"
+REPORT_GOLDEN = REPO_ROOT / "contract" / "client-field-report.golden.json"
+REPORT_VALIDATOR = REPO_ROOT / "scripts" / "validate-field-report.py"
 
 
 def _ripdpi(doc):
@@ -47,7 +54,7 @@ def _ripdpi(doc):
 # Cross-repo drift pin. The client's SingBoxSubscriptionParser.RipdpiSchemaVersion
 # and its vendored schema's x-contract-version must equal this. Bumping it is a
 # coordinated, breaking change across both repos.
-CONTRACT_VERSION = 2
+CONTRACT_VERSION = 3
 
 
 @pytest.fixture(scope="module")
@@ -151,13 +158,12 @@ def test_dropping_required_peer_field_fails(schema, example, drop):
 
 
 # ---------------------------------------------------------------------------
-# Forward-compat: additive top-level fields allowed; typos in structured
-# sub-objects rejected.
+# Version 3 rejects unknown fields at every level, including the top level.
 # ---------------------------------------------------------------------------
-def test_unknown_top_level_field_allowed(schema, example):
+def test_unknown_top_level_field_rejected(schema, example):
     doc = copy.deepcopy(example)
     doc["some_future_field"] = {"anything": 1}
-    assert list(_validator(schema).iter_errors(doc)) == []
+    assert [e.validator for e in _validator(schema).iter_errors(doc)] == ["additionalProperties"]
 
 
 def test_typo_in_awg_entry_rejected(schema, example):
@@ -169,7 +175,7 @@ def test_typo_in_awg_entry_rejected(schema, example):
 # ---------------------------------------------------------------------------
 # Field-format class
 # ---------------------------------------------------------------------------
-@pytest.mark.parametrize("version", [1, 3])
+@pytest.mark.parametrize("version", [1, 2, 4])
 def test_other_schema_versions_rejected(schema, example, version):
     doc = copy.deepcopy(example)
     doc["schema_version"] = version
@@ -211,6 +217,77 @@ def test_golden_full_ripdpi_validates(schema):
     ripdpi = _ripdpi(json.loads(GOLDEN_FULL.read_text()))
     errors = list(_validator(schema).iter_errors(ripdpi))
     assert errors == [], [e.message for e in errors]
+
+
+def test_v2_golden_rejected_on_schema_version_only(schema):
+    ripdpi = _ripdpi(json.loads(GOLDEN_FULL.read_text()))
+    ripdpi["schema_version"] = 2
+    for name in ("endpoints", "field_report"):
+        ripdpi.pop(name)
+    errors = list(_validator(schema).iter_errors(ripdpi))
+    assert [(e.validator, list(e.absolute_path)) for e in errors] == [("const", ["schema_version"])]
+
+
+@pytest.mark.parametrize("endpoint", [
+    "http://reports.example.test/v1/field-report",
+    "https://user@reports.example.test/v1",
+    "https://reports.example.test/v1 x",
+    "reports.example.test/v1",
+])
+def test_field_report_endpoint_requires_plain_https(schema, example, endpoint):
+    doc = copy.deepcopy(example)
+    doc["field_report"]["endpoint"] = endpoint
+    assert [list(e.absolute_path) for e in _validator(schema).iter_errors(doc)] == [["field_report", "endpoint"]]
+
+
+@pytest.mark.parametrize("field,value", [
+    ("ttl_seconds", 59), ("ttl_seconds", 86401), ("observed_at", "2026-11-19T10:00:00+03:00"),
+    ("observed_at", "2026-11-19"),
+])
+def test_health_shape_bounds_rejected(schema, example, field, value):
+    doc = copy.deepcopy(example)
+    next(iter(doc["endpoints"].values()))["health"][field] = value
+    assert list(_validator(schema).iter_errors(doc))
+
+
+def test_health_invalid_calendar_instant_refuses(tmp_path, example):
+    doc = copy.deepcopy(example)
+    next(iter(doc["endpoints"].values()))["health"]["observed_at"] = "2026-02-30T10:00:00Z"
+    path = tmp_path / "bundle.json"
+    path.write_text(json.dumps(doc))
+    proc = _run_validator(path)
+    assert proc.returncode == 1
+    assert "observed_at: requires a valid calendar instant" in proc.stderr
+
+
+def test_full_bundle_endpoint_key_must_name_a_bundle_tag(tmp_path):
+    doc = json.loads(GOLDEN_FULL.read_text())
+    doc["ripdpi"]["endpoints"]["p9-unlisted"] = copy.deepcopy(doc["ripdpi"]["endpoints"]["p2-awg-phone"])
+    path = tmp_path / "bundle.json"
+    path.write_text(json.dumps(doc))
+    proc = _run_validator(path)
+    assert proc.returncode == 1
+    assert "key names no outbound or AWG tag" in proc.stderr
+
+
+def test_expired_health_fixture_is_the_expiry_case():
+    from datetime import datetime, timedelta
+
+    doc = json.loads(HEALTH_EXPIRED.read_text())
+    assert _run_validator(HEALTH_EXPIRED).returncode == 0
+    clock = datetime.fromisoformat(doc["_evaluated_at"])
+    endpoints = doc["ripdpi"]["endpoints"]
+    assert {health["health"]["status"] for health in endpoints.values()} >= {"healthy", "down"}
+    for endpoint in endpoints.values():
+        health = endpoint["health"]
+        assert datetime.fromisoformat(health["observed_at"]) + timedelta(seconds=health["ttl_seconds"]) < clock
+    assert doc["_expected_effective_status"] == {ref: "unknown" for ref in endpoints}
+
+
+def test_expired_health_rule_is_documented():
+    text = (REPO_ROOT / "docs/reference/ripdpi-bundle.md").read_text()
+    assert "`observed_at` plus `ttl_seconds` is in the past" in text
+    assert "ripdpi-bundle.health-expired.json" in text
 
 
 def test_golden_full_awg_fingerprint_recomputes():
@@ -600,3 +677,89 @@ def test_full_bundle_hopping_matches_one_outbound(tmp_path, mode):
     result = _run_validator(path)
     assert result.returncode == (0 if mode in {"standard-only", "default-interval", "equivalent-units"} else 1)
     assert "Traceback" not in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# Client field report v1. Every report-*.json negative fixture is rejected for
+# its named reason, and diagnostics never echo the rejected value.
+# ---------------------------------------------------------------------------
+def _run_report_validator(path):
+    return subprocess.run([sys.executable, str(REPORT_VALIDATOR), str(path)], capture_output=True, text=True)
+
+
+REPORT_NEGATIVE_REASONS = {
+    "report-extra-root-property.json": "additionalProperties constraint failed at /\n",
+    "report-extra-window-property.json": "additionalProperties constraint failed at /window\n",
+    "report-extra-client-property.json": "additionalProperties constraint failed at /client\n",
+    "report-extra-network-property.json": "additionalProperties constraint failed at /network\n",
+    "report-extra-bucket-property.json": "additionalProperties constraint failed at /buckets/0\n",
+    "report-failure-without-stage.json": "required constraint failed at /buckets/1\n",
+    "report-success-with-stage.json": "not constraint failed at /buckets/0\n",
+    "report-unknown-failure-stage.json": "enum constraint failed at /buckets/1/failure_stage\n",
+    "report-histogram-extra-bound.json": "maxItems constraint failed at /buckets/0/latency_ms_histogram\n",
+    "report-histogram-sum-mismatch.json": "buckets[0].latency_ms_histogram: counts must sum to attempts",
+    "report-server-ref-ipv4.json": "pattern constraint failed at /buckets/0/server_ref\n",
+    "report-server-ref-ipv6.json": "pattern constraint failed at /buckets/0/server_ref\n",
+    "report-server-ref-hostname.json": "pattern constraint failed at /buckets/0/server_ref\n",
+    "report-start-not-hour.json": "pattern constraint failed at /window/start_utc\n",
+    "report-start-seconds.json": "pattern constraint failed at /window/start_utc\n",
+    "report-attempts-below-5.json": "minimum constraint failed at /buckets/2/attempts\n",
+    "report-app-version-patch.json": "pattern constraint failed at /client/app_version\n",
+    "report-schema-version-2.json": "const constraint failed at /schema_version\n",
+}
+
+
+def test_report_schema_version_pin():
+    schema = json.loads(REPORT_SCHEMA.read_text())
+    assert schema["x-contract-version"] == 1
+    assert schema["properties"]["schema_version"]["const"] == 1
+    assert schema["x-latency-bounds-ms"] == [50, 100, 250, 500, 1000, 2500, 5000, "+Inf"]
+
+
+def test_report_golden_validates_via_cli():
+    proc = _run_report_validator(REPORT_GOLDEN)
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_every_report_negative_fixture_has_a_reason():
+    assert sorted(path.name for path in NEGATIVE_DIR.glob("report-*.json")) == sorted(REPORT_NEGATIVE_REASONS)
+
+
+@pytest.mark.parametrize("name,reason", sorted(REPORT_NEGATIVE_REASONS.items()))
+def test_report_negative_fixture_is_rejected_for_its_reason(name, reason):
+    path = NEGATIVE_DIR / name
+    doc = json.loads(path.read_text())
+    proc = _run_report_validator(path)
+    assert proc.returncode == 1
+    assert reason in proc.stderr
+    assert "violation(s)" in proc.stderr and proc.stderr.count("\n  ") == 1
+    for bucket in doc["buckets"]:
+        assert bucket["server_ref"] not in proc.stderr
+
+
+@pytest.mark.parametrize("start", ["2026-02-30T10:00:00Z", "2026-13-01T10:00:00Z", "2026-11-19T24:00:00Z"])
+def test_report_invalid_calendar_window_refuses(tmp_path, start):
+    doc = json.loads(REPORT_GOLDEN.read_text())
+    doc["window"]["start_utc"] = start
+    path = tmp_path / "report.json"
+    path.write_text(json.dumps(doc))
+    assert _run_report_validator(path).returncode == 1
+
+
+@pytest.mark.parametrize("hours,accepted", [(0, False), (1, True), (24, True), (25, False)])
+def test_report_window_duration_bounds(tmp_path, hours, accepted):
+    doc = json.loads(REPORT_GOLDEN.read_text())
+    doc["window"]["duration_hours"] = hours
+    path = tmp_path / "report.json"
+    path.write_text(json.dumps(doc))
+    assert _run_report_validator(path).returncode == (0 if accepted else 1)
+
+
+@pytest.mark.parametrize("doc", [[], None, "synthetic-secret-marker", {"schema_version": "synthetic-secret-marker"}])
+def test_report_diagnostics_never_echo_values_or_crash(tmp_path, doc):
+    path = tmp_path / "report.json"
+    path.write_text(json.dumps(doc))
+    proc = _run_report_validator(path)
+    assert proc.returncode == 1
+    assert "synthetic-secret-marker" not in proc.stderr
+    assert "Traceback" not in proc.stderr
