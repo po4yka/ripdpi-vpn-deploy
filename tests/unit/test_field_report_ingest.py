@@ -310,11 +310,26 @@ def test_unit_delivers_tokens_as_credential_and_keeps_the_hardening_floor():
                       "ProtectControlGroups=true", "RestrictNamespaces=true", "LockPersonality=true",
                       "RestrictRealtime=true", "RestrictSUIDSGID=true", "SystemCallArchitectures=native",
                       "CapabilityBoundingSet=\n", "IPAddressDeny=any", "IPAddressAllow=localhost",
-                      "ReadWritePaths=/var/lib/node_exporter/textfile\n"):
+                      "StateDirectory=vpn-field-report\n", "StateDirectoryMode=0755\n"):
         assert directive in unit
+    # The ingest writes only its own state directory; it is no member of the shared textfile writer group.
+    assert "SupplementaryGroups=" not in unit and "ReadWritePaths=" not in unit
     config = json.loads(_rendered("vpn-field-report.json.j2", server_refs=["p0-reality-upcloud-prod"]))
+    assert config["textfile"] == "/var/lib/vpn-field-report/vpn_field_report.prom"
     assert config["listen"] == "127.0.0.1"
     assert config["server_refs"] == ["p0-reality-upcloud-prod"]
+
+
+def test_role_links_the_private_aggregate_into_the_textfile_directory():
+    tasks = yaml.safe_load((ROLE / "tasks/field-report.yml").read_text())
+    links = [task["ansible.builtin.file"] for task in tasks
+             if task.get("ansible.builtin.file", {}).get("state") == "link"]
+    assert links == [{"src": "/var/lib/vpn-field-report/vpn_field_report.prom",
+                      "dest": "{{ (monitoring | default({})).node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/vpn_field_report.prom",
+                      "state": "link", "owner": "root", "group": "root", "force": True, "follow": False}]
+    retired = yaml.safe_load((ROLE / "tasks/field-report-disable.yml").read_text())
+    removed = next(task for task in retired if task["name"] == "Remove field-report ingest files and aggregate textfile")
+    assert "/var/lib/vpn-field-report" in removed["loop"]
 
 
 def _settings_assert_holds(**changes) -> bool:

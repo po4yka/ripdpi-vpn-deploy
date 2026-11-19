@@ -220,8 +220,9 @@
         cmd: |
           set -o pipefail
           grep -Eq '^vpn_field_report_reports_total [1-9]' /var/lib/node_exporter/textfile/vpn_field_report.prom
+          test -L /var/lib/node_exporter/textfile/vpn_field_report.prom
           grep -q 'server_ref="p0-reality-upcloud-prod"' /var/lib/node_exporter/textfile/vpn_field_report.prom
-          ! grep -rq -e "$CURRENT" -e "$PREVIOUS" /var/log/nginx /var/lib/node_exporter/textfile
+          ! grep -rq -e "$CURRENT" -e "$PREVIOUS" /var/log/nginx /var/lib/node_exporter/textfile /var/lib/vpn-field-report
           ! journalctl -u vpn-field-report.service --no-pager | grep -q -e "$CURRENT" -e "$PREVIOUS" -e 127.0.0.1
         executable: /bin/bash
       environment:
