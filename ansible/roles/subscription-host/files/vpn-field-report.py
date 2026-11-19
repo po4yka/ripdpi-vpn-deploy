@@ -69,6 +69,10 @@ def load_validator(validator_path: str, schema_path: str):
 
 HINT_PEER_HEADER = "X-Network-Hint-Peer"
 COUNTRY = re.compile(rb"^[A-Z]{2}$")
+# The pinned build has 719149 lines, the longest 256 bytes, 55 MB in all. The bounds refuse a crafted
+# stream before it can grow one line or the whole read past the 128M unit memory limit.
+MAX_LINE_BYTES = 4096
+MAX_DATASET_BYTES = 256 << 20
 
 
 class AsnTable:
@@ -87,7 +91,13 @@ class AsnTable:
         self.families = {4: (array("I"), array("I"), array("I"), bytearray()), 6: ([], [], array("I"), bytearray())}
         last_end = {4: -1, 6: -1}
         # Stream the lines: the decompressed table is several times the 128M unit memory limit as one list.
-        for line in gzip.GzipFile(fileobj=io.BytesIO(data)):
+        stream, total = gzip.GzipFile(fileobj=io.BytesIO(data)), 0
+        while line := stream.readline(MAX_LINE_BYTES + 1):
+            total += len(line)
+            if len(line) > MAX_LINE_BYTES:
+                raise ValueError("network hint dataset has an over-long line")
+            if total > MAX_DATASET_BYTES:
+                raise ValueError("network hint dataset exceeds its decompressed size limit")
             try:
                 first, last, asn, country, _ = line.split(b"\t", 4)
                 start, end = ipaddress.ip_address(first.decode("ascii")), ipaddress.ip_address(last.decode("ascii"))
