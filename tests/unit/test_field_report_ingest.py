@@ -61,8 +61,27 @@ SOCKET_ACTIVATION = ("import os, sys\n"
                      "os.execv(sys.argv[2], sys.argv[2:])\n")
 
 
-def _service_command(listener: socket.socket, tmp_path: Path) -> list[str]:
-    return [sys.executable, "-I", "-c", SOCKET_ACTIVATION, str(listener.fileno()), sys.executable, "-I", "-B",
+# The same hand-over, then the service runs in this process with every non-Unix socket refused as the unit's
+# RestrictAddressFamilies=AF_UNIX seccomp filter refuses it (EAFNOSUPPORT), so creating one fails the start.
+UNIX_ONLY_ACTIVATION = ("import errno, os, runpy, socket, sys\n"
+                        "fd = int(sys.argv[1])\n"
+                        "if fd != 3:\n"
+                        "    os.dup2(fd, 3)\n"
+                        "    os.close(fd)\n"
+                        "os.environ.update(LISTEN_FDS='1', LISTEN_PID=str(os.getpid()))\n"
+                        "class UnixOnly(socket.socket):\n"
+                        "    def __init__(self, family=-1, type=-1, proto=-1, fileno=None):\n"
+                        "        if fileno is None and family != socket.AF_UNIX:\n"
+                        "            raise OSError(errno.EAFNOSUPPORT, 'address family not allowed')\n"
+                        "        super().__init__(family, type, proto, fileno)\n"
+                        "socket.socket = UnixOnly\n"
+                        "sys.argv, sys.dont_write_bytecode = sys.argv[2:], True\n"
+                        "runpy.run_path(sys.argv[0], run_name='__main__')\n")
+
+
+def _service_command(listener: socket.socket, tmp_path: Path, activation: str = SOCKET_ACTIVATION) -> list[str]:
+    launcher = [sys.executable, "-I", "-B"] if activation is SOCKET_ACTIVATION else []
+    return [sys.executable, "-I", "-c", activation, str(listener.fileno()), *launcher,
             str(SERVICE), "--config", str(tmp_path / "config.json"), "--tokens", str(tmp_path / "tokens.json")]
 
 
@@ -184,8 +203,8 @@ def test_the_ingest_serves_an_inherited_unix_socket(tmp_path):
         listener.listen()
         config = _config(tmp_path)
         _write_config(tmp_path, config)
-        process = subprocess.Popen(_service_command(listener, tmp_path), pass_fds=(listener.fileno(),),
-                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        process = subprocess.Popen(_service_command(listener, tmp_path, UNIX_ONLY_ACTIVATION),
+                                   pass_fds=(listener.fileno(),), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         try:
             with socket.socket(socket.AF_UNIX) as client:
                 client.settimeout(5)
