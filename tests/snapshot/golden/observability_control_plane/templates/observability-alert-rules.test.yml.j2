@@ -412,5 +412,5 @@ tests:
       - eval_time: 30m
         alertname: FieldReportClientFailureRatioHigh
         exp_alerts:
-          - exp_labels: {component: field-report, environment: staging, protocol: xhttp, asn: "64500", severity: warning}
-            exp_annotations: {incident_family: field-report-failure, evidence_class: client-failure-ratio, source_generation: "", summary: Client field reports show a high failure ratio for one protocol and network., runbook: docs/how-to/monitoring-alerts.md#field-report-failure, action: "Compare with the protocol probe for this protocol. If the probe is healthy, read the failure stages for this network before you rotate."}
+          - exp_labels: {component: field-report, environment: staging, node: field-reports, protocol: xhttp, asn: "64500", severity: warning}
+            exp_annotations: {value: "xhttp AS64500 60% failed", incident_family: field-report-failure, evidence_class: client-failure-ratio, source_generation: "", summary: Client field reports show a high failure ratio for one protocol and network., runbook: docs/how-to/monitoring-alerts.md#field-report-failure, action: "Compare with the protocol probe for this protocol. If the probe is healthy, read the failure stages for this network before you rotate."}
