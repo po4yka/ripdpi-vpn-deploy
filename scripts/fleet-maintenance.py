@@ -226,7 +226,7 @@ def node_environment(plan, node, secret):
                   SOPS_AGE_KEY_FILE=str(secret.parent / 'approved-age.key'),
                   AGE_KEY=str(secret.parent / 'approved-age.key'),
                   DEPLOY_APPROVED_INPUTS_FILE=str(secret.parent / 'approved-inputs.json'),
-                  ANSIBLE_TAGS='', SKIP_PRECHECK='0', TAG_ON_SUCCESS='0')
+                  ANSIBLE_TAGS='', SKIP_PRECHECK='0')
     return command_environment(values)
 
 

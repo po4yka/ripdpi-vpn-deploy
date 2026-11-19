@@ -158,7 +158,7 @@ def test_runtime_uses_exact_private_inventory_and_removes_plaintext_after_failur
     revocation = {'operation_id': value['id'], 'intent_sha256': 'a'*64}
     def execute(argv, **kwargs):
         calls.append(argv)
-        assert 'ENV=green' in argv and 'ANSIBLE_LIMIT=node-b' in argv and 'TAG_ON_SUCCESS=0' in argv
+        assert 'ENV=green' in argv and 'ANSIBLE_LIMIT=node-b' in argv
         env = kwargs['environment']
         assert 'MAKEFLAGS' not in env and 'ANSIBLE_SKIP_TAGS' not in env
         secret = Path(next(arg.split('=',1)[1] for arg in argv if arg.startswith('SECRETS_FILE=')))

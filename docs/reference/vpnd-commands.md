@@ -52,7 +52,7 @@ Interactive deploy wizard.
 | Argument | Required | Purpose |
 |---|---|---|
 | `--skip-precheck` | no | Skip running pre-deploy guards (mirrors SKIP_PRECHECK=1). |
-| `--tag-on-success` | no | Tag a known-good commit after a successful verify run. |
+| `--tag-on-success` | no | Run make tag-known-good after verify and smoke-test pass. |
 
 ### `vpnd reconverge`
 

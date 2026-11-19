@@ -788,7 +788,7 @@ INSPECT_INVENTORY ?= $(ANSIBLE_DIR)/inventory/generated.ini
 INSPECT_KNOWN_HOSTS ?= $(HOME)/.ssh/known_hosts
 export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
 
-.PHONY: help init validate plan apply inventory wait decrypt require-inventory require-exact-node require-clean-source validate-ansible-extra-vars dry-run deploy tailnet-network-promote backup-configure deploy-canary os-maintenance verify source-drift security-verify security-audit clean \
+.PHONY: help init validate plan apply inventory wait decrypt require-inventory require-exact-node require-clean-source validate-ansible-extra-vars dry-run deploy tailnet-network-promote backup-configure deploy-canary os-maintenance verify tag-known-good source-drift security-verify security-audit clean \
         pre-deploy-check network-exposure-review \
         rollback-xray rollback-config rotate-credentials rotate-credentials-check check-prereqs \
         destroy backup-state burn-check diff-secrets emit-singbox emit-incy emit-incy-config emit-xray emit-awg emit-bundle install-hooks \
@@ -874,7 +874,8 @@ help:
 	@echo "  deploy                     Serial exact-node transaction; requires promotion and fresh baseline-failure receipt mappings"
 	@echo "  deploy-canary              Deploy ENV=canary through the normal deploy flow"
 	@echo "  os-maintenance             Rolling full OS upgrade + required reboot + verification"
-	@echo "  verify [TAG_ON_SUCCESS=1]  ACTIVE checks; watchdog may restart services (+ optional tag)"
+	@echo "  verify                     ACTIVE checks; watchdog may restart services; records a known-good receipt per node"
+	@echo "  tag-known-good             Tag HEAD once every node of KNOWN_GOOD_INVENTORIES passed verify at it"
 	@echo "  inspect INSPECT_HOSTS=…    Passive SSH observation of exact comma-separated inventory names"
 	@echo "  source-drift               Require live deployable digest to match the clean checkout"
 	@echo "  security-verify            Host hardening checks (SSH/sysctl/firewall/services)"
@@ -1085,6 +1086,11 @@ require-exact-node:
 
 ANSIBLE_INVENTORY ?= $(ANSIBLE_DIR)/inventory/generated.ini
 export ANSIBLE_INVENTORY
+# Space-separated; add another rendered inventory (e.g. a split-hop pair) to
+# make its vpn hosts part of the known-good tag.
+KNOWN_GOOD_INVENTORIES ?= $(ANSIBLE_INVENTORY)
+KNOWN_GOOD_RECEIPTS_DIR ?= $(HOME)/.config/vpn-provision/known-good
+KNOWN_GOOD_MAX_AGE_HOURS ?= 24
 
 require-inventory:
 	@test -s "$(ANSIBLE_INVENTORY)" || { echo "missing generated inventory — run 'make inventory'"; exit 1; }
@@ -1200,19 +1206,22 @@ os-maintenance: require-clean-source require-inventory validate-ansible-extra-va
 	  --note "playbook=os-maintenance.yml serial=1 verified=true"
 
 verify: require-clean-source require-inventory validate-ansible-extra-vars pre-deploy-check
-	@if [ "$(TAG_ON_SUCCESS)" = "1" ] && [ -n "$(ANSIBLE_LIMIT)" ]; then \
-	  echo "TAG_ON_SUCCESS=1 requires an unbounded fleet verification"; \
-	  exit 1; \
-	fi
 	env -u ANSIBLE_SKIP_TAGS -u ANSIBLE_RUN_TAGS ENV=$(ENV) VPN_SECRETS_FILE=$(SECRETS_FILE) \
 	ansible-playbook $(ANSIBLE_DIR)/playbooks/verify.yml \
 	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)") \
 	  $(if $(strip $(ANSIBLE_EXTRA_VARS_FILE)),--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)")
 	$(MAKE) source-drift ANSIBLE_LIMIT="$(ANSIBLE_LIMIT)" ANSIBLE_EXTRA_VARS_FILE="$(ANSIBLE_EXTRA_VARS_FILE)"
-	@if [ "$(TAG_ON_SUCCESS)" = "1" ]; then \
-	  tag="vpn-deploy-known-good-$$(date +%Y-%m-%d-%H%M)"; \
-	  git tag "$$tag" && echo "tagged: $$tag"; \
-	fi
+	@# A failed receipt write only withholds the known-good tag; it never fails a passed verify.
+	python3 ./scripts/known-good.py record --inventory "$(ANSIBLE_INVENTORY)" \
+	  --receipts "$(KNOWN_GOOD_RECEIPTS_DIR)" $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)") \
+	  || echo "verify: warning: known-good receipt not recorded"
+
+# Tags HEAD when every vpn host of every KNOWN_GOOD_INVENTORIES file passed
+# make verify at this exact revision within KNOWN_GOOD_MAX_AGE_HOURS.
+tag-known-good: require-clean-source
+	python3 ./scripts/known-good.py tag --receipts "$(KNOWN_GOOD_RECEIPTS_DIR)" \
+	  --max-age-hours "$(KNOWN_GOOD_MAX_AGE_HOURS)" \
+	  $(foreach inventory,$(KNOWN_GOOD_INVENTORIES),--inventory "$(inventory)")
 
 source-drift: require-clean-source require-inventory validate-ansible-extra-vars
 	ansible-playbook $(ANSIBLE_DIR)/playbooks/source-drift.yml \

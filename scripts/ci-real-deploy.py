@@ -316,7 +316,7 @@ def resume_cleanup(work, *, runtime_factory=Runtime):
     runtime = runtime_factory(work)
     # Command logs are exclusive files; continue after the ones the stopped run wrote.
     runtime.counter = len(list(work.glob("command-*.log")))
-    runtime.environment.update(ENV=environment, PROVIDER="upcloud", SKIP_PRECHECK="1", TAG_ON_SUCCESS="0")
+    runtime.environment.update(ENV=environment, PROVIDER="upcloud", SKIP_PRECHECK="1")
     state = ROOT / "terraform/providers/upcloud/terraform.tfstate.d" / environment / "terraform.tfstate"
     phases = []
     with cleanup_signal_window():
@@ -331,7 +331,7 @@ def execute(config, args, work, artifact, *, runtime_factory=Runtime, enrollment
     environment = "ci-staging-" + uuid.uuid4().hex[:16]
     alias = "vpn-" + environment + ".ci.test"
     runtime.environment.update(ENV=environment, PROVIDER="upcloud", COHORTS="ci-" + args.profile,
-                               SKIP_PRECHECK="1", TAG_ON_SUCCESS="0")
+                               SKIP_PRECHECK="1")
     tfvars = ROOT / "terraform/providers/upcloud/environments" / (environment + ".tfvars")
     state = ROOT / "terraform/providers/upcloud/terraform.tfstate.d" / environment / "terraform.tfstate"
     enrollment = enrollment_factory(os.environ["CI_TAILSCALE_OAUTH_CLIENT_ID"], os.environ["CI_TAILSCALE_OAUTH_CLIENT_SECRET"],

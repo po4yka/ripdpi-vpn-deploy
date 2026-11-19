@@ -3,11 +3,12 @@
 # vpn-deploy-known-good-* tag.
 #
 # Workflow:
-#   1. `make verify` sets a marker (--tag-on-success) so the last clean
-#      deploy is identifiable by tag.
+#   1. `make verify` records a receipt per node; `make tag-known-good` tags
+#      HEAD once every node passed at that revision.
 #   2. Operator runs `make drift-since-tag` weekly. The script:
 #        a. finds the latest vpn-deploy-known-good-* tag
-#        b. lists every commit since the tag (the intentional drift)
+#        b. lists commits since the tag that change deployable paths (the
+#           intentional drift); documentation and task commits do not count
 #        c. shows terraform plan against current tfvars
 #        d. shows ansible-playbook --check --diff against the inventory
 #      → output is a "what would change if I re-deployed today" report.
@@ -37,9 +38,8 @@ TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
 
 TAG="$(git -C "$REPO_ROOT" describe --tags --match 'vpn-deploy-known-good-*' --abbrev=0 2>/dev/null || true)"
 if [[ -z "$TAG" ]]; then
-  echo "no vpn-deploy-known-good-* tag yet; tag the current state with:"
-  echo "  git tag vpn-deploy-known-good-$(date +%Y-%m-%d)"
-  echo "or pass --tag-on-success to \`make verify\`."
+  echo "no vpn-deploy-known-good-* tag yet; run \`make verify\` for every node,"
+  echo "then \`make tag-known-good\`."
   exit 2
 fi
 
@@ -48,8 +48,11 @@ echo "Drift report — base: $TAG"
 echo "=================================================================="
 
 echo
-echo "[1/3] Intentional drift (commits since the tag):"
-git -C "$REPO_ROOT" --no-pager log --oneline "${TAG}..HEAD" || echo "  (none)"
+echo "[1/3] Intentional drift (deployable commits since the tag):"
+# The paths of scripts/deploy-source-identity.sh plus Terraform.
+commits="$(git -C "$REPO_ROOT" --no-pager log --oneline "${TAG}..HEAD" -- \
+  ansible scripts requirements.yml terraform)"
+echo "${commits:-  (none)}"
 
 if [[ "$REPO_ONLY" == "true" ]]; then
   echo

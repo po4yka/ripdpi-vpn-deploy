@@ -322,7 +322,8 @@ def test_skip_precheck_and_tag_on_success_flow_into_their_targets(tmp_path):
         )
     ]
     assert "SKIP_PRECHECK=1" in next(s for s in rendered if "make deploy " in s)
-    assert "TAG_ON_SUCCESS=1" in next(s for s in rendered if "make verify " in s)
+    names = [s.split("make ", 1)[1].split()[0] for s in rendered]
+    assert names[-3:] == ["verify", "smoke-test", "tag-known-good"]
 
 
 # Rust test: vpnd/src/commands/deploy.rs::plan_summary_renders_placeholders_not_paths

@@ -17,12 +17,11 @@ def plan_steps(ctx, args):
         if args.skip_precheck
         else target(ctx, "deploy")
     )
-    steps.append(
-        target_with(ctx, "verify", [("TAG_ON_SUCCESS", "1")])
-        if args.tag_on_success
-        else target(ctx, "verify")
-    )
-    return steps + [target(ctx, "smoke-test")]
+    steps += [target(ctx, "verify"), target(ctx, "smoke-test")]
+    # Last: it refuses until every node has a receipt, which must not skip smoke-test.
+    if args.tag_on_success:
+        steps.append(target(ctx, "tag-known-good"))
+    return steps
 
 
 def build_plan_summary(ctx, args):

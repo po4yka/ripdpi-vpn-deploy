@@ -110,7 +110,6 @@ def test_gate_scopes_exact_target_and_cleans_plaintext_on_failure(plan, monkeypa
     admitted = io.LocalIO(document)
     monkeypatch.setenv('MAKEFLAGS', '--eval=bad')
     monkeypatch.setenv('ANSIBLE_SKIP_TAGS', 'all')
-    monkeypatch.setenv('TAG_ON_SUCCESS', '1')
     calls, paths = [], []
     secret = {'synthetic': 'private-target-value'}
     def run(argv, **kwargs):
@@ -119,7 +118,7 @@ def test_gate_scopes_exact_target_and_cleans_plaintext_on_failure(plan, monkeypa
         paths.append(path)
         assert path.stat().st_mode & 0o777 == 0o600
         assert yaml.safe_load(path.read_text()) == secret
-        assert 'ANSIBLE_LIMIT=node-b' in argv and 'ENV=green' in argv and 'TAG_ON_SUCCESS=0' in argv
+        assert 'ANSIBLE_LIMIT=node-b' in argv and 'ENV=green' in argv
         assert 'MAKEFLAGS' not in kwargs['environment'] and 'ANSIBLE_SKIP_TAGS' not in kwargs['environment']
         frozen = Path(kwargs['environment']['ANSIBLE_INVENTORY'])
         assert frozen != Path(document['inventory']) and frozen.stat().st_mode & 0o777 == 0o600

@@ -286,7 +286,7 @@ class Runtime:
         environment = {'ANSIBLE_LIMIT': alias, 'ANSIBLE_TAGS': '', 'SKIP_PRECHECK': '0',
             'ANSIBLE_EXTRA_VARS_FILE': '', 'SECRETS_FILE': str(plaintext),
             'DEPLOY_SSH_CONTEXTS_FILE': str(contexts),
-            'DEPLOY_PROMOTION_CONFIG_FILE': self.manifest['promotion_configs_file'], 'TAG_ON_SUCCESS': '0'}
+            'DEPLOY_PROMOTION_CONFIG_FILE': self.manifest['promotion_configs_file']}
         if os.path.lexists(plaintext):
             raise RecoveryError('recovery-plaintext-output-occupied')
         journal.observe('plaintext_owned', True)

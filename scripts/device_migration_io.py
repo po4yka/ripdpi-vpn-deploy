@@ -281,7 +281,7 @@ class LocalIO(PublisherIO):
                 status, _ = run_command(['make', '-C', str(ROOT), goal, 'PROVIDER=' + provider, 'ENV=' + environment,
                                  'SOPS_FILE=' + node['secrets_file'], 'SECRETS_FILE=' + str(path),
                                  'ANSIBLE_INVENTORY=' + str(frozen_inventory), 'ANSIBLE_EXTRA_VARS_FILE=', 'SKIP_PRECHECK=0',
-                                 'ANSIBLE_LIMIT=' + node['alias'], 'COHORTS=' + node['cohort'], 'TAG_ON_SUCCESS=0'],
+                                 'ANSIBLE_LIMIT=' + node['alias'], 'COHORTS=' + node['cohort']],
                                 environment=env, timeout=600, capture=True, output_limit=1_048_576)
                 if status:
                     raise MigrationRefused('migration-target-verification-failed')

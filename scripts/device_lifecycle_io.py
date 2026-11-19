@@ -318,7 +318,7 @@ class LocalIO:
                     status, _ = run_command(['make', '-C', str(ROOT), goal, 'PROVIDER=' + provider, 'ENV=' + env,
                         'SOPS_FILE=' + node['secrets_file'], 'SECRETS_FILE=' + str(secret_file),
                         'ANSIBLE_INVENTORY=' + str(inventory), 'ANSIBLE_EXTRA_VARS_FILE=' + extra_vars, 'SKIP_PRECHECK=0',
-                        'ANSIBLE_LIMIT=' + node['alias'], 'COHORTS=' + node['cohort'], 'TAG_ON_SUCCESS=0'],
+                        'ANSIBLE_LIMIT=' + node['alias'], 'COHORTS=' + node['cohort']],
                         environment=environment, timeout=3600, capture=True, output_limit=1_048_576)
                     # Inside the silence: a failed rotation must drop it without a tail.
                     if status:

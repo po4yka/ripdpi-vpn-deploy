@@ -24,7 +24,7 @@ complete -c vpnd -n '__fish_seen_subcommand_from deploy' -l root -r -d 'Override
 complete -c vpnd -n '__fish_seen_subcommand_from deploy' -l env -s e -r -d 'Target environment (VPN_ENV; default: prod).'
 complete -c vpnd -n '__fish_seen_subcommand_from deploy' -l provider -s p -r -d 'Cloud provider Terraform root (VPN_PROVIDER; default: upcloud).'
 complete -c vpnd -n '__fish_seen_subcommand_from deploy' -l skip-precheck -d 'Skip running pre-deploy guards (mirrors SKIP_PRECHECK=1).'
-complete -c vpnd -n '__fish_seen_subcommand_from deploy' -l tag-on-success -d 'Tag a known-good commit after a successful verify run.'
+complete -c vpnd -n '__fish_seen_subcommand_from deploy' -l tag-on-success -d 'Run make tag-known-good after verify and smoke-test pass.'
 complete -c vpnd -n '__fish_seen_subcommand_from reconverge' -s h -l help -d 'show this help message and exit'
 complete -c vpnd -n '__fish_seen_subcommand_from reconverge' -l explain -d 'Print underlying invocations without running them.'
 complete -c vpnd -n '__fish_seen_subcommand_from reconverge' -l yes -s y -d 'Skip settings confirmation; plan and dry-run reviews still prompt.'
