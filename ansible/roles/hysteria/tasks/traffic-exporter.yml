@@ -1,0 +1,68 @@
+---
+- name: Install the aggregate Hysteria traffic exporter
+  when: hysteria_role_enabled | bool and hysteria_traffic_stats_enabled | bool
+  block:
+    - name: Install Hysteria traffic exporter
+      ansible.builtin.copy:
+        src: hysteria-traffic-exporter.py
+        dest: /usr/local/sbin/hysteria-traffic-exporter
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install Hysteria traffic exporter units
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/systemd/system/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - hysteria-traffic-exporter.service
+        - hysteria-traffic-exporter.timer
+      register: _hysteria_traffic_exporter_units
+
+    - name: Enable Hysteria traffic exporter timer
+      ansible.builtin.systemd_service:
+        name: hysteria-traffic-exporter.timer
+        enabled: true
+        state: "{{ 'restarted' if _hysteria_traffic_exporter_units.changed else 'started' }}"
+        daemon_reload: "{{ _hysteria_traffic_exporter_units.changed }}"
+      changed_when: _hysteria_traffic_exporter_units.changed
+      when: not ansible_check_mode
+
+- name: Retire the aggregate Hysteria traffic exporter
+  when: not (hysteria_role_enabled | bool and hysteria_traffic_stats_enabled | bool)
+  block:
+    - name: Inspect Hysteria traffic exporter timer
+      ansible.builtin.stat:
+        path: /etc/systemd/system/hysteria-traffic-exporter.timer
+      register: _hysteria_traffic_exporter_timer
+
+    - name: Stop Hysteria traffic exporter timer
+      ansible.builtin.systemd_service:
+        name: hysteria-traffic-exporter.timer
+        enabled: false
+        state: stopped
+      when:
+        - not ansible_check_mode
+        - _hysteria_traffic_exporter_timer.stat.exists
+
+    - name: Remove Hysteria traffic exporter surfaces
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/hysteria-traffic-exporter.timer
+        - /etc/systemd/system/hysteria-traffic-exporter.service
+        - /usr/local/sbin/hysteria-traffic-exporter
+        - "{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/vpn_hysteria.prom"
+        - "{{ hysteria_config_dir }}/traffic-stats.secret"
+      register: _hysteria_traffic_exporter_removed
+
+    - name: Reload systemd after Hysteria traffic exporter removal
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+      when:
+        - not ansible_check_mode
+        - _hysteria_traffic_exporter_removed.changed

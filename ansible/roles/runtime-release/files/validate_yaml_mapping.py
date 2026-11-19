@@ -137,6 +137,18 @@ def _validate_hysteria(document: dict) -> None:
         raise ValueError("Hysteria gateway credential is invalid")
     if "acl" in document or "resolver" in document:
         raise ValueError("Hysteria recipient authority override is invalid")
+    if "trafficStats" in document:
+        # The per-user API must stay on loopback behind a strong node-local secret.
+        stats = _mapping(document, "trafficStats")
+        listen = stats.get("listen")
+        if (
+            set(stats) != {"listen", "secret"}
+            or not isinstance(listen, str)
+            or re.fullmatch(r"127\.0\.0\.1:([1-9][0-9]{0,4})", listen) is None
+            or int(listen.rsplit(":", 1)[1]) > 65535
+            or not re.fullmatch(r"[A-Za-z0-9_-]{32,128}", str(stats.get("secret")))
+        ):
+            raise ValueError("Hysteria traffic stats listener is invalid")
     quic = _mapping(document, "quic")
     for key in (
         "initStreamReceiveWindow",

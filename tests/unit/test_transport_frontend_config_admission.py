@@ -62,6 +62,33 @@ def test_hysteria_bypass_candidate_is_refused_before_publication(tmp_path, repla
     assert 'private-unit-sentinel' not in result.stderr and str(path) not in result.stderr
 
 
+@pytest.mark.parametrize(('stats', 'accepted'), [
+    ({'listen': '127.0.0.1:25413', 'secret': 'a' * 43}, True),
+    ({'listen': '0.0.0.0:25413', 'secret': 'a' * 43}, False),
+    ({'listen': ':25413', 'secret': 'a' * 43}, False),
+    ({'listen': '127.0.0.1:25413', 'secret': 'short'}, False),
+    ({'listen': '127.0.0.1:25413', 'secret': 'a' * 43, 'extra': 1}, False),
+])
+def test_hysteria_traffic_stats_listener_is_loopback_with_strong_secret(tmp_path, stats, accepted):
+    from template_render import merge_render_vars, render_template
+    config = yaml.safe_load(render_template(ROOT/'ansible/roles/hysteria/templates/config.yaml.j2', merge_render_vars()))
+    config['trafficStats'] = stats
+    path = tmp_path/'candidate.yaml'
+    path.write_text(yaml.safe_dump(config));path.chmod(0o600)
+    result = subprocess.run([sys.executable, str(ROOT/'ansible/roles/runtime-release/files/validate_yaml_mapping.py'), '--profile', 'hysteria', str(path)], text=True, capture_output=True)
+    assert (result.returncode == 0) is accepted, result.stderr
+    assert 'a' * 43 not in result.stderr
+
+
+def test_hysteria_traffic_stats_renders_only_when_enabled():
+    from template_render import merge_render_vars, render_template
+    values = merge_render_vars()
+    assert 'trafficStats' not in yaml.safe_load(render_template(ROOT/'ansible/roles/hysteria/templates/config.yaml.j2', values))
+    values.update(hysteria_traffic_stats_enabled=True, hysteria_traffic_stats_listen='127.0.0.1:25413', hysteria_traffic_stats_secret='s' * 43)
+    config = yaml.safe_load(render_template(ROOT/'ansible/roles/hysteria/templates/config.yaml.j2', values))
+    assert config['trafficStats'] == {'listen': '127.0.0.1:25413', 'secret': 's' * 43}
+
+
 def test_loaded_immutable_runtime_authority_selects_validator(tmp_path):
     # This is the wrapper contract, not native runtime forwarding evidence.
     import os

@@ -113,6 +113,10 @@
       owner: hysteria
       group: hysteria
 
+- name: Provide the node-local Hysteria traffic API secret
+  ansible.builtin.import_tasks: traffic-stats-secret.yml
+  when: hysteria_traffic_stats_enabled | bool
+
 - name: Keep native ACME parent under root authority
   ansible.builtin.file:
     path: /var/lib/hysteria

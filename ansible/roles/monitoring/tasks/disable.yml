@@ -16,6 +16,13 @@
          _monitoring_runtime_owner.stat.nlink | int == 1)
     fail_msg: Monitoring retirement requires its private role ownership marker.
 
+- name: Retire the aggregate AmneziaWG handshake exporter with monitoring
+  ansible.builtin.include_role:
+    name: amneziawg
+    tasks_from: handshake-exporter
+  vars:
+    amneziawg_role_enabled: false
+
 - name: Retire monitoring runtime authority
   ansible.builtin.include_role:
     name: runtime-release

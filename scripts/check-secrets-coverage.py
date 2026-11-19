@@ -126,6 +126,8 @@ NON_SECRET_TOPLEVEL = {
     "_observability_agent_self_steal_certificate",
     "_package_updates_effective_enabled",
     "hysteria_masquerade_hosts",
+    # Node-local Traffic Stats API secret generated on the host and set under no_log; never a SOPS key.
+    "hysteria_traffic_stats_secret",
     "nginx_aliases",
     "nginx_fallback_hsts",
     "server_ipv6",

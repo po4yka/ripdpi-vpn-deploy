@@ -94,8 +94,10 @@ The staged runtime-release include returns generic `runtime_release_candidates`;
   a rendered value alone does not prove that the kernel applied it.
 - **systemd unit `LimitNOFILE` matters** — default 1024 caps concurrent
   flows. The unit template sets `LimitNOFILE=1048576`.
-- **No JSON API surface** — Hysteria's optional traffic API would be a
-  fingerprint vector if exposed; it's disabled.
+- **No public JSON API surface** — the Traffic Stats API is a fingerprint
+  vector if exposed. It is off unless `hysteria_traffic_stats_enabled`; then the
+  validator admits only a `127.0.0.1` listener and a node-local secret, and the
+  exporter publishes summed bytes and connections, never a user identifier.
 - **Do not point masquerade at an unrelated public site** — keep `hysteria.masquerade_url` equal to `public_site_canonical_url`; the pre-flight assert rejects anything else.
 
 - Ordinary site convergence always invokes lifecycle reconciliation. The

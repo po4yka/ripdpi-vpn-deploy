@@ -1,0 +1,35 @@
+[Unit]
+Description=Export aggregate Hysteria2 traffic counters
+After=hysteria-server.service
+# Requisite, not Requires: a timer run must fail, never start a frontend that was stopped on purpose.
+Requisite=hysteria-server.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+# No capability is needed: root owns the textfile directory and systemd delivers the secret.
+CapabilityBoundingSet=
+LoadCredential=hysteria-traffic-secret:{{ hysteria_config_dir }}/traffic-stats.secret
+ExecStart=/usr/local/sbin/hysteria-traffic-exporter --listen {{ hysteria_traffic_stats_listen }} --secret-file ${CREDENTIALS_DIRECTORY}/hysteria-traffic-secret --output {{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/vpn_hysteria.prom
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictAddressFamilies=AF_INET
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+# The monitoring role creates the textfile directory later in site order; until then a run fails closed.
+ReadWritePaths=-{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}

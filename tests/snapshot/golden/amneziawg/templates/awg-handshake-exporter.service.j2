@@ -1,0 +1,31 @@
+[Unit]
+Description=Export aggregate AmneziaWG handshake counts
+After=awg-quick.target
+
+[Service]
+Type=oneshot
+# awg show needs CAP_NET_ADMIN on the userspace device socket; nothing else is granted.
+User=root
+Group=root
+CapabilityBoundingSet=CAP_NET_ADMIN
+AmbientCapabilities=CAP_NET_ADMIN
+ExecStart=/usr/local/sbin/awg-handshake-exporter --awg-bin /usr/bin/awg --fresh-window 180 --output /var/lib/node_exporter/textfile/vpn_awg.prom
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+# The monitoring role creates the textfile directory later in site order; until then a run fails closed.
+ReadWritePaths=-/var/lib/node_exporter/textfile

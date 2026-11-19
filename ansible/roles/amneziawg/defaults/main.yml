@@ -37,3 +37,8 @@ amneziawg:
 amneziawg_cohort: {}
 
 amneziawg_role_enabled: true
+
+# Opt-in aggregate handshake exporter: two counts, never a per-peer series.
+amneziawg_handshake_exporter_enabled: false
+amneziawg_handshake_exporter_interval: 60s
+amneziawg_handshake_exporter_fresh_window_seconds: 180

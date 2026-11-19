@@ -26,3 +26,10 @@ hysteria_release_urls:
   arm64: "https://github.com/po4yka/ripdpi-vpn-deploy/releases/download/runtime-go1.27.3-20261102/hysteria-linux-arm64"
 
 hysteria_role_enabled: true
+
+# Opt-in aggregate traffic exporter. It enables the loopback Traffic Stats API
+# with a node-local secret generated on the host; it exports summed bytes and
+# online connection counts, never a per-user series.
+hysteria_traffic_stats_enabled: false
+hysteria_traffic_stats_listen: "127.0.0.1:25413"
+hysteria_traffic_stats_interval: 60s

@@ -1,0 +1,67 @@
+---
+- name: Install the aggregate AmneziaWG handshake exporter
+  when: amneziawg_role_enabled | bool and amneziawg_handshake_exporter_enabled | bool
+  block:
+    - name: Install AmneziaWG handshake exporter
+      ansible.builtin.copy:
+        src: awg-handshake-exporter.py
+        dest: /usr/local/sbin/awg-handshake-exporter
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install AmneziaWG handshake exporter units
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/systemd/system/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - awg-handshake-exporter.service
+        - awg-handshake-exporter.timer
+      register: _awg_handshake_exporter_units
+
+    - name: Enable AmneziaWG handshake exporter timer
+      ansible.builtin.systemd_service:
+        name: awg-handshake-exporter.timer
+        enabled: true
+        state: "{{ 'restarted' if _awg_handshake_exporter_units.changed else 'started' }}"
+        daemon_reload: "{{ _awg_handshake_exporter_units.changed }}"
+      changed_when: _awg_handshake_exporter_units.changed
+      when: not ansible_check_mode
+
+- name: Retire the aggregate AmneziaWG handshake exporter
+  when: not (amneziawg_role_enabled | bool and amneziawg_handshake_exporter_enabled | bool)
+  block:
+    - name: Inspect AmneziaWG handshake exporter timer
+      ansible.builtin.stat:
+        path: /etc/systemd/system/awg-handshake-exporter.timer
+      register: _awg_handshake_exporter_timer
+
+    - name: Stop AmneziaWG handshake exporter timer
+      ansible.builtin.systemd_service:
+        name: awg-handshake-exporter.timer
+        enabled: false
+        state: stopped
+      when:
+        - not ansible_check_mode
+        - _awg_handshake_exporter_timer.stat.exists
+
+    - name: Remove AmneziaWG handshake exporter surfaces
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/awg-handshake-exporter.timer
+        - /etc/systemd/system/awg-handshake-exporter.service
+        - /usr/local/sbin/awg-handshake-exporter
+        - "{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/vpn_awg.prom"
+      register: _awg_handshake_exporter_removed
+
+    - name: Reload systemd after AmneziaWG handshake exporter removal
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+      when:
+        - not ansible_check_mode
+        - _awg_handshake_exporter_removed.changed

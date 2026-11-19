@@ -135,6 +135,8 @@ reconciliation before retirement. Its owner must explicitly adopt exact members
 or retire the historical authority; the role does not scan or delete unclaimed
 interfaces. Fresh absence and recorded enable/disable transitions stay idempotent.
 
+**Handshake exporter is aggregate-only and outside the lifecycle rescue** — the opt-in `awg-handshake-exporter` timer (`amneziawg_handshake_exporter_enabled`) runs `awg show all latest-handshakes` with `CAP_NET_ADMIN` and writes only total and fresh peer counts. The monitoring role reconciles `ansible/roles/amneziawg/tasks/handshake-exporter.yml` with the site AWG predicate, so a failure there never enters this role's firewall rescue and the textfile directory already exists.
+
 ## What's done well
 
 - **Cohort selection is explicit** — `vpn.awg_cohort` names a file under

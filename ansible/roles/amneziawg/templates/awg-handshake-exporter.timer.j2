@@ -1,0 +1,13 @@
+[Unit]
+Description=Collect aggregate AmneziaWG handshake counts every {{ amneziawg_handshake_exporter_interval }}
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec={{ amneziawg_handshake_exporter_interval }}
+AccuracySec=10s
+RandomizedDelaySec=10s
+Persistent=true
+Unit=awg-handshake-exporter.service
+
+[Install]
+WantedBy=timers.target
