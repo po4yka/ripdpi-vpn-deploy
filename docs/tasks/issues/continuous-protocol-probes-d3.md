@@ -2,7 +2,7 @@
 id: MON-1795086175387484
 title: Export continuous per-protocol authenticated probe and aggregate peer metrics
 kind: feature
-status: backlog
+status: review
 area: monitoring
 priority: high
 risk: high
