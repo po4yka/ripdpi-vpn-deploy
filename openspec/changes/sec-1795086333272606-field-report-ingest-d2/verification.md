@@ -1,9 +1,9 @@
 ---
 task_id: SEC-1795086333272606
 change: sec-1795086333272606-field-report-ingest-d2
-commit_sha: null
-local: required
-local_evidence: null
+commit_sha: e84aec57
+local: passed
+local_evidence: Implementation at bd31813d with the security fix e84aec57. At e84aec57 focused pytest of 10 files (field-report ingest, bundle and report contract, alert rules with promtool 3.15.1, agent render, metric contract, retention, secrets coverage, governance, agent instructions, docs index) exit 0, 449 passed; `make snapshot-check` exit 0; `make docs-check` exit 0; `ansible-lint --offline` on subscription-host, observability_control_plane and observability_agent exit 0; yamllint on the same roles exit 0; `./taskctl openspec cli validate --strict` exit 0. At bd31813d a wider run of 28 files had 978 passed and 4 failures, all in `test_subscription_nginx_native.py`, which asserts root and a local nginx (native lane; environment gap, not a regression). The new regression tests fail on bd31813d (6 failed) and pass on e84aec57. `make molecule-test ROLE=subscription-host` exit 2: the pinned Debian 13 image digest returns 404 from the registry on this machine, so the extended scenario (ingest active on loopback, 202/401/403 through nginx, textfile aggregate, no token in logs) did not run. `make check` was not run. Logs are in the session run directory runs-d2d4d5 (d2-*.log).
 remote_ci: required
 remote_ci_evidence: null
 dry_run: required
@@ -24,9 +24,45 @@ artifact_evidence: No release artifact is produced by this change.
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-INGEST-VALIDATE | SEC-1795086432958533 | unit tests for 400, 401, 413, 429 and valid acceptance | planned |
-| REQ-INGEST-NOIP | SEC-1795086432958533 | unit test searching logs, metrics and state for the test address and token | planned |
-| REQ-INGEST-LABELS | SEC-1795086432958533 | unit test with 1000 ASNs bounds series count | planned |
-| REQ-INGEST-MINATTEMPT | SEC-1795086432958533 | unit test with 4 and 5 attempts buckets | planned |
-| REQ-INGEST-ALERT | SEC-1795086408877793 | promtool test case in observability-alert-rules.test.yml.j2 | planned |
-| REQ-INGEST-SECREVIEW | SEC-1795086456490841 | security-review skill output | planned |
+| REQ-INGEST-VALIDATE | SEC-1795086432958533 | `test_status_codes_and_only_an_accepted_report_changes_metrics` (202, 400, 401, 413, 429, 404), `test_rejections_leave_metrics_unchanged`, `test_previous_token_is_accepted_only_during_its_overlap`, `test_previous_token_is_rejected_after_its_overlap` | passed (local, e84aec57) |
+| REQ-INGEST-NOIP | SEC-1795086432958533 | `test_no_address_or_token_reaches_logs_metrics_or_state` (process stdout/stderr and the textfile directory searched for 127.0.0.1 and both tokens); `test_nginx_location_limits_size_and_rate_and_keeps_body_in_memory` | passed (local, e84aec57) |
+| REQ-INGEST-LABELS | SEC-1795086432958533 | `test_labels_stay_bounded_for_many_networks_and_unknown_endpoints` (1000 ASNs over two windows: only the top 20 and `other`, unknown `server_ref` is `other`, series under the budget); `test_label_strings_with_a_newline_or_quote_are_rejected`, `test_rendered_label_values_are_escaped` | passed (local, e84aec57) |
+| REQ-INGEST-MINATTEMPT | SEC-1795086432958533 | `test_a_bucket_under_the_contract_floor_rejects_the_report_without_counting`, `test_buckets_under_the_configured_floor_are_dropped_and_counted` | passed (local, e84aec57) |
+| REQ-INGEST-ALERT | SEC-1795086408877793 | promtool case for `FieldReportClientFailureRatioHigh` (60 percent fires, 5 percent does not) in `test_promtool_rule_cases_cover_firing_stale_recovery_and_absent` | passed (local, e84aec57) |
+| REQ-INGEST-SECREVIEW | SEC-1795086456490841 | security-review checklist below | APPROVE at e84aec57, tracked items listed |
+
+## Security review
+
+Scope: `git diff 1eccaca7...e84aec57` for the D2 paths (ingest, role tasks and templates, nginx location, allowlists, manifest, alert rule, validator). No staged, unstaged or untracked D2 files remained at review time.
+
+An independent review of bd31813d returned REQUEST CHANGES with two findings, both fixed in e84aec57 with regression tests:
+
+1. HIGH, fixed: the attempts floor ran before validation (`vpn-field-report.py` `Ingest.handle`), so a report whose buckets all fell under it got 202 and grew a counter without validation. Now the whole report is validated first and the floor applies only to an accepted report.
+2. HIGH, fixed: Python `$` matches before a trailing newline, so `"ZZ\n"` passed `^[A-Z]{2}$` and reached the exposition text. `validate-field-report.py` `validator()` anchors at end of input for the CLI and the ingest, a negative fixture pins it, and `render()` escapes label values.
+
+Checklist at e84aec57:
+
+- Secrets in Git: pass. Fixture tokens are low-entropy test strings or hashes of fixed text in the Molecule vars; gitleaks passed in the commit hook.
+- Secret schema: tracked. The role reads the SOPS key `field_report` (`cohort_token`, `previous_cohort_token`, `previous_cohort_token_valid_until`), but `secrets/schema.json` and the example do not declare it yet; D4 step SCR-1795086581871015 owns that. The ingest ships disabled.
+- Terraform and cloud-init: not touched.
+- Ansible: pass. The token assert and the credential file copy set `no_log: true` and `diff: false`; the file is root 0600 and reaches the unit through `LoadCredential`.
+- Layer boundaries: pass.
+- Per-device material: pass. The cohort token is shared per cohort by contract and never derives from a device identity; no device id reaches the ingest.
+- Exposure: pass. No new public listener: the route is on the existing subscription vhost and port; the backend binds 127.0.0.1 with `IPAddressDeny=any` and `IPAddressAllow=localhost`. Rate limiting is nginx `limit_req` per address; the app bucket is process-wide and holds no client state.
+- Authentication: pass. `hmac.compare_digest` against both slots on every request; the previous token is accepted only before `previous_valid_until`.
+- Input validation: pass. Body limit at nginx (`client_max_body_size`) and the app (Content-Length before read); JSON errors and `RecursionError` give 400; the shared contract validator runs on the whole report.
+- Log content: pass. The handler logs nothing; `handle_error` prints only the exception type; nginx keeps the categorical format and forwards no address.
+- Denial of service: tracked. A distributed flood can exhaust the process-wide bucket and the nginx limit per address does not stop it, so report intake can be starved (delivery routes are separate locations and unaffected). The label budget keeps the textfile far below the node scrape sample limit.
+- Retention: pass. No raw report is stored; nginx buffers the body in memory (`client_body_buffer_size` equals the size limit). nginx keeps limiter addresses in shared memory until its LRU evicts them.
+- Versions: tracked. `python3-jsonschema` is the distribution package, unpinned like the role's nginx package.
+- Bypass markers: pass.
+- Transport baseline: not affected.
+
+Tracked follow-ups: the secret schema entries (D4); the RIPDPI client should anchor its vendored patterns at end of input (Java `$` also matches before a final line terminator); `scripts/validate-bundle.py` uses the same Python `pattern` semantics for operator-produced bundles.
+
+## Not done here
+
+- Remote CI: no push is authorized.
+- Dry run: `make dry-run` for the subscription host needs operator authorization and a live inventory.
+- Staging: no staging node or deployment is authorized. Needed: enable `subscription_field_report` on a staging subscription host, post one valid and one invalid report through the public vhost, show the aggregate series at the collector with the node label and no address, and fire the alert from a replayed series (D7 owns the full chain).
+- Molecule: blocked locally by the unavailable image digest; CI must run it.
