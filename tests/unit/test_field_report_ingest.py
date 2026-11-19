@@ -129,6 +129,33 @@ def test_unauthenticated_requests_never_starve_a_valid_report(ingest):
     assert _post(config, json.dumps(GOLDEN).encode()) == 202
 
 
+def test_a_slow_connection_cannot_hold_the_ingest_past_its_deadline(ingest):
+    _, config = ingest()
+    slow = socket.create_connection(("127.0.0.1", config["port"]), timeout=5)
+    try:
+        # Each byte arrives well inside the per-read timeout, so only a total deadline ends this request.
+        slow.sendall(b"POST ")
+        started = time.monotonic()
+        connection = http.client.HTTPConnection("127.0.0.1", config["port"], timeout=20)
+        body = json.dumps(GOLDEN).encode()
+        connection.putrequest("POST", FIELD_REPORT_PATH)
+        for name, value in (("Content-Type", "application/json"), ("Content-Length", str(len(body))),
+                            ("Authorization", f"Bearer {TOKEN}")):
+            connection.putheader(name, value)
+        connection.endheaders(body)
+        for _ in range(14):
+            try:
+                slow.sendall(b"/")
+            except OSError:
+                break
+            time.sleep(1)
+        assert connection.getresponse().status == 202
+        assert time.monotonic() - started < 12
+        connection.close()
+    finally:
+        slow.close()
+
+
 def test_rejections_leave_metrics_unchanged(ingest):
     _, config = ingest()
     assert _post(config, json.dumps(GOLDEN).encode()) == 202
