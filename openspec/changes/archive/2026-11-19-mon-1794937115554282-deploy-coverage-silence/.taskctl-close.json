@@ -1,0 +1,11 @@
+{
+  "change": "mon-1794937115554282-deploy-coverage-silence",
+  "evidence_summary": "Deploy coverage silence live on node-c at 42a5ab8b: gateway audit shows main create, tail create, main delete and tail expiry; the coverage alert fired only inside the silence; main CI and dry-run passed (PR 639).",
+  "execution_sha256": "1571b0c581e369c2e595ca07c4ba6a35b9c92b856714eb91d0e91acbcb148e1f",
+  "issue_sha256": "28c4f300749f79a29725d42032f0562b2652ed948e38cd07012d044e9249d4c6",
+  "outcome": "done",
+  "prepared_at": "2026-11-19T04:56:12Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "MON-1794937115554282"
+}
