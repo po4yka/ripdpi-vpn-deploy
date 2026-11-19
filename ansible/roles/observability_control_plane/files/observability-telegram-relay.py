@@ -647,7 +647,11 @@ def handler(config: dict[str, object]):  # type: ignore[no-untyped-def]
                     return
                 try:
                     config["receipts"].canary(config, int(time.time()))
-                except (OSError, ValueError, DeliveryFailure):
+                except (OSError, ValueError, DeliveryFailure) as exc:
+                    category = (
+                        str(exc) if isinstance(exc, DeliveryFailure) else "local-io"
+                    )
+                    print(f"telegram-relay: canary-failed {category}", file=sys.stderr)
                     self._reply(502, "delivery-failed")
                     return
                 self._reply(200, "delivered")
@@ -685,7 +689,9 @@ def handler(config: dict[str, object]):  # type: ignore[no-untyped-def]
                 print(f"telegram-relay: refused {category}", file=sys.stderr)
                 self._reply(400, "refused")
                 return
-            except DeliveryFailure:
+            except DeliveryFailure as exc:
+                # Fixed label, such as upstream-busy or upstream-failure.
+                print(f"telegram-relay: delivery-failed {exc}", file=sys.stderr)
                 self._reply(502, "delivery-failed")
                 return
             self._reply(200, "delivered")
