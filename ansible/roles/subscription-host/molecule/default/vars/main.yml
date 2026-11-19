@@ -37,6 +37,8 @@ subscription_field_report:
   nginx_rate: "30r/m"
   nginx_burst: 20
   min_attempts: 5
+  max_attempts_per_report: 1000
+  top_n_min_reports: 3
   asn_top_n: 20
   country_top_n: 10
   window_seconds: 3600

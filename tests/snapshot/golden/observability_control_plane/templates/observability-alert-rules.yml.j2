@@ -432,7 +432,8 @@ groups:
   - name: field_report_client_health
     rules:
       - alert: FieldReportClientFailureRatioHigh
-        # Reports from every subscription host of the environment count together; the attempts floor keeps a few reports from firing it.
+        # Reports from every subscription host of the environment count together. Reports are unauthenticated
+        # client input under one shared cohort token, so both an attempts floor and a floor of distinct reports apply.
         expr: >-
           (
             sum by (environment, protocol, asn) (increase(vpn_field_report_failures_total[1h]))
@@ -440,6 +441,8 @@ groups:
           ) > 0.5
           and on (environment, protocol, asn)
           sum by (environment, protocol, asn) (increase(vpn_field_report_attempts_total[1h])) >= 50
+          and on (environment, protocol, asn)
+          sum by (environment, protocol, asn) (increase(vpn_field_report_network_reports_total[1h])) >= 5
         for: 15m
         keep_firing_for: 3m
         # Reports from all subscription hosts count together, so the node label names the report stream; the relay requires one.
@@ -457,6 +460,8 @@ groups:
             ) > 0.5
             and on (environment, protocol, asn)
             sum by (environment, protocol, asn) (increase(vpn_field_report_attempts_total[1h])) >= 100
+            and on (environment, protocol, asn)
+            sum by (environment, protocol, asn) (increase(vpn_field_report_network_reports_total[1h])) >= 10
             and on (environment, protocol)
             (min by (environment, protocol) (vpn_protocol_probe_success) == 1)
           )
@@ -468,7 +473,7 @@ groups:
         annotations:
           value: "{{ $labels.protocol }} AS{{ $labels.asn }} {{ $labels.country }} {{ $value | humanizePercentage }} failed"
           stage_mix: '{{ range query (printf "sort_desc(sum by (failure_stage) (increase(vpn_field_report_failures_total{environment=%q,protocol=%q,asn=%q}[1h])))" $labels.environment $labels.protocol $labels.asn) }}{{ .Labels.failure_stage }}={{ .Value | printf "%.0f" }} {{ end }}'
-          rotation_hint: "AS{{ $labels.asn }} blocks {{ $labels.protocol }} while the sentinel sees it healthy. Consider a fresh endpoint for this network in the next fleet-rotate plan. This alert never starts a rotation."
+          rotation_hint: "AS{{ $labels.asn }} blocks {{ $labels.protocol }} while the sentinel sees it healthy, by unauthenticated client reports. Consider a fresh endpoint for this network in the next fleet-rotate plan. This alert never starts a rotation."
           incident_family: field-report-network-block
           evidence_class: sentinel-client-divergence
           source_generation: ""

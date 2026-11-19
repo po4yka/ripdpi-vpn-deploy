@@ -405,6 +405,10 @@ tests:
         values: '0+100x120'
       - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="vless-reality",failure_stage="tcp_reset",asn="64501"}'
         values: '0+5x120'
+      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",asn="64500"}'
+        values: '0+1x120'
+      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="vless-reality",asn="64501"}'
+        values: '0+1x120'
     alert_rule_test:
       - eval_time: 5m
         alertname: FieldReportClientFailureRatioHigh
@@ -425,6 +429,9 @@ tests:
         values: '0+50x120'
       - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tcp_reset",asn="64500"}'
         values: '0+20x120'
+      # One report each minute, except one large report that carries every attempt.
+      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",asn="64500"}'
+        values: '0+1x120'
     alert_rule_test:
       - eval_time: 10m
         alertname: FieldReportNetworkBlocked
@@ -436,7 +443,7 @@ tests:
             exp_annotations:
               value: "xhttp AS64500 ZZ 70% failed"
               stage_mix: "tls_handshake=3000 tcp_reset=1200 "
-              rotation_hint: "AS64500 blocks xhttp while the sentinel sees it healthy. Consider a fresh endpoint for this network in the next fleet-rotate plan. This alert never starts a rotation."
+              rotation_hint: "AS64500 blocks xhttp while the sentinel sees it healthy, by unauthenticated client reports. Consider a fresh endpoint for this network in the next fleet-rotate plan. This alert never starts a rotation."
               incident_family: field-report-network-block
               evidence_class: sentinel-client-divergence
               source_generation: ""
@@ -454,6 +461,9 @@ tests:
         values: '0+50x120'
       - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tcp_reset",asn="64500"}'
         values: '0+20x120'
+      # One report each minute, except one large report that carries every attempt.
+      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",asn="64500"}'
+        values: '0+1x120'
     alert_rule_test:
       - eval_time: 10m
         alertname: FieldReportNetworkBlocked
@@ -476,10 +486,37 @@ tests:
         values: '0+1x120'
       - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tcp_reset",asn="64500"}'
         values: '0+1x120'
+      # One report each minute, except one large report that carries every attempt.
+      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",asn="64500"}'
+        values: '0+1x120'
     alert_rule_test:
       - eval_time: 10m
         alertname: FieldReportNetworkBlocked
         exp_alerts: []
       - eval_time: 60m
         alertname: FieldReportNetworkBlocked
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'vpn_protocol_probe_success{environment="staging",node="vpn-path",protocol="xhttp",vantage="sentinel-a"}'
+        values: '1x120'
+      # 70 percent of 6000 attempts per hour fail: 50 per minute in TLS, 20 per minute by reset.
+      - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-sub",protocol="xhttp",asn="64500",country="ZZ"}'
+        values: '0+100x120'
+      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tls_handshake",asn="64500"}'
+        values: '0+50x120'
+      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tcp_reset",asn="64500"}'
+        values: '0+20x120'
+      # One report each minute, except one large report that carries every attempt.
+      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",asn="64500"}'
+        values: '0 1x120'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: FieldReportNetworkBlocked
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: FieldReportNetworkBlocked
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: FieldReportClientFailureRatioHigh
         exp_alerts: []
