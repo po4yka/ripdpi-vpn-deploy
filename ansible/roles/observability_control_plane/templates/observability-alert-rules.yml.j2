@@ -377,6 +377,9 @@ groups:
           runbook: docs/how-to/monitoring-alerts.md#restore-readiness
           action: "Check the restore drill timer and journal on the node."
 {% set field_report = observability_control_plane.field_report | default({}) %}
+{# The relay admits vpn_field_report_* only from these subscription hosts; the rules read no other origin either. #}
+{% set report_nodes = field_report.source_nodes | default([]) | map('replace', '.', '[.]') | join('|') %}
+{% set report_origin = '{node=~"' ~ report_nodes ~ '"}' %}
   - name: field_report_client_health
     rules:
       - alert: FieldReportClientFailureRatioHigh
@@ -384,13 +387,13 @@ groups:
         # client input under one shared cohort token, so both an attempts floor and a floor of distinct reports apply.
         expr: >-
           (
-            sum by (environment, protocol, asn) (increase(vpn_field_report_failures_total[{{ field_report.window | default('1h') }}]))
-            / sum by (environment, protocol, asn) (increase(vpn_field_report_attempts_total[{{ field_report.window | default('1h') }}]))
+            sum by (environment, protocol, asn) (increase(vpn_field_report_failures_total{{ report_origin }}[{{ field_report.window | default('1h') }}]))
+            / sum by (environment, protocol, asn) (increase(vpn_field_report_attempts_total{{ report_origin }}[{{ field_report.window | default('1h') }}]))
           ) > {{ field_report.failure_ratio | default(0.5) }}
           and on (environment, protocol, asn)
-          sum by (environment, protocol, asn) (increase(vpn_field_report_attempts_total[{{ field_report.window | default('1h') }}])) >= {{ field_report.min_attempts | default(50) }}
+          sum by (environment, protocol, asn) (increase(vpn_field_report_attempts_total{{ report_origin }}[{{ field_report.window | default('1h') }}])) >= {{ field_report.min_attempts | default(50) }}
           and on (environment, protocol, asn)
-          sum by (environment, protocol, asn) (increase(vpn_field_report_network_reports_total[{{ field_report.window | default('1h') }}])) >= {{ field_report.min_reports | default(5) }}
+          sum by (environment, protocol, asn) (increase(vpn_field_report_network_reports_total{{ report_origin }}[{{ field_report.window | default('1h') }}])) >= {{ field_report.min_reports | default(5) }}
         for: {{ field_report.hold | default('15m') }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         # Reports from all subscription hosts count together, so the node label names the report stream; the relay requires one.
@@ -404,24 +407,24 @@ groups:
         expr: >-
           (
             (
-              sum by (environment, protocol, asn) (increase(vpn_field_report_failures_total[{{ block_window }}]))
-              / sum by (environment, protocol, asn) (increase(vpn_field_report_attempts_total[{{ block_window }}]))
+              sum by (environment, protocol, asn) (increase(vpn_field_report_failures_total{{ report_origin }}[{{ block_window }}]))
+              / sum by (environment, protocol, asn) (increase(vpn_field_report_attempts_total{{ report_origin }}[{{ block_window }}]))
             ) > {{ field_report.block_ratio | default(0.5) }}
             and on (environment, protocol, asn)
-            sum by (environment, protocol, asn) (increase(vpn_field_report_attempts_total[{{ block_window }}])) >= {{ field_report.block_min_attempts | default(100) }}
+            sum by (environment, protocol, asn) (increase(vpn_field_report_attempts_total{{ report_origin }}[{{ block_window }}])) >= {{ field_report.block_min_attempts | default(100) }}
             and on (environment, protocol, asn)
-            sum by (environment, protocol, asn) (increase(vpn_field_report_network_reports_total[{{ block_window }}])) >= {{ field_report.block_min_reports | default(10) }}
+            sum by (environment, protocol, asn) (increase(vpn_field_report_network_reports_total{{ report_origin }}[{{ block_window }}])) >= {{ field_report.block_min_reports | default(10) }}
             and on (environment, protocol)
             (min by (environment, protocol) (vpn_protocol_probe_success) == 1)
           )
           * on (environment, protocol, asn) group_left (country)
-          (0 * topk by (environment, protocol, asn) (1, sum by (environment, protocol, asn, country) (increase(vpn_field_report_attempts_total[{{ block_window }}]))) + 1)
+          (0 * topk by (environment, protocol, asn) (1, sum by (environment, protocol, asn, country) (increase(vpn_field_report_attempts_total{{ report_origin }}[{{ block_window }}]))) + 1)
         for: {{ field_report.block_hold | default('30m') }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.warning_severity }}", component: field-report, node: field-reports}
         annotations:
           value: "{% raw %}{{ $labels.protocol }} AS{{ $labels.asn }} {{ $labels.country }} {{ $value | humanizePercentage }} failed{% endraw %}"
-          stage_mix: '{% raw %}{{ range query (printf "sort_desc(sum by (failure_stage) (increase(vpn_field_report_failures_total{environment=%q,protocol=%q,asn=%q}[{% endraw %}{{ block_window }}{% raw %}])))" $labels.environment $labels.protocol $labels.asn) }}{{ .Labels.failure_stage }}={{ .Value | printf "%.0f" }} {{ end }}{% endraw %}'
+          stage_mix: '{% raw %}{{ range query (printf "sort_desc(sum by (failure_stage) (increase(vpn_field_report_failures_total{environment=%q,protocol=%q,asn=%q,node=~%q}[{% endraw %}{{ block_window }}{% raw %}])))" $labels.environment $labels.protocol $labels.asn "{% endraw %}{{ report_nodes }}{% raw %}") }}{{ .Labels.failure_stage }}={{ .Value | printf "%.0f" }} {{ end }}{% endraw %}'
           rotation_hint: "{% raw %}AS{{ $labels.asn }} blocks {{ $labels.protocol }} while the sentinel sees it healthy, by unauthenticated client reports. Consider a fresh endpoint for this network in the next fleet-rotate plan. This alert never starts a rotation.{% endraw %}"
           incident_family: field-report-network-block
           evidence_class: sentinel-client-divergence

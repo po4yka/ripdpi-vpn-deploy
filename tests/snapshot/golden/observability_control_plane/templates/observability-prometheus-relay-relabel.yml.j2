@@ -17,6 +17,10 @@
 - action: keep
   source_labels: [ingress_368299d8edbfda919f0eef6898cd756f]
   regex: ""
+# Each family that names something other than its sender is accepted only from its
+# owner: probes from the collector's agent, field reports from the subscription hosts
+# in field_report.source_nodes. vpn_awg_* and vpn_hysteria_* describe the sender
+# itself, so every node may send them; node is always its certificate identity.
 - action: labelmap
   regex: ingress_368299d8edbfda919f0eef6898cd756f
   replacement: node

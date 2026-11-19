@@ -217,6 +217,7 @@ def _relay_rules() -> list[dict]:
     values = _values()
     values["observability_alert_policy"] = {"required_systemd_units": ["nginx.service", "xray.service"]}
     values["observability_push"] = {"node_id": "vpn-p2"}
+    values["observability_control_plane"]["field_report"] = {"source_nodes": ["vpn-p0"]}
     return yaml.safe_load(render_template(ROLE / "templates/observability-prometheus-relay-relabel.yml.j2", values))
 
 
@@ -325,14 +326,20 @@ def test_relay_keeps_allowed_series_and_only_allowed_labels() -> None:
 @pytest.mark.parametrize(
     ("ingress", "name", "expected_node"),
     [
+        # Only the collector's own agent (vpn-p2) sends probes, and its series keep the probed node.
         ("vpn-p2", "vpn_protocol_probe_success", "vpn-path"),
         ("vpn-p2", "vpn_protocol_probe_duration_seconds_bucket", "vpn-path"),
-        # Another enrolled node cannot claim a probed node, and no other family keeps payload node.
-        ("vpn-p0", "vpn_protocol_probe_success", "vpn-p0"),
+        ("vpn-p0", "vpn_protocol_probe_success", None),
+        # Only the configured subscription host (vpn-p0) sends field reports; node is its identity.
+        ("vpn-p0", "vpn_field_report_attempts_total", "vpn-p0"),
+        ("vpn-p2", "vpn_field_report_attempts_total", None),
+        # Families about the sender itself come from every node, always under its own identity.
+        ("vpn-p0", "vpn_awg_handshake_fresh_peers", "vpn-p0"),
+        ("vpn-p0", "vpn_hysteria_online_connections", "vpn-p0"),
         ("vpn-p2", "vpn_observability_evidence_state", "vpn-p2"),
     ],
 )
-def test_relay_keeps_probed_node_only_for_collector_probe_series(ingress: str, name: str, expected_node: str) -> None:
+def test_relay_accepts_each_family_only_from_its_owner(ingress: str, name: str, expected_node: str | None) -> None:
     labels = _relabel(
         _relay_rules(),
         {
@@ -341,6 +348,9 @@ def test_relay_keeps_probed_node_only_for_collector_probe_series(ingress: str, n
         },
     )
 
+    if expected_node is None:
+        assert labels is None
+        return
     assert labels is not None
     assert labels["node"] == expected_node
     assert INGRESS not in labels and f"{INGRESS}_probe" not in labels
@@ -356,11 +366,13 @@ def test_relay_keeps_probed_node_only_for_collector_probe_series(ingress: str, n
     ],
     ids=["spoofed-ingress-node", "spoofed-ingress-node-and-repeated-node"],
 )
-def test_an_enrolled_node_cannot_claim_a_probed_node_by_spoofing_the_collector(payload: list[tuple[str, str]]) -> None:
+def test_an_enrolled_node_cannot_send_probes_by_spoofing_the_collector(payload: list[tuple[str, str]]) -> None:
     series = [("__name__", "vpn_protocol_probe_success"), ("job", "node-exporter"), ("protocol", "xhttp"),
               ("vantage", "sentinel-a"), *payload, (INGRESS, "vpn-p0")]
-    # The payload copies are dropped; the series can only name its sender's certificate identity.
-    assert _relabel(_relay_rules(), series)["node"] == "vpn-p0"
+    assert _relabel(_relay_rules(), series) is None
+    # The same spoof on an allowed family is stored only under the sender's certificate identity.
+    other = [(key, "vpn_awg_handshake_fresh_peers" if key == "__name__" else value) for key, value in series]
+    assert _relabel(_relay_rules(), other)["node"] == "vpn-p0"
 
 
 def test_the_ingress_label_name_is_private_and_shared_by_ingress_and_relay() -> None:

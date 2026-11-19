@@ -738,6 +738,8 @@ def test_promtool_rule_cases_cover_firing_stale_recovery_and_absent(
     tmp_path: Path,
 ) -> None:
     contract = _contract()
+    # Field-report series count only from the configured subscription host; the cases also send from another node.
+    contract["field_report"] = {"source_nodes": ["vpn-sub"]}
     rules_path = tmp_path / "alerts.yml"
     rules_path.write_text(
         render_template(

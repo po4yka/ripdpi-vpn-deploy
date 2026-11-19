@@ -429,7 +429,8 @@ tests:
         values: '0+50x120'
       - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tcp_reset",asn="64500"}'
         values: '0+20x120'
-      # One report each minute, except one large report that carries every attempt.
+      # One report each minute, except one large report that carries every attempt. In untrusted-origin
+      # an enrolled node that is no configured subscription host sends the whole divergence.
       - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",asn="64500"}'
         values: '0+1x120'
     alert_rule_test:
@@ -461,7 +462,8 @@ tests:
         values: '0+50x120'
       - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tcp_reset",asn="64500"}'
         values: '0+20x120'
-      # One report each minute, except one large report that carries every attempt.
+      # One report each minute, except one large report that carries every attempt. In untrusted-origin
+      # an enrolled node that is no configured subscription host sends the whole divergence.
       - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",asn="64500"}'
         values: '0+1x120'
     alert_rule_test:
@@ -486,7 +488,8 @@ tests:
         values: '0+1x120'
       - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tcp_reset",asn="64500"}'
         values: '0+1x120'
-      # One report each minute, except one large report that carries every attempt.
+      # One report each minute, except one large report that carries every attempt. In untrusted-origin
+      # an enrolled node that is no configured subscription host sends the whole divergence.
       - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",asn="64500"}'
         values: '0+1x120'
     alert_rule_test:
@@ -507,9 +510,35 @@ tests:
         values: '0+50x120'
       - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tcp_reset",asn="64500"}'
         values: '0+20x120'
-      # One report each minute, except one large report that carries every attempt.
+      # One report each minute, except one large report that carries every attempt. In untrusted-origin
+      # an enrolled node that is no configured subscription host sends the whole divergence.
       - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",asn="64500"}'
         values: '0 1x120'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: FieldReportNetworkBlocked
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: FieldReportNetworkBlocked
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: FieldReportClientFailureRatioHigh
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'vpn_protocol_probe_success{environment="staging",node="vpn-path",protocol="xhttp",vantage="sentinel-a"}'
+        values: '1x120'
+      # 70 percent of 6000 attempts per hour fail: 50 per minute in TLS, 20 per minute by reset.
+      - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-p0",protocol="xhttp",asn="64500",country="ZZ"}'
+        values: '0+100x120'
+      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-p0",protocol="xhttp",failure_stage="tls_handshake",asn="64500"}'
+        values: '0+50x120'
+      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-p0",protocol="xhttp",failure_stage="tcp_reset",asn="64500"}'
+        values: '0+20x120'
+      # One report each minute, except one large report that carries every attempt. In untrusted-origin
+      # an enrolled node that is no configured subscription host sends the whole divergence.
+      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-p0",protocol="xhttp",asn="64500"}'
+        values: '0+1x120'
     alert_rule_test:
       - eval_time: 10m
         alertname: FieldReportNetworkBlocked
