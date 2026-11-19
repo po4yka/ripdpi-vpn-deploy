@@ -24,12 +24,26 @@ The block alert MUST NOT fire when the sentinel for that protocol is failing, so
 
 ### Requirement: REQ-BLOCK-LOWSAMPLE — Low sample suppression
 
-The alert MUST NOT fire when attempts for the ASN and protocol are below the configured floor.
+The alert MUST NOT fire when attempts for the ASN and protocol are below the configured floor, or when fewer distinct reports than the report floor carry them.
 
 #### Scenario: low sample suppression
 
 - **WHEN** client failure ratio is 100 percent with fewer attempts than the floor
 - **THEN** no alert fires
+
+#### Scenario: one large report
+
+- **WHEN** one report carries every attempt of a 70 percent failure divergence
+- **THEN** neither field-report alert fires
+
+### Requirement: REQ-BLOCK-ORIGIN — Trusted origins only
+
+The field-report alerts MUST read field-report series only from the configured subscription hosts, and the sentinel term MUST read probe series that the relay admits only from the collector's own agent.
+
+#### Scenario: an untrusted node sends the divergence
+
+- **WHEN** an enrolled node that is no configured subscription host sends field-report series for a full divergence
+- **THEN** neither field-report alert fires
 
 ### Requirement: REQ-BLOCK-HINT — Rotation hint is advisory
 
