@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-19
+goal: MON-1795086847564764 Enforce observability retention and prove Telegram
+  alert delivery

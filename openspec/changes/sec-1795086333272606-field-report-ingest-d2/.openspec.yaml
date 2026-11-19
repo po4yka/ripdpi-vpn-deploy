@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-19
+goal: SEC-1795086333272606 Ingest opt-in client field reports into bounded
+  Prometheus metrics

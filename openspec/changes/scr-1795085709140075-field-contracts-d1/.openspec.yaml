@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-19
+goal: SCR-1795085709140075 Define client field-report v1 and ripdpi-bundle v3
+  contracts

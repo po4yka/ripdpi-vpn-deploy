@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-19
+goal: MON-1795086646495369 Detect network blocks from sentinel and client-report
+  divergence

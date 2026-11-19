@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-11-19
+goal: TST-1795087041877687 Accept field analytics end to end on staging with a client
