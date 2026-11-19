@@ -6,10 +6,15 @@ Requisite=hysteria-server.service
 
 [Service]
 Type=oneshot
-User=root
-Group=root
-# No capability is needed: root owns the textfile directory and systemd delivers the secret.
+# A dedicated account in the textfile writer group: the exporter only reads a loopback
+# API and replaces its own textfile, so it needs no root and no capability. systemd
+# reads the root-only secret and delivers it as a credential.
+User=vpn-hysteria-exporter
+Group=vpn-hysteria-exporter
+SupplementaryGroups=node_exporter_textfile
+UMask=0027
 CapabilityBoundingSet=
+AmbientCapabilities=
 LoadCredential=hysteria-traffic-secret:/etc/hysteria/traffic-stats.secret
 ExecStart=/usr/local/sbin/hysteria-traffic-exporter --listen 127.0.0.1:25413 --secret-file ${CREDENTIALS_DIRECTORY}/hysteria-traffic-secret --output /var/lib/node_exporter/textfile/vpn_hysteria.prom
 
@@ -23,6 +28,9 @@ ProtectKernelModules=yes
 ProtectKernelLogs=yes
 ProtectControlGroups=yes
 ProtectClock=yes
+ProtectProc=invisible
+ProcSubset=pid
+MemoryDenyWriteExecute=true
 RestrictAddressFamilies=AF_INET
 IPAddressDeny=any
 IPAddressAllow=localhost
@@ -31,5 +39,7 @@ LockPersonality=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
 SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
 # The monitoring role creates the textfile directory later in site order; until then a run fails closed.
 ReadWritePaths=-/var/lib/node_exporter/textfile

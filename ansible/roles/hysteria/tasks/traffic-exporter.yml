@@ -2,6 +2,27 @@
 - name: Install the aggregate Hysteria traffic exporter
   when: hysteria_role_enabled | bool and hysteria_traffic_stats_enabled | bool
   block:
+    - name: Ensure Hysteria traffic exporter account
+      ansible.builtin.user:
+        name: vpn-hysteria-exporter
+        system: true
+        shell: /usr/sbin/nologin
+        home: /nonexistent
+        create_home: false
+
+    # The textfile directory is sticky, so the account can replace only a file it owns.
+    - name: Inspect the Hysteria traffic textfile written by an earlier root exporter
+      ansible.builtin.stat:
+        path: "{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/vpn_hysteria.prom"
+      register: _hysteria_traffic_textfile
+
+    - name: Hand the Hysteria traffic textfile to the exporter account
+      ansible.builtin.file:
+        path: "{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/vpn_hysteria.prom"
+        owner: vpn-hysteria-exporter
+        follow: false
+      when: _hysteria_traffic_textfile.stat.exists and _hysteria_traffic_textfile.stat.isreg
+
     - name: Install Hysteria traffic exporter
       ansible.builtin.copy:
         src: hysteria-traffic-exporter.py

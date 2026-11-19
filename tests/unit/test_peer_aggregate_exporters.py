@@ -181,3 +181,20 @@ def test_hysteria_exporter_reports_failure_metric(tmp_path: Path, traffic_api: s
     assert _samples(metrics)["vpn_hysteria_traffic_collection_success"] == "0"
     assert "vpn_hysteria_transmit_bytes_total" not in metrics
     assert _TrafficApi.secret not in result.stderr
+
+
+def test_hysteria_exporter_unit_runs_unprivileged_with_the_hardening_floor() -> None:
+    from scripts.template_render import merge_render_vars, render_template
+
+    unit = render_template(ROOT / "ansible/roles/hysteria/templates/hysteria-traffic-exporter.service.j2", merge_render_vars())
+    directives = {line.split("=", 1)[0]: line.split("=", 1)[1] for line in unit.splitlines() if "=" in line and not line.startswith("#")}
+    assert directives["User"] == directives["Group"] == "vpn-hysteria-exporter"
+    assert directives["SupplementaryGroups"] == "node_exporter_textfile"
+    assert directives["CapabilityBoundingSet"] == "" and directives["NoNewPrivileges"] == "true"
+    for name, value in (("MemoryDenyWriteExecute", "true"), ("ProtectProc", "invisible"), ("ProcSubset", "pid"),
+                        ("RestrictAddressFamilies", "AF_INET"), ("SystemCallArchitectures", "native"),
+                        ("UMask", "0027")):
+        assert directives[name] == value, name
+    filters = [line.split("=", 1)[1] for line in unit.splitlines() if line.startswith("SystemCallFilter=")]
+    assert filters == ["@system-service", "~@privileged @resources"]
+    assert "LoadCredential=hysteria-traffic-secret:" in unit
