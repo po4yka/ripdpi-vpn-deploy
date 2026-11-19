@@ -708,6 +708,8 @@ REPORT_NEGATIVE_REASONS = {
     "report-schema-version-2.json": "const constraint failed at /schema_version\n",
     # Python's $ also matches before a trailing newline; the contract keeps the ECMA-262 end-of-input anchor.
     "report-country-trailing-newline.json": "pattern constraint failed at /network/country\n",
+    # Draft 2020-12 counts 64500.0 as an integer; the contract admits only a JSON integer.
+    "report-asn-float.json": "type constraint failed at /network/asn\n",
 }
 
 
