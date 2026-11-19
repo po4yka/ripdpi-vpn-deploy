@@ -47,6 +47,9 @@ subscription_field_report:
     trixie: "4.19.2-6"
     noble: "4.10.3-2ubuntu1"
   server_refs: [p0-reality-upcloud-prod]
+  # This dict replaces the role default whole; the hint needs the controller dataset, so it stays off.
+  network_hint:
+    enabled: false
 field_report:
   cohort_token: "{{ 'molecule-current-cohort' | hash('sha1') }}"
   previous_cohort_token: "{{ 'molecule-previous-cohort' | hash('sha1') }}"
