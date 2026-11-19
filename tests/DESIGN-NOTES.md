@@ -4,7 +4,7 @@ Per-area design history for the test suites. `tests/CLAUDE.md` holds the always-
 
 ## Design decisions
 
-AWG source-candidate acceptance retains all six scalar pair matrices and adds a candidate-only range/signature matrix. Packet capture checks header membership and variation, all five signature packets and their byte encodings. Real TCP/UDP/DNS probes and reconnects remain required. Contract fixtures use bundle version 2; encrypted public fixtures are regenerated through SOPS after source fixture changes.
+AWG source-candidate acceptance retains all six scalar pair matrices and adds a candidate-only range/signature matrix. Packet capture checks header membership and variation, all five signature packets and their byte encodings. Real TCP/UDP/DNS probes and reconnects remain required. Contract fixtures use bundle version 3; encrypted public fixtures are regenerated through SOPS after source fixture changes.
 
 Payload quality contract tests compare the exact paired version-2 fixture,
 including semantic pass/window budgets. Canary tests use real sockets for

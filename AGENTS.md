@@ -128,7 +128,8 @@ For monitoring changes or historical `MON-`/fleet-observation task lookups, star
 | Package versions | release-please + `CHANGELOG.md` | `vpnd/pyproject.toml` `[project].version` |
 | Secrets schema (structure) | `secrets/schema.json` + `scripts/validate-secrets.py` | `ansible/roles/*/`, `vpnd.secrets` |
 | Secrets schema (coverage) | `scripts/check-secrets-coverage.py` | `secrets/prod.secrets.example.yaml`, all Jinja2 templates |
-| RIPDPI bundle contract | `contract/ripdpi-bundle.schema.json` (+ `scripts/validate-bundle.py`, `docs/reference/ripdpi-bundle.md`) | `scripts/emit-bundle.sh`, vendored copy in the RIPDPI client repo |
+| RIPDPI bundle contract (v3) | `contract/ripdpi-bundle.schema.json` (+ `scripts/validate-bundle.py`, `docs/reference/ripdpi-bundle.md`) | `scripts/emit-bundle.sh`, `scripts/client_payload.py`, vendored copy in the RIPDPI client repo |
+| Client field-report contract (v1) | `contract/client-field-report.schema.json` (+ `scripts/validate-field-report.py`, `docs/reference/ripdpi-bundle.md`) | `contract/negative/report-*.json`, vendored copy in the RIPDPI client repo |
 | AWG cohort fingerprint algorithm | `scripts/ripdpi_cohort_fingerprint.py` + `contract/cohort-fingerprint.golden.json` | `scripts/emit-bundle.sh`, client `AmneziaWgParameters.cohortFingerprint()` |
 | AWG arm64 S3/S4 version floor | `contract/amneziawg-arm64-version-floor.json` | role/schema guard, client vendored policy |
 | Protocol toggles | `ansible/group_vars/all.yml` + profile files `ansible/group_vars/vpn-*.yml` | `ansible/roles/*/`, vpnd config templates |
