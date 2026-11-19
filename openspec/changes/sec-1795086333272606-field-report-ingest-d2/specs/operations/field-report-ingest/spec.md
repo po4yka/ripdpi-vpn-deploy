@@ -87,12 +87,21 @@ nginx MUST pass the TCP peer address in its own header, MUST NOT pass a forwardi
 
 ### Requirement: REQ-HINT-DATASET — Pinned offline dataset
 
-The IP-to-ASN dataset MUST carry a license compatible with the repository, recorded in a third-party notice, and MUST be pinned by version and SHA-256. Deploy MUST copy only the controller file matching the pin and never fetch the dataset; the ingest MUST verify the SHA-256 and refuse a malformed, overlapping or truncated dataset at start; an operator script MUST refresh it and pin only a file the ingest loads.
+The IP-to-ASN dataset MUST carry a license compatible with the repository, recorded in a third-party notice, and MUST be pinned by version and SHA-256. Deploy MUST copy only the controller file matching the pin and never fetch the dataset. An operator script MUST refresh it, pin only a file the ingest loads and never replace a stored pinned copy.
 
 #### Scenario: pinned offline dataset
 
-- **WHEN** the service starts with a pin mismatch, an overlapping range, a non-numeric AS, a reversed range, a short line, no IPv4 range or a truncated gzip, and the refresh script receives a good and an overlapping download
-- **THEN** the service exits 2 with a categorical message, the good download is stored with its printed pin and the bad one is refused
+- **WHEN** the refresh script receives a good download, a second build of the same version and an overlapping download
+- **THEN** the good download is stored with its printed pin, the second build is refused without changing it, and the bad one is refused
+
+### Requirement: REQ-HINT-DATASET-FAILURE — A bad dataset turns off only the hint
+
+The ingest MUST verify the SHA-256 at start, MUST read the dataset with a bounded line length and a decompressed size cap, and MUST refuse a malformed, overlapping or truncated dataset. After a refusal it MUST keep the report route running without the hint route, with a categorical log line and `vpn_field_report_network_hint_available 0`.
+
+#### Scenario: a bad dataset turns off only the hint
+
+- **WHEN** the service starts with a pin mismatch, an overlapping range, a non-numeric AS, a reversed range, a short line, no IPv4 range, a truncated gzip, a gzip bomb line or a stream over the size cap
+- **THEN** the hint route answers 404, the gauge is 0, a valid report is still accepted, the log line is categorical and the gzip bomb stays under the unit memory limit
 
 ### Requirement: REQ-INGEST-SECREVIEW — Security review is recorded
 

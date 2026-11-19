@@ -19,7 +19,9 @@ The network hint answers GET with the same cohort token: 200 with the ASN
 and country of the request address, 204 when the pinned offline dataset has
 no routed ASN for it, 401 for an unknown token. The address arrives only in
 the X-Network-Hint-Peer header that nginx sets from the TCP peer; it is
-looked up in memory and dropped, never logged, counted or stored.
+looked up in memory and dropped, never logged, counted or stored. A dataset
+that fails its pin or parse check turns off only the hint route (404): report
+intake keeps running and vpn_field_report_network_hint_available reads 0.
 """
 from __future__ import annotations
 
@@ -202,6 +204,8 @@ class Aggregate:
         self.capped_reports = 0
         self.max_series = config["max_series"]
         self.series = 0
+        # 1 or 0 when the network hint is configured: a dataset that fails to load turns off only the hint.
+        self.hint_available: int | None = None
 
     def _network(self, network: dict) -> tuple[TopN | None, str | None]:
         """The ranking and key of the one identity that network.source names; the contract forbids the others."""
@@ -268,6 +272,10 @@ class Aggregate:
                "Report buckets dropped under the minimum attempts floor.", [((), self.dropped_buckets)])
         family("vpn_field_report_capped_reports_total", "counter",
                "Accepted reports scaled down to the per-report attempts cap.", [((), self.capped_reports)])
+        if self.hint_available is not None:
+            family("vpn_field_report_network_hint_available", "gauge",
+                   "1 when the configured network hint answers, 0 when its dataset failed to load.",
+                   [((), self.hint_available)])
         family("vpn_field_report_network_reports_total", "counter",
                "Accepted reports by protocol and network (MCC-MNC, AS number, other or unknown); alerts need several reports, not one large one.",
                [((("protocol", p), ("network", a)), v) for (p, a), v in sorted(self.network_reports.items())])
@@ -316,6 +324,8 @@ class Ingest:
         self.current, self.previous, self.previous_until = tokens
         self.aggregate = Aggregate(config, bounds)
         self.hint, self.asn_table = config.get("network_hint"), asn_table
+        if self.hint:
+            self.aggregate.hint_available = int(asn_table is not None)
 
     def token_ok(self, header: str | None, now: float) -> bool:
         scheme, _, value = (header or "").partition(" ")
@@ -355,7 +365,7 @@ class Ingest:
         return 202
 
     def network_hint(self, path: str, headers) -> tuple[int, bytes]:
-        if not self.hint or path != self.hint["path"]:
+        if self.asn_table is None or path != self.hint["path"]:
             return 404, b""
         now = time.time()
         if not self.token_ok(headers.get("Authorization"), now):
@@ -440,13 +450,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"vpn-field-report: {error if isinstance(error, ValueError) else 'cohort token file is unreadable'}", file=sys.stderr)
         return 2
     validate, bounds = load_validator(config["validator"], config["schema"])
-    hint = config.get("network_hint")
+    hint, asn_table = config.get("network_hint"), None
     try:
         asn_table = AsnTable(hint["database"], hint["database_sha256"]) if hint else None
     except (OSError, EOFError, ValueError) as error:
-        # A truncated or corrupt gzip stream raises EOFError or OSError; the message never quotes file content.
-        print(f"vpn-field-report: {error if isinstance(error, ValueError) else 'network hint dataset is unreadable'}", file=sys.stderr)
-        return 2
+        # Report intake does not depend on the hint, so it keeps running without the hint route and the
+        # gauge shows the loss. A truncated or corrupt gzip stream raises EOFError or OSError; the
+        # message never quotes file content.
+        reason = error if isinstance(error, ValueError) else "network hint dataset is unreadable"
+        print(f"vpn-field-report: {reason}; the network hint is off", file=sys.stderr)
     ingest = Ingest(config, tokens, validate, bounds, asn_table)
     ingest.flush()
     server = QuietServer((config["listen"], config["port"]), make_handler(ingest))
