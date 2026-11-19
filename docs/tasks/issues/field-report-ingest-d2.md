@@ -2,11 +2,11 @@
 id: SEC-1795086333272606
 title: Ingest opt-in client field reports into bounded Prometheus metrics
 kind: feature
-status: backlog
+status: review
 area: security
 priority: high
 risk: high
-owner: Planner
+owner: Implementer
 parent: EPC-1795085241910080
 blocked_by: [SCR-1795085709140075]
 spec_mode: required
