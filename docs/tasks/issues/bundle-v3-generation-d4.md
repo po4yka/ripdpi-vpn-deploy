@@ -2,11 +2,11 @@
 id: SCR-1795086521848661
 title: Generate ripdpi-bundle v3 with endpoint health and field-report config
 kind: feature
-status: backlog
+status: review
 area: scripts
 priority: high
 risk: high
-owner: Planner
+owner: Implementer
 parent: EPC-1795085241910080
 blocked_by: [SCR-1795085709140075, MON-1795086175387484]
 spec_mode: required

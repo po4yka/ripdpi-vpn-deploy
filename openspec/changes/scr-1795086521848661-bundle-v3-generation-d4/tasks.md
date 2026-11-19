@@ -10,11 +10,11 @@ One writer owns `scripts/emit-bundle.sh`, rotation script changes, secrets schem
 
 ## Execution
 
-- [ ] SCR-1795086544436996 Rewrite the emission in scripts/emit-bundle.sh to schema_version 3 and remove the v2 path #feature !high @item:SCR-1795086521848661
-- [ ] SCR-1795086565223483 Derive per-endpoint health and ttl_seconds from protocol-liveness quorum and cascade-leg-health with unknown on absent or stale input #feature !high @item:SCR-1795086521848661
-- [ ] SCR-1795086581871015 Add the field_report configuration, the cohort token and previous-token secrets entries to secrets/schema.json, secrets/prod.secrets.example.yaml and the coverage scripts #feature !high @item:SCR-1795086521848661
-- [ ] SCR-1795086600479731 Add the cohort token rotation command to scripts/rotate-secrets.sh without printing the token #feature !high @item:SCR-1795086521848661
-- [ ] SCR-1795086620548947 Add tests in tests/unit/ for v3 validity, health mapping, stale handling, disabled field reports and rotation overlap #feature !high @item:SCR-1795086521848661
+- [x] SCR-1795086544436996 Rewrite the emission in scripts/emit-bundle.sh to schema_version 3 and remove the v2 path #feature !high @item:SCR-1795086521848661
+- [x] SCR-1795086565223483 Derive per-endpoint health and ttl_seconds from protocol-liveness quorum and cascade-leg-health with unknown on absent or stale input #feature !high @item:SCR-1795086521848661
+- [x] SCR-1795086581871015 Add the field_report configuration, the cohort token and previous-token secrets entries to secrets/schema.json, secrets/prod.secrets.example.yaml and the coverage scripts #feature !high @item:SCR-1795086521848661
+- [x] SCR-1795086600479731 Add the cohort token rotation command to scripts/rotate-secrets.sh without printing the token #feature !high @item:SCR-1795086521848661
+- [x] SCR-1795086620548947 Add tests in tests/unit/ for v3 validity, health mapping, stale handling, disabled field reports and rotation overlap #feature !high @item:SCR-1795086521848661
 
 ## Verification
 
