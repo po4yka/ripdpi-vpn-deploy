@@ -1,21 +1,27 @@
 #!/usr/bin/env bash
 # Generate or rotate the shared field-report cohort token in the SOPS file.
 # The old token stays accepted by the ingest as previous_cohort_token until
-# previous_cohort_token_valid_until (now + OVERLAP_DAYS); an older previous
-# token is dropped. No token value is printed or logged. Afterwards deploy
-# the subscription host and export fresh bundles.
+# previous_cohort_token_valid_until (now + OVERLAP_DAYS). A second rotation
+# while that overlap is still open would cut off devices that hold the older
+# token, so it is refused unless FORCE=1. No token value is printed or
+# logged. Afterwards deploy the subscription host and export fresh bundles.
 set -euo pipefail
 umask 077
 
 ENV="${ENV:-prod}"
 PROVIDER="${PROVIDER:-upcloud}"
 OVERLAP_DAYS="${OVERLAP_DAYS:-7}"
+FORCE="${FORCE:-0}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SOPS_FILE="${SOPS_FILE:-${HOME}/.config/vpn-provision/${ENV}.secrets.sops.yaml}"
 SOPS_FILE="$(SOPS_FILE="$SOPS_FILE" python3 -c 'import os; print(os.path.realpath(os.environ["SOPS_FILE"]))')"
 
 if [[ ! "$OVERLAP_DAYS" =~ ^[1-9][0-9]?$ ]] || (( OVERLAP_DAYS > 30 )); then
   echo 'error: OVERLAP_DAYS must be an integer from 1 to 30' >&2
+  exit 2
+fi
+if [[ "$FORCE" != 0 && "$FORCE" != 1 ]]; then
+  echo 'error: FORCE must be 0 or 1' >&2
   exit 2
 fi
 if [[ ! -f "$SOPS_FILE" ]]; then
@@ -50,11 +56,22 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 # Values travel through pipes only, never argv, the environment or output.
-current="$(sops --decrypt --output-type json "$SOPS_FILE" | python3 -c '
-import json, re, sys
-token = (json.load(sys.stdin).get("field_report") or {}).get("cohort_token", "")
+current="$(sops --decrypt --output-type json "$SOPS_FILE" | FORCE="$FORCE" python3 -c '
+import datetime, json, os, re, sys
+field_report = json.load(sys.stdin).get("field_report") or {}
+token = field_report.get("cohort_token", "")
 if token and not re.fullmatch(r"[A-Za-z0-9_-]{22,64}", token):
     sys.exit("error: the current cohort token is malformed; fix it before rotating")
+until = field_report.get("previous_cohort_token_valid_until")
+if field_report.get("previous_cohort_token") and os.environ["FORCE"] != "1":
+    try:
+        end = datetime.datetime.fromisoformat(str(until).replace("Z", "+00:00"))
+        open_overlap = end.tzinfo is None or end > datetime.datetime.now(datetime.timezone.utc)
+    except ValueError:
+        open_overlap = True
+    if open_overlap:
+        sys.exit("error: the previous cohort token is still accepted until " + re.sub(r"[^0-9TZ:-]", "?", str(until))
+                 + "; rotating now cuts off devices that hold it. Wait for the overlap to end or run again with FORCE=1")
 print(token)')"
 
 set_key() {

@@ -198,13 +198,14 @@ sys.exit("unexpected sops call")
 '''
 
 
-def _rotate(tmp_path: Path, secrets: Path) -> subprocess.CompletedProcess:
+def _rotate(tmp_path: Path, secrets: Path, **extra_env: str) -> subprocess.CompletedProcess:
     stub = tmp_path / "stub-bin"
     stub.mkdir(exist_ok=True)
     (stub / "sops").write_text(SOPS_STUB)
     (stub / "sops").chmod(0o700)
-    env = {**os.environ, "PATH": f"{stub}:{os.environ['PATH']}", "SOPS_FILE": str(secrets), "HOME": str(tmp_path),
-           "AUDIT_LOG_FILE": str(tmp_path / "audit.log.age")}
+    inherited = {key: value for key, value in os.environ.items() if key != "FORCE"}
+    env = {**inherited, "PATH": f"{stub}:{os.environ['PATH']}", "SOPS_FILE": str(secrets), "HOME": str(tmp_path),
+           "AUDIT_LOG_FILE": str(tmp_path / "audit.log.age"), **extra_env}
     return subprocess.run(["bash", str(ROOT / "scripts/rotate-cohort-token.sh")], env=env, capture_output=True,
                           text=True, timeout=30)
 
@@ -214,8 +215,9 @@ def test_rotation_keeps_one_previous_token_and_the_ingest_honours_the_overlap(tm
     secrets.write_text(json.dumps({"other": "kept"}))
     secrets.chmod(0o600)
     tokens = []
-    for _ in range(3):
-        result = _rotate(tmp_path, secrets)
+    # The third rotation replaces a previous token whose overlap is still open, which needs FORCE=1.
+    for force in ("", "", "1"):
+        result = _rotate(tmp_path, secrets, **({"FORCE": force} if force else {}))
         assert result.returncode == 0, result.stderr
         document = json.loads(secrets.read_text())
         tokens.append(document["field_report"]["cohort_token"])
@@ -232,6 +234,20 @@ def test_rotation_keeps_one_previous_token_and_the_ingest_honours_the_overlap(tm
                         "previous_valid_until": field_report["previous_cohort_token_valid_until"]})
     body = json.dumps(GOLDEN).encode()
     assert [_post(config, body, token=token) for token in reversed(tokens)] == [202, 202, 401]
+
+
+def test_rotation_refuses_to_drop_a_previous_token_inside_its_overlap(tmp_path):
+    secrets = tmp_path / "prod.secrets.sops.json"
+    secrets.write_text(json.dumps({}))
+    secrets.chmod(0o600)
+    for _ in range(2):
+        assert _rotate(tmp_path, secrets).returncode == 0
+    before = secrets.read_text()
+    result = _rotate(tmp_path, secrets)
+    assert result.returncode == 1 and "FORCE=1" in result.stderr
+    assert secrets.read_text() == before
+    assert json.loads(before)["field_report"]["previous_cohort_token"] not in result.stdout + result.stderr
+    assert not list(tmp_path.glob("prod.secrets.sops.json.rotate.*"))
 
 
 def test_rotation_refuses_an_overlap_outside_its_bounds(tmp_path):
