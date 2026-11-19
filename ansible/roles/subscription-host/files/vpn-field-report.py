@@ -37,13 +37,11 @@ OTHER = "other"
 
 def load_validator(validator_path: str, schema_path: str):
     """Return violations(report) from the shared contract validator module."""
-    import jsonschema
-
     spec = importlib.util.spec_from_file_location("validate_field_report", validator_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     schema = json.loads(Path(schema_path).read_text())
-    checker = jsonschema.Draft202012Validator(schema)
+    checker = module.validator(schema)
     bounds = schema["x-latency-bounds-ms"]
     return (lambda report: module.violations(report, checker)), bounds
 
@@ -146,7 +144,7 @@ class Aggregate:
         def family(name: str, kind: str, help_text: str, samples) -> None:
             lines.extend([f"# HELP {name} {help_text}", f"# TYPE {name} {kind}"])
             for labels, value in samples:
-                body = ",".join(f'{key}="{val}"' for key, val in labels)
+                body = ",".join(f'{key}="{_escape(val)}"' for key, val in labels)
                 lines.append(f"{name}{{{body}}} {value}" if body else f"{name} {value}")
 
         family("vpn_field_report_reports_total", "counter", "Accepted field reports.", [((), self.reports)])
@@ -167,9 +165,14 @@ class Aggregate:
             running = 0
             for bound, count in zip(self.bounds, counts):
                 running += count
-                lines.append(f'vpn_field_report_latency_seconds_bucket{{protocol="{protocol}",le="{bound}"}} {running}')
-            lines.append(f'vpn_field_report_latency_seconds_count{{protocol="{protocol}"}} {running}')
+                lines.append(f'vpn_field_report_latency_seconds_bucket{{protocol="{_escape(protocol)}",le="{bound}"}} {running}')
+            lines.append(f'vpn_field_report_latency_seconds_count{{protocol="{_escape(protocol)}"}} {running}')
         return "\n".join(lines) + "\n"
+
+
+def _escape(value: str) -> str:
+    """Escape a label value per the Prometheus text exposition format."""
+    return value.replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
 
 
 def write_textfile(path: str, text: str) -> None:
@@ -238,19 +241,13 @@ class Ingest:
             report = json.loads(read_body(length))
         except (ValueError, RecursionError):
             return 400
-        floor = self.config["min_attempts"]
-        if isinstance(report, dict) and isinstance(report.get("buckets"), list):
-            kept = [bucket for bucket in report["buckets"]
-                    if not (isinstance(bucket, dict) and type(bucket.get("attempts")) is int and bucket["attempts"] < floor)]
-            dropped = len(report["buckets"]) - len(kept)
-            if dropped:
-                self.aggregate.dropped_buckets += dropped
-                report["buckets"] = kept
-                if not kept:
-                    self.flush()
-                    return 202
+        # The whole report is validated before anything is counted; the floor applies only to an accepted report.
         if self.validate(report):
             return 400
+        floor = self.config["min_attempts"]
+        kept = [bucket for bucket in report["buckets"] if bucket["attempts"] >= floor]
+        self.aggregate.dropped_buckets += len(report["buckets"]) - len(kept)
+        report["buckets"] = kept
         self.aggregate.add(report, now)
         self.flush()
         return 202

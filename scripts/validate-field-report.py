@@ -35,14 +35,34 @@ def semantic_errors(report: dict) -> list[str]:
     return errors
 
 
-def violations(report: object, validator) -> list[str]:
+def validator(schema: dict):
+    """A Draft 2020-12 validator whose ``pattern`` keeps the ECMA-262 meaning of ``$``.
+
+    Python's ``$`` also matches before one trailing newline, so ``"ZZ\\n"`` would
+    pass ``^[A-Z]{2}$``; ECMA-262 and this check anchor at the end of input.
+    """
+    import re
+
+    import jsonschema
+
+    def pattern(checker, value, instance, _schema):
+        if isinstance(instance, str):
+            anchored = value[:-1] + r"\Z" if value.endswith("$") and not value.endswith("\\$") else value
+            if not re.search(anchored, instance):
+                yield jsonschema.ValidationError(f"{instance!r} does not match {value!r}")
+
+    strict = jsonschema.validators.extend(jsonschema.Draft202012Validator, {"pattern": pattern})
+    return strict(schema)
+
+
+def violations(report: object, checker) -> list[str]:
     """Return every contract violation of one parsed report; empty means valid.
 
     The field-report ingest on the subscription host calls this function, so
     the CLI and the ingest enforce one contract.
     """
     errors = [f"schema: {error.validator} constraint failed at /{'/'.join(map(str, error.absolute_path))}"
-              for error in sorted(validator.iter_errors(report), key=lambda e: list(map(str, e.absolute_path)))]
+              for error in sorted(checker.iter_errors(report), key=lambda e: list(map(str, e.absolute_path)))]
     return errors or semantic_errors(report)
 
 
@@ -55,7 +75,7 @@ def main() -> int:
         print(f"validate-field-report: not a file: {target}", file=sys.stderr)
         return 2
     try:
-        import jsonschema
+        import jsonschema  # noqa: F401 - availability check before validator() imports it
     except ImportError:
         print("validate-field-report: missing 'jsonschema'", file=sys.stderr)
         return 2
@@ -65,7 +85,7 @@ def main() -> int:
         print("validate-field-report: malformed JSON input", file=sys.stderr)
         return 1
 
-    errors = violations(report, jsonschema.Draft202012Validator(json.loads(SCHEMA.read_text())))
+    errors = violations(report, validator(json.loads(SCHEMA.read_text())))
     if errors:
         print(f"validate-field-report: {len(errors)} violation(s) in {target}:", file=sys.stderr)
         for message in errors:

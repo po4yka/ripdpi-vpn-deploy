@@ -706,6 +706,8 @@ REPORT_NEGATIVE_REASONS = {
     "report-attempts-below-5.json": "minimum constraint failed at /buckets/2/attempts\n",
     "report-app-version-patch.json": "pattern constraint failed at /client/app_version\n",
     "report-schema-version-2.json": "const constraint failed at /schema_version\n",
+    # Python's $ also matches before a trailing newline; the contract keeps the ECMA-262 end-of-input anchor.
+    "report-country-trailing-newline.json": "pattern constraint failed at /network/country\n",
 }
 
 
