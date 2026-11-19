@@ -438,7 +438,7 @@ def render(name, **overrides):
 
 def test_container_exact_arch_pin_loopback_and_resource_bounds():
     unit = render('observability-kuma.service.j2')
-    assert 'ghcr.io/po4yka/ripdpi-vpn-deploy/observability-kuma@sha256:ffd154d2f3a8fa39661f4cce36826dc6aaac783ae9e5ab8850baf6f15b8acf1d' in unit
+    assert 'ghcr.io/po4yka/ripdpi-vpn-deploy/observability-kuma@sha256:507997d64bae974f763c0e94703a8f825fa6499a53aeb97c63a6ad6386c53e46' in unit
     for option in ['--publish 127.0.0.1:13001:3001', '--memory 536870912', '--memory-swap 536870912', '--cpus 0.25', '--pids-limit 128', '--user 1000:1000', '--cap-drop ALL', '--read-only', '--log-driver none']:
         assert option in unit
     assert 'docker.sock' not in unit and '--privileged' not in unit and '--network host' not in unit
