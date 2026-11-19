@@ -123,6 +123,11 @@ subscription_field_report:
   # protocol's "other" set, so the export stays far below the node scrape
   # sample limit of the observability agent.
   max_series: 400
+  # Exact distribution package of the shared contract validator for each
+  # supported release (Debian 13 trixie, Ubuntu 24.04 noble).
+  jsonschema_package_versions:
+    trixie: "4.19.2-6"
+    noble: "4.10.3-2ubuntu1"
   # Bundle endpoint ids (ripdpi.endpoints keys) admitted as server_ref
   # labels; any other value is "other". At most 64.
   server_refs: []
