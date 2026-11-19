@@ -183,6 +183,14 @@ def test_hysteria_exporter_reports_failure_metric(tmp_path: Path, traffic_api: s
     assert _TrafficApi.secret not in result.stderr
 
 
+def test_awg_exporter_unit_writes_no_core_dump() -> None:
+    from scripts.template_render import merge_render_vars, render_template
+
+    # The root process holds CAP_NET_ADMIN on the device socket; a core file would keep its memory on disk.
+    unit = render_template(ROOT / "ansible/roles/amneziawg/templates/awg-handshake-exporter.service.j2", merge_render_vars())
+    assert "LimitCORE=0" in unit.splitlines()
+
+
 def test_hysteria_exporter_unit_runs_unprivileged_with_the_hardening_floor() -> None:
     from scripts.template_render import merge_render_vars, render_template
 
@@ -193,7 +201,7 @@ def test_hysteria_exporter_unit_runs_unprivileged_with_the_hardening_floor() -> 
     assert directives["CapabilityBoundingSet"] == "" and directives["NoNewPrivileges"] == "true"
     for name, value in (("MemoryDenyWriteExecute", "true"), ("ProtectProc", "invisible"), ("ProcSubset", "pid"),
                         ("RestrictAddressFamilies", "AF_INET"), ("SystemCallArchitectures", "native"),
-                        ("UMask", "0027")):
+                        ("UMask", "0027"), ("LimitCORE", "0")):
         assert directives[name] == value, name
     filters = [line.split("=", 1)[1] for line in unit.splitlines() if line.startswith("SystemCallFilter=")]
     assert filters == ["@system-service", "~@privileged @resources"]

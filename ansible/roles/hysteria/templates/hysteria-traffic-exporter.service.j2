@@ -13,6 +13,8 @@ User=vpn-hysteria-exporter
 Group=vpn-hysteria-exporter
 SupplementaryGroups={{ monitoring.node_exporter_textfile_group | default('node_exporter_textfile') }}
 UMask=0027
+# A core file would keep the traffic API secret on disk.
+LimitCORE=0
 CapabilityBoundingSet=
 AmbientCapabilities=
 LoadCredential=hysteria-traffic-secret:{{ hysteria_config_dir }}/traffic-stats.secret
