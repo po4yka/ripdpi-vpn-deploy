@@ -222,6 +222,16 @@
     - not ansible_check_mode
     - _monitoring_xray_stats_enabled | bool
 
+# Monitoring owns exporter lifecycle and runs after the AWG role, so the textfile
+# directory exists; the exporter artifacts stay with the AmneziaWG role.
+- name: Reconcile the aggregate AmneziaWG handshake exporter
+  ansible.builtin.include_role:
+    name: amneziawg
+    tasks_from: handshake-exporter
+  vars:
+    amneziawg_role_enabled: >-
+      {{ (vpn.enable_amneziawg | default(true)) and not (vpn_subscription_only | default(false)) }}
+
 - name: Ensure node_exporter enabled
   ansible.builtin.systemd_service:
     name: prometheus-node-exporter

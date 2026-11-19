@@ -56,6 +56,13 @@ masquerade:
     rewriteHost: true
 {% endif %}
 
+{% if hysteria_traffic_stats_enabled | default(false) | bool %}
+# Loopback-only aggregate traffic source for the role's exporter; never a public listener.
+trafficStats:
+  listen: {{ hysteria_traffic_stats_listen | to_json }}
+  secret: {{ hysteria_traffic_stats_secret | to_json }}
+
+{% endif %}
 quic:
   initStreamReceiveWindow: 8388608
   maxStreamReceiveWindow:  8388608

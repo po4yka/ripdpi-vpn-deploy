@@ -16,3 +16,7 @@
     - name: Report refused frontend candidate after guarded recovery
       ansible.builtin.fail:
         msg: Protected frontend candidate was refused; accepted-generation recovery was attempted when available.
+
+# Outside the frontend rescue: an exporter failure is not a frontend refusal.
+- name: Reconcile the aggregate Hysteria traffic exporter
+  ansible.builtin.import_tasks: traffic-exporter.yml
