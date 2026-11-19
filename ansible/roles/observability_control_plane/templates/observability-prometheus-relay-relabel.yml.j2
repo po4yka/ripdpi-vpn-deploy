@@ -1,6 +1,14 @@
 # vmagent appends extra_label after the payload labels instead of replacing a
 # label of the same name, so a payload node label would reach Prometheus twice.
 # Drop it, then take node from the ingress identity, which ingress appends last.
+# One exception: the collector's own cohosted agent alone holds the published
+# protocol-liveness evidence, so its vpn_protocol_probe_* series keep the probed
+# node. Every other identity, and every other family, keeps the rewrite.
+- action: replace
+  source_labels: [__name__, ingress_node, node]
+  regex: "vpn_protocol_probe_[a-z_]+;{{ observability_push.node_id | replace('.', '[.]') }};([a-z][a-z0-9-]{0,63})"
+  target_label: ingress_node
+  replacement: "$1"
 - action: labeldrop
   regex: node
 - action: labelmap
@@ -19,7 +27,7 @@
   regex: "node-exporter|node-exporter-required-services|observability-agent"
 - action: keep
   source_labels: [__name__, name, state]
-  regex: "node_systemd_unit_state;({% for unit in observability_alert_policy.required_systemd_units %}{{ unit | replace('.', '[.]') }}{% if not loop.last %}|{% endif %}{% endfor %});(active|failed)|(up|node_(cpu|memory|filesystem|time|boot|network|disk|filefd)_.*|node_load(1|5|15)|observability_push_.*|vpn_(xray_stats|observability_|watchdog_|backup_|certificate_|honeypot_|policy_ratelimit_|burn_).*|process_(cpu_seconds_total|resident_memory_bytes|open_fds|max_fds|start_time_seconds)|go_(goroutines|threads)|vm_rows_ignored_total|vmagent_remotewrite_(pending_data_bytes|pending_inmemory_blocks|queue_blocked|errors_total|packets_dropped_total|samples_dropped_total|retries_count_total|bytes_sent_total|blocks_sent_total)|vm_persistentqueue_(bytes_pending|bytes_dropped_total|blocks_dropped_total|bytes_written_total|blocks_written_total|bytes_read_total|blocks_read_total));;.*"
+  regex: "node_systemd_unit_state;({% for unit in observability_alert_policy.required_systemd_units %}{{ unit | replace('.', '[.]') }}{% if not loop.last %}|{% endif %}{% endfor %});(active|failed)|(up|node_(cpu|memory|filesystem|time|boot|network|disk|filefd)_.*|node_load(1|5|15)|observability_push_.*|vpn_(xray_stats|observability_|watchdog_|backup_|certificate_|honeypot_|policy_ratelimit_|burn_|protocol_probe_|awg_|hysteria_).*|process_(cpu_seconds_total|resident_memory_bytes|open_fds|max_fds|start_time_seconds)|go_(goroutines|threads)|vm_rows_ignored_total|vmagent_remotewrite_(pending_data_bytes|pending_inmemory_blocks|queue_blocked|errors_total|packets_dropped_total|samples_dropped_total|retries_count_total|bytes_sent_total|blocks_sent_total)|vm_persistentqueue_(bytes_pending|bytes_dropped_total|blocks_dropped_total|bytes_written_total|blocks_written_total|bytes_read_total|blocks_read_total));;.*"
 # A label value can hold the separator, so the name label gets its own rule.
 - action: keep
   source_labels: [__name__, name]
@@ -34,4 +42,4 @@
   source_labels: [__name__, reason]
   regex: "^(vm_rows_ignored_total;(too_long_label_name|too_long_label_value|too_many_labels)|[^;]+;)$"
 - action: labelkeep
-  regex: "^(__name__|job|instance|environment|cpu|mode|device|fstype|mountpoint|node|role|state|kind|name|reason)$"
+  regex: "^(__name__|job|instance|environment|cpu|mode|device|fstype|mountpoint|node|role|state|kind|name|reason|protocol|vantage|le)$"

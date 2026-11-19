@@ -449,7 +449,7 @@ def test_scrapes_have_explicit_sample_and_label_bounds() -> None:
     assert "observability_push_.*" in template
     assert "node_load(1|5|15)" in template
     assert (
-        "^(__name__|job|cpu|mode|device|fstype|mountpoint|node|role|state|kind)$"
+        "^(__name__|job|cpu|mode|device|fstype|mountpoint|node|role|state|kind|protocol|vantage|le)$"
         in template
     )
     assert 'node: "{{ observability_agent.node_id }}"' in template
@@ -460,6 +460,9 @@ def test_scrapes_have_explicit_sample_and_label_bounds() -> None:
         "honeypot_",
         "policy_ratelimit_",
         "burn_",
+        "protocol_probe_",
+        "awg_",
+        "hysteria_",
     ):
         assert family_prefix in template
 

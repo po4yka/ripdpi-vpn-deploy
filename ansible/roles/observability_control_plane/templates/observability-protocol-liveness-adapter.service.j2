@@ -7,7 +7,10 @@ Slice=observability-collector.slice
 Type=oneshot
 User=root
 Group=root
-ExecStart=/usr/local/libexec/observability-protocol-liveness-adapter.py --evidence {{ observability_control_plane.protocol_liveness.evidence_path }} --output {{ observability_control_plane.protocol_liveness.output_path }} --stale-after {{ observability_control_plane.protocol_liveness.stale_after_seconds }} --max-future {{ observability_control_plane.protocol_liveness.max_future_seconds }}
+ExecStart=/usr/local/libexec/observability-protocol-liveness-adapter.py --evidence {{ observability_control_plane.protocol_liveness.evidence_path }} --output {{ observability_control_plane.protocol_liveness.output_path }} --state /var/lib/observability-protocol-liveness-adapter/histogram.json --stale-after {{ observability_control_plane.protocol_liveness.stale_after_seconds }} --max-future {{ observability_control_plane.protocol_liveness.max_future_seconds }}
+# Cumulative latency histogram counts survive restarts; the evidence stays read-only.
+StateDirectory=observability-protocol-liveness-adapter
+StateDirectoryMode=0700
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true

@@ -26,3 +26,4 @@
     - /etc/systemd/system/observability-protocol-liveness-adapter.timer
     - /usr/local/libexec/observability-protocol-liveness-adapter.py
     - "{{ observability_control_plane.protocol_liveness.output_path }}"
+    - /var/lib/observability-protocol-liveness-adapter

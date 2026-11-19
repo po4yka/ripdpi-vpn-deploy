@@ -389,6 +389,13 @@ def aggregate(config: dict, reports: dict[str, dict], errors: list[str]) -> dict
         }
         if endpoint_variants:
             item["endpoint_variants"] = endpoint_variants
+        durations = {
+            name: profile_results[name]["duration_ms"]
+            for name in required
+            if type(profile_results[name].get("duration_ms")) is int and profile_results[name]["duration_ms"] >= 0
+        }
+        if durations:
+            item["profile_durations_ms"] = durations
         evidence.append(item)
 
     candidates = sorted(

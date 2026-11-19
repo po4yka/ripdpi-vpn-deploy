@@ -101,11 +101,13 @@ existence and do not need read access to its contents.
 When explicitly enabled, expected targets are validated from a repository
 inventory and rendered as bounded contract metrics; source/deploy identity,
 TSDB capacity, and pipeline status use the existing bounded evidence families.
+The relay keeps payload `node` only for `vpn_protocol_probe_*` from the collector's
+own agent identity, so probe series name the probed node; other senders cannot.
 The protocol-liveness adapter consumes only the canonical evaluator's published
 redacted evidence. It maps that evidence to bounded one-hot metrics and never
 executes probes or recomputes sentinel, variant, profile, or quorum semantics.
-It is separately opt-in and owns only its adapter, units, timer, and one
-textfile; disable preserves the canonical evaluator evidence.
+It is separately opt-in and owns only its adapter, units, timer, one
+textfile and its histogram state directory; disable preserves the canonical evaluator evidence.
 An enabled collector requires primary alerting. Prometheus evaluates immutable validated rules;
 Alertmanager remains loopback-only and sends bounded authenticated webhooks to
 a separate loopback relay. Host and adapter metrics arrive only through the

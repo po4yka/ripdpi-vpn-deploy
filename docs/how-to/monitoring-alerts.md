@@ -132,6 +132,12 @@ A security or reachability detector crossed its event threshold.
 
 First check: For probing events run make probing-summary with IP of this node. For burn failures run make burn-check. Then use the incident matrix.
 
+### protocol-probe
+
+The authenticated probe for one protocol, node and vantage stopped reporting for more than twice the evidence window. The health of that protocol is unknown, not healthy; the other protocols and vantages keep their own series. The AmneziaWG handshake and Hysteria2 traffic exporters report their failures through detector-health.
+
+First check: Check the liveness sentinel for this vantage and the published evidence. Do not treat the protocol as healthy.
+
 ### producer-evidence
 
 A node or collector adapter has not published valid evidence. Monitoring health is unknown for this source.

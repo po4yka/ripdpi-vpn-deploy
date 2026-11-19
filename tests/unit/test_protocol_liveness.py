@@ -428,7 +428,21 @@ def test_aggregate_whitelists_public_identity_without_claiming_server_source(tmp
     assert item["profile_observations"]["p1-xhttp"] == {
         "payload_transport": "tcp-https", "target_address_family": "unknown",
         "dns_through_tunnel": True, "authenticated_handshake": True}
+    assert item["profile_durations_ms"] == {name: 40 for name in item["profiles"]}
     assert "secret-marker" not in json.dumps(payload)
+
+
+def test_aggregate_omits_missing_or_invalid_probe_durations(tmp_path):
+    module = runpy.run_path(str(SCRIPT))
+    config = yaml.safe_load(_config(tmp_path).read_text())
+    report = _report("tls-freeze-a", _all("ok"))
+    report["profiles"][0]["duration_ms"] = None
+    report["profiles"][1]["duration_ms"] = -1
+    payload = module["aggregate"](config, {"tls-freeze-a": report}, [])
+    durations = payload["evidence"][0]["profile_durations_ms"]
+    assert report["profiles"][0]["profile"] not in durations
+    assert report["profiles"][1]["profile"] not in durations
+    assert set(durations.values()) == {40}
 
 
 @pytest.mark.parametrize("field,value", [("fresh_handshake", None), ("fresh_handshake", False),

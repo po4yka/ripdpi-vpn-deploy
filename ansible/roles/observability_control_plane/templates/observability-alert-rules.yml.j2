@@ -200,6 +200,8 @@ groups:
           max by (environment, node) (vpn_honeypot_collection_success) == 0
           or max by (environment, node) (vpn_policy_ratelimit_collection_success) == 0
           or max by (environment, node) (vpn_xray_stats_collection_success) == 0
+          or max by (environment, node) (vpn_awg_handshake_collection_success) == 0
+          or max by (environment, node) (vpn_hysteria_traffic_collection_success) == 0
           or max by (environment, node) (vpn_burn_run_error) == 1
         for: {{ policy.detector_hold }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
@@ -210,6 +212,8 @@ groups:
           max by (environment, node) (time() - vpn_honeypot_last_success_timestamp_seconds) > {{ policy.detector_stale_seconds }}
           or max by (environment, node) (time() - vpn_policy_ratelimit_last_success_timestamp_seconds) > {{ policy.detector_stale_seconds }}
           or max by (environment, node) (time() - vpn_xray_stats_collected_timestamp_seconds) > {{ policy.detector_stale_seconds }}
+          or max by (environment, node) (time() - vpn_awg_handshake_collected_timestamp_seconds) > {{ policy.detector_stale_seconds }}
+          or max by (environment, node) (time() - vpn_hysteria_traffic_collected_timestamp_seconds) > {{ policy.detector_stale_seconds }}
           or max by (environment, node) (time() - vpn_burn_last_run_unixtime) > {{ policy.burn_stale_seconds }}
         for: {{ policy.detector_hold }}
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
@@ -242,6 +246,17 @@ groups:
         keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
         labels: {severity: "{{ policy.warning_severity }}", component: detector}
         annotations: {incident_family: detector-events, evidence_class: event-threshold, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A security or reachability detector crossed its event threshold., runbook: docs/how-to/monitoring-alerts.md#detector-events, action: "For probing events run make probing-summary with IP of this node. For burn failures run make burn-check. Then use the incident matrix."}
+  - name: observability_protocol_probes
+    rules:
+      - alert: ObservabilityProtocolProbeStale
+        # max_over_time keeps a vanished probe series for six hours, so a stopped probe ages instead of disappearing.
+        expr: >-
+          max by (environment, node, protocol, vantage) (time() - max_over_time(vpn_protocol_probe_observed_timestamp_seconds[6h]))
+          > {{ 2 * ((observability_control_plane.protocol_liveness | default({})).stale_after_seconds | default(180) | int) }}
+        for: 3m
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels: {severity: "{{ policy.warning_severity }}", component: protocol-probe}
+        annotations: {incident_family: protocol-probe, evidence_class: probe-stale, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A protocol probe stopped reporting; health of this protocol is unknown., runbook: docs/how-to/monitoring-alerts.md#protocol-probe, action: "Check the liveness sentinel for this vantage and the published evidence. Do not treat the protocol as healthy."}
   - name: observability_producer_deadlines
     rules:
 {% for node in observability_push.expected_nodes %}

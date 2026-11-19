@@ -7,7 +7,10 @@ Slice=observability-collector.slice
 Type=oneshot
 User=root
 Group=root
-ExecStart=/usr/local/libexec/observability-protocol-liveness-adapter.py --evidence /var/lib/vpn-protocol-liveness/last-evidence.json --output /var/lib/node_exporter/textfile/protocol-liveness.prom --stale-after 180 --max-future 60
+ExecStart=/usr/local/libexec/observability-protocol-liveness-adapter.py --evidence /var/lib/vpn-protocol-liveness/last-evidence.json --output /var/lib/node_exporter/textfile/protocol-liveness.prom --state /var/lib/observability-protocol-liveness-adapter/histogram.json --stale-after 180 --max-future 60
+# Cumulative latency histogram counts survive restarts; the evidence stays read-only.
+StateDirectory=observability-protocol-liveness-adapter
+StateDirectoryMode=0700
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
