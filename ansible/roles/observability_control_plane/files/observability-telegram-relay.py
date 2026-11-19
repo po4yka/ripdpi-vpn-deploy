@@ -461,7 +461,13 @@ class Receipts:
         if not math.isfinite(evaluated) or not 0 <= now - evaluated <= 150:
             raise Refusal("canary-freshness")
         with self.lock:
-            if int(evaluated) <= self.value["rule_to_relay_at"]:
+            # Alertmanager repeats the group at repeat_interval (1m) while
+            # Prometheus refreshes the annotation only every resend delay
+            # (default 1m, so 90s at a 30s interval): an unchanged value is an
+            # expected duplicate. It cannot refresh the receipt, so accept it.
+            if int(evaluated) == self.value["rule_to_relay_at"]:
+                return
+            if int(evaluated) < self.value["rule_to_relay_at"]:
                 raise Refusal("canary-replay")
             self.value["rule_to_relay_at"] = int(evaluated)
             self.save()
@@ -673,7 +679,10 @@ def handler(config: dict[str, object]):  # type: ignore[no-untyped-def]
                     silent=payload["status"] == "resolved",
                 )
                 drill_receipt.record(payload, int(time.time()))
-            except (OSError, Refusal):
+            except (OSError, Refusal) as exc:
+                # Category only: Refusal args are fixed non-secret labels.
+                category = str(exc) if isinstance(exc, Refusal) else "local-io"
+                print(f"telegram-relay: refused {category}", file=sys.stderr)
                 self._reply(400, "refused")
                 return
             except DeliveryFailure:

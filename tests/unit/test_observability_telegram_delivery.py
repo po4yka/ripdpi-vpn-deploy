@@ -203,6 +203,11 @@ def test_pipeline_receipt_requires_fresh_evaluation_and_rejects_replay(tmp_path)
     payload["alerts"][0]["annotations"]["evaluated_at"] = "100000"
     receipts.pipeline(payload, 100020)
     assert receipts.snapshot()["rule_to_relay_at"] == 100000
+    # Regression: an Alertmanager repeat before Prometheus resends the alert
+    # carries the same evaluation; it is accepted without refreshing the receipt.
+    receipts.pipeline(payload, 100080)
+    assert receipts.snapshot()["rule_to_relay_at"] == 100000
+    payload["alerts"][0]["annotations"]["evaluated_at"] = "99990"
     with pytest.raises(relay.Refusal, match="canary-replay"):
         receipts.pipeline(payload, 100030)
     for bad in ["99900", "100301", "nan", "inf", "invalid"]:
