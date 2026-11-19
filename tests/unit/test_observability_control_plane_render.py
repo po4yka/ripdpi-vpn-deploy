@@ -141,8 +141,8 @@ def test_ingress_is_only_the_bounded_authenticated_write_path() -> None:
         "if ($request_method != POST) { return 405; }",
         'if ($args != "") { return 400; }',
         "if ($observability_remote_write_node != $1) { return 403; }",
-        # The relay maps the certificate-bound id from ingress_node to node.
-        "rewrite ^ /api/v1/write?extra_label=ingress_node=$observability_remote_write_node break;",
+        # The relay maps the certificate-bound id from the private ingress label to node.
+        f"rewrite ^ /api/v1/write?extra_label={INGRESS}=$observability_remote_write_node break;",
         "proxy_pass http://127.0.0.1:19091;",
         'proxy_set_header Host "127.0.0.1:19091";',
         "X-Prometheus-Remote-Write-Version $http_x_prometheus_remote_write_version;",
@@ -156,7 +156,9 @@ def test_ingress_is_only_the_bounded_authenticated_write_path() -> None:
         "proxy_set_header Authorization",
         "127.0.0.1:9090",
         # A rewrite regex resets location captures, so $1 would be empty here.
-        "extra_label=ingress_node=$1",
+        f"extra_label={INGRESS}=$1",
+        # A public label name could be repeated by a payload ahead of the ingress copy.
+        "extra_label=ingress_node=",
         # vmagent appends extra labels, so a direct node label would be duplicated.
         "extra_label=node=",
     ):
@@ -197,21 +199,7 @@ def test_ingress_requires_relay_and_relay_writes_only_to_loopback_prometheus() -
         "-maxLabelNameLen": "64",
         "-maxLabelValueLen": "128",
     }
-    rules = _relay_rules()
-    # Only the collector's own agent may name the probed node of a probe series.
-    assert rules[0] == {
-        "action": "replace",
-        "source_labels": ["__name__", "ingress_node", "node"],
-        "regex": "vpn_protocol_probe_[a-z_]+;vpn-p2;([a-z][a-z0-9-]{0,63})",
-        "target_label": "ingress_node",
-        "replacement": "$1",
-    }
-    # Payload node goes first, then the ingress identity becomes node and its carrier label goes.
-    assert rules[1:4] == [
-        {"action": "labeldrop", "regex": "node"},
-        {"action": "labelmap", "regex": "ingress_node", "replacement": "node"},
-        {"action": "labeldrop", "regex": "ingress_node"},
-    ]
+    assert re.fullmatch(r"ingress_[0-9a-f]{32}", INGRESS)
     for required in (
         "Slice=observability-collector.slice",
         "BindsTo=observability-disk-guard.service",
@@ -232,28 +220,61 @@ def _relay_rules() -> list[dict]:
     return yaml.safe_load(render_template(ROLE / "templates/observability-prometheus-relay-relabel.yml.j2", values))
 
 
-def _relabel(rules: list[dict], labels: dict[str, str]) -> dict[str, str] | None:
-    """Apply keep, labelkeep, labeldrop and labelmap rules; None means the series is dropped."""
-    labels = dict(labels)
+def _ingress_label() -> str:
+    """The label name ingress appends, read from the rendered nginx route rather than recomputed."""
+    route = render_template(ROLE / "templates/observability-remote-write.conf.j2", _values())
+    match = re.search(r"extra_label=([A-Za-z_][A-Za-z0-9_]*)=\$observability_remote_write_node", route)
+    assert match is not None
+    return match.group(1)
+
+
+INGRESS = _ingress_label()
+
+
+def _relabel(rules: list[dict], labels: dict[str, str] | list[tuple[str, str]]) -> dict[str, str] | None:
+    """Apply the relay rules with vmagent's list semantics; None means the series is dropped.
+
+    A payload can repeat a label name, and ingress appends its label after the payload
+    labels, so the series is a list of pairs. As in vmagent, a read takes the first copy,
+    a write overwrites the first copy or appends, and labeldrop or labelkeep removes every
+    copy. Prometheus refuses a series that still repeats a name, so the model does too.
+    """
+    pairs = list(labels.items()) if isinstance(labels, dict) else list(labels)
+
+    def read(name: str) -> str:
+        return next((value for key, value in pairs if key == name), "")
+
+    def write(name: str, value: str) -> None:
+        for index, (key, _) in enumerate(pairs):
+            if key == name:
+                pairs[index] = (name, value)
+                return
+        pairs.append((name, value))
+
     for rule in rules:
         regex = re.compile(rule["regex"])
-        if rule["action"] == "keep":
-            value = ";".join(labels.get(name, "") for name in rule["source_labels"])
-            if not regex.fullmatch(value):
+        action = rule["action"]
+        if action in ("keep", "drop"):
+            matched = regex.fullmatch(";".join(read(name) for name in rule["source_labels"])) is not None
+            if matched != (action == "keep"):
                 return None
-        elif rule["action"] == "labelkeep":
-            labels = {name: value for name, value in labels.items() if regex.fullmatch(name)}
-        elif rule["action"] == "labeldrop":
-            labels = {name: value for name, value in labels.items() if not regex.fullmatch(name)}
-        elif rule["action"] == "replace":
-            match = regex.fullmatch(";".join(labels.get(name, "") for name in rule["source_labels"]))
+        elif action == "labelkeep":
+            pairs = [(key, value) for key, value in pairs if regex.fullmatch(key)]
+        elif action == "labeldrop":
+            pairs = [(key, value) for key, value in pairs if not regex.fullmatch(key)]
+        elif action == "replace":
+            match = regex.fullmatch(";".join(read(name) for name in rule["source_labels"]))
             if match:
-                labels[rule["target_label"]] = match.expand(rule["replacement"].replace("$1", r"\1"))
-        elif rule["action"] == "labelmap":
-            labels.update({rule["replacement"]: value for name, value in labels.items() if regex.fullmatch(name)})
+                write(rule["target_label"], match.expand(rule["replacement"].replace("$1", r"\1")))
+        elif action == "labelmap":
+            for key, value in list(pairs):
+                if regex.fullmatch(key):
+                    write(rule["replacement"], value)
         else:
-            raise AssertionError(rule["action"])
-    return labels
+            raise AssertionError(action)
+    names = [key for key, _ in pairs]
+    assert len(names) == len(set(names)), f"Prometheus refuses a repeated label name: {names}"
+    return dict(pairs)
 
 
 @pytest.mark.parametrize(
@@ -274,7 +295,7 @@ def _relabel(rules: list[dict], labels: dict[str, str]) -> dict[str, str] | None
     ids=lambda pushed: "-".join(pushed.values()),
 )
 def test_relay_drops_series_outside_the_sender_allowlist(pushed: dict[str, str]) -> None:
-    assert _relabel(_relay_rules(), {"job": "node-exporter", "ingress_node": "vpn-p0", **pushed}) is None
+    assert _relabel(_relay_rules(), {"job": "node-exporter", **pushed, INGRESS: "vpn-p0"}) is None
 
 
 def test_relay_keeps_allowed_series_and_only_allowed_labels() -> None:
@@ -284,7 +305,8 @@ def test_relay_keeps_allowed_series_and_only_allowed_labels() -> None:
         rules,
         {
             "__name__": "node_cpu_seconds_total", "job": "node-exporter", "cpu": "0", "mode": "idle",
-            "environment": "prod", "node": "forged-node", "ingress_node": "vpn-p0", "attacker_label": "random-1",
+            "environment": "prod", "node": "forged-node", "ingress_node": "forged-node", "attacker_label": "random-1",
+            INGRESS: "vpn-p0",
         },
     ) == {
         "__name__": "node_cpu_seconds_total", "job": "node-exporter", "cpu": "0", "mode": "idle",
@@ -297,7 +319,7 @@ def test_relay_keeps_allowed_series_and_only_allowed_labels() -> None:
         {"__name__": "node_filesystem_avail_bytes", "mountpoint": "/", "device": "vda1", "fstype": "ext4"},
     ):
         kept["job"] = "observability-agent"
-        assert _relabel(rules, {**kept, "ingress_node": "vpn-p0"}) == {**kept, "node": "vpn-p0"}
+        assert _relabel(rules, {**kept, INGRESS: "vpn-p0"}) == {**kept, "node": "vpn-p0"}
 
 
 @pytest.mark.parametrize(
@@ -310,21 +332,48 @@ def test_relay_keeps_allowed_series_and_only_allowed_labels() -> None:
         ("vpn-p2", "vpn_observability_evidence_state", "vpn-p2"),
     ],
 )
-def test_relay_keeps_probed_node_only_for_collector_probe_series(
-    ingress: str, name: str, expected_node: str
-) -> None:
+def test_relay_keeps_probed_node_only_for_collector_probe_series(ingress: str, name: str, expected_node: str) -> None:
     labels = _relabel(
         _relay_rules(),
         {
-            "__name__": name, "job": "node-exporter", "node": "vpn-path", "ingress_node": ingress,
-            "protocol": "xhttp", "vantage": "sentinel-a", "le": "0.1",
+            "__name__": name, "job": "node-exporter", "node": "vpn-path",
+            "protocol": "xhttp", "vantage": "sentinel-a", "le": "0.1", INGRESS: ingress,
         },
     )
 
     assert labels is not None
     assert labels["node"] == expected_node
-    assert "ingress_node" not in labels
+    assert INGRESS not in labels and f"{INGRESS}_probe" not in labels
     assert (labels["protocol"], labels["vantage"]) == ("xhttp", "sentinel-a")
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        # A payload copy of the old public ingress label name comes first, as vmagent orders it.
+        [("ingress_node", "vpn-p2")],
+        [("ingress_node", "vpn-p2"), ("node", "vpn-path"), ("node", "vpn-other")],
+    ],
+    ids=["spoofed-ingress-node", "spoofed-ingress-node-and-repeated-node"],
+)
+def test_an_enrolled_node_cannot_claim_a_probed_node_by_spoofing_the_collector(payload: list[tuple[str, str]]) -> None:
+    series = [("__name__", "vpn_protocol_probe_success"), ("job", "node-exporter"), ("protocol", "xhttp"),
+              ("vantage", "sentinel-a"), *payload, (INGRESS, "vpn-p0")]
+    # The payload copies are dropped; the series can only name its sender's certificate identity.
+    assert _relabel(_relay_rules(), series)["node"] == "vpn-p0"
+
+
+def test_the_ingress_label_name_is_private_and_shared_by_ingress_and_relay() -> None:
+    values = _values()
+    values["observability_control_plane"]["tls"] = {"server_key_pem": "fixture-key-a"}
+    route_a = render_template(ROLE / "templates/observability-remote-write.conf.j2", values)
+    values["observability_control_plane"]["tls"] = {"server_key_pem": "fixture-key-b"}
+    route_b = render_template(ROLE / "templates/observability-remote-write.conf.j2", values)
+    label_a, label_b = (re.search(r"extra_label=([a-z0-9_]+)=", route).group(1) for route in (route_a, route_b))
+    # The name follows the private key, so the public templates do not reveal it.
+    assert label_a != label_b and "ingress_node" not in (label_a, label_b)
+    relay = _relay_rules()
+    assert {"action": "labelmap", "regex": INGRESS, "replacement": "node"} in relay
 
 
 def test_relay_allowlist_matches_the_sender() -> None:
@@ -336,7 +385,9 @@ def test_relay_allowlist_matches_the_sender() -> None:
     node, systemd, agent = (job["metric_relabel_configs"] for job in sender["scrape_configs"])
     relay = yaml.safe_load(
         render_template(ROLE / "templates/observability-prometheus-relay-relabel.yml.j2", values)
-    )[4:]
+    )
+    # The identity rewrite and owner rules come first; the allowlist starts at the job rule.
+    relay = relay[next(index for index, rule in enumerate(relay) if rule.get("source_labels") == ["job"]):]
 
     def inner(regex: str) -> str:
         assert regex.startswith("^(") and regex.endswith(")$")

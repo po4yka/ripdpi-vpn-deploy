@@ -1,5 +1,7 @@
 # Write-only ingestion. Prometheus, status and administrative APIs stay loopback-only.
 # The loopback relay replaces any payload node label with the certificate-bound path id.
+# The identity travels under a label name derived from the collector's private TLS key,
+# so a sender cannot put a second copy of it in its payload; the relay derives the same name.
 limit_req_zone $ssl_client_s_dn zone=observability_remote_write_rate:10m rate=20r/s;
 limit_conn_zone $ssl_client_s_dn zone=observability_remote_write_conn:10m;
 limit_conn_zone $server_addr zone=observability_remote_write_total:1m;
@@ -32,8 +34,8 @@ server {
         limit_conn observability_remote_write_total 4;
         limit_req zone=observability_remote_write_rate burst=40 nodelay;
         # The rewrite regex resets $1; use the certificate map value already equal to it.
-        # The relay relabels ingress_node to node and drops any payload node label.
-        rewrite ^ /api/v1/write?extra_label=ingress_node=$observability_remote_write_node break;
+        # The relay maps the private ingress label to node and drops any payload node label.
+        rewrite ^ /api/v1/write?extra_label=ingress_368299d8edbfda919f0eef6898cd756f=$observability_remote_write_node break;
         proxy_pass http://127.0.0.1:19091;
         proxy_request_buffering off;
         proxy_buffering off;

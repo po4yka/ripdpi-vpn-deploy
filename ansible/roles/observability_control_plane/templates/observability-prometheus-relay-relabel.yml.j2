@@ -1,21 +1,35 @@
-# vmagent appends extra_label after the payload labels instead of replacing a
-# label of the same name, so a payload node label would reach Prometheus twice.
-# Drop it, then take node from the ingress identity, which ingress appends last.
-# One exception: the collector's own cohosted agent alone holds the published
-# protocol-liveness evidence, so its vpn_protocol_probe_* series keep the probed
-# node. Every other identity, and every other family, keeps the rewrite.
+{% set ingress_label = 'ingress_' ~ (('observability-ingress-label:' ~ (observability_control_plane.tls | default({})).server_key_pem | default('')) | hash('sha256'))[:32] %}
+{% set identities = observability_control_plane.ingest_identities | map(attribute='node_id') | list %}
+{% set collector = observability_push.node_id %}
+# Ingress appends the certificate-bound identity as extra_label <ingress label>=<node id>.
+# vmagent appends an extra label after the payload labels instead of replacing one of
+# the same name, so a payload could carry a second copy of any public label name. The
+# ingress label name is derived from the collector's private TLS key, which no sender
+# holds, so a payload cannot carry it and every rule below reads the one copy ingress
+# wrote. Payload node and ingress_node labels are dropped outright.
+# The collector's own cohosted agent alone holds the published protocol-liveness
+# evidence, so only its vpn_protocol_probe_* series keep the probed node, staged here
+# under a second label that is just as private.
 - action: replace
-  source_labels: [__name__, ingress_node, node]
-  regex: "vpn_protocol_probe_[a-z_]+;{{ observability_push.node_id | replace('.', '[.]') }};([a-z][a-z0-9-]{0,63})"
-  target_label: ingress_node
+  source_labels: [__name__, {{ ingress_label }}, node]
+  regex: "vpn_protocol_probe_[a-z_]+;{{ collector | replace('.', '[.]') }};([a-z][a-z0-9-]{0,63})"
+  target_label: {{ ingress_label }}_probe
   replacement: "$1"
 - action: labeldrop
-  regex: node
+  regex: node|ingress_node
+- action: keep
+  source_labels: [{{ ingress_label }}]
+  regex: "{{ identities | map('replace', '.', '[.]') | join('|') }}"
 - action: labelmap
-  regex: ingress_node
+  regex: {{ ingress_label }}
   replacement: node
+- action: replace
+  source_labels: [{{ ingress_label }}_probe]
+  regex: "(.+)"
+  target_label: node
+  replacement: "$1"
 - action: labeldrop
-  regex: ingress_node
+  regex: "{{ ingress_label }}|{{ ingress_label }}_probe"
 # The sender's allowlist, applied again: a node must not store what its own
 # sender (observability_agent prometheus.yml.j2) would have dropped. The lists
 # are literals on both sides by design; test_relay_allowlist_matches_the_sender
