@@ -33,12 +33,12 @@ The aggregation MUST expose counters and a histogram with only the labels protoc
 
 ### Requirement: REQ-INGEST-MINATTEMPT — Buckets under 5 attempts are dropped
 
-The ingest MUST drop a bucket with fewer than 5 attempts even if a schema-valid report contains it, and MUST count the drop in a metric without identifying labels.
+The ingest MUST validate the whole report before it changes any counter, MUST refuse a report that holds a bucket with fewer than 5 attempts (the contract minimum), and MUST drop a bucket under the configured floor (5 or more) from an accepted schema-valid report and count the drop in a metric without identifying labels.
 
 #### Scenario: buckets under 5 attempts are dropped
 
-- **WHEN** a report holds one bucket with 4 attempts and one with 5
-- **THEN** only the bucket with 5 attempts changes the aggregate
+- **WHEN** a report holds one bucket with 4 attempts and one with 5, and with a configured floor of 10 a report holds one bucket with 7 attempts and one with 10
+- **THEN** the first report is refused with 400 and changes no counter, and from the second only the bucket with 10 attempts changes the aggregate while the drop counter grows by one
 
 ### Requirement: REQ-INGEST-ALERT — Failure-rate alert by protocol and ASN
 

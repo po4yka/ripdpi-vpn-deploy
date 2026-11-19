@@ -166,21 +166,49 @@ def test_previous_token_is_rejected_after_its_overlap(ingest):
     assert _post(config, json.dumps(GOLDEN).encode(), token=TOKEN) == 202
 
 
-def test_buckets_under_the_attempts_floor_are_dropped_and_counted(ingest):
-    _, config = ingest()
+def _bucket(attempts: int, protocol: str = "xhttp") -> dict:
+    return {"server_ref": "p0-reality-upcloud-prod", "protocol": protocol, "outcome": "success", "attempts": attempts,
+            "latency_ms_histogram": [attempts, 0, 0, 0, 0, 0, 0, 0]}
+
+
+def test_buckets_under_the_configured_floor_are_dropped_and_counted(ingest):
+    _, config = ingest(min_attempts=10)
     report = copy.deepcopy(GOLDEN)
-    report["buckets"] = [
-        {"server_ref": "p0-reality-upcloud-prod", "protocol": "xhttp", "outcome": "success", "attempts": 4,
-         "latency_ms_histogram": [4, 0, 0, 0, 0, 0, 0, 0]},
-        {"server_ref": "p0-reality-upcloud-prod", "protocol": "xhttp", "outcome": "success", "attempts": 5,
-         "latency_ms_histogram": [5, 0, 0, 0, 0, 0, 0, 0]},
-    ]
+    report["buckets"] = [_bucket(7), _bucket(10)]
     assert _post(config, json.dumps(report).encode()) == 202
     samples = _samples(_metrics(config))
-    assert samples['vpn_field_report_attempts_total{protocol="xhttp",asn="other",country="other"}'] == 5
-    assert samples['vpn_field_report_endpoint_attempts_total{protocol="xhttp",server_ref="p0-reality-upcloud-prod"}'] == 5
+    assert samples['vpn_field_report_attempts_total{protocol="xhttp",asn="other",country="other"}'] == 10
+    assert samples['vpn_field_report_endpoint_attempts_total{protocol="xhttp",server_ref="p0-reality-upcloud-prod"}'] == 10
     assert samples["vpn_field_report_dropped_buckets_total"] == 1
     assert samples["vpn_field_report_reports_total"] == 1
+
+
+@pytest.mark.parametrize("buckets", [[_bucket(4), _bucket(5)], [_bucket(4)]], ids=["mixed", "all-under"])
+def test_a_bucket_under_the_contract_floor_rejects_the_report_without_counting(ingest, buckets):
+    _, config = ingest()
+    before = _metrics(config)
+    report = copy.deepcopy(GOLDEN)
+    report["buckets"] = buckets
+    assert _post(config, json.dumps(report).encode()) == 400
+    assert _metrics(config) == before
+
+
+@pytest.mark.parametrize("field", ["country", "server_ref", "protocol", "failure_stage"])
+@pytest.mark.parametrize("suffix", ["\n", '"'])
+def test_label_strings_with_a_newline_or_quote_are_rejected(ingest, field, suffix):
+    _, config = ingest()
+    before = _metrics(config)
+    report = copy.deepcopy(GOLDEN)
+    target = report["network"] if field == "country" else report["buckets"][1]
+    target[field] += suffix
+    assert _post(config, json.dumps(report).encode()) == 400
+    assert _metrics(config) == before
+
+
+def test_rendered_label_values_are_escaped(tmp_path):
+    aggregate = _module().Aggregate(_config(tmp_path), [50, 100, 250, 500, 1000, 2500, 5000, "+Inf"])
+    aggregate.attempts[("xhttp", "64500", 'Z"\\\n')] = 5
+    assert 'vpn_field_report_attempts_total{protocol="xhttp",asn="64500",country="Z\\"\\\\\\n"} 5' in aggregate.render()
 
 
 def _module():
