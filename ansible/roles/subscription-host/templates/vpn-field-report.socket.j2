@@ -1,0 +1,15 @@
+[Unit]
+Description=Field-report ingest socket, reachable only by nginx
+Documentation=https://github.com/po4yka/ripdpi-vpn-deploy/blob/main/docs/reference/ripdpi-bundle.md
+
+[Socket]
+# A loopback TCP port is open to every local process, including the transport daemons that relay
+# client traffic. Only the nginx user (and root) can connect to this file; the ingest gets it as fd 3.
+ListenStream=/run/vpn-field-report.sock
+SocketUser=www-data
+SocketGroup=www-data
+SocketMode=0600
+RemoveOnStop=true
+
+[Install]
+WantedBy=sockets.target

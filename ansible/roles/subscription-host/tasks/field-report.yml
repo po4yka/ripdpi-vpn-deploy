@@ -5,7 +5,6 @@
   ansible.builtin.assert:
     that:
       - subscription_field_report.path is match('^/[a-z0-9/_-]{1,64}\Z')
-      - subscription_field_report.listen_port | int is ge(1024)
       - subscription_field_report.max_body_bytes | int is ge(1024)
       - subscription_field_report.max_body_bytes | int is le(1048576)
       - subscription_field_report.min_attempts | int is ge(5)
@@ -168,6 +167,20 @@
   diff: false
   notify: Restart vpn-field-report
 
+# The ingest listens only on this socket file, which belongs to the nginx user: a loopback TCP port
+# would be open to every local process, including the transport daemons that relay client traffic.
+- name: Install field-report ingest socket
+  ansible.builtin.template:
+    src: vpn-field-report.socket.j2
+    dest: /etc/systemd/system/vpn-field-report.socket
+    owner: root
+    group: root
+    mode: "0644"
+  register: _subscription_field_report_socket
+  notify:
+    - Restart vpn-field-report socket
+    - Restart vpn-field-report
+
 - name: Install field-report ingest unit
   ansible.builtin.template:
     src: vpn-field-report.service.j2
@@ -180,12 +193,15 @@
 
 - name: Enable + start field-report ingest
   ansible.builtin.systemd_service:
-    name: vpn-field-report.service
+    name: "{{ item }}"
     enabled: true
     state: started
     daemon_reload: true
+  loop:
+    - vpn-field-report.socket
+    - vpn-field-report.service
   # A fresh check-mode host has no unit to start yet; the planned install above shows the change.
-  when: not (ansible_check_mode and _subscription_field_report_unit.changed)
+  when: not (ansible_check_mode and (_subscription_field_report_unit.changed or _subscription_field_report_socket.changed))
 
 # The ingest writes its aggregate in its own state directory and has no write access to the shared
 # textfile directory; node_exporter follows this root-owned link. force replaces the regular file

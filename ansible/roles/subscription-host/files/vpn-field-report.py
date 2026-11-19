@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Aggregate anonymous client field reports into bounded Prometheus counters.
 
-One loopback POST route behind the subscription vhost, and an optional GET
+One POST route behind the subscription vhost, and an optional GET
 network hint route (contract/client-network-hint.schema.json). A request carries the
 cohort token as ``Authorization: Bearer <token>`` and one report body that
 follows contract/client-field-report.schema.json. The shared contract
@@ -9,6 +9,10 @@ validator checks the body; the aggregate is written to the node_exporter
 textfile and the report itself is discarded. The process logs no request:
 no address, token, header or body reaches a log line, a metric label or a
 file.
+
+The process listens only on the Unix socket that vpn-field-report.socket passes
+in (fd 3, the systemd LISTEN_FDS protocol); the socket file belongs to the
+nginx user with mode 0600, so no other local user or process can reach it.
 
 Status codes: 202 accepted, 400 invalid body, 401 unknown cohort token,
 404 other path, 411 missing length, 413 body over the limit. Rate limiting
@@ -431,7 +435,20 @@ def make_handler(ingest: Ingest):
     return Handler
 
 
+def inherited_listener() -> socket.socket:
+    """The one listening socket that systemd passes as fd 3 (sd_listen_fds protocol)."""
+    if os.environ.get("LISTEN_PID") != str(os.getpid()) or os.environ.get("LISTEN_FDS") != "1":
+        raise ValueError("expected exactly one listening socket from vpn-field-report.socket")
+    return socket.socket(fileno=3)
+
+
 class QuietServer(HTTPServer):
+    def __init__(self, listener: socket.socket, handler) -> None:
+        # The socket unit owns the address and its permissions; the server only accepts on it.
+        super().__init__(None, handler, bind_and_activate=False)
+        self.socket.close()
+        self.socket = listener
+
     def handle_error(self, request, client_address):
         """The default handler prints the client address with the traceback."""
         print(f"vpn-field-report: request failed: {sys.exc_info()[0].__name__}", file=sys.stderr)
@@ -449,6 +466,11 @@ def main(argv: list[str] | None = None) -> int:
         # The message names the failed field, never a token value.
         print(f"vpn-field-report: {error if isinstance(error, ValueError) else 'cohort token file is unreadable'}", file=sys.stderr)
         return 2
+    try:
+        listener = inherited_listener()
+    except (OSError, ValueError) as error:
+        print(f"vpn-field-report: {error if isinstance(error, ValueError) else 'inherited socket is unusable'}", file=sys.stderr)
+        return 2
     validate, bounds = load_validator(config["validator"], config["schema"])
     hint, asn_table = config.get("network_hint"), None
     try:
@@ -461,7 +483,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"vpn-field-report: {reason}; the network hint is off", file=sys.stderr)
     ingest = Ingest(config, tokens, validate, bounds, asn_table)
     ingest.flush()
-    server = QuietServer((config["listen"], config["port"]), make_handler(ingest))
+    server = QuietServer(listener, make_handler(ingest))
     server.serve_forever()
     return 0
 

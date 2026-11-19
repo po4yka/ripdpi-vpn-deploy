@@ -187,12 +187,14 @@
       loop_control:
         label: "{{ item.item.route }}"
 
-    - name: Field-report ingest is active on loopback only
+    - name: Field-report ingest listens only on the nginx-owned socket
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          systemctl is-active --quiet vpn-field-report.service
-          ss -lntp '( sport = :8446 )' | grep -q '127.0.0.1:8446'
+          systemctl is-active --quiet vpn-field-report.socket vpn-field-report.service
+          test "$(stat -c '%U:%G %a %F' /run/vpn-field-report.sock)" = 'www-data:www-data 600 socket'
+          # The ingest process has no TCP or UDP listener of its own.
+          ! ss -ltunpH | grep -q "pid=$(systemctl show -p MainPID --value vpn-field-report.service),"
         executable: /bin/bash
       changed_when: false
 

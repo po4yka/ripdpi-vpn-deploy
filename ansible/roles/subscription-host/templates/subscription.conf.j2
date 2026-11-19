@@ -110,7 +110,8 @@ server {
     # Anonymous client field reports (docs/reference/ripdpi-bundle.md). The
     # backend validates, aggregates and discards each report. The body stays
     # in memory: the buffer equals the size limit, so nginx never writes a
-    # report to a temporary file. No address is forwarded to the backend.
+    # report to a temporary file. No address is forwarded to the backend, which
+    # listens only on a Unix socket that belongs to the nginx user.
     location = {{ subscription_field_report.path }} {
         limit_except POST { deny all; }
         limit_req zone=vpn_field_report_per_ip burst={{ subscription_field_report.nginx_burst }} nodelay;
@@ -118,7 +119,7 @@ server {
         client_max_body_size {{ subscription_field_report.max_body_bytes }};
         client_body_buffer_size {{ subscription_field_report.max_body_bytes }};
 
-        proxy_pass http://127.0.0.1:{{ subscription_field_report.listen_port }};
+        proxy_pass http://unix:/run/vpn-field-report.sock:;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header Connection "";
@@ -140,7 +141,7 @@ server {
         limit_req zone=vpn_network_hint_per_ip burst={{ subscription_field_report.network_hint.nginx_burst }} nodelay;
         limit_req_status 429;
 
-        proxy_pass http://127.0.0.1:{{ subscription_field_report.listen_port }};
+        proxy_pass http://unix:/run/vpn-field-report.sock:;
         proxy_http_version 1.1;
         proxy_pass_request_body off;
         proxy_set_header Host $host;

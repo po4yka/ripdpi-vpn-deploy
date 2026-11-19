@@ -1,8 +1,9 @@
 [Unit]
 Description=Anonymous client field-report ingest (aggregate only)
 Documentation=https://github.com/po4yka/ripdpi-vpn-deploy/blob/main/docs/reference/ripdpi-bundle.md
-After=network-online.target
-Wants=network-online.target
+# The only listener is the socket unit's file, passed in as fd 3.
+Requires=vpn-field-report.socket
+After=vpn-field-report.socket
 
 [Service]
 Type=simple
@@ -40,9 +41,10 @@ ProcSubset=pid
 RestrictNamespaces=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
-RestrictAddressFamilies=AF_INET
+# The inherited Unix socket is the only way in; the process has no network of its own.
+PrivateNetwork=true
+RestrictAddressFamilies=AF_UNIX
 IPAddressDeny=any
-IPAddressAllow=localhost
 LockPersonality=true
 MemoryDenyWriteExecute=true
 CapabilityBoundingSet=
