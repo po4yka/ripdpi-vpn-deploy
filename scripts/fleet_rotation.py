@@ -307,12 +307,55 @@ def require_health(path, plan, nodes, current_alias):
         raise RotationError("plan-mismatch")
 
 
-def run_plan(path, *, root=ROOT, resume=False, dry_run=False, confirm=operator_confirm):
+HINT_TEXT = re.compile(r"[A-Za-z0-9 _.,:;=%/()-]{1,400}\Z")
+
+
+def block_hints(path):
+    """Advisory lines for active FieldReportNetworkBlocked alerts in an exported alert list.
+
+    Accepts the Alertmanager v2 /api/v2/alerts list or the Prometheus /api/v1/alerts document.
+    Values are printed only when they match a plain-text pattern, so an alert cannot inject
+    terminal control sequences into the plan output.
+    """
+    try:
+        document = json.loads(read_regular(path))
+    except (ValueError, RecursionError):
+        raise RotationError("block-hints-invalid") from None
+    alerts = document.get("data", {}).get("alerts") if isinstance(document, dict) else document
+    if not isinstance(alerts, list):
+        raise RotationError("block-hints-invalid")
+    lines = []
+    for alert in alerts:
+        labels, annotations = (alert.get("labels"), alert.get("annotations") or {}) if isinstance(alert, dict) else (None, None)
+        if not isinstance(labels, dict) or not isinstance(annotations, dict):
+            raise RotationError("block-hints-invalid")
+        status = alert.get("status")
+        state = alert.get("state") or (status.get("state") if isinstance(status, dict) else None)
+        if labels.get("alertname") != "FieldReportNetworkBlocked" or state not in ("firing", "active"):
+            continue
+        fields = [labels.get("protocol"), labels.get("asn"), labels.get("country"),
+                  annotations.get("stage_mix", "").strip() or "-", annotations.get("rotation_hint")]
+        if not all(isinstance(field, str) and HINT_TEXT.match(field) for field in fields):
+            lines.append("  hint: one blocked-network alert has unprintable fields; read it in the alert panel")
+            continue
+        protocol, asn, country, stages, hint = fields
+        lines.append(f"  hint: {protocol} blocked in AS{asn} ({country}); stages {stages}; {hint}")
+    return lines
+
+
+def run_plan(path, *, root=ROOT, resume=False, dry_run=False, confirm=operator_confirm, hints=None):
     plan = load_plan(path)
     print(f"plan id={plan['id']} rotations={len(plan['rotations'])} min_active={plan['min_active']}", flush=True)
+    if hints is not None and not dry_run:
+        raise RotationError("block-hints-require-dry-run")
     if dry_run:
         for entry in plan["rotations"]:
             print(f"  {entry['current']} -> ENV={entry['new_env']} zone={entry.get('new_zone', '(same)')} migration=reviewed separate-target-secrets")
+        if hints is not None:
+            lines = block_hints(hints)
+            print(f"blocked-network hints (advisory; nothing is rotated from them): {len(lines)}")
+            for line in lines:
+                print(line)
         return 0
     with Journal(root, plan["id"]) as journal:
         state = journal.read()
@@ -351,13 +394,15 @@ def main(argv=None):
     parser.add_argument("--plan", required=True, type=Path)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--block-hints", type=Path,
+                        help="exported alert list; with --dry-run, show advisory blocked-network hints")
     args = parser.parse_args(argv)
     def interrupted(signum, _frame):
         raise SystemExit(128 + signum)
     for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT):
         signal.signal(signum, interrupted)
     try:
-        return run_plan(args.plan, root=ROOT, resume=args.resume, dry_run=args.dry_run)
+        return run_plan(args.plan, root=ROOT, resume=args.resume, dry_run=args.dry_run, hints=args.block_hints)
     except (RotationError, OSError) as error:
         category = str(error) if isinstance(error, RotationError) else "local-operation-failed"
         print(f"fleet-rotate: {category}", file=sys.stderr)
