@@ -27,5 +27,6 @@ Planning only; implementation evidence remains required.
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
 | REQ-STO-REVIEW | XRY-1795014347716892 | Pinned protocol/license/client review | required |
+| REQ-STO-HARNESS | XRY-1795014347716892 | Harness Xray pin, release-line entry and harness-only VLESS Encryption config | required |
 | REQ-STO-FIXTURE | XRY-1795014371508329 | Synthetic payload/failure test evidence | required |
 | REQ-STO-DECISION | XRY-1795014397486304 | Comparative report and cleanup | required |

@@ -6,12 +6,12 @@ Establish reproducible evidence before admitting a new owned HTTP tunnel endpoin
 
 ### Requirement: REQ-OHT-ADMISSION — Reproducible protocol and license review
 
-The qualification MUST pin endpoint and client revisions, record protocol and dependency license obligations, and produce an explicit admit or reject decision. Unknown evidence MUST NOT become a passing result.
+The qualification MUST pin endpoint and client revisions, record protocol and dependency license obligations, and produce an explicit admit or reject decision. Unknown evidence MUST NOT become a passing result. The report MUST name each client it exercised by implementation, revision and platform. The upstream reference client proves protocol compatibility only; RIPDPI client support stays unclaimed until a peer task in the client repository exercises it.
 
 #### Scenario: Missing client compatibility evidence
 
-- **WHEN** the endpoint is functional but the intended client has not been exercised
-- **THEN** admission remains blocked and no bundle capability is advertised.
+- **WHEN** the endpoint works with the upstream reference client but no RIPDPI client has been exercised
+- **THEN** the report records protocol compatibility only, admission of a bundle capability remains blocked and no bundle capability is advertised.
 
 ### Requirement: REQ-OHT-ISOLATION — Bounded credential-free fixtures
 
@@ -24,7 +24,12 @@ The harness MUST use disposable local credentials, no fleet inventory, no produc
 
 ### Requirement: REQ-OHT-COMPARE — Honest comparative acceptance
 
-The report MUST compare the candidate with the existing baseline using identical controlled payloads, budgets and failure conditions. It MUST distinguish local compatibility from path-specific effectiveness, record unsupported capabilities and rollback, and leave all production toggles unchanged.
+The report MUST compare the candidate with the existing baseline using identical controlled payloads, budgets and failure conditions. The primary comparison MUST be P1 (nginx + XHTTP direct), the existing HTTP-based transport. It MUST distinguish local compatibility from path-specific effectiveness, record unsupported capabilities and rollback, and leave all production toggles unchanged.
+
+#### Scenario: No benefit over P1
+
+- **WHEN** the candidate matches P1 on every controlled measurement and adds no capability that P1 lacks, such as UDP or DNS forwarding or HTTP/3 behavior
+- **THEN** the report states that it adds nothing measurable, rejects admission and leaves the baseline configuration unchanged.
 
 #### Scenario: Endpoint is unreachable
 

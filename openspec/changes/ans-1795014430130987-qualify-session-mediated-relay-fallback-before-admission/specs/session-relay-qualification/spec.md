@@ -6,7 +6,7 @@ Qualify an experimental fallback without exposing account material or confusing 
 
 ### Requirement: REQ-SFR-REVIEW — Versioned admission review
 
-The qualification MUST pin and review source revisions, license obligations, client interoperability and threat boundaries. Unknown results MUST block admission.
+The qualification MUST pin and review source revisions, license obligations, client interoperability and threat boundaries. Unknown results MUST block admission. The report MUST name each client it exercised by implementation, revision and platform. The upstream reference client proves protocol compatibility only; RIPDPI client support stays unclaimed until a peer task in the client repository exercises it.
 
 #### Scenario: Unsupported client
 

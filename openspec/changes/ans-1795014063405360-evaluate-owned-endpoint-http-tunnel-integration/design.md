@@ -1,6 +1,6 @@
 ## Context
 
-TrustTunnel defines authenticated HTTP CONNECT streams over HTTP/2 or HTTP/3 with TCP, UDP and DNS forwarding. This is an owned-endpoint alternative, unlike a third-party-account relay. The existing baseline already supplies four transports; another runtime is justified only by reproducible incremental benefit.
+TrustTunnel defines authenticated HTTP CONNECT streams over HTTP/2 or HTTP/3 with TCP, UDP and DNS forwarding. This is an owned-endpoint alternative, unlike a third-party-account relay. The existing baseline already supplies four transports; another runtime is justified only by reproducible incremental benefit. P1 (nginx + XHTTP direct) is already HTTP-based, so the benefit must be measured against P1 first.
 
 ## Goals / Non-Goals
 

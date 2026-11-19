@@ -9,7 +9,7 @@ XDRIVE in XTLS/Xray-core v26.11.9 supplies a storage-mediated transport. Upstrea
 
 ## Decisions
 
-Use only a synthetic local storage backend for automated fixtures. Never create accounts, accept service terms, load real storage tokens or send traffic through a third-party service under this task. Review object retention, quota exhaustion, disconnect cleanup and replay/order handling. Provider-specific reachability must remain unknown without separately authorized measurement.
+Pin the harness Xray revision separately from the production `xray.version` pin (currently v26.10.31), and add the release to the Xray release-line reference during review. Enable VLESS Encryption and Multiplex only in fixture configuration: production profiles set `decryption` to `none`, so adopting them is a separate integration decision. Use only a synthetic local storage backend for automated fixtures. Never create accounts, accept service terms, load real storage tokens or send traffic through a third-party service under this task. Review object retention, quota exhaustion, disconnect cleanup and replay/order handling. Provider-specific reachability must remain unknown without separately authorized measurement.
 
 Use the exact pinned upstream client/server implementation against controlled fixtures, not a substitute implementation of its protocol. If isolation requires material protocol rewriting, record blocked/rejected qualification instead of treating a mock as candidate evidence. Use external runtime fixtures rather than copying upstream networking code into the deployment tool. Reuse existing test isolation and transport acceptance where applicable. Validate negative cases and byte integrity, not only handshakes. Pin exact revisions and review licensing before executing upstream binaries. Treat throughput claims as upstream claims until reproduced.
 
@@ -19,7 +19,7 @@ Own future `tests/integration/storage_fallback_qualification/` fixtures and a `d
 
 ## Risks / Trade-offs
 
-Third-party availability and service constraints cannot be controlled by this stack. Default-off is insufficient unless credential, cleanup and explicit opt-in boundaries are also proven. Authentication secrets and session links must never enter logs or public artifacts. Obfuscation alone is not an end-to-end security guarantee. Stop on any unresolved security boundary.
+Third-party availability and service constraints cannot be controlled by this stack. Default-off is insufficient unless credential, cleanup and explicit opt-in boundaries are also proven. Storage tokens, object identifiers and folder paths must never enter logs or public artifacts. Objects left in shared storage after a connection ends expose traffic timing and volume and consume quota. Obfuscation alone is not an end-to-end security guarantee. Stop on any unresolved security boundary.
 
 ## Migration Plan
 
