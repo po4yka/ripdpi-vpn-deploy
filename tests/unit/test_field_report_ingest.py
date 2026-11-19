@@ -642,6 +642,13 @@ def test_refresh_script_pins_only_a_dataset_the_ingest_can_load(tmp_path):
     assert stored.read_bytes() == good.read_bytes()
     assert f'dataset_sha256: "{hashlib.sha256(good.read_bytes()).hexdigest()}"' in result.stdout
     assert 'dataset_version: "20261101T093850Z"' in result.stdout
+    # A second build with the same version must not replace the copy that a committed pin names.
+    other = tmp_path / "other.tsv.gz"
+    other.write_bytes(gzip.compress(DATASET_ROWS + b"203.0.114.0\t203.0.114.255\t64503\tZZ\tnewer build\n"))
+    clobber = subprocess.run(["bash", str(script)], capture_output=True, text=True, timeout=30,
+                             env={**env, "STUB_DATASET": str(other)})
+    assert clobber.returncode == 1 and "already exists" in clobber.stderr
+    assert stored.read_bytes() == good.read_bytes() and sorted(cache.iterdir()) == [stored]
     stored.unlink()
     refused = subprocess.run(["bash", str(script)], capture_output=True, text=True, timeout=30,
                              env={**env, "STUB_DATASET": str(bad)})

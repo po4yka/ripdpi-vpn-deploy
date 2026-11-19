@@ -26,7 +26,8 @@ case "$URL" in
 esac
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/ip-asn-refresh.XXXXXX")"
-trap 'rm -rf "$WORK"' EXIT
+STAGE=""
+trap 'rm -rf "$WORK"; [ -z "$STAGE" ] || rm -f "$STAGE"' EXIT
 
 curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --max-time 300 \
   --max-filesize 104857600 --user-agent refresh-ip-asn-dataset \
@@ -57,8 +58,16 @@ print(parsedate_to_datetime(modified[-1]).strftime("%Y%m%dT%H%M%SZ"))
 PY
 VERSION="$(cat "$WORK/version")"
 
+TARGET="$CACHE_DIR/ip2asn-combined-$VERSION.tsv.gz"
 mkdir -p "$CACHE_DIR"
-mv "$WORK/dataset.tsv.gz" "$CACHE_DIR/ip2asn-combined-$VERSION.tsv.gz"
-echo "Stored $CACHE_DIR/ip2asn-combined-$VERSION.tsv.gz"
+# A committed pin names this file, so an existing copy is never replaced. ln refuses an existing
+# name atomically; the stage sits in the cache directory so the link stays on one filesystem.
+STAGE="$(mktemp "$CACHE_DIR/.ip2asn-combined.XXXXXX")"
+cp "$WORK/dataset.tsv.gz" "$STAGE"
+if ! ln "$STAGE" "$TARGET" 2>/dev/null; then
+  echo "refresh-ip-asn-dataset: $TARGET already exists; it is never replaced" >&2
+  exit 1
+fi
+echo "Stored $TARGET"
 echo "Pin it in subscription_field_report.network_hint:"
 printf '    dataset_version: "%s"\n    dataset_sha256: "%s"\n' "$VERSION" "$SHA256"
