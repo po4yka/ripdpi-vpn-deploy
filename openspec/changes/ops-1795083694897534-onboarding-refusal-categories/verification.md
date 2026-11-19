@@ -1,9 +1,9 @@
 ---
 task_id: OPS-1795083694897534
 change: ops-1795083694897534-onboarding-refusal-categories
-commit_sha: null
-local: required
-local_evidence: null
+commit_sha: de6777faecbdc14366a95d859e17068a00173b19
+local: passed
+local_evidence: "make -k -j 4 check under mise on the implementation tree: every target passed except test-unit (12227 passed, 1 failed). The failure was test_observability_deadman_receiver::test_worker_capacity_is_bounded_before_tls_and_reclaimed_after_deadline (ConnectionResetError under parallel load), a module this change does not touch; it passed 3/3 alone. After the review fixes (dead path-refused reason removed, emitter input wording) test_sshd_baseline_controller and test_recovery_promotion passed (117), make docs-check passed and openspec validate --strict passed. The narrow suites for every touched module passed (410). One independent review: no blocking defects; two low findings fixed or recorded (wording; per-layer rather than single end-to-end test)."
 remote_ci: required
 remote_ci_evidence: null
 dry_run: not_applicable
@@ -24,6 +24,6 @@ artifact_evidence: No release artifact changes.
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-DR-ONBOARDING-RECEIPT | OPS-1795083969470810 | test_sshd_baseline_controller::test_promotion_refusal_category_reaches_the_failure_receipt | pending |
-| REQ-DR-ONBOARDING-PAYLOAD | OPS-1795083969470810 | test_emit_singbox_roundtrip::test_unavailable_terraform_endpoint_reports_its_fixed_category, test_install_liveness_sentinel::test_emitter_refusal_reports_only_its_fixed_category, test_recovery_promotion::test_installer_refusal_keeps_only_fixed_payload_categories | pending |
-| REQ-DR-ONBOARDING-PRIVATE | OPS-1795083982510317 | test_fleet_inspection::test_command_input_stderr_and_exit_are_bounded, test_install_liveness_sentinel::test_emitter_refusal_reports_only_its_fixed_category[workspace missing at /private/path-command-failed], test_sshd_baseline_controller::test_promotion_refusal_category_reaches_the_failure_receipt[recovery-promotion-unlisted-category-onboarding-refused] | pending |
+| REQ-DR-ONBOARDING-RECEIPT | OPS-1795083969470810 | test_sshd_baseline_controller::test_promotion_refusal_category_reaches_the_failure_receipt | passed |
+| REQ-DR-ONBOARDING-PAYLOAD | OPS-1795083969470810 | test_emit_singbox_roundtrip::test_unavailable_terraform_endpoint_reports_its_fixed_category, test_install_liveness_sentinel::test_emitter_refusal_reports_only_its_fixed_category, test_recovery_promotion::test_installer_refusal_keeps_only_fixed_payload_categories | passed |
+| REQ-DR-ONBOARDING-PRIVATE | OPS-1795083982510317 | test_fleet_inspection::test_command_input_stderr_and_exit_are_bounded, test_install_liveness_sentinel::test_emitter_refusal_reports_only_its_fixed_category[workspace missing at /private/path-command-failed], test_sshd_baseline_controller::test_promotion_refusal_category_reaches_the_failure_receipt[recovery-promotion-unlisted-category-onboarding-refused] | passed |

@@ -2,7 +2,7 @@
 id: OPS-1795083694897534
 title: Report specific onboarding refusal categories in SSH baseline failure receipts
 kind: bug
-status: doing
+status: review
 area: operations
 priority: medium
 risk: standard
