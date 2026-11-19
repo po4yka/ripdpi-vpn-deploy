@@ -1,6 +1,6 @@
 # RIPDPI Bundle — server-side schema specification
 
-> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-23
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-19
 
 > **The executable contract is [`contract/ripdpi-bundle.schema.json`](../../contract/ripdpi-bundle.schema.json)** — a JSON Schema (draft 2020-12) that is the single source of truth for the `ripdpi` object. This document is its prose companion. The schema is vendored byte-identical into the RIPDPI Android client repo and validated by a contract test in **both** CIs (`scripts/validate-bundle.py` + `tests/unit/test_bundle_schema.py` here; `RipdpiBundleContractTest` there), so the contract cannot drift silently between the two repos. When you change the shape of the `ripdpi` object, change the schema first.
 
@@ -23,12 +23,14 @@ Do not send this artifact to standard sing-box clients. They may reject the unkn
 
   // --- RIPDPI extension ---
   "ripdpi": {
-    "schema_version": 2,
+    "schema_version": 3,
     "amneziawg":      [ <AWGEntry>, ... ],
     "hysteria_extras": { "<tag>": <HysteriaExtras>, ... },
     "topology":       <Topology>,        // declares split-hop / realm relay
-    "expires":        "2026-12-31T23:59:59Z"  // optional; ISO-8601 UTC
-    "migration":      <Migration>,       // optional; device server migration receipt metadata
+    "endpoints":      { "<server_ref>": { "health": <Health> }, ... }, // optional
+    "field_report":   <FieldReport>,     // optional; absent when field reports are off
+    "expires":        "2026-12-31T23:59:59Z", // optional; ISO-8601 UTC
+    "migration":      <Migration>        // optional; device server migration receipt metadata
   }
 }
 ```
@@ -37,7 +39,57 @@ The validator also checks protocol semantics without changing the JSON schema: A
 
 ## `ripdpi.schema_version`
 
-Integer. Currently `2`. The client rejects other versions. Version 2 changes AWG headers from JSON integers to canonical strings and requires the named wire profile. Update the producer and consumer together, then export a fresh bundle; there is no version 1 fallback. The `x-contract-version` schema field is the paired version pin. The nested payload-failover contract retains its own version.
+Integer. Currently `3`. The client rejects other versions. Version 3 adds `ripdpi.endpoints` (server-observed health per endpoint) and `ripdpi.field_report`, and rejects unknown fields at every level, the top level included. Version 2 carried AWG headers as canonical strings with the named wire profile; version 3 keeps that AWG shape.
+
+**Breaking change:** version 3 replaces version 2. The schema and `scripts/validate-bundle.py` reject a version 2 bundle, and there is no compatibility shim or dual-version mode. A client that supports only version 2 refuses a version 3 bundle, so the paired RIPDPI release that vendors this schema must ship before fresh bundles are exported. Update the producer and consumer together, then export a fresh bundle. The `x-contract-version` schema field is the paired version pin. The nested payload-failover contract retains its own version.
+
+## `ripdpi.endpoints`
+
+Optional map from `server_ref` to per-endpoint metadata. A `server_ref` is the outbound or AWG tag of that endpoint in the same bundle (pattern `^[A-Za-z0-9_-]{1,64}$`, so it cannot hold an IP address or hostname); the validator refuses a key that names no outbound or AWG tag of a full bundle. Client field reports quote the same value. Each entry holds one required `health` object:
+
+| Field | Type | Rule |
+|---|---|---|
+| `status` | string | `healthy`, `degraded`, `down` or `unknown`. |
+| `observed_at` | string | RFC 3339 UTC instant (`Z` suffix) of the server-side observation, a valid calendar instant. |
+| `ttl_seconds` | integer | 60 to 86400. |
+
+**Expiry rule:** the client treats a `health` whose `observed_at` plus `ttl_seconds` is in the past as `unknown`, whatever `status` says. [`contract/ripdpi-bundle.health-expired.json`](../../contract/ripdpi-bundle.health-expired.json) is the expiry case: evaluated at its `_evaluated_at` instant, every endpoint is effectively `unknown`. The generator derives health from server-side liveness data; a missing or stale input is published as `unknown`.
+
+## `ripdpi.field_report`
+
+Optional opt-in configuration for anonymous client field reports. Absent when the operator has not enabled field reports. All fields are required:
+
+| Field | Type | Rule |
+|---|---|---|
+| `endpoint` | string | `https://` URL without userinfo, whitespace or fragment; plain `http` is rejected. |
+| `cohort_token` | string | 22 to 64 base64url characters. One token is shared by every device of a cohort and never derives from a device identity. |
+| `max_reports_per_day` | integer | 1 to 24. |
+
+## Client field report v1
+
+[`contract/client-field-report.schema.json`](../../contract/client-field-report.schema.json) is the canonical contract for one report, checked by `scripts/validate-field-report.py`. [`contract/client-field-report.golden.json`](../../contract/client-field-report.golden.json) is the golden report; `contract/negative/report-*.json` are the rejected cases. RIPDPI vendors the schema and fixtures byte-identically. Every object sets `additionalProperties: false`.
+
+| Field | Rule |
+|---|---|
+| `schema_version` | `1`. |
+| `window.start_utc` | UTC instant rounded down to the hour: minutes and seconds are `00`. |
+| `window.duration_hours` | 1 to 24. |
+| `client.app_version` | `major.minor` only. |
+| `client.platform` | `android`. |
+| `network.asn` | Integer 1 to 4294967295. |
+| `network.country` | ISO 3166-1 alpha-2, upper case. |
+| `network.network_type` | One of three link classes, listed below the table. |
+| `buckets[]` | 1 to 256 buckets. |
+
+The `network_type` values are `wifi`, `cellular` and `other`.
+
+Each bucket has `server_ref` (the bundle `endpoints` key), `protocol` (`vless-reality`, `xhttp`, `hysteria2`, `amneziawg`, `naiveproxy` or `local-desync`), `outcome` (`success` or `failure`), `attempts` and `latency_ms_histogram`. `failure_stage` is present if and only if `outcome` is `failure`; it is one of `dns`, `tcp_connect`, `tcp_reset`, `tls_handshake`, `reality_auth`, `quic_handshake`, `proxy_auth`, `protocol_error`, `idle_timeout`, `throttled` or `unknown`.
+
+`latency_ms_histogram` is an array of exactly 8 attempt counts aligned with the fixed upper bounds 50, 100, 250, 500, 1000, 2500, 5000 and +Inf milliseconds (`x-latency-bounds-ms` in the schema). The counts sum to `attempts`; the validator checks this sum because the schema cannot express it.
+
+**Small-bucket suppression:** the client suppresses every bucket with fewer than 5 attempts, and the schema rejects `attempts` below 5.
+
+**Forbidden data:** a report never carries an IP address, a device or user identifier, a subscription token, a hostname or a timestamp finer than the hour. The schema rejects them: no field can hold them, and `server_ref` and `start_utc` patterns reject an IPv4, IPv6 or hostname value and nonzero minutes or seconds. Validator diagnostics name the failed constraint and its path, never the rejected value.
 
 ## `ripdpi.payload_failover`
 
@@ -72,7 +124,7 @@ Replace both illustrative URLs with separately operated HTTPS origins serving th
 
 Each probe requires 32768–1048576 bytes and a lowercase SHA-256 digest. Origins must differ after host/port normalization. URLs are ASCII HTTPS without userinfo or fragments. Bounds are: interval 30–3600 seconds, per-control timeout 1–30, failure/recovery thresholds 2–10, cooldown 30–3600, maximum backoff 60–3600. Timeout cannot exceed the interval; maximum backoff cannot be below it. Unknown fields and invalid input refuse the policy instead of silently dropping it.
 
-The nested policy accepts only version 2; version 1 must be migrated before refresh. The enclosing bundle version remains unchanged. Omitting `quality` retains health-only selection. With quality enabled, each origin must also answer HEAD with status 200 and its exact Content-Length. Baseline and loaded request latency include the complete control transaction; neither is RTT. Verified GET body bytes divided by positive monotonic body duration establish goodput. Loaded latency requires a concurrent HEAD fully inside that body interval. A fast transfer may produce partial evidence, which cannot promote a candidate on quality alone.
+The nested policy accepts only version 2; version 1 must be migrated before refresh. The nested version is independent of the enclosing bundle version. Omitting `quality` retains health-only selection. With quality enabled, each origin must also answer HEAD with status 200 and its exact Content-Length. Baseline and loaded request latency include the complete control transaction; neither is RTT. Verified GET body bytes divided by positive monotonic body duration establish goodput. Loaded latency requires a concurrent HEAD fully inside that body interval. A fast transfer may produce partial evidence, which cannot promote a candidate on quality alone.
 
 Quality bounds are: pass allowance 65538–16777216 bytes, window allowance 65538–268435456 bytes, window duration 60–86400 seconds, minimum gain 5–100 percent and allowed loaded-latency increase 0–2000 ms. The window allowance must cover the pass allowance and its duration must cover the probe interval. The pass allowance must cover twice the sum of both `expected_bytes + 1` reservations. Reservations precede network I/O, survive failures, cancellation, restart, network and policy changes, and expire conservatively after reboot. They bound application body bytes, not TLS, tunnel or retransmission overhead.
 
