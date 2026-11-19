@@ -1,0 +1,11 @@
+{
+  "change": "ops-1795083694897534-onboarding-refusal-categories",
+  "evidence_summary": "PR 643 merged as 248f21e4 and a9592f19; main CI run 44523008717 passed 84/84 jobs; local make check and narrow suites recorded in verification.md",
+  "execution_sha256": "cc21490dd7263e10d8272dbb3dec7e0343d012c94d180e3899f05c9e002e715e",
+  "issue_sha256": "b5b82cb30588b15b1b2c7d1e73d71ee3433ece446e9833645d5e53dfe76086eb",
+  "outcome": "done",
+  "prepared_at": "2026-11-19T13:19:03Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "OPS-1795083694897534"
+}

@@ -2,7 +2,7 @@
 id: OPS-1795083694897534
 title: Report specific onboarding refusal categories in SSH baseline failure receipts
 kind: bug
-status: review
+status: done
 area: operations
 priority: medium
 risk: standard
@@ -14,6 +14,9 @@ openspec_change: ops-1795083694897534-onboarding-refusal-categories
 created: 2026-11-19
 updated: 2026-11-19
 related_tasks: []
+closed_at: "2026-11-19T13:19:03Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: PR 643 merged as 248f21e4 and a9592f19; main CI run 44523008717 passed 84/84 jobs; local make check and narrow suites recorded in verification.md
 ---
 
 ## Goal
