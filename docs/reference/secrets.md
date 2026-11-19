@@ -77,6 +77,7 @@ The recipient list is also stored at `.sops.yaml` if you have one — the runtim
 | Revoke one Naive device | `make naive-revoke CLIENT=laptop SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml` |
 | Read one Naive credential for delivery | `make naive-readout CLIENT=laptop SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml OUTPUT=~/.config/vpn-provision/laptop.naive.json` |
 | Re-encrypt under a new recipient set and a new data key | `scripts/rotate-secrets.sh` (`sops updatekeys`, then `sops rotate --in-place`) |
+| Generate or rotate the field-report cohort token | `SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml OVERLAP_DAYS=7 scripts/rotate-cohort-token.sh` (keeps the old token as `field_report.previous_cohort_token` until `previous_cohort_token_valid_until`; prints no token; then deploy the subscription host and export fresh bundles) |
 | Decrypt for deploy | `make decrypt` (writes configured `SECRETS_FILE`, mode 0600) |
 | Wipe plaintext | `make clean` (shred or rm) |
 

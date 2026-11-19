@@ -18,6 +18,7 @@ from encrypted_client_document import MAX_BYTES, private_file, identity
 from transport_semantics import hysteria_client_bandwidth, hysteria_port_hopping, transport_errors, xhttp_endpoints, xhttp_tuning
 from fleet_inspection import bounded_command, InspectionError
 from payload_failover_policy import validate_policy
+import bundle_health
 
 ROOT = Path(__file__).resolve().parents[1]
 DEADLINE = None
@@ -162,7 +163,7 @@ def native_delivery(document, resolved, client, host, endpoint):
     return result, bindings
 
 
-def _materialize(client, o, *, documents=None, source_paths=None, private_only=False, per_app_bypass='', per_app_via_tun='', extended=False, xhttp_only=False, endpoints=None):
+def _materialize(client, o, *, documents=None, source_paths=None, private_only=False, per_app_bypass='', per_app_via_tun='', extended=False, xhttp_only=False, endpoints=None, health=None):
     validate_options(o)
     if o['format'] == 'xray' and (per_app_bypass or per_app_via_tun or o['expires']):
         raise ValueError('unsupported-native-xhttp-options')
@@ -182,7 +183,10 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
     awg_enabled = False
     bindings = []
     failover_policies = []
+    field_reports = []
+    owners = []
     for i, host in enumerate(o['hosts']):
+        owners.append((len(out), len(awg), host))
         source = str(Path(sources[i]).absolute())
         if source not in loaded:
             loaded[source] = read_document(source, plaintext=not private_only and 'VPN_SECRETS_FILE' in os.environ)
@@ -195,6 +199,7 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
         c = context(cohort)
         if extended:
             failover_policies.append(validate_policy(c.get('client_payload_failover')))
+            field_reports.append(bundle_health.field_report_block(d))
         errors = transport_errors(d, c)
         if errors:
             raise ValueError('invalid-transport-input')
@@ -328,6 +333,7 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
                 binding = resolve_binding(d, awg_context, client, host)
                 # A placeholder export still consumes the enrolled peer identity.
                 bindings.append({**binding.identity, 'peer_public_key': binding.peer['public_key']})
+    owners.append((len(out), len(awg), None))  # end of the per-host endpoints; selectors follow
     if o['format'] == 'native':
         if not any(native.values()):
             raise ValueError('no-native-device-delivery')
@@ -382,6 +388,18 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
         if o['awg_host'] and not awg:
             raise ValueError('missing-device-binding')
         payload['ripdpi'] = dict(schema_version=3, amneziawg=awg, hysteria_extras=extras, topology=topology)
+        if any(value != field_reports[0] for value in field_reports):
+            raise ValueError('conflicting-field-report-config')
+        if field_reports[0] is not None:
+            payload['ripdpi']['field_report'] = field_reports[0]
+        if health is not None:
+            # Health is published only when the operator supplies its inputs, so delivery and drift stay deterministic.
+            served = {}
+            for (out_start, awg_start, host), (out_end, awg_end, _) in zip(owners, owners[1:]):
+                served.update({v['tag']: (host, bundle_health.profile_for(v['tag'], False)) for v in out[out_start:out_end]})
+                served.update({v['tag']: (host, bundle_health.profile_for(v['tag'], True)) for v in awg[awg_start:awg_end]})
+            payload['ripdpi']['endpoints'] = bundle_health.endpoint_health(
+                served, health, __import__('datetime').datetime.now(__import__('datetime').timezone.utc))
         if policy is not None:
             payload['ripdpi']['payload_failover'] = policy
         if o['expires']:
@@ -516,14 +534,15 @@ def main():
             raise ValueError('INCY links take no other output option')
         selected_format = 'ripdpi' if args.bundle or incy else {'sing-box': 'singbox', 'ripdpi': 'ripdpi', 'xray': 'xray'}[args.profile_format]
         o = options(selected_format, expires=os.environ.get('BUNDLE_EXPIRES', ''))
-        payload, _ = materialize(args.client, o, per_app_bypass=args.per_app_bypass, per_app_via_tun=args.per_app_via_tun, extended=args.bundle, xhttp_only=args.xhttp_only)
+        health = bundle_health.load_config(os.environ['BUNDLE_HEALTH_FILE']) if args.bundle and os.environ.get('BUNDLE_HEALTH_FILE') else None
+        payload, _ = materialize(args.client, o, per_app_bypass=args.per_app_bypass, per_app_via_tun=args.per_app_via_tun, extended=args.bundle, xhttp_only=args.xhttp_only, health=health)
         if incy:
             print(write_incy_links(args.incy_links, incy_links(payload)))
         else:
             print(share_uri(payload) if args.share_uri else json.dumps(payload, indent=2))
         return 0
     except (OSError, ValueError, KeyError, TypeError, AttributeError, RecursionError, StopIteration, subprocess.SubprocessError, yaml.YAMLError) as error:
-        safe = {'--xhttp-only requires --profile-format ripdpi', 'ECH requires the verified official sing-box engine; RIPDPI export is unsupported', 'BBR resource profiles require the verified official sing-box engine; RIPDPI export is unsupported', 'invalid-hysteria-hopping', 'P0 REALITY finalmask requires an Xray client', 'P0 REALITY Mux.Cool requires an Xray client; sing-mux is incompatible', 'conflicting vpn.hysteria_realm values across HOSTS', 'ambiguous-device-binding', 'missing-device-binding', 'plaintext secrets cannot be combined with SOPS_FILES', 'missing-snell-variant', 'share URI requires sing-box format', 'share URI requires exactly one REALITY endpoint; select it with HOSTS and COHORTS', 'INCY links take no other output option', 'unsupported-incy-field', 'unsupported-incy-xhttp-mode', 'unsupported-incy-outbound', 'unsafe-recipient-output', 'incy-output-exists', 'recipient-output-changed', 'payload-input-unavailable', 'payload-deadline-exceeded'}
+        safe = {'--xhttp-only requires --profile-format ripdpi', 'ECH requires the verified official sing-box engine; RIPDPI export is unsupported', 'BBR resource profiles require the verified official sing-box engine; RIPDPI export is unsupported', 'invalid-hysteria-hopping', 'P0 REALITY finalmask requires an Xray client', 'P0 REALITY Mux.Cool requires an Xray client; sing-mux is incompatible', 'conflicting vpn.hysteria_realm values across HOSTS', 'ambiguous-device-binding', 'missing-device-binding', 'plaintext secrets cannot be combined with SOPS_FILES', 'missing-snell-variant', 'share URI requires sing-box format', 'share URI requires exactly one REALITY endpoint; select it with HOSTS and COHORTS', 'INCY links take no other output option', 'unsupported-incy-field', 'unsupported-incy-xhttp-mode', 'unsupported-incy-outbound', 'unsafe-recipient-output', 'incy-output-exists', 'recipient-output-changed', 'invalid-health-config', 'health-ttl-exceeds-maximum', 'invalid-field-report-config', 'conflicting-field-report-config', 'payload-input-unavailable', 'payload-deadline-exceeded'}
         detail = str(error) if isinstance(error, ValueError) and str(error) in safe else ('plaintext secrets unavailable' if 'VPN_SECRETS_FILE' in os.environ else 'materialization refused')
         print('client-payload: ' + detail, file=__import__('sys').stderr)
         return 2
