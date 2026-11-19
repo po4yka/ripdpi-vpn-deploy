@@ -31,8 +31,13 @@ class InspectionError(Exception):
     """Only categorical messages from this class may reach operator output."""
 
 
-def bounded_command(command, *, timeout=5, limit=LIMIT, input_bytes=b"", environment=None, input_limit=LIMIT * 2):
-    """Bound stdin, both output streams, and our fixed command's lifetime."""
+def bounded_command(command, *, timeout=5, limit=LIMIT, input_bytes=b"", environment=None, input_limit=LIMIT * 2,
+                    refusals=None):
+    """Bound stdin, both output streams, and our fixed command's lifetime.
+
+    A failed command whose entire stderr equals a `refusals` key raises that fixed category instead of
+    command-failed; any other stderr stays private.
+    """
     if not 0 <= input_limit <= 4 * 1024 * 1024 or len(input_bytes) > input_limit:
         raise InspectionError("input-limit")
     env = environment if environment is not None else {"PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "LANG": "C", "LC_ALL": "C", "TZ": "UTC"}
@@ -42,6 +47,7 @@ def bounded_command(command, *, timeout=5, limit=LIMIT, input_bytes=b"", environ
     except OSError:
         raise InspectionError("command-unavailable") from None
     output = bytearray()
+    errors = bytearray()
     total = 0
     position = 0
     deadline = time.monotonic() + timeout
@@ -83,12 +89,14 @@ def bounded_command(command, *, timeout=5, limit=LIMIT, input_bytes=b"", environ
                             raise InspectionError("output-limit")
                         if key.fileobj is process.stdout:
                             output.extend(chunk)
+                        elif refusals:
+                            errors.extend(chunk)
             try:
                 code = process.wait(timeout=max(0.001, deadline - time.monotonic()))
             except subprocess.TimeoutExpired:
                 raise InspectionError("timeout") from None
             if code:
-                raise InspectionError("command-failed")
+                raise InspectionError((refusals or {}).get(bytes(errors), "command-failed"))
             return bytes(output)
     finally:
         if process.poll() is None:

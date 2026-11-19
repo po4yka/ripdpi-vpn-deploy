@@ -682,6 +682,29 @@ def test_publication_encoding_failure_preserves_generic_main_error(
     }
 
 
+@pytest.mark.parametrize(("category", "reason"), [
+    ("recovery-promotion-payload-input-unavailable", "recovery-promotion-payload-input-unavailable"),
+    ("recovery-promotion-target-mismatch", "recovery-promotion-target-mismatch"),
+    ("recovery-promotion-finalization-refused", "recovery-promotion-finalization-refused"),
+    ("recovery-promotion-unlisted-category", "onboarding-refused"),
+])
+def test_promotion_refusal_category_reaches_the_failure_receipt(transaction_request, monkeypatch, category, reason):
+    import recovery_promotion
+    controller = module()
+    config = Path(transaction_request["promotion_config_path"])
+    config.write_text(json.dumps({"kind": "cloud-promotion-intent"}))
+    config.chmod(0o600)
+
+    def refuse(document, environment):
+        raise recovery_promotion.PromotionError(category)
+
+    monkeypatch.setattr(recovery_promotion, "finalize", refuse)
+    with pytest.raises(controller.BaselineError, match=f"^{reason}$"):
+        controller.execute(transaction_request, {}, rpc=lambda *a, **k: pytest.fail("rpc after refusal"))
+    path = Path(transaction_request["failure_receipt_path"])
+    assert json.loads(path.read_bytes()) == {"schema_version": 1, "status": "failed", "reason": reason}
+
+
 def test_parent_replacement_cannot_receive_or_mask_failure_receipt(transaction_request):
     controller = module()
     path = Path(transaction_request["failure_receipt_path"])

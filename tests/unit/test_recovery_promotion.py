@@ -271,6 +271,24 @@ def test_real_registry_resume_requires_exact_receipt_and_retains_epoch(installat
     assert state['installs'] == 1
 
 
+@pytest.mark.parametrize(('installer_category', 'expected'), [
+    ('payload-input-unavailable', 'recovery-promotion-payload-input-unavailable'),
+    ('payload-deadline-exceeded', 'recovery-promotion-payload-deadline-exceeded'),
+    ('command-failed', 'recovery-promotion-finalization-refused'),
+])
+def test_installer_refusal_keeps_only_fixed_payload_categories(installation, monkeypatch, installer_category, expected):
+    import install_liveness_sentinel as installer
+    value, outputs, _state = installation
+
+    def refuse(*_args, **_kwargs):
+        raise installer.InstallError(installer_category)
+
+    monkeypatch.setattr(installer, 'install', refuse)
+    with pytest.raises(promotion.PromotionError, match=f'^{expected}$'):
+        promotion.finalize(value, {}, clock=lambda: 1_800_000_001)
+    assert not Path(outputs['proof']).exists()
+
+
 def test_interrupted_registry_publication_resumes_pending_generation(installation, monkeypatch):
     import install_liveness_sentinel as installer
     value, outputs, state = installation
