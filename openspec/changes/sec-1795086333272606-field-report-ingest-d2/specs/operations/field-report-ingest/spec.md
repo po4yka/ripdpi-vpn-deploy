@@ -6,12 +6,21 @@ Define how the subscription host accepts, validates, limits and aggregates anony
 
 ### Requirement: REQ-INGEST-VALIDATE — Schema validation and rejection codes
 
-The endpoint MUST accept a POST whose body validates against `contract/client-field-report.schema.json` and whose `cohort_token` is accepted, and MUST respond 400 for schema failure, 401 for a bad cohort token, 413 for a body over the size limit and 429 when the nginx per-address rate limit is exceeded.
+The endpoint MUST accept a POST whose body validates against `contract/client-field-report.schema.json` and whose `cohort_token` is accepted, and MUST respond 400 for schema failure, 401 from the ingest for a bad cohort token (404 at the public vhost, REQ-INGEST-UNIFORM-NOTFOUND), 413 for a body over the size limit and 429 when the nginx per-address rate limit is exceeded.
 
 #### Scenario: schema validation and rejection codes
 
 - **WHEN** a valid report, a report with an extra property, a bad token, a body over the limit and a burst over the rate limit are posted
 - **THEN** the responses are 2xx, 400, 401, 413 and 429 respectively and only the first changes any metric
+
+### Requirement: REQ-INGEST-UNIFORM-NOTFOUND — An unknown token gets the uniform not-found answer
+
+The public vhost MUST answer a bad cohort token on the report and the hint route with the same 404 that it gives any unknown path, through `proxy_intercept_errors` and `error_page 401` to its named not-found location, so a request without the token cannot tell either route exists. Client contract: 404 on the report route means an unknown token or a disabled route, and the client discards the report until it has a new bundle; any hint answer other than 200 means no hint.
+
+#### Scenario: an unknown token is not found
+
+- **WHEN** the vhost is rendered with the report and hint routes on
+- **THEN** both locations intercept the backend 401 into the named location that returns 404
 
 ### Requirement: REQ-INGEST-AUTHFIRST — One rate-limit layer and authentication first
 
