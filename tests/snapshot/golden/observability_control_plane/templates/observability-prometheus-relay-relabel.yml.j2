@@ -57,4 +57,4 @@
   source_labels: [__name__, reason]
   regex: "^(vm_rows_ignored_total;(too_long_label_name|too_long_label_value|too_many_labels)|[^;]+;)$"
 - action: labelkeep
-  regex: "^(__name__|job|instance|environment|cpu|mode|device|fstype|mountpoint|node|role|state|kind|name|reason|protocol|vantage|le|failure_stage|asn|country|server_ref)$"
+  regex: "^(__name__|job|instance|environment|cpu|mode|device|fstype|mountpoint|node|role|state|kind|name|reason|protocol|vantage|le|failure_stage|network|country|server_ref)$"

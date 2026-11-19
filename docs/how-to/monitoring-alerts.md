@@ -140,13 +140,13 @@ First check: Check the liveness sentinel for this vantage and the published evid
 
 ### field-report-failure
 
-Opt-in client field reports show that more than the configured share of attempts for one protocol failed in one network (ASN) over the window, with at least the configured number of attempts and of distinct reports. The reports are unauthenticated client input: they are anonymous aggregates under one shared cohort token, so any token holder can send them. The ingest caps the attempts that one report adds and the alert needs several reports, which bounds but does not remove that skew. The ratio alone does not show whether the server or the network path is at fault.
+Opt-in client field reports show that more than the configured share of attempts for one protocol failed in one network (the `network` label: a SIM operator `<MCC>-<MNC>` or a server-hint ASN `as<number>`) over the window, with at least the configured number of attempts and of distinct reports. The reports are unauthenticated client input: they are anonymous aggregates under one shared cohort token, so any token holder can send them. The ingest caps the attempts that one report adds and the alert needs several reports, which bounds but does not remove that skew. The ratio alone does not show whether the server or the network path is at fault.
 
 First check: Compare with the protocol probe for this protocol. If the probe is healthy, read the failure stages for this network before you rotate.
 
 ### field-report-network-block
 
-The sentinel probe sees the protocol healthy on every node and vantage, while client field reports from one network (ASN) fail above the block ratio with at least the block attempts floor and the block report floor for the hold time. The network blocks this path; the server is not down. The client side of this evidence is unauthenticated input under one shared cohort token: confirm it from a second source, such as a device in that network or a liveness run from its vantage, before you rotate. `stage_mix` lists the failure stages for that network, and `rotation_hint` names the advisory action. Thresholds are in `docs/reference/observability-operations.md`.
+The sentinel probe sees the protocol healthy on every node and vantage, while client field reports from one network (the `network` label: a SIM operator `<MCC>-<MNC>` or a server-hint ASN `as<number>`) fail above the block ratio with at least the block attempts floor and the block report floor for the hold time. The network blocks this path; the server is not down. The client side of this evidence is unauthenticated input under one shared cohort token: confirm it from a second source, such as a device in that network or a liveness run from its vantage, before you rotate. `stage_mix` lists the failure stages for that network, and `rotation_hint` names the advisory action. Thresholds are in `docs/reference/observability-operations.md`.
 
 First check: Read stage_mix and rotation_hint, then run fleet-rotate in PLAN mode with --block-hints. You decide on any rotation.
 

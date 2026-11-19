@@ -7,7 +7,7 @@ verdict line, so the verification file can quote the same check for every run:
 
   bundle  BUNDLE.json  --server-ref REF       the endpoint is degraded or down and its health is fresh
   ingest  QUERY.json   --protocol P --stage S  Prometheus shows the failure series for P and S
-  alert   ALERTS.json  --protocol P --asn N    FieldReportNetworkBlocked is active (firing) for P and N
+  alert   ALERTS.json  --protocol P --network N FieldReportNetworkBlocked is active (firing) for P and N
 
 QUERY.json is a Prometheus /api/v1/query response for
 vpn_field_report_failures_total; ALERTS.json is an Alertmanager /api/v2/alerts
@@ -28,7 +28,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PLAIN = re.compile(r"[A-Za-z0-9_.:-]{1,64}\Z")
-ALLOWED_INGEST_LABELS = {"__name__", "environment", "node", "job", "instance", "protocol", "failure_stage", "asn"}
+ALLOWED_INGEST_LABELS = {"__name__", "environment", "node", "job", "instance", "protocol", "failure_stage", "network"}
 
 
 class Unusable(Exception):
@@ -107,7 +107,7 @@ def check_ingest(path: Path, protocol: str, stage: str) -> tuple[bool, str]:
     return True, f"{len(matching)} failure series for {protocol} {stage}, {total:.0f} failures"
 
 
-def check_alert(path: Path, protocol: str, asn: str) -> tuple[bool, str]:
+def check_alert(path: Path, protocol: str, network: str) -> tuple[bool, str]:
     document = _load(path)
     data = document.get("data") if isinstance(document, dict) else None
     alerts = data.get("alerts") if isinstance(data, dict) else document
@@ -121,10 +121,10 @@ def check_alert(path: Path, protocol: str, asn: str) -> tuple[bool, str]:
         # Alertmanager reports status.state "active"; Prometheus reports state "firing" once the hold has passed.
         state = status.get("state") if isinstance(status, dict) else alert.get("state")
         if (labels.get("alertname") == "FieldReportNetworkBlocked" and labels.get("protocol") == protocol
-                and labels.get("asn") == asn and state in ("active", "firing")):
+                and labels.get("network") == network and state in ("active", "firing")):
             country = labels.get("country")
             shown = country if isinstance(country, str) and PLAIN.match(country) else "unprintable"
-            return True, f"FieldReportNetworkBlocked is active for {protocol} AS{asn} ({shown})"
+            return True, f"FieldReportNetworkBlocked is active for {protocol} in {network} ({shown})"
     return False, "no active FieldReportNetworkBlocked alert for that protocol and ASN"
 
 
@@ -142,9 +142,9 @@ def main(argv: list[str] | None = None) -> int:
     alert = sub.add_parser("alert")
     alert.add_argument("artifact", type=Path)
     alert.add_argument("--protocol", required=True)
-    alert.add_argument("--asn", required=True)
+    alert.add_argument("--network", required=True)
     args = parser.parse_args(argv)
-    for value in (getattr(args, name, None) for name in ("server_ref", "protocol", "stage", "asn")):
+    for value in (getattr(args, name, None) for name in ("server_ref", "protocol", "stage", "network")):
         if value is not None and not PLAIN.match(value):
             print("field-analytics-evidence: arguments must be plain identifiers", file=sys.stderr)
             return 2
@@ -155,7 +155,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.kind == "ingest":
             held, message = check_ingest(args.artifact, args.protocol, args.stage)
         else:
-            held, message = check_alert(args.artifact, args.protocol, args.asn)
+            held, message = check_alert(args.artifact, args.protocol, args.network)
     except Unusable as error:
         print(f"field-analytics-evidence: {error}", file=sys.stderr)
         return 2

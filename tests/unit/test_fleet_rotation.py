@@ -132,9 +132,9 @@ def test_dry_run_has_no_state_or_health_reads(rotation, plan, tmp_path, monkeypa
 
 
 BLOCKED_ALERT = {
-    "labels": {"alertname": "FieldReportNetworkBlocked", "protocol": "xhttp", "asn": "64500", "country": "ZZ"},
+    "labels": {"alertname": "FieldReportNetworkBlocked", "protocol": "xhttp", "network": "as64500", "country": "ZZ"},
     "annotations": {"stage_mix": "tls_handshake=3000 tcp_reset=1200 ",
-                    "rotation_hint": "AS64500 blocks xhttp while the sentinel sees it healthy."},
+                    "rotation_hint": "Network as64500 blocks xhttp while the sentinel sees it healthy."},
 }
 
 
@@ -151,8 +151,8 @@ def test_plan_mode_shows_block_hints_and_starts_no_rotation(rotation, plan, tmp_
     assert rotation.run_plan(plan, root=tmp_path, dry_run=True, hints=hints) == 0
     out = capsys.readouterr().out
     assert "blocked-network hints (advisory; nothing is rotated from them): 1\n" in out
-    assert ("  hint: xhttp blocked in AS64500 (ZZ); stages tls_handshake=3000 tcp_reset=1200; "
-            "AS64500 blocks xhttp while the sentinel sees it healthy.\n") in out
+    assert ("  hint: xhttp blocked in as64500 (ZZ); stages tls_handshake=3000 tcp_reset=1200; "
+            "Network as64500 blocks xhttp while the sentinel sees it healthy.\n") in out
     assert not (tmp_path / ".omc").exists()
 
 
