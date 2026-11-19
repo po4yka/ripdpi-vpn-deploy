@@ -22,8 +22,10 @@ import importlib.util
 import json
 import os
 import re
+import socket
 import sys
 import tempfile
+import threading
 import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -33,6 +35,10 @@ TOKEN = re.compile(r"^[A-Za-z0-9_-]{22,64}$")
 # Candidate keys tracked per window for the top-N choice; bounds memory under a flood of distinct values.
 CANDIDATE_CAP = 4096
 OTHER = "other"
+# The server handles one connection at a time, so each connection gets a total deadline: a client that
+# sends one byte inside every per-read timeout would otherwise hold the process. nginx buffers the whole
+# body before it connects, so a real request finishes far inside it.
+REQUEST_DEADLINE_SECONDS = 5
 
 
 def load_validator(validator_path: str, schema_path: str):
@@ -244,6 +250,23 @@ def make_handler(ingest: Ingest):
 
         def log_message(self, format, *args):
             """Request logging is off: a log line would hold the client address."""
+
+        def setup(self):
+            super().setup()
+            self.deadline = threading.Timer(REQUEST_DEADLINE_SECONDS, self.expire)
+            self.deadline.daemon = True
+            self.deadline.start()
+
+        def expire(self):
+            # Shutting the socket down makes the blocked read return at once; the request then fails closed.
+            try:
+                self.connection.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+        def finish(self):
+            self.deadline.cancel()
+            super().finish()
 
         def do_POST(self):
             status = ingest.handle(self.path, self.headers, self.rfile.read)
