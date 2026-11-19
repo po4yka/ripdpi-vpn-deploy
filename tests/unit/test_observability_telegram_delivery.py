@@ -217,6 +217,46 @@ def test_pipeline_receipt_requires_fresh_evaluation_and_rejects_replay(tmp_path)
     assert receipts.snapshot()["rule_to_relay_at"] == 100000
 
 
+def test_pipeline_receipt_does_not_wait_for_slow_canary_delivery(
+    tmp_path, monkeypatch
+):
+    # Regression: a canary holding the state lock across slow Telegram calls
+    # made the canary webhook outlast Alertmanager's 5s timeout.
+    relay = _relay()
+    receipts = relay.Receipts(tmp_path / "receipts.json")
+    receipts.value.update(message_id=42, send_at=100000)
+    entered, release = threading.Event(), threading.Event()
+
+    def slow_deliver(**kwargs):
+        entered.set()
+        assert release.wait(5)
+        return {"ok": True, "result": {"message_id": 42}}
+
+    monkeypatch.setattr(relay, "deliver", slow_deliver)
+    config = dict(api_url="unused", bot_token="unused", chat_id="1", topic_id=0)
+    canary = threading.Thread(target=receipts.canary, args=(config, 100060))
+    canary.start()
+    try:
+        assert entered.wait(5)
+        payload = _payload("firing", 1)
+        payload["receiver"] = "telegram-canary"
+        payload["alerts"][0]["labels"]["alertname"] = "ObservabilityPipelineCanary"
+        payload["alerts"][0]["annotations"]["evaluated_at"] = "100050"
+        webhook = threading.Thread(target=receipts.pipeline, args=(payload, 100060))
+        webhook.start()
+        webhook.join(timeout=2)
+        assert not webhook.is_alive()
+        assert receipts.snapshot()["rule_to_relay_at"] == 100050
+        assert receipts.snapshot()["edit_at"] == 0
+    finally:
+        release.set()
+        canary.join(timeout=5)
+    assert not canary.is_alive()
+    final = receipts.snapshot()
+    assert (final["rule_to_relay_at"], final["edit_at"]) == (100050, 100060)
+    assert json.loads((tmp_path / "receipts.json").read_text())["edit_at"] == 100060
+
+
 def test_authority_rotation_requires_new_send_and_invalidates_old_receipts(tmp_path):
     relay = _relay()
     path = tmp_path / "receipts.json"
