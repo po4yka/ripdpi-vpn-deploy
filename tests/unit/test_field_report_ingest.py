@@ -444,8 +444,8 @@ def test_nginx_location_limits_size_and_rate_and_keeps_body_in_memory():
     assert "error_log /dev/null crit;" in location
     assert "remote_addr" not in location and "X-Real-IP" not in location and "X-Forwarded-For" not in location
     assert "proxy_pass http://unix:/run/vpn-field-report.sock:;" in location and "127.0.0.1" not in location
-    # An unknown token gets the vhost's uniform not-found answer, so a probe cannot tell the route exists.
-    assert "proxy_intercept_errors on;\n        error_page 401 = @vpn_sub_not_found;" in location
+    # An unknown token or a refused method gets the vhost's uniform not-found answer, so a probe cannot tell the route exists.
+    assert "proxy_intercept_errors on;\n        error_page 401 403 = @vpn_sub_not_found;" in location
     assert "location @vpn_sub_not_found {\n        return 404;\n    }" in vhost
     assert "limit_req_zone $binary_remote_addr zone=vpn_field_report_per_ip:10m rate=30r/m;" in _rendered("rate-limit.conf.j2")
     assert "field-report" not in _rendered("subscription.conf.j2", enabled=False)
@@ -703,7 +703,7 @@ def test_nginx_hint_location_uses_only_the_peer_address_and_refuses_forwarding_h
         assert f'proxy_set_header {header} "";' in location
     assert "proxy_pass_request_body off;" in location
     assert "proxy_pass http://unix:/run/vpn-field-report.sock:;" in location
-    assert "proxy_intercept_errors on;\n        error_page 401 = @vpn_sub_not_found;" in location
+    assert "proxy_intercept_errors on;\n        error_page 401 403 = @vpn_sub_not_found;" in location
     assert "access_log /var/log/nginx/vpn-sub.categorical.log vpn_sub_category;" in location
     assert "error_log /dev/null crit;" in location
     # A real_ip setting would let a client choose the address that the hint looks up.

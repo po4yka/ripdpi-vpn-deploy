@@ -13,14 +13,24 @@ The endpoint MUST accept a POST whose body validates against `contract/client-fi
 - **WHEN** a valid report, a report with an extra property, a bad token, a body over the limit and a burst over the rate limit are posted
 - **THEN** the responses are 2xx, 400, 401, 413 and 429 respectively and only the first changes any metric
 
-### Requirement: REQ-INGEST-UNIFORM-NOTFOUND — An unknown token gets the uniform not-found answer
+### Requirement: REQ-INGEST-UNIFORM-NOTFOUND — An unknown token or a refused method gets the uniform not-found answer
 
-The public vhost MUST answer a bad cohort token on the report and the hint route with the same 404 that it gives any unknown path, through `proxy_intercept_errors` and `error_page 401` to its named not-found location, so a request without the token cannot tell either route exists. Client contract: 404 on the report route means an unknown token or a disabled route, and the client discards the report until it has a new bundle; any hint answer other than 200 means no hint.
+The public vhost MUST answer a bad cohort token and a refused method on the report and the hint route with the same 404 that it gives any unknown path, through `proxy_intercept_errors` and `error_page 401 403` to its named not-found location, so a request without the token cannot tell either route exists by 401 or 403.
 
 #### Scenario: an unknown token is not found
 
 - **WHEN** the vhost is rendered with the report and hint routes on
-- **THEN** both locations intercept the backend 401 into the named location that returns 404
+- **THEN** both locations send the backend 401 and the `limit_except` 403 to the named location that returns 404
+
+#### Scenario: the client reads 404 as a refusal
+
+- **WHEN** the report route answers 404, or the hint route answers anything other than 200
+- **THEN** the client discards the report until it has a new bundle, or uses no hint
+
+#### Scenario: other refusals stay distinguishable
+
+- **WHEN** a request without the token is too large, over the rate or carries a forwarding header
+- **THEN** it gets 413, 429 or 400, which is accepted because both paths are published in every bundle
 
 ### Requirement: REQ-INGEST-AUTHFIRST — One rate-limit layer and authentication first
 
