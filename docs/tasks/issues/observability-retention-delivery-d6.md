@@ -2,7 +2,7 @@
 id: MON-1795086847564764
 title: Enforce observability retention and prove Telegram alert delivery
 kind: feature
-status: backlog
+status: review
 area: monitoring
 priority: medium
 risk: high
