@@ -165,10 +165,10 @@ def test_block_hints_are_refused_outside_plan_mode(rotation, plan, tmp_path, mon
     assert not (tmp_path / ".omc").exists()
 
 
-@pytest.mark.parametrize("field", ["protocol", "stage_mix"])
-def test_block_hint_fields_with_control_characters_are_not_printed(rotation, plan, tmp_path, capsys, field):
+@pytest.mark.parametrize(("field", "value"), [("protocol", "x\x1b[2Jy"), ("stage_mix", "x\x1b[2Jy"), ("stage_mix", 5)])
+def test_block_hint_fields_with_control_characters_are_not_printed(rotation, plan, tmp_path, capsys, field, value):
     alert = json.loads(json.dumps(BLOCKED_ALERT))
-    (alert["labels"] if field == "protocol" else alert["annotations"])[field] = "x\x1b[2Jy"
+    (alert["labels"] if field == "protocol" else alert["annotations"])[field] = value
     hints = tmp_path / "alerts.json"
     hints.write_text(json.dumps([{**alert, "status": {"state": "active"}}]))
     assert rotation.run_plan(plan, root=tmp_path, dry_run=True, hints=hints) == 0
@@ -176,7 +176,7 @@ def test_block_hint_fields_with_control_characters_are_not_printed(rotation, pla
     assert "\x1b" not in out and "unprintable fields" in out
 
 
-@pytest.mark.parametrize("text", ["{bad", '{"data": {}}', "[1]", '[{"labels": []}]'])
+@pytest.mark.parametrize("text", ["{bad", '{"data": {}}', '{"data": []}', '{"data": "x"}', "[1]", '[{"labels": []}]'])
 def test_malformed_block_hints_refuse(rotation, plan, tmp_path, text):
     hints = tmp_path / "alerts.json"
     hints.write_text(text)
