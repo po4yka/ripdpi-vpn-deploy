@@ -2,7 +2,7 @@
 id: SCR-1795085709140075
 title: Define client field-report v1 and ripdpi-bundle v3 contracts
 kind: feature
-status: doing
+status: review
 area: scripts
 priority: high
 risk: high
@@ -14,7 +14,7 @@ openspec_change: scr-1795085709140075-field-contracts-d1
 created: 2026-11-19
 updated: 2026-11-19
 related_tasks: []
-status_detail: Amend v1 report network source and add the network-hint contract
+status_detail: Network source and network-hint contract amendment verified locally
 ---
 
 ## Goal
