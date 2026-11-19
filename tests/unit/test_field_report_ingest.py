@@ -552,6 +552,41 @@ def test_a_damaged_or_unpinned_dataset_stops_the_service(tmp_path, rows, pin_mat
     assert not Path(config["textfile"]).exists()
 
 
+def test_a_gzip_bomb_line_is_refused_inside_the_unit_memory_limit(tmp_path):
+    import gzip
+    import hashlib
+
+    # 256 MiB of digits with no line break compress to well under 1 MiB; the unit allows 128M.
+    path = tmp_path / "ip2asn-combined.tsv.gz"
+    path.write_bytes(gzip.compress(b"1" * (256 << 20), compresslevel=1))
+    hint = {"path": HINT_PATH, "ttl_seconds": 21600, "database": str(path),
+            "database_sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+    config = _config(tmp_path, port=_free_port(), network_hint=hint)
+    (tmp_path / "config.json").write_text(json.dumps(config))
+    (tmp_path / "tokens.json").write_text(json.dumps({"current": TOKEN}))
+    # A wrapper runs the service as its only child, so the child peak RSS is the service's own.
+    wrapper = ("import resource, subprocess, sys\n"
+               "result = subprocess.run(sys.argv[1:], capture_output=True, text=True)\n"
+               "peak = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss\n"
+               "print(result.returncode, peak if sys.platform == 'darwin' else peak * 1024)\n"
+               "sys.stderr.write(result.stderr)\n")
+    result = subprocess.run([sys.executable, "-I", "-c", wrapper, sys.executable, "-I", "-B", str(SERVICE),
+                             "--config", str(tmp_path / "config.json"), "--tokens", str(tmp_path / "tokens.json")],
+                            capture_output=True, text=True, timeout=60)
+    returncode, peak = (int(value) for value in result.stdout.split())
+    assert returncode == 2 and "network hint dataset has an over-long line" in result.stderr
+    assert peak < 128 << 20
+
+
+def test_a_dataset_over_the_decompressed_size_cap_is_refused(tmp_path, monkeypatch):
+    module = _module()
+    hint = _dataset(tmp_path)
+    module.AsnTable(hint["database"], hint["database_sha256"])
+    monkeypatch.setattr(module, "MAX_DATASET_BYTES", len(DATASET_ROWS) - 1)
+    with pytest.raises(ValueError, match="network hint dataset exceeds its decompressed size limit"):
+        module.AsnTable(hint["database"], hint["database_sha256"])
+
+
 def test_nginx_hint_location_uses_only_the_peer_address_and_refuses_forwarding_headers():
     defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())["subscription_field_report"]["network_hint"]
     vhost = _rendered("subscription.conf.j2", network_hint={**defaults, "enabled": True})
