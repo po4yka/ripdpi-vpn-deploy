@@ -376,6 +376,10 @@ Staging uses a different VPS, different REALITY keypair, different SNI target, a
 
 If any of these fail, `make verify` exits non-zero. Don't sign off on a deploy until verify is green.
 
+### Known-good tag
+
+Each node has its own secrets file and overrides, so one unbounded `make verify` cannot cover the fleet. Instead, every passing `make verify` writes a receipt for each selected node to `KNOWN_GOOD_RECEIPTS_DIR` (default `~/.config/vpn-provision/known-good/<revision>/<alias>.json`), after `source-drift` passes; a failed receipt write prints a warning and leaves verify green, so it only withholds the tag. When every node runs the same clean revision and has passed `make verify` there, run `make tag-known-good` from that checkout. It creates an annotated tag `vpn-deploy-known-good-<UTC date-time>` on HEAD, whose message lists the verified nodes, only when every `vpn` host of every inventory in `KNOWN_GOOD_INVENTORIES` (default: the canonical generated inventory) has a receipt for this exact revision and deployable digest, younger than `KNOWN_GOOD_MAX_AGE_HOURS` (default 24). Otherwise it names each missing, stale or foreign receipt and creates no tag. To include another rendered inventory, such as a split-hop pair, add its path: `KNOWN_GOOD_INVENTORIES="ansible/inventory/generated.ini <pair-inventory>"`. The tag is local; push it with `git push origin <tag>` once reviewed. The weekly drift check then counts only later commits that change deployable paths.
+
 ## Verification
 
 `make verify` runs the active post-deploy gates described under [What verify actually checks](#what-verify-actually-checks); `make security-verify` checks host hardening and `make smoke-test` dials every enabled profile. `make source-drift` must match the deployed revision. A client on the filtered side confirming each profile is separate evidence ([acceptance scope](#acceptance-scope-and-completion)).

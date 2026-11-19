@@ -791,14 +791,31 @@ def test_live_ansible_targets_forward_limit_and_extra_vars():
     assert "deploy dry-run: export DEPLOY_EXTRA_VARS_FILE = $(ANSIBLE_EXTRA_VARS_FILE)" in makefile
 
 
-def test_partial_verify_cannot_create_a_fleet_known_good_tag():
+def test_verify_records_a_receipt_only_after_source_drift_passes():
     root = Path(__file__).resolve().parents[2]
     makefile = (root / "Makefile").read_text()
-    target = makefile.split("verify:", 1)[1].split("\n\nsecurity-verify:", 1)[0]
+    target = makefile.split("\nverify:", 1)[1].split("\n\n", 1)[0]
 
-    assert '"$(TAG_ON_SUCCESS)" = "1"' in target
-    assert '"$(ANSIBLE_LIMIT)"' in target
-    assert "requires an unbounded fleet verification" in target
+    drift = target.index("$(MAKE) source-drift")
+    record = target.index("scripts/known-good.py record")
+    assert drift < record
+    assert '--limit "$(ANSIBLE_LIMIT)"' in target[record:]
+
+
+def test_tag_known_good_requires_every_listed_inventory(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    env = {k: v for k, v in os.environ.items() if k not in ("MAKEFLAGS", "MAKEFILES")}
+    result = subprocess.run(
+        ["make", "-n", "--no-print-directory", "tag-known-good",
+         f"KNOWN_GOOD_INVENTORIES={tmp_path}/fleet.ini {tmp_path}/pair.ini",
+         f"KNOWN_GOOD_RECEIPTS_DIR={tmp_path}/receipts"],
+        cwd=root, env=env, capture_output=True, text=True, check=True)
+    command = result.stdout.replace("\\\n", " ")
+    assert "known-good.py tag" in command
+
+    assert f'--inventory "{tmp_path}/fleet.ini"' in command
+    assert f'--inventory "{tmp_path}/pair.ini"' in command
+    assert f'--receipts "{tmp_path}/receipts"' in command
 
 
 @pytest.mark.parametrize("shred_succeeds", [True, False])

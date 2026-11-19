@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-11-19
+goal: OPS-1795093095746075 Cut the known-good tag from per-node verification

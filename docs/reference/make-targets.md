@@ -70,7 +70,8 @@ Variables (override on command line):
   deploy                     Serial exact-node transaction; requires promotion and fresh baseline-failure receipt mappings
   deploy-canary              Deploy ENV=canary through the normal deploy flow
   os-maintenance             Rolling full OS upgrade + required reboot + verification
-  verify [TAG_ON_SUCCESS=1]  ACTIVE checks; watchdog may restart services (+ optional tag)
+  verify                     ACTIVE checks; watchdog may restart services; records a known-good receipt per node
+  tag-known-good             Tag HEAD once every node of KNOWN_GOOD_INVENTORIES passed verify at it
   inspect INSPECT_HOSTS=…    Passive SSH observation of exact comma-separated inventory names
   source-drift               Require live deployable digest to match the clean checkout
   security-verify            Host hardening checks (SSH/sysctl/firewall/services)

@@ -157,7 +157,7 @@ def build_parser():
     descriptions = {
         "deploy": {
             "skip_precheck": "Skip running pre-deploy guards (mirrors SKIP_PRECHECK=1).",
-            "tag_on_success": "Tag a known-good commit after a successful verify run.",
+            "tag_on_success": "Run make tag-known-good after verify and smoke-test pass.",
         },
         "reconverge": {
             "host": "Limit to a single host from the registry.",

@@ -169,7 +169,7 @@ jobs:
                 repo: context.repo.repo,
                 issue_number: issue.number,
                 body: [
-                  'Repo-only drift is now clear: no commits remain after the latest `vpn-deploy-known-good-*` tag.',
+                  'Repo-only drift is now clear: no deployable commits remain after the latest `vpn-deploy-known-good-*` tag.',
                   '',
                   `Closed automatically by [drift.yml](../.github/workflows/drift.yml) on ${today}.`,
                 ].join('\n'),
