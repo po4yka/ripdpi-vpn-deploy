@@ -12,7 +12,7 @@ scrape_configs:
       - targets: ["127.0.0.1:9100"]
     metric_relabel_configs:
       - source_labels: [__name__]
-        regex: "^(node_(cpu|memory|filesystem|time|boot|network|disk|filefd)_.*|node_load(1|5|15)|observability_push_.*|vpn_(xray_stats|observability_|watchdog_|backup_|certificate_|honeypot_|policy_ratelimit_|burn_|protocol_probe_|awg_|hysteria_).*)$"
+        regex: "^(node_(cpu|memory|filesystem|time|boot|network|disk|filefd)_.*|node_load(1|5|15)|observability_push_.*|vpn_(xray_stats|observability_|watchdog_|backup_|certificate_|honeypot_|policy_ratelimit_|burn_|protocol_probe_|awg_|hysteria_|field_report_).*)$"
         action: keep
       - source_labels: [mountpoint]
         regex: "^$|^/$"
@@ -20,7 +20,7 @@ scrape_configs:
       - source_labels: [device]
         regex: "^$|^(lo|eth[0-9]+|ens[0-9]+|enp[0-9a-z]+|vda[0-9]*|sda[0-9]*|nvme[0-9]+n[0-9]+p?[0-9]*)$"
         action: keep
-      - regex: "^(__name__|job|cpu|mode|device|fstype|mountpoint|node|role|state|kind|protocol|vantage|le)$"
+      - regex: "^(__name__|job|cpu|mode|device|fstype|mountpoint|node|role|state|kind|protocol|vantage|le|failure_stage|asn|country|server_ref)$"
         action: labelkeep
   - job_name: node-exporter-required-services
     sample_limit: 150

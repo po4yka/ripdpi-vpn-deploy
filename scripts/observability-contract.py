@@ -40,7 +40,8 @@ FORBIDDEN_LABEL = re.compile(
     re.IGNORECASE,
 )
 ALLOWED_LABELS = frozenset(
-    {"node", "role", "profile", "policy", "severity", "vantage", "state", "protocol"}
+    {"node", "role", "profile", "policy", "severity", "vantage", "state", "protocol",
+     "failure_stage", "asn", "country", "server_ref"}
 )
 EVIDENCE_STATES = frozenset(
     {

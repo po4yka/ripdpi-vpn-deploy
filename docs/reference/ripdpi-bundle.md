@@ -89,6 +89,20 @@ Each bucket has `server_ref` (the bundle `endpoints` key), `protocol` (`vless-re
 
 **Small-bucket suppression:** the client suppresses every bucket with fewer than 5 attempts, and the schema rejects `attempts` below 5.
 
+### Upload and ingest
+
+The client sends one report as `POST` to `field_report.endpoint` with `Content-Type: application/json` and the header `Authorization: Bearer <cohort_token>`. The token is never part of the body or the URL. The subscription-host ingest (`ansible/roles/subscription-host/files/vpn-field-report.py`, enabled by `subscription_field_report.enabled`) answers with these status codes:
+
+| Status | Meaning |
+|---|---|
+| `202` | Accepted and aggregated. The report is then discarded. |
+| `400` | The body is not JSON or fails `scripts/validate-field-report.py`. |
+| `401` | The token is neither the current cohort token nor the previous one inside its overlap. |
+| `413` | The body is larger than `subscription_field_report.max_body_bytes`. |
+| `429` | The per-address nginx rate or the process-wide rate is exceeded. |
+
+A bucket under `subscription_field_report.min_attempts` attempts is dropped before validation and counted in `vpn_field_report_dropped_buckets_total`; the rest of the report is processed. The ingest exports only aggregate counters with the labels `protocol`, `failure_stage`, `asn`, `country` and `server_ref`. `asn` and `country` keep their value only when it was in the top N of the previous window (`asn_top_n` 20, `country_top_n` 10), otherwise `other`; `server_ref` keeps its value only when it is in `subscription_field_report.server_refs`, otherwise `other`. A label-set budget (`max_series`) folds further new sets into `other`. No address, token or body is written to a log, a metric or a file.
+
 **Forbidden data:** a report never carries an IP address, a device or user identifier, a subscription token, a hostname or a timestamp finer than the hour. The schema rejects them: no field can hold them, and `server_ref` and `start_utc` patterns reject an IPv4, IPv6 or hostname value and nonzero minutes or seconds. Validator diagnostics name the failed constraint and its path, never the rejected value.
 
 ## `ripdpi.payload_failover`

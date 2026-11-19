@@ -88,3 +88,36 @@ subscription:
 
 # Direct calls enable the role; site dispatch supplies its exact predicate.
 subscription_host_role_enabled: true
+
+# Anonymous client field-report ingest on this vhost (POST
+# /v1/field-report, docs/reference/ripdpi-bundle.md). Off by default.
+# The cohort tokens come from the SOPS key `field_report`; this map holds
+# only non-secret limits. Reports are aggregated into the node_exporter
+# textfile and discarded; nothing about a request is logged or stored.
+subscription_field_report:
+  enabled: false
+  listen_port: 8446
+  path: /v1/field-report
+  # Largest accepted body. nginx keeps a body of this size in memory, so a
+  # report never reaches a temporary file on disk.
+  max_body_bytes: 65536
+  # Per-address nginx limit. Devices behind one shared address all count.
+  nginx_rate: "30r/m"
+  nginx_burst: 20
+  # Process-wide limit behind nginx; it holds no per-client state.
+  app_rate_per_second: 5
+  app_burst: 50
+  # Buckets under this many attempts are dropped and counted.
+  min_attempts: 5
+  # asn/country label a value only when it was in the top N of the previous
+  # window; every other value is "other".
+  asn_top_n: 20
+  country_top_n: 10
+  window_seconds: 3600
+  # Label-set budget across the counters. A new set past it folds into the
+  # protocol's "other" set, so the export stays far below the node scrape
+  # sample limit of the observability agent.
+  max_series: 400
+  # Bundle endpoint ids (ripdpi.endpoints keys) admitted as server_ref
+  # labels; any other value is "other". At most 64.
+  server_refs: []

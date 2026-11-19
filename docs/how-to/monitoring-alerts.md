@@ -138,6 +138,12 @@ The authenticated probe for one protocol, node and vantage stopped reporting for
 
 First check: Check the liveness sentinel for this vantage and the published evidence. Do not treat the protocol as healthy.
 
+### field-report-failure
+
+Opt-in client field reports show that more than the configured share of attempts for one protocol failed in one network (ASN) over the window, with at least the configured number of attempts. The reports are anonymous aggregates from a shared cohort token, so one token holder can skew them. The ratio alone does not show whether the server or the network path is at fault.
+
+First check: Compare with the protocol probe for this protocol. If the probe is healthy, read the failure stages for this network before you rotate.
+
 ### producer-evidence
 
 A node or collector adapter has not published valid evidence. Monitoring health is unknown for this source.

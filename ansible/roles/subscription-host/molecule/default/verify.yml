@@ -187,6 +187,49 @@
       loop_control:
         label: "{{ item.item.route }}"
 
+    - name: Field-report ingest is active on loopback only
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          systemctl is-active --quiet vpn-field-report.service
+          ss -lntp '( sport = :8446 )' | grep -q '127.0.0.1:8446'
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Field-report route answers by token and method
+      ansible.builtin.uri:
+        url: https://127.0.0.1:8444/v1/field-report
+        method: "{{ item.method }}"
+        validate_certs: false
+        body_format: json
+        body: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../../../../../contract/client-field-report.golden.json') | from_json }}"
+        status_code: "{{ item.status }}"
+        headers:
+          Host: sub.example.test
+          Authorization: "Bearer {{ item.token }}"
+      loop:
+        - {method: POST, token: "{{ field_report.cohort_token }}", status: 202}
+        - {method: POST, token: "{{ field_report.previous_cohort_token }}", status: 401}
+        - {method: GET, token: "{{ field_report.cohort_token }}", status: 403}
+      loop_control:
+        label: "{{ item.method }} {{ item.status }}"
+      no_log: true
+
+    - name: Field-report aggregate reached the textfile and no token reached a log
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          grep -Eq '^vpn_field_report_reports_total [1-9]' /var/lib/node_exporter/textfile/vpn_field_report.prom
+          grep -q 'server_ref="p0-reality-upcloud-prod"' /var/lib/node_exporter/textfile/vpn_field_report.prom
+          ! grep -rq -e "$CURRENT" -e "$PREVIOUS" /var/log/nginx /var/lib/node_exporter/textfile
+          ! journalctl -u vpn-field-report.service --no-pager | grep -q -e "$CURRENT" -e "$PREVIOUS" -e 127.0.0.1
+        executable: /bin/bash
+      environment:
+        CURRENT: "{{ field_report.cohort_token }}"
+        PREVIOUS: "{{ field_report.previous_cohort_token }}"
+      changed_when: false
+      no_log: true
+
     - name: vpn-bootstrap .ssh state survives the triggered --delete pull
       ansible.builtin.stat:
         path: /var/lib/vpn-subscription/.ssh

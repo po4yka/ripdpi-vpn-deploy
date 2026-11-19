@@ -740,6 +740,108 @@
       "cadence_seconds": 60,
       "stale_after_seconds": 180,
       "alert_use": true
+    },
+    {
+      "name": "vpn_field_report_reports_total",
+      "owner": "subscription_host",
+      "type": "counter",
+      "unit": null,
+      "labels": [
+        "node"
+      ],
+      "max_series": 8,
+      "cadence_seconds": 60,
+      "stale_after_seconds": 180,
+      "alert_use": true
+    },
+    {
+      "name": "vpn_field_report_dropped_buckets_total",
+      "owner": "subscription_host",
+      "type": "counter",
+      "unit": null,
+      "labels": [
+        "node"
+      ],
+      "max_series": 8,
+      "cadence_seconds": 60,
+      "stale_after_seconds": 180,
+      "alert_use": true
+    },
+    {
+      "name": "vpn_field_report_attempts_total",
+      "owner": "subscription_host",
+      "type": "counter",
+      "unit": null,
+      "labels": [
+        "node",
+        "protocol",
+        "asn",
+        "country"
+      ],
+      "max_series": 512,
+      "cadence_seconds": 60,
+      "stale_after_seconds": 180,
+      "alert_use": true
+    },
+    {
+      "name": "vpn_field_report_failures_total",
+      "owner": "subscription_host",
+      "type": "counter",
+      "unit": null,
+      "labels": [
+        "node",
+        "protocol",
+        "failure_stage",
+        "asn"
+      ],
+      "max_series": 512,
+      "cadence_seconds": 60,
+      "stale_after_seconds": 180,
+      "alert_use": true
+    },
+    {
+      "name": "vpn_field_report_endpoint_attempts_total",
+      "owner": "subscription_host",
+      "type": "counter",
+      "unit": null,
+      "labels": [
+        "node",
+        "protocol",
+        "server_ref"
+      ],
+      "max_series": 512,
+      "cadence_seconds": 60,
+      "stale_after_seconds": 180,
+      "alert_use": true
+    },
+    {
+      "name": "vpn_field_report_endpoint_failures_total",
+      "owner": "subscription_host",
+      "type": "counter",
+      "unit": null,
+      "labels": [
+        "node",
+        "protocol",
+        "server_ref"
+      ],
+      "max_series": 512,
+      "cadence_seconds": 60,
+      "stale_after_seconds": 180,
+      "alert_use": true
+    },
+    {
+      "name": "vpn_field_report_latency_seconds",
+      "owner": "subscription_host",
+      "type": "histogram",
+      "unit": "seconds",
+      "labels": [
+        "node",
+        "protocol"
+      ],
+      "max_series": 64,
+      "cadence_seconds": 60,
+      "stale_after_seconds": 180,
+      "alert_use": true
     }
   ]
 }

@@ -1,0 +1,121 @@
+---
+# Anonymous client field-report ingest. Reports are aggregated and discarded;
+# the cohort tokens come from the SOPS key field_report.
+- name: Require bounded field-report ingest settings and cohort tokens
+  ansible.builtin.assert:
+    that:
+      - subscription_field_report.path is match('^/[a-z0-9/_-]{1,64}$')
+      - subscription_field_report.listen_port | int is ge(1024)
+      - subscription_field_report.max_body_bytes | int is ge(1024)
+      - subscription_field_report.max_body_bytes | int is le(1048576)
+      - subscription_field_report.min_attempts | int is ge(5)
+      - subscription_field_report.asn_top_n | int is ge(1)
+      - subscription_field_report.asn_top_n | int is le(50)
+      - subscription_field_report.country_top_n | int is ge(1)
+      - subscription_field_report.country_top_n | int is le(50)
+      - subscription_field_report.window_seconds | int is ge(300)
+      - subscription_field_report.max_series | int is ge(50)
+      - subscription_field_report.max_series | int is le(1000)
+      - subscription_field_report.server_refs | length <= 64
+      - subscription_field_report.server_refs | reject('match', '^[A-Za-z0-9_-]{1,64}$') | list | length == 0
+      - field_report is mapping
+      - field_report.cohort_token | default('') is match('^[A-Za-z0-9_-]{22,64}$')
+      - >-
+        field_report.previous_cohort_token | default(none) is none or
+        (field_report.previous_cohort_token is match('^[A-Za-z0-9_-]{22,64}$') and
+         field_report.previous_cohort_token_valid_until | default('') is match('^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'))
+    fail_msg: Field-report ingest needs bounded limits and a well-formed field_report cohort token set in the secrets file.
+    quiet: true
+  no_log: true
+
+- name: Ensure node_exporter textfile writer group for the field-report ingest
+  ansible.builtin.group:
+    name: "{{ (monitoring | default({})).node_exporter_textfile_group | default('node_exporter_textfile') }}"
+    system: true
+
+- name: Ensure field-report ingest system user
+  ansible.builtin.user:
+    name: vpn-field-report
+    system: true
+    shell: /usr/sbin/nologin
+    home: /nonexistent
+    create_home: false
+
+- name: Ensure shared node_exporter textfile directory for the field-report ingest
+  ansible.builtin.file:
+    path: "{{ (monitoring | default({})).node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}"
+    state: directory
+    owner: root
+    group: "{{ (monitoring | default({})).node_exporter_textfile_group | default('node_exporter_textfile') }}"
+    mode: "3775"
+
+- name: Install the field-report contract validator package
+  ansible.builtin.apt:
+    name: python3-jsonschema
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Ensure field-report ingest directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: [/usr/local/lib/vpn-field-report, /etc/vpn-field-report]
+
+- name: Install field-report ingest, shared validator and contract
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "/usr/local/lib/vpn-field-report/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - {src: vpn-field-report.py, dest: vpn-field-report.py}
+    - {src: "{{ role_path }}/../../../scripts/validate-field-report.py", dest: validate_field_report.py}
+    - {src: "{{ role_path }}/../../../contract/client-field-report.schema.json", dest: client-field-report.schema.json}
+  notify: Restart vpn-field-report
+
+- name: Install field-report ingest limits
+  ansible.builtin.template:
+    src: vpn-field-report.json.j2
+    dest: /etc/vpn-field-report/config.json
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart vpn-field-report
+
+- name: Publish field-report cohort tokens as a private credential
+  ansible.builtin.copy:
+    content: >-
+      {{ {'current': field_report.cohort_token,
+          'previous': field_report.previous_cohort_token | default(none),
+          'previous_valid_until': field_report.previous_cohort_token_valid_until | default(none)} | to_json }}
+    dest: /etc/vpn-field-report/cohort-tokens.json
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+  notify: Restart vpn-field-report
+
+- name: Install field-report ingest unit
+  ansible.builtin.template:
+    src: vpn-field-report.service.j2
+    dest: /etc/systemd/system/vpn-field-report.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: _subscription_field_report_unit
+  notify: Restart vpn-field-report
+
+- name: Enable + start field-report ingest
+  ansible.builtin.systemd_service:
+    name: vpn-field-report.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  # A fresh check-mode host has no unit to start yet; the planned install above shows the change.
+  when: not (ansible_check_mode and _subscription_field_report_unit.changed)
