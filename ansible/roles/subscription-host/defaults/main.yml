@@ -96,7 +96,6 @@ subscription_host_role_enabled: true
 # textfile and discarded; nothing about a request is logged or stored.
 subscription_field_report:
   enabled: false
-  listen_port: 8446
   path: /v1/field-report
   # Largest accepted body. nginx keeps a body of this size in memory, so a
   # report never reaches a temporary file on disk.

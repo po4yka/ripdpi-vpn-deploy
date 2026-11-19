@@ -31,7 +31,6 @@ def _config(tmp_path: Path, **overrides) -> dict:
     textfile_dir = tmp_path / "textfile"
     textfile_dir.mkdir(exist_ok=True)
     config = {
-        "listen": "127.0.0.1",
         "path": FIELD_REPORT_PATH,
         "max_body_bytes": 65536,
         "min_attempts": 5,
@@ -51,10 +50,33 @@ def _config(tmp_path: Path, **overrides) -> dict:
     return config
 
 
-def _free_port() -> int:
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return probe.getsockname()[1]
+# Hands the service its listening socket as systemd does: fd 3 with LISTEN_FDS=1 and LISTEN_PID set to the
+# service's own PID (exec keeps it).
+SOCKET_ACTIVATION = ("import os, sys\n"
+                     "fd = int(sys.argv[1])\n"
+                     "if fd != 3:\n"
+                     "    os.dup2(fd, 3)\n"
+                     "    os.close(fd)\n"
+                     "os.environ.update(LISTEN_FDS='1', LISTEN_PID=str(os.getpid()))\n"
+                     "os.execv(sys.argv[2], sys.argv[2:])\n")
+
+
+def _service_command(listener: socket.socket, tmp_path: Path) -> list[str]:
+    return [sys.executable, "-I", "-c", SOCKET_ACTIVATION, str(listener.fileno()), sys.executable, "-I", "-B",
+            str(SERVICE), "--config", str(tmp_path / "config.json"), "--tokens", str(tmp_path / "tokens.json")]
+
+
+def _write_config(tmp_path: Path, config: dict, tokens: dict | None = None) -> None:
+    # port is where the tests connect; the service never binds and gets no port.
+    (tmp_path / "config.json").write_text(json.dumps({key: value for key, value in config.items() if key != "port"}))
+    (tmp_path / "tokens.json").write_text(json.dumps(tokens or {"current": TOKEN}))
+
+
+def _tcp_listener() -> socket.socket:
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen()
+    return listener
 
 
 @pytest.fixture
@@ -62,24 +84,18 @@ def ingest(tmp_path):
     processes = []
 
     def start(tokens: dict | None = None, **overrides):
-        config = _config(tmp_path, port=_free_port(), **overrides)
-        (tmp_path / "config.json").write_text(json.dumps(config))
-        (tmp_path / "tokens.json").write_text(json.dumps(tokens or {"current": TOKEN}))
-        process = subprocess.Popen(
-            [sys.executable, "-I", "-B", str(SERVICE), "--config", str(tmp_path / "config.json"),
-             "--tokens", str(tmp_path / "tokens.json")],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-        )
+        # A loopback TCP socket stands in for the unit's Unix socket, so the HTTP helpers stay simple;
+        # test_the_ingest_serves_an_inherited_unix_socket covers the real family.
+        with _tcp_listener() as listener:
+            config = _config(tmp_path, port=listener.getsockname()[1], **overrides)
+            _write_config(tmp_path, config, tokens)
+            process = subprocess.Popen(_service_command(listener, tmp_path), pass_fds=(listener.fileno(),),
+                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         processes.append(process)
         deadline = time.monotonic() + 10
         while not Path(config["textfile"]).exists():
             assert process.poll() is None, process.stderr.read()
             assert time.monotonic() < deadline
-            time.sleep(0.05)
-        for _ in range(100):
-            with socket.socket() as probe:
-                if probe.connect_ex(("127.0.0.1", config["port"])) == 0:
-                    break
             time.sleep(0.05)
         return process, config
 
@@ -157,6 +173,43 @@ def test_a_slow_connection_cannot_hold_the_ingest_past_its_deadline(ingest):
         connection.close()
     finally:
         slow.close()
+
+
+def test_the_ingest_serves_an_inherited_unix_socket(tmp_path):
+    import tempfile
+
+    # macOS limits a socket path to 104 bytes, more than pytest's tmp_path leaves.
+    with tempfile.TemporaryDirectory(dir="/tmp") as short, socket.socket(socket.AF_UNIX) as listener:
+        listener.bind(f"{short}/ingest.sock")
+        listener.listen()
+        config = _config(tmp_path)
+        _write_config(tmp_path, config)
+        process = subprocess.Popen(_service_command(listener, tmp_path), pass_fds=(listener.fileno(),),
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            with socket.socket(socket.AF_UNIX) as client:
+                client.settimeout(5)
+                client.connect(f"{short}/ingest.sock")
+                body = json.dumps(GOLDEN).encode()
+                client.sendall(b"POST /v1/field-report HTTP/1.1\r\nHost: sub\r\nAuthorization: Bearer " + TOKEN.encode()
+                               + b"\r\nContent-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body)
+                assert client.recv(64).startswith(b"HTTP/1.0 202 ")
+            assert _samples(_metrics(config))["vpn_field_report_reports_total"] == 1
+        finally:
+            process.terminate()
+            _, stderr = process.communicate(timeout=5)
+    assert stderr == ""
+
+
+def test_the_ingest_refuses_to_start_without_its_socket_unit(tmp_path):
+    config = _config(tmp_path)
+    _write_config(tmp_path, config)
+    # Run directly: no LISTEN_FDS, so there is no socket to serve and nothing may bind one.
+    result = subprocess.run([sys.executable, "-I", "-B", str(SERVICE), "--config", str(tmp_path / "config.json"),
+                             "--tokens", str(tmp_path / "tokens.json")], capture_output=True, text=True, timeout=20)
+    assert result.returncode == 2
+    assert result.stderr == "vpn-field-report: expected exactly one listening socket from vpn-field-report.socket\n"
+    assert not Path(config["textfile"]).exists()
 
 
 def test_rejections_leave_metrics_unchanged(ingest):
@@ -371,6 +424,7 @@ def test_nginx_location_limits_size_and_rate_and_keeps_body_in_memory():
     assert "access_log /var/log/nginx/vpn-sub.categorical.log vpn_sub_category;" in location
     assert "error_log /dev/null crit;" in location
     assert "remote_addr" not in location and "X-Real-IP" not in location and "X-Forwarded-For" not in location
+    assert "proxy_pass http://unix:/run/vpn-field-report.sock:;" in location and "127.0.0.1" not in location
     assert "limit_req_zone $binary_remote_addr zone=vpn_field_report_per_ip:10m rate=30r/m;" in _rendered("rate-limit.conf.j2")
     assert "field-report" not in _rendered("subscription.conf.j2", enabled=False)
 
@@ -384,14 +438,20 @@ def test_unit_delivers_tokens_as_credential_and_keeps_the_hardening_floor():
                       "ProtectHome=true", "ProtectKernelTunables=true", "ProtectKernelModules=true",
                       "ProtectControlGroups=true", "RestrictNamespaces=true", "LockPersonality=true",
                       "RestrictRealtime=true", "RestrictSUIDSGID=true", "SystemCallArchitectures=native",
-                      "CapabilityBoundingSet=\n", "IPAddressDeny=any", "IPAddressAllow=localhost",
+                      "CapabilityBoundingSet=\n", "IPAddressDeny=any\n", "PrivateNetwork=true\n",
+                      "RestrictAddressFamilies=AF_UNIX\n", "Requires=vpn-field-report.socket\n",
                       "StateDirectory=vpn-field-report\n", "StateDirectoryMode=0755\n", "LimitCORE=0\n"):
         assert directive in unit
     # The ingest writes only its own state directory; it is no member of the shared textfile writer group.
-    assert "SupplementaryGroups=" not in unit and "ReadWritePaths=" not in unit
+    assert "SupplementaryGroups=" not in unit and "ReadWritePaths=" not in unit and "IPAddressAllow=" not in unit
+    # Only the nginx user can connect: a loopback TCP port would be open to every local process.
+    listen = [line for line in _rendered("vpn-field-report.socket.j2").splitlines() if line and not line.startswith("#")]
+    assert [line for line in listen if line.split("=", 1)[0] in {"ListenStream", "SocketUser", "SocketGroup", "SocketMode"}] == \
+        ["ListenStream=/run/vpn-field-report.sock", "SocketUser=www-data", "SocketGroup=www-data", "SocketMode=0600"]
+    assert not any(line.startswith(("ListenDatagram=", "ListenSequentialPacket=")) for line in listen)
     config = json.loads(_rendered("vpn-field-report.json.j2", server_refs=["p0-reality-upcloud-prod"]))
     assert config["textfile"] == "/var/lib/vpn-field-report/vpn_field_report.prom"
-    assert config["listen"] == "127.0.0.1"
+    assert "listen" not in config and "port" not in config
     assert config["server_refs"] == ["p0-reality-upcloud-prod"]
 
 
@@ -564,14 +624,13 @@ def test_a_gzip_bomb_line_is_refused_inside_the_unit_memory_limit(tmp_path):
     path.write_bytes(gzip.compress(b"1" * (256 << 20), compresslevel=1))
     hint = {"path": HINT_PATH, "ttl_seconds": 21600, "database": str(path),
             "database_sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
-    config = _config(tmp_path, port=_free_port(), network_hint=hint)
-    (tmp_path / "config.json").write_text(json.dumps(config))
-    (tmp_path / "tokens.json").write_text(json.dumps({"current": TOKEN}))
+    config = _config(tmp_path, network_hint=hint)
+    _write_config(tmp_path, config)
     # A wrapper runs the service as its only child until the first aggregate is written, so the
     # child peak RSS is the service's own, measured after the dataset load.
     wrapper = ("import os, resource, subprocess, sys, time\n"
                "textfile, command = sys.argv[1], sys.argv[2:]\n"
-               "child = subprocess.Popen(command, stderr=subprocess.PIPE, text=True)\n"
+               "child = subprocess.Popen(command, pass_fds=(int(command[4]),), stderr=subprocess.PIPE, text=True)\n"
                "deadline = time.monotonic() + 30\n"
                "while not os.path.exists(textfile) and child.poll() is None and time.monotonic() < deadline:\n"
                "    time.sleep(0.05)\n"
@@ -580,10 +639,10 @@ def test_a_gzip_bomb_line_is_refused_inside_the_unit_memory_limit(tmp_path):
                "peak = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss\n"
                "print(int(os.path.exists(textfile)), peak if sys.platform == 'darwin' else peak * 1024)\n"
                "sys.stderr.write(stderr)\n")
-    result = subprocess.run([sys.executable, "-I", "-c", wrapper, config["textfile"], sys.executable, "-I", "-B",
-                             str(SERVICE), "--config", str(tmp_path / "config.json"),
-                             "--tokens", str(tmp_path / "tokens.json")],
-                            capture_output=True, text=True, timeout=60)
+    with _tcp_listener() as listener:
+        result = subprocess.run([sys.executable, "-I", "-c", wrapper, config["textfile"],
+                                 *_service_command(listener, tmp_path)], pass_fds=(listener.fileno(),),
+                                capture_output=True, text=True, timeout=60)
     served, peak = (int(value) for value in result.stdout.split())
     assert served == 1 and "network hint dataset has an over-long line" in result.stderr
     assert peak < 128 << 20
@@ -609,6 +668,7 @@ def test_nginx_hint_location_uses_only_the_peer_address_and_refuses_forwarding_h
     for header in ("X-Forwarded-For", "Forwarded", "X-Real-IP"):
         assert f'proxy_set_header {header} "";' in location
     assert "proxy_pass_request_body off;" in location
+    assert "proxy_pass http://unix:/run/vpn-field-report.sock:;" in location
     assert "access_log /var/log/nginx/vpn-sub.categorical.log vpn_sub_category;" in location
     assert "error_log /dev/null crit;" in location
     # A real_ip setting would let a client choose the address that the hint looks up.
