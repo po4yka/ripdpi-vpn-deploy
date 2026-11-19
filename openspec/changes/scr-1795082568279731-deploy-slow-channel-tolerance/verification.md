@@ -1,11 +1,11 @@
 ---
 task_id: SCR-1795082568279731
 change: scr-1795082568279731-deploy-slow-channel-tolerance
-commit_sha: null
+commit_sha: 9146f67930d14811adced04859555e0388233236
 local: required
 local_evidence: 'make -k check -j 4 at 5ff7f3c7 plus this change: every target passed except test-unit; test-unit reruns after the fixes: tests/unit/test_deploy_controller.py 183 passed, test_bootstrap_tailnet.py 148 passed, full make test-unit 12232 passed with one load-sensitive failure (test_observability_deadman_receiver worker-capacity test, passes alone, untouched by this change); make task-check and make docs-check passed'
 remote_ci: required
-remote_ci_evidence: null
+remote_ci_evidence: 'PR po4yka/ripdpi-vpn-deploy#642 merged as 9146f67930d14811adced04859555e0388233236; ci.yml push run 44515597391 on main concluded success on attempt 2 (2026-11-19T13:40:40Z). Attempt 1 failed only in native four-transport acceptance setup: apt got 404 for nginx 1.24.0-2ubuntu7.20 from the Ubuntu archive before any test ran; the failed jobs were rerun unchanged.'
 dry_run: not_applicable
 dry_run_evidence: Dry-run is deliberately not gated and gains only the session options, which the unit tests cover; no node state changes.
 staging: not_applicable
