@@ -98,6 +98,10 @@ The staged runtime-release include returns generic `runtime_release_candidates`;
   vector if exposed. It is off unless `hysteria_traffic_stats_enabled`; then the
   validator admits only a `127.0.0.1` listener and a node-local secret, and the
   exporter publishes summed bytes and connections, never a user identifier.
+  It runs as `vpn-hysteria-exporter` in the textfile writer group with the
+  systemd hardening floor plus a system-call filter; the role hands a textfile
+  left by the earlier root exporter to that account, because the sticky
+  textfile directory refuses to replace another owner's file.
 - **Do not point masquerade at an unrelated public site** — keep `hysteria.masquerade_url` equal to `public_site_canonical_url`; the pre-flight assert rejects anything else.
 
 - Ordinary site convergence always invokes lifecycle reconciliation. The
