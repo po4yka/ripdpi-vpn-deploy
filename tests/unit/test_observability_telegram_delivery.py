@@ -1176,7 +1176,7 @@ def test_learned_flood_deadline_blocks_concurrent_real_http_webhooks(
 @pytest.mark.parametrize("existing_message", [False, True])
 @pytest.mark.parametrize("first_path", ["/alert", "/v1/delivery-canary"])
 def test_canary_send_and_edit_share_alert_flood_deadline(
-    flood_http_relay, existing_message, first_path,
+    flood_http_relay, existing_message, first_path, capsys,
 ):
     post, calls, clock, receipts = flood_http_relay
     if existing_message:
@@ -1184,6 +1184,11 @@ def test_canary_send_and_edit_share_alert_flood_deadline(
     assert post(first_path) == 502
     assert post("/alert") == 502
     assert post("/v1/delivery-canary") == 502
+    # The journal names why each 502 happened, never the token or chat.
+    logged = capsys.readouterr().err
+    assert "telegram-relay: delivery-failed upstream-flood-wait" in logged
+    assert "telegram-relay: canary-failed upstream-flood-wait" in logged
+    assert "fixture-token" not in logged
     assert len(calls) == 1
     assert receipts.snapshot()["edit_at"] == 0
     clock[0] += 60
