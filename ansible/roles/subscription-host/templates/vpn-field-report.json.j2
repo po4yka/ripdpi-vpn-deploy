@@ -1,3 +1,10 @@
+{#- A hint request from a fleet node's public address came through the tunnel; the ingest answers it with 204. -#}
+{%- set _fleet_addresses = [] -%}
+{%- for host in (groups | default({}))['all'] | default([]) -%}
+{%- for key in ['vpn_service_address', 'server_ipv6'] if hostvars[host][key] | default('') -%}
+{%- set _ = _fleet_addresses.append(hostvars[host][key]) -%}
+{%- endfor -%}
+{%- endfor -%}
 {{ {
   'path': subscription_field_report.path,
   'max_body_bytes': subscription_field_report.max_body_bytes | int,
@@ -15,6 +22,7 @@
     'ttl_seconds': subscription_field_report.network_hint.ttl_seconds | int,
     'database': '/usr/local/lib/vpn-field-report/ip2asn-combined.tsv.gz',
     'database_sha256': subscription_field_report.network_hint.dataset_sha256,
+    'fleet_addresses': _fleet_addresses | unique | sort,
   } if subscription_field_report.network_hint.enabled | default(false) else none),
   'textfile': '/var/lib/vpn-field-report/vpn_field_report.prom',
   'schema': '/usr/local/lib/vpn-field-report/client-field-report.schema.json',

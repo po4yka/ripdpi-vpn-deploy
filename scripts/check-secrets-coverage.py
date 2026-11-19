@@ -149,6 +149,8 @@ NON_SECRET_TOPLEVEL = {
     "xray_tcp_ports",
     # Ansible built-ins
     "ansible_check_mode",
+    "groups",
+    "hostvars",
     "inventory_hostname",
     "lookup",
 }
