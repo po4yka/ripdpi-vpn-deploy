@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-19
+goal: MON-1795086175387484 Export continuous per-protocol authenticated probe
+  and aggregate peer metrics
