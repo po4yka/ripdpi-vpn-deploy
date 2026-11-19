@@ -538,7 +538,8 @@ DATASET_ROWS = (b"1.0.0.0\t1.0.0.255\t0\tNone\tNot routed\n"
                 b"192.0.2.0\t192.0.2.255\t64500\tZZ\tTEST-NET-ONE \xc3\xa9\n"
                 b"198.51.100.0\t198.51.100.255\t0\tNone\tNot routed\n"
                 b"203.0.113.0\t203.0.113.255\t64502\tNone\tNo country\n"
-                b"2001:db8::\t2001:db8::ffff\t64501\tZY\tTEST-SIX\n")
+                b"2001:db8::\t2001:db8::ffff\t64501\tZY\tTEST-SIX\n"
+                b"2001:db8:1::\t2001:db8:1::ffff\t64501\tZY\tTEST-SIX\n")
 HINT_PATH = "/v1/network-hint"
 
 
@@ -572,8 +573,9 @@ def test_network_hint_answers_from_the_peer_header_and_never_keeps_the_address(i
     contract = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(contract)
     checker = contract.validator(json.loads((ROOT / "contract/client-network-hint.schema.json").read_text()))
-    # 192.0.2.10 and 2001:db8::10 stand for fleet nodes: a fetch through the tunnel arrives from one of them.
-    process, config = ingest(network_hint=_dataset(tmp_path, fleet_addresses=["192.0.2.10", "2001:db8::10"]))
+    # 192.0.2.10 and 2001:db8:1::10 stand for fleet nodes: a fetch through the tunnel arrives from one of them,
+    # or from another address in the node's IPv6 /64.
+    process, config = ingest(network_hint=_dataset(tmp_path, fleet_addresses=["192.0.2.10", "2001:db8:1::10"]))
     before = _metrics(config)
     assert _samples(before)["vpn_field_report_network_hint_available"] == 1
 
@@ -588,7 +590,7 @@ def test_network_hint_answers_from_the_peer_header_and_never_keeps_the_address(i
     assert json.loads(_get(config, "::ffff:192.0.2.1")[1])["asn"] == 64500
     # A fleet address, not routed, no country, outside every range, malformed or missing: no hint. A fleet
     # node's own ASN would name the hosting network, never the device's.
-    for peer in ("192.0.2.10", "::ffff:192.0.2.10", "2001:db8::10", "198.51.100.9", "203.0.113.9", "10.0.0.1",
+    for peer in ("192.0.2.10", "::ffff:192.0.2.10", "2001:db8:1::10", "2001:db8:1::abcd", "198.51.100.9", "203.0.113.9", "10.0.0.1",
                  "192.0.2.1, 203.0.113.9", "not-an-address", None):
         assert _get(config, peer)[:2] == (204, b"")
     assert _get(config, "192.0.2.77", token="wrongTokenValue_00000000000")[:2] == (401, b"")
@@ -715,14 +717,15 @@ def test_nginx_hint_location_uses_only_the_peer_address_and_refuses_forwarding_h
     assert "network-hint" not in _rendered("subscription.conf.j2")
     assert "vpn_network_hint" not in _rendered("rate-limit.conf.j2")
     inventory = {"groups": {"all": ["vpn-a", "vpn-b", "sub-only"]},
-                 "hostvars": {"vpn-a": {"vpn_service_address": "192.0.2.10", "server_ipv6": "2001:db8::10"},
+                 "hostvars": {"vpn-a": {"vpn_service_address": "192.0.2.10", "server_ipv6": "2001:db8::10",
+                                        "honeypot_listen_addr": "192.0.2.11"},
                               "vpn-b": {"vpn_service_address": "198.51.100.20"},
                               "sub-only": {"vpn_service_address": "192.0.2.10", "server_ipv6": ""}}}
     config = json.loads(_rendered("vpn-field-report.json.j2", _inventory=inventory, network_hint={**defaults, "enabled": True}))
     assert config["network_hint"] == {"path": HINT_PATH, "ttl_seconds": 21600,
                                       "database": "/usr/local/lib/vpn-field-report/ip2asn-combined.tsv.gz",
                                       "database_sha256": defaults["dataset_sha256"],
-                                      "fleet_addresses": ["192.0.2.10", "198.51.100.20", "2001:db8::10"]}
+                                      "fleet_addresses": ["192.0.2.10", "192.0.2.11", "198.51.100.20", "2001:db8::10"]}
     assert json.loads(_rendered("vpn-field-report.json.j2"))["network_hint"] is None
 
 

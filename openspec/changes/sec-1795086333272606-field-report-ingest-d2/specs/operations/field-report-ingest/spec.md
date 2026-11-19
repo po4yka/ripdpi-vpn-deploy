@@ -88,11 +88,11 @@ The field reports are unauthenticated client input under one shared cohort token
 
 ### Requirement: REQ-HINT-RESPONSE — Network hint answer
 
-The ingest MUST answer `GET` on the network-hint path, after the same cohort-token check as the report route, with 200 and a body that validates against `contract/client-network-hint.schema.json`, 204 with no body when the address has no routed ASN and country or is a public address of a fleet node (`vpn_service_address` or `server_ipv6` of any inventory host, rendered into the ingest config), 401 for a bad token and 404 when the hint is off. The hint MUST NOT change a report counter.
+The ingest MUST answer `GET` on the network-hint path, after the same cohort-token check as the report route, with 200 and a body that validates against `contract/client-network-hint.schema.json`, 204 with no body when the address has no routed ASN and country or is a public address of a fleet node (an inventory host's `vpn_service_address`, `honeypot_listen_addr` or `server_ipv6` /64), 401 for a bad token and 404 when the hint is off. The hint MUST NOT change a report counter.
 
 #### Scenario: network hint answer
 
-- **WHEN** hints are requested for an address in a routed range, an IPv6 and an IPv4-mapped address, a fleet node address (also IPv4-mapped), a not-routed, country-less, unknown or malformed address, a bad or missing token, and with the hint off
+- **WHEN** hints are requested for an address in a routed range, an IPv6 and an IPv4-mapped address, a fleet node address (also IPv4-mapped, and another address in its IPv6 /64), a not-routed, country-less, unknown or malformed address, a bad or missing token, and with the hint off
 - **THEN** the answers are 200 with a valid hint, 204, 401 and 404 respectively and the metrics are unchanged
 
 ### Requirement: REQ-HINT-PEER — Only the TCP peer address is looked up and none is kept

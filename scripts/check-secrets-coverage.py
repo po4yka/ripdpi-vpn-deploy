@@ -202,7 +202,7 @@ JINJA_ENVIRONMENT.tests = _AnyName(JINJA_ENVIRONMENT.tests)
 # hostvars exposes every variable of every host, secrets included, so a template
 # may read through it only these non-secret inventory keys, each as a literal
 # hostvars[<host>]['<key>'] lookup.
-HOSTVARS_NON_SECRET_KEYS = {"vpn_service_address", "server_ipv6"}
+HOSTVARS_NON_SECRET_KEYS = {"vpn_service_address", "server_ipv6", "honeypot_listen_addr"}
 
 
 def _hostvars_reads_only_listed_keys(tree: nodes.Template) -> bool:
