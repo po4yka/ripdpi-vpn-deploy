@@ -193,8 +193,12 @@
           set -o pipefail
           systemctl is-active --quiet vpn-field-report.socket vpn-field-report.service
           test "$(stat -c '%U:%G %a %F' /run/vpn-field-report.sock)" = 'www-data:www-data 600 socket'
-          # The ingest process has no TCP or UDP listener of its own.
-          ! ss -ltunpH | grep -q "pid=$(systemctl show -p MainPID --value vpn-field-report.service),"
+          # PrivateNetwork gives the ingest its own network namespace, so a host-namespace ss could never see
+          # a listener of its own; look inside that namespace, which must hold no TCP or UDP listener at all.
+          pid="$(systemctl show -p MainPID --value vpn-field-report.service)"
+          test "$pid" -gt 0
+          test "$(readlink "/proc/$pid/ns/net")" != "$(readlink /proc/1/ns/net)"
+          test -z "$(nsenter -t "$pid" -n ss -ltunH)"
         executable: /bin/bash
       changed_when: false
 
