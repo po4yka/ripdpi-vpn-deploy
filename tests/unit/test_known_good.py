@@ -39,8 +39,11 @@ def repo(tmp_path):
     (work / "ansible/site.yml").write_text("- hosts: vpn\n")
     (work / "fleet.ini").write_text(FLEET)
     (work / "pair.ini").write_text(PAIR)
-    git = ["git", "-C", str(work), "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+    git = ["git", "-C", str(work)]
     subprocess.run(["git", "init", "-q", str(work)], check=True)
+    # Repository-local identity: the script's annotated `git tag` needs it on runners without a global one.
+    subprocess.run(git + ["config", "user.name", "t"], check=True)
+    subprocess.run(git + ["config", "user.email", "t@example.invalid"], check=True)
     subprocess.run(git + ["add", "."], check=True)
     subprocess.run(git + ["commit", "-q", "-m", "init"], check=True)
     return work
