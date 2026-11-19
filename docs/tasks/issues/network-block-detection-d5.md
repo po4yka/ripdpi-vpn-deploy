@@ -2,11 +2,11 @@
 id: MON-1795086646495369
 title: Detect network blocks from sentinel and client-report divergence
 kind: feature
-status: backlog
+status: review
 area: monitoring
 priority: medium
 risk: high
-owner: Planner
+owner: Implementer
 parent: EPC-1795085241910080
 blocked_by: [SEC-1795086333272606, MON-1795086175387484]
 spec_mode: required

@@ -10,10 +10,10 @@ One writer owns the alert rule additions, the PLAN hint in `scripts/fleet-rotate
 
 ## Execution
 
-- [ ] MON-1795086667788936 Add the blocked-in-network alert rule with action and runbook annotations to observability-alert-rules.yml.j2 #feature @item:MON-1795086646495369
-- [ ] MON-1795086687652889 Add promtool cases for divergence, server-down and low-sample in observability-alert-rules.test.yml.j2 #feature @item:MON-1795086646495369
-- [ ] MON-1795086713751110 Add the advisory rotation hint to scripts/fleet-rotate.sh PLAN mode with a test that no rotation starts #feature @item:MON-1795086646495369
-- [ ] MON-1795086734829714 Document the alert, thresholds and operator decision flow in docs/reference/observability-operations.md with the anchored runbook section #feature @item:MON-1795086646495369
+- [x] MON-1795086667788936 Add the blocked-in-network alert rule with action and runbook annotations to observability-alert-rules.yml.j2 #feature @item:MON-1795086646495369
+- [x] MON-1795086687652889 Add promtool cases for divergence, server-down and low-sample in observability-alert-rules.test.yml.j2 #feature @item:MON-1795086646495369
+- [x] MON-1795086713751110 Add the advisory rotation hint to scripts/fleet-rotate.sh PLAN mode with a test that no rotation starts #feature @item:MON-1795086646495369
+- [x] MON-1795086734829714 Document the alert, thresholds and operator decision flow in docs/reference/observability-operations.md with the anchored runbook section #feature @item:MON-1795086646495369
 
 ## Verification
 
