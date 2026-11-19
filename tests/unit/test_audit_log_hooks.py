@@ -95,6 +95,7 @@ def test_lifecycle_hooks_call_best_effort_append():
         "scripts/issue_sub_token.py": "'--action', 'issue-sub-token'",
         "scripts/new-client.sh": "--action new-client",
         "scripts/rotate-secrets.sh": "--action rotate-secrets",
+        "scripts/rotate-cohort-token.sh": "--action rotate-cohort-token",
         "scripts/fleet_rotation.py": 'audit(root, "fleet-rotate-step", plan, entry)',
         "scripts/destroy.sh": "--action staging-destroy",
         "Makefile": "--action rotate-credentials",
