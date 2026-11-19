@@ -223,13 +223,14 @@ def test_installer_real_ansible_preserves_local_delegation(controller, inputs, m
     (project / "ansible/ansible.cfg").write_text("[defaults]\n")
     expected_ssh = ['ConnectionAttempts=3' if value == 'ConnectionAttempts=1' else value for value in ssh]
     transport = controller.deploy.transport_variables(host, expected_ssh)
-    # Only the three multiplexing options differ; their run-owned socket path is random.
+    # Only the three multiplexing options differ (plus the shared master's keepalive); the socket path is random.
     strict_arguments = transport.pop("ansible_ssh_args")
     option = "-o ControlPath=none -o ControlMaster=no -o ControlPersist=no"
     assert strict_arguments.count(option) == 1
     before, after = strict_arguments.split(option)
     replaced = ("ansible_ssh_args[before | length:ansible_ssh_args | length - after | length] is "
-                + "match('^-o ControlPath=/[^ ]*/vb-ssh-[^ /]+/%C -o ControlMaster=auto -o ControlPersist=300$')")
+                + "match('^-o ControlPath=/[^ ]*/vb-ssh-[^ /]+/%C -o ControlMaster=auto -o ControlPersist=300"
+                + " -o ServerAliveInterval=15 -o ServerAliveCountMax=8$')")
     play = [{"hosts": "vpn", "gather_facts": False,
              "vars": {"expected_transport": transport, "before": before, "after": after},
              "tasks": [

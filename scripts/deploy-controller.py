@@ -5,12 +5,14 @@ import ast
 from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar
 import hashlib
+import ipaddress
 import json
 import os
 from pathlib import Path
 import re
 import shlex
 import stat
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -560,9 +562,14 @@ def multiplexed(command, sockets):
     """
     if not all(option in command for option in MULTIPLEX_OPTIONS):
         raise DeployError("unsupported SSH option")
-    replaced = dict(zip(MULTIPLEX_OPTIONS, ("ControlPath=" + str(sockets / "%C"), "ControlMaster=auto",
-                                            "ControlPersist=300")))
-    return [replaced.get(value, value) for value in command]
+    # The shared master outlives short relay stalls (about 120 s of silence) and
+    # retries only the initial connection, never a started remote command.
+    replaced = dict(zip((*MULTIPLEX_OPTIONS, "ConnectionAttempts=1"),
+                        ("ControlPath=" + str(sockets / "%C"), "ControlMaster=auto", "ControlPersist=300",
+                         "ConnectionAttempts=3")))
+    result = [replaced.get(value, value) for value in command]
+    index = result.index("ControlPersist=300") + 1
+    return result[:index] + ["-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8"] + result[index:]
 
 
 def close_master(command):
@@ -583,7 +590,50 @@ def transport_variables(host, command):
             "ansible_scp_executable": "/usr/bin/scp", "ansible_sftp_executable": "/usr/bin/sftp",
             "ansible_connection": "ssh", "ansible_python_interpreter": "/usr/bin/python3",
             "ansible_become": True, "ansible_become_user": "root", "ansible_become_method": "sudo",
-            "ansible_become_flags": "-n"}
+            "ansible_become_flags": "-n",
+            # Ansible waits 2 + timeout seconds for the sudo prompt; 30 s failed over relayed routes.
+            # No ansible_ssh_retries: a retry after a lost connection can rerun a protected task.
+            "ansible_ssh_timeout": 90}
+
+
+TAILNET_NETWORKS = (ipaddress.ip_network("100.64.0.0/10"), ipaddress.ip_network("fd7a:115c:a1e0::/48"))
+ROUTE_PROBES = 10
+ROUTE_MEDIAN_LIMIT_MS = 400
+# The CLI prints a millisecond-rounded Go duration: "180ms", "1.234s" or "0s".
+PONG = re.compile(r"^pong from \S+ \(\S+\) via (\S+) in (\d+(?:\.\d+)?)(ms|s)$")
+DIRECT_PATH = re.compile(r"^(?:\d{1,3}(?:\.\d{1,3}){3}|\[[0-9A-Fa-f:.]+\]):\d+$")
+
+
+def require_management_route(transport, environment):
+    """Refuse a lossy, slow or unmeasured operator Tailnet route before this node changes."""
+    # CI talks to its own private tailscaled socket and has no operator channel to measure.
+    if os.environ.get("DEPLOY_CI_TAILNET_HANDOFF"):
+        return
+    try:
+        address = ipaddress.ip_address(transport)
+    except ValueError:
+        return  # shortcut: host-name transports are not measured; resolve them here if inventories start using them.
+    address = getattr(address, "ipv4_mapped", None) or address
+    if not any(address in network for network in TAILNET_NETWORKS):
+        return
+    try:
+        status, output = run_command(
+            ["tailscale", "ping", "--until-direct=false", "--c", str(ROUTE_PROBES), "--timeout", "5s", transport],
+            environment=environment, timeout=90, capture=True)
+    except ReadinessError:
+        raise DeployError("management-route-unmeasured") from None
+    replies = [match.groups() for match in map(PONG.match, output.decode(errors="replace").splitlines()) if match]
+    if not replies:
+        raise DeployError("management-route-unmeasured")
+    if len(replies) < ROUTE_PROBES:
+        raise DeployError("management-route-lossy")
+    if status != 0:
+        raise DeployError("management-route-unmeasured")
+    median = statistics.median(float(value) * (1000 if unit == "s" else 1) for _path, value, unit in replies)
+    if median > ROUTE_MEDIAN_LIMIT_MS:
+        raise DeployError("management-route-slow")
+    kind = "direct" if all(DIRECT_PATH.match(path) for path, _value, _unit in replies) else "relayed"
+    print(f"deploy: management route {kind}, median {median:.0f} ms", file=sys.stderr)
 
 
 def prepare_host_playbooks(root, directory, index, host, memberships, metadata, secrets, overrides,
@@ -920,11 +970,14 @@ def controller(mode):
                 wait_for_bootstrap(command[:-1], environment=environment)
                 require_recovery_foundation(
                     command, transactions[host["name"]]["ssh_transaction_bundle_generation"], environment)
+                # Measure before the source recheck so a change during the probe is still caught.
+                if mode == "deploy":
+                    require_management_route(host["transport"], environment)
                 current = source_identity(root, environment, require_clean=mode == "deploy")
                 if current != identity:
                     raise DeployError("source changed during readiness")
                 validate_discovery_paths(root)
-                site = ["ansible-playbook", str(playbooks["site"]), *arguments]
+                site =["ansible-playbook", str(playbooks["site"]), *arguments]
                 if mode == "dry-run":
                     site += ["--check", "--diff"]
                 elif os.environ.get("DEPLOY_TAGS"):
