@@ -16,7 +16,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from jinja2 import Environment, meta
+from jinja2 import Environment, meta, nodes
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -147,10 +147,9 @@ NON_SECRET_TOPLEVEL = {
     "structured_data",
     "watchdog_reality_probes",
     "xray_tcp_ports",
-    # Ansible built-ins
+    # Ansible built-ins; hostvars is checked separately (HOSTVARS_NON_SECRET_KEYS)
     "ansible_check_mode",
     "groups",
-    "hostvars",
     "inventory_hostname",
     "lookup",
 }
@@ -200,13 +199,38 @@ JINJA_ENVIRONMENT.filters = _AnyName(JINJA_ENVIRONMENT.filters)
 JINJA_ENVIRONMENT.tests = _AnyName(JINJA_ENVIRONMENT.tests)
 
 
+# hostvars exposes every variable of every host, secrets included, so a template
+# may read through it only these non-secret inventory keys, each as a literal
+# hostvars[<host>]['<key>'] lookup.
+HOSTVARS_NON_SECRET_KEYS = {"vpn_service_address", "server_ipv6"}
+
+
+def _hostvars_reads_only_listed_keys(tree: nodes.Template) -> bool:
+    uses = sum(1 for name in tree.find_all(nodes.Name) if name.name == "hostvars")
+    listed = sum(
+        1
+        for item in tree.find_all(nodes.Getitem)
+        if isinstance(item.node, nodes.Getitem)
+        and isinstance(item.node.node, nodes.Name)
+        and item.node.node.name == "hostvars"
+        and isinstance(item.arg, nodes.Const)
+        and item.arg.value in HOSTVARS_NON_SECRET_KEYS
+    )
+    return uses == listed
+
+
 def extract_toplevel_vars(template_text: str) -> set[str]:
     """Return every context-supplied identifier the template reads.
 
     The Jinja AST covers output expressions and statements alike, and it
     resolves loop, set, macro and import scopes and raw blocks itself.
+    hostvars is left out only when every read through it is a listed key.
     """
-    return set(meta.find_undeclared_variables(JINJA_ENVIRONMENT.parse(template_text)))
+    tree = JINJA_ENVIRONMENT.parse(template_text)
+    names = set(meta.find_undeclared_variables(tree))
+    if "hostvars" in names and _hostvars_reads_only_listed_keys(tree):
+        names.discard("hostvars")
+    return names
 
 
 def main() -> int:
