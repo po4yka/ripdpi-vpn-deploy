@@ -219,4 +219,4 @@ activation restores the complete prior ingress authority and service state.
 Read-only TLS preflight uses unnamed in-memory descriptors for chain, EKU,
 identity, key-pair and enrolled-client CRL checks, including fresh check mode.
 
-Delivery canaries reserve durable attempt sequences before upstream work. Failed or interrupted attempts do not publish edit freshness; gaps are valid and the next attempt uses new text. The relay retains only one authenticated synthetic drill send receipt in memory, clears it on restart and never records failed sends or resolutions.
+Delivery canaries reserve durable attempt sequences before upstream work. A separate canary lock serializes canaries; the receipt state lock is never held across a Telegram call, so the canary webhook and receipt reads stay within Alertmanager's 5s timeout. Failed or interrupted attempts do not publish edit freshness; gaps are valid and the next attempt uses new text. The relay retains only one authenticated synthetic drill send receipt in memory, clears it on restart and never records failed sends or resolutions.

@@ -394,6 +394,7 @@ class Receipts:
     def __init__(self, path: Path, authority: str = ""):
         self.path = path
         self.lock = threading.Lock()
+        self.canary_lock = threading.Lock()
         self.value = {
             "rule_to_relay_at": 0,
             "edit_sequence": 0,
@@ -473,22 +474,24 @@ class Receipts:
             self.save()
 
     def canary(self, config, now):
-        with self.lock:
-            # Reserve new text before an edit can succeed without a receipt.
-            sequence = self.value["edit_sequence"] + 1
-            self.value["edit_sequence"] = sequence
-            self.value["edit_at"] = 0
-            self.save()
+        # canary_lock serializes canaries; self.lock guards only state and its
+        # file, so a canary webhook or receipt read never waits on Telegram.
+        with self.canary_lock:
+            with self.lock:
+                # Reserve new text before an edit can succeed without a receipt.
+                sequence = self.value["edit_sequence"] + 1
+                self.value["edit_sequence"] = sequence
+                self.value["edit_at"] = 0
+                self.save()
+                message_id = self.value["message_id"]
+                needs_send = not message_id or not 0 <= now - self.value["send_at"] < 86400
             kwargs = dict(
                 api_url=str(config["api_url"]),
                 token=str(config["bot_token"]),
                 chat_id=str(config["chat_id"]),
                 topic_id=int(config["topic_id"]),
             )
-            if (
-                not self.value["message_id"]
-                or not 0 <= now - self.value["send_at"] < 86400
-            ):
+            if needs_send:
                 result = deliver(
                     **kwargs,
                     message=f"Monitoring delivery canary {sequence}",
@@ -500,26 +503,25 @@ class Receipts:
                 )
                 if type(message_id) is not int or message_id <= 0:
                     raise DeliveryFailure("canary-send-receipt")
-                self.value.update(message_id=message_id, send_at=now)
-                self.save()
+                with self.lock:
+                    self.value.update(message_id=message_id, send_at=now)
+                    self.save()
             result = deliver(
                 **kwargs,
                 message=f"Monitoring delivery canary sequence {sequence}",
                 method="editMessageText",
-                message_id=self.value["message_id"],
+                message_id=message_id,
             )
             receipt = result.get("result")
-            if (
-                not isinstance(receipt, dict)
-                or receipt.get("message_id") != self.value["message_id"]
-            ):
+            if not isinstance(receipt, dict) or receipt.get("message_id") != message_id:
                 raise DeliveryFailure("canary-edit-receipt")
-            self.value["edit_at"] = now
-            try:
-                self.save()
-            except OSError:
-                self.value["edit_at"] = 0
-                raise
+            with self.lock:
+                self.value["edit_at"] = now
+                try:
+                    self.save()
+                except OSError:
+                    self.value["edit_at"] = 0
+                    raise
 
 
 class DrillReceipt:
