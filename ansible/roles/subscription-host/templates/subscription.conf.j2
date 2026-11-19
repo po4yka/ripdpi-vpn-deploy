@@ -106,6 +106,28 @@ server {
     }
 {% endif %}
 
+{% if subscription_field_report.enabled | default(false) %}
+    # Anonymous client field reports (docs/reference/ripdpi-bundle.md). The
+    # backend validates, aggregates and discards each report. The body stays
+    # in memory: the buffer equals the size limit, so nginx never writes a
+    # report to a temporary file. No address is forwarded to the backend.
+    location = {{ subscription_field_report.path }} {
+        limit_except POST { deny all; }
+        limit_req zone=vpn_field_report_per_ip burst={{ subscription_field_report.nginx_burst }} nodelay;
+        limit_req_status 429;
+        client_max_body_size {{ subscription_field_report.max_body_bytes }};
+        client_body_buffer_size {{ subscription_field_report.max_body_bytes }};
+
+        proxy_pass http://127.0.0.1:{{ subscription_field_report.listen_port }};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Connection "";
+
+        error_log /dev/null crit;
+        access_log /var/log/nginx/vpn-sub.categorical.log vpn_sub_category;
+    }
+
+{% endif %}
 {% if vpn.share_bundles | default([]) | length > 0 %}
     # Static recipient pages produced by `vpnd share <client>`.
     # Served from the local filesystem; no proxy, no rate-limit (static HTML).

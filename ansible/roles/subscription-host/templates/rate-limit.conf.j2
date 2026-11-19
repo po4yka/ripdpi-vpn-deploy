@@ -1,5 +1,9 @@
 # Per-IP delivery rate limit and bounded categorical diagnostics.
 limit_req_zone $binary_remote_addr zone=vpn_sub_per_ip:10m rate={{ subscription.rate_limit | default('5r/m') }};
+{% if subscription_field_report.enabled | default(false) %}
+# Field reports: a separate per-address zone held in nginx shared memory only.
+limit_req_zone $binary_remote_addr zone=vpn_field_report_per_ip:10m rate={{ subscription_field_report.nginx_rate }};
+{% endif %}
 
 # Never include URI, headers, addresses, or token-bearing fields here.
 log_format vpn_sub_category 'status=$status upstream_status=$upstream_status limit=$limit_req_status';

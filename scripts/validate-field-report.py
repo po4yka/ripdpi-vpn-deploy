@@ -35,6 +35,17 @@ def semantic_errors(report: dict) -> list[str]:
     return errors
 
 
+def violations(report: object, validator) -> list[str]:
+    """Return every contract violation of one parsed report; empty means valid.
+
+    The field-report ingest on the subscription host calls this function, so
+    the CLI and the ingest enforce one contract.
+    """
+    errors = [f"schema: {error.validator} constraint failed at /{'/'.join(map(str, error.absolute_path))}"
+              for error in sorted(validator.iter_errors(report), key=lambda e: list(map(str, e.absolute_path)))]
+    return errors or semantic_errors(report)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("report_file", nargs="?", help="Field report JSON. Defaults to the golden report.")
@@ -54,11 +65,7 @@ def main() -> int:
         print("validate-field-report: malformed JSON input", file=sys.stderr)
         return 1
 
-    validator = jsonschema.Draft202012Validator(json.loads(SCHEMA.read_text()))
-    errors = [f"schema: {error.validator} constraint failed at /{'/'.join(map(str, error.absolute_path))}"
-              for error in sorted(validator.iter_errors(report), key=lambda e: list(map(str, e.absolute_path)))]
-    if not errors:
-        errors = semantic_errors(report)
+    errors = violations(report, jsonschema.Draft202012Validator(json.loads(SCHEMA.read_text())))
     if errors:
         print(f"validate-field-report: {len(errors)} violation(s) in {target}:", file=sys.stderr)
         for message in errors:

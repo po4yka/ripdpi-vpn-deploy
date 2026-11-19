@@ -251,6 +251,14 @@
     daemon_reload: true
   when: not ansible_check_mode or _subscription_unit_existing.stdout == 'loaded'
 
+- name: Install anonymous client field-report ingest
+  ansible.builtin.import_tasks: field-report.yml
+  when: subscription_field_report.enabled | bool
+
+- name: Retire disabled client field-report ingest
+  ansible.builtin.import_tasks: field-report-disable.yml
+  when: not (subscription_field_report.enabled | bool)
+
 # ---------------------------------------------------------------------------
 # Share-bundle ingest — operator-uploaded recipient pages at /share/<token>/
 # ---------------------------------------------------------------------------

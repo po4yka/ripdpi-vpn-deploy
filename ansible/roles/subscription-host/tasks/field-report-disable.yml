@@ -1,0 +1,29 @@
+---
+# Retire the field-report ingest. Aggregates are not retained.
+- name: Inspect field-report ingest unit
+  ansible.builtin.stat:
+    path: /etc/systemd/system/vpn-field-report.service
+  register: _subscription_field_report_unit_file
+
+- name: Stop and disable field-report ingest
+  ansible.builtin.systemd_service:
+    name: vpn-field-report.service
+    enabled: false
+    state: stopped
+  when: _subscription_field_report_unit_file.stat.exists
+
+- name: Remove field-report ingest files and aggregate textfile
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/vpn-field-report.service
+    - /etc/vpn-field-report
+    - /usr/local/lib/vpn-field-report
+    - "{{ (monitoring | default({})).node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/vpn_field_report.prom"
+  register: _subscription_field_report_removed
+
+- name: Reload systemd after field-report ingest retirement
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: not ansible_check_mode and _subscription_field_report_removed.changed

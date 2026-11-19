@@ -1,4 +1,7 @@
 ---
+- name: Retire client field-report ingest with the role
+  ansible.builtin.import_tasks: field-report-disable.yml
+
 - name: Inspect exact owned units before retirement
   ansible.builtin.command:
     argv:

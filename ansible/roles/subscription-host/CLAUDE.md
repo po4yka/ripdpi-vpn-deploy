@@ -40,6 +40,8 @@ log for successful delivery, expiry/revocation, stopped upstreams, rate limits
 and malformed paths.
 
 
+**Field reports are aggregated and discarded** — the opt-in `vpn-field-report.service` (`subscription_field_report.enabled`) validates each report with the copied `scripts/validate-field-report.py`, adds it to in-memory counters and writes only `vpn_field_report.prom` to the node_exporter textfile. It never logs a request and forwards no address; nginx keeps the body in memory and applies the per-address limit. Its rate limit is process-wide, so it holds no client state. The cohort tokens come from the SOPS key `field_report` as a `LoadCredential` file; a token change restarts the unit. Counters reset on restart; the asn/country top-N starts empty, so the first window after a restart labels every network `other`.
+
 **v1 = nginx vhost with static payloads** — `/sub/<token>` returns the
 client's sing-box JSON; `/bootstrap/<token>` is a one-time provisioning URL.
 Revocation + rate-limit (v1.2) is a thin Lua module on top.

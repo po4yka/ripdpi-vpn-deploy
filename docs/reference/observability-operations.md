@@ -169,7 +169,7 @@ Every observability data class has one finite retention. The values below are th
 | Service logs | time | `7 daily rotations` | `logrotate-xray.j2` and `logrotate-nginx.j2` (`daily`, `rotate 7`) |
 | Journal | time | `14day` | `monitoring.journald_max_retention` as `MaxRetentionSec` |
 | Journal | size | `1G` | `monitoring.journald_system_max_use` as `SystemMaxUse` |
-| Field-report raw report | time | `none` | no raw report store exists; the field-report ingest (`SEC-1795086333272606`) must discard each report after aggregation |
+| Field-report raw report | time | `none` | no raw report store exists; the ingest (`vpn-field-report.service`) keeps the body in memory, aggregates it and discards it, and nginx buffers the body in memory (`client_body_buffer_size` equals the size limit) |
 | Field-report aggregates | time | `7d` | stored only as Prometheus series, so they inherit the TSDB retention |
 
 Retention cleanup is not part of disabling a role: disable keeps the TSDB, queues and journals until their own bounds expire them.

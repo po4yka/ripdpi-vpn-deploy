@@ -1,0 +1,51 @@
+[Unit]
+Description=Anonymous client field-report ingest (aggregate only)
+Documentation=https://github.com/po4yka/ripdpi-vpn-deploy/blob/main/docs/reference/ripdpi-bundle.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vpn-field-report
+Group=vpn-field-report
+SupplementaryGroups={{ (monitoring | default({})).node_exporter_textfile_group | default('node_exporter_textfile') }}
+# The cohort tokens arrive as a credential, never on the command line or in the environment.
+LoadCredential=cohort-tokens:/etc/vpn-field-report/cohort-tokens.json
+ExecStart=/usr/bin/python3 -I -B /usr/local/lib/vpn-field-report/vpn-field-report.py --config /etc/vpn-field-report/config.json --tokens %d/cohort-tokens
+Restart=on-failure
+RestartSec=5s
+UMask=0022
+# Aggregates live in memory; a runaway process is stopped instead of swapping.
+MemoryMax=128M
+TasksMax=8
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths={{ (monitoring | default({})).node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectClock=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET
+IPAddressDeny=any
+IPAddressAllow=localhost
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+
+[Install]
+WantedBy=multi-user.target

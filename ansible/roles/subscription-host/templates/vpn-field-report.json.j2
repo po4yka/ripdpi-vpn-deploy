@@ -1,0 +1,17 @@
+{{ {
+  'listen': '127.0.0.1',
+  'port': subscription_field_report.listen_port | int,
+  'path': subscription_field_report.path,
+  'max_body_bytes': subscription_field_report.max_body_bytes | int,
+  'rate_per_second': subscription_field_report.app_rate_per_second | float,
+  'rate_burst': subscription_field_report.app_burst | int,
+  'min_attempts': subscription_field_report.min_attempts | int,
+  'asn_top_n': subscription_field_report.asn_top_n | int,
+  'country_top_n': subscription_field_report.country_top_n | int,
+  'max_series': subscription_field_report.max_series | int,
+  'window_seconds': subscription_field_report.window_seconds | int,
+  'server_refs': subscription_field_report.server_refs | list,
+  'textfile': (monitoring | default({})).node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') ~ '/vpn_field_report.prom',
+  'schema': '/usr/local/lib/vpn-field-report/client-field-report.schema.json',
+  'validator': '/usr/local/lib/vpn-field-report/validate_field_report.py',
+} | to_nice_json(indent=2) }}
