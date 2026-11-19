@@ -144,6 +144,12 @@ Opt-in client field reports show that more than the configured share of attempts
 
 First check: Compare with the protocol probe for this protocol. If the probe is healthy, read the failure stages for this network before you rotate.
 
+### field-report-network-block
+
+The sentinel probe sees the protocol healthy on every node and vantage, while client field reports from one network (ASN) fail above the block ratio with at least the block attempts floor for the hold time. The network blocks this path; the server is not down. `stage_mix` lists the failure stages for that network, and `rotation_hint` names the advisory action. Thresholds are in `docs/reference/observability-operations.md`.
+
+First check: Read stage_mix and rotation_hint, then run fleet-rotate in PLAN mode with --block-hints. You decide on any rotation.
+
 ### producer-evidence
 
 A node or collector adapter has not published valid evidence. Monitoring health is unknown for this source.

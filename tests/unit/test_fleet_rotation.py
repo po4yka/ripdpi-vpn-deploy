@@ -131,6 +131,59 @@ def test_dry_run_has_no_state_or_health_reads(rotation, plan, tmp_path, monkeypa
     assert not (tmp_path / ".omc").exists()
 
 
+BLOCKED_ALERT = {
+    "labels": {"alertname": "FieldReportNetworkBlocked", "protocol": "xhttp", "asn": "64500", "country": "ZZ"},
+    "annotations": {"stage_mix": "tls_handshake=3000 tcp_reset=1200 ",
+                    "rotation_hint": "AS64500 blocks xhttp while the sentinel sees it healthy."},
+}
+
+
+@pytest.mark.parametrize("document", [
+    [{**BLOCKED_ALERT, "status": {"state": "active"}}, {"labels": {"alertname": "Other"}, "status": {"state": "active"}}],
+    {"data": {"alerts": [{**BLOCKED_ALERT, "state": "firing"}, {**BLOCKED_ALERT, "state": "pending"}]}},
+], ids=["alertmanager", "prometheus"])
+def test_plan_mode_shows_block_hints_and_starts_no_rotation(rotation, plan, tmp_path, monkeypatch, capsys, document):
+    hints = tmp_path / "alerts.json"
+    hints.write_text(json.dumps(document))
+    monkeypatch.setattr(rotation, "healthy_survivors", lambda *_: pytest.fail("health in dry-run"))
+    monkeypatch.setattr(rotation, "execute_rotation", lambda *_: pytest.fail("rotation from a hint"))
+    monkeypatch.setattr(rotation, "audit", lambda *_: pytest.fail("audit from a hint"))
+    assert rotation.run_plan(plan, root=tmp_path, dry_run=True, hints=hints) == 0
+    out = capsys.readouterr().out
+    assert "blocked-network hints (advisory; nothing is rotated from them): 1\n" in out
+    assert ("  hint: xhttp blocked in AS64500 (ZZ); stages tls_handshake=3000 tcp_reset=1200; "
+            "AS64500 blocks xhttp while the sentinel sees it healthy.\n") in out
+    assert not (tmp_path / ".omc").exists()
+
+
+def test_block_hints_are_refused_outside_plan_mode(rotation, plan, tmp_path, monkeypatch):
+    hints = tmp_path / "alerts.json"
+    hints.write_text("[]")
+    monkeypatch.setattr(rotation, "execute_rotation", lambda *_: pytest.fail("rotation started"))
+    with pytest.raises(rotation.RotationError, match="block-hints-require-dry-run"):
+        rotation.run_plan(plan, root=tmp_path, hints=hints, confirm=lambda _: True)
+    assert not (tmp_path / ".omc").exists()
+
+
+@pytest.mark.parametrize("field", ["protocol", "stage_mix"])
+def test_block_hint_fields_with_control_characters_are_not_printed(rotation, plan, tmp_path, capsys, field):
+    alert = json.loads(json.dumps(BLOCKED_ALERT))
+    (alert["labels"] if field == "protocol" else alert["annotations"])[field] = "x\x1b[2Jy"
+    hints = tmp_path / "alerts.json"
+    hints.write_text(json.dumps([{**alert, "status": {"state": "active"}}]))
+    assert rotation.run_plan(plan, root=tmp_path, dry_run=True, hints=hints) == 0
+    out = capsys.readouterr().out
+    assert "\x1b" not in out and "unprintable fields" in out
+
+
+@pytest.mark.parametrize("text", ["{bad", '{"data": {}}', "[1]", '[{"labels": []}]'])
+def test_malformed_block_hints_refuse(rotation, plan, tmp_path, text):
+    hints = tmp_path / "alerts.json"
+    hints.write_text(text)
+    with pytest.raises(rotation.RotationError, match="block-hints-invalid"):
+        rotation.run_plan(plan, root=tmp_path, dry_run=True, hints=hints)
+
+
 @pytest.mark.parametrize("document", ["{}", '{"next_idx":1}', '{"schema_version":1,"next_idx":-1}', '{bad'])
 def test_legacy_or_malformed_journal_preserved(rotation, plan, tmp_path, document):
     path = journal_path(tmp_path)

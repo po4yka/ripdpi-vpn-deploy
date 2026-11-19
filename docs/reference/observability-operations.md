@@ -149,8 +149,22 @@ The authoritative family allowlist is `contract/observability-metric-manifest.ex
 | `vpn_protocol_probe_*` | per-protocol authenticated sentinel probe: success gauge, observed timestamp and cumulative latency histogram, labels `protocol`, `node`, `vantage` | adapted from published liveness evidence; a stale or `unknown` verdict publishes no success value, and `ObservabilityProtocolProbeStale` fires when a series stops for more than twice the evidence window |
 | `vpn_awg_handshake_*`, `vpn_awg_peers*` | opt-in AmneziaWG exporter: total peers and peers with a fresh handshake | aggregate counts only; no peer key, address, interface or per-peer series |
 | `vpn_hysteria_traffic_*`, `vpn_hysteria_*_bytes_total`, `vpn_hysteria_online_connections` | opt-in Hysteria2 exporter over the loopback Traffic Stats API | summed bytes and connection count only; no user identifier |
+| `vpn_field_report_*` | opt-in subscription-host ingest of anonymous client field reports: attempts and failures by `protocol`, `failure_stage`, `asn`, `country`, `server_ref`, a latency histogram by `protocol`, accepted reports and dropped buckets | aggregates of client-reported outcomes behind a shared cohort token; a token holder can skew them, and the ingest keeps no report, address or token |
 
 The checked alert catalog is rendered from `observability-alert-rules.yml.j2` and `observability-expected-target-rules.yml.j2`. It covers watchdog evidence and unresolved recovery, backup freshness/stage failure/restore readiness, the synthetic pipeline watchdog, required-family or expected-target absence, target staleness, source identity mismatch, and control-plane resource/pipeline health. Generated required-family alert names bind the exact expected target, role and family. A missing series stays an absence incident; it is not a resolved notification. `ObservabilityBackupStageFailed` alone inhibits its derivative stale-evidence alert for the same node and component.
+
+### Field-report alerts and the network-block decision
+
+Two rules read the field-report families. Both label the stream `node="field-reports"`, because reports from every subscription host of the environment count together. Thresholds are `observability_control_plane.field_report` keys with defaults that favour silence:
+
+| Rule | Fires when | Defaults |
+|---|---|---|
+| `FieldReportClientFailureRatioHigh` | the client failure ratio for a protocol and ASN exceeds `failure_ratio` over `window` with at least `min_attempts` attempts, for `hold` | `0.5`, `1h`, `50`, `15m` |
+| `FieldReportNetworkBlocked` | the same ratio exceeds `block_ratio` with at least `block_min_attempts` attempts over `block_window`, and `vpn_protocol_probe_success` is 1 for that protocol on every node and vantage, for `block_hold` | `0.5`, `100`, `1h`, `30m` |
+
+`FieldReportNetworkBlocked` stays silent while any sentinel series for the protocol is 0 or missing, so a server outage stays with the protocol probe and liveness alerts; the client failure alert can still fire then. Its labels add the network's dominant `country`; its annotations carry `stage_mix` (failure stages for that network over the window) and `rotation_hint`.
+
+Decision flow: the alert is advisory. Read `stage_mix` and `rotation_hint` ([runbook](../how-to/monitoring-alerts.md#field-report-network-block)), export the active alerts (Alertmanager `/api/v2/alerts` or Prometheus `/api/v1/alerts` JSON) through the approved operator path, and run `scripts/fleet-rotate.sh --plan FILE --dry-run --block-hints ALERTS.json`. PLAN mode prints each hint beside the plan and changes nothing; `--block-hints` without `--dry-run` is refused. Any rotation stays a separate operator decision under `fleet-health-rotation`.
 
 Before deployment, validate the manifest, expected inventory, rendered rules and templates together. A Prometheus query result proves central evaluation; it does not prove a sender captured current input or that Telegram delivered a message.
 
