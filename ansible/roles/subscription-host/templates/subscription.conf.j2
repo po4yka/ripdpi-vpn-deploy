@@ -120,10 +120,11 @@ server {
         client_body_buffer_size {{ subscription_field_report.max_body_bytes }};
 
         proxy_pass http://unix:/run/vpn-field-report.sock:;
-        # An unknown token gets the vhost's uniform not-found answer, so a probe without the cohort
-        # token cannot tell this route from any other path.
+        # An unknown token or a refused method gets the vhost's uniform not-found answer, so a probe
+        # without the cohort token cannot tell this route from any other path by 401 or 403. 400, 413
+        # and 429 stay distinct: the path is published in every bundle, so hiding it is not the goal.
         proxy_intercept_errors on;
-        error_page 401 = @vpn_sub_not_found;
+        error_page 401 403 = @vpn_sub_not_found;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header Connection "";
@@ -146,10 +147,11 @@ server {
         limit_req_status 429;
 
         proxy_pass http://unix:/run/vpn-field-report.sock:;
-        # An unknown token gets the vhost's uniform not-found answer, so a probe without the cohort
-        # token cannot tell this route from any other path.
+        # An unknown token or a refused method gets the vhost's uniform not-found answer, so a probe
+        # without the cohort token cannot tell this route from any other path by 401 or 403. 400, 413
+        # and 429 stay distinct: the path is published in every bundle, so hiding it is not the goal.
         proxy_intercept_errors on;
-        error_page 401 = @vpn_sub_not_found;
+        error_page 401 403 = @vpn_sub_not_found;
         proxy_http_version 1.1;
         proxy_pass_request_body off;
         proxy_set_header Host $host;

@@ -211,9 +211,9 @@
           Authorization: "Bearer {{ item.token }}"
       loop:
         - {method: POST, token: "{{ field_report.cohort_token }}", status: 202}
-        # An unknown token gets the vhost's uniform not-found answer.
+        # An unknown token and a refused method get the vhost's uniform not-found answer.
         - {method: POST, token: "{{ field_report.previous_cohort_token }}", status: 404}
-        - {method: GET, token: "{{ field_report.cohort_token }}", status: 403}
+        - {method: GET, token: "{{ field_report.cohort_token }}", status: 404}
       loop_control:
         label: "{{ item.method }} {{ item.status }}"
       no_log: true
