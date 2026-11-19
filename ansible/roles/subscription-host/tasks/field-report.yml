@@ -28,7 +28,7 @@
     quiet: true
   no_log: true
 
-- name: Ensure node_exporter textfile writer group for the field-report ingest
+- name: Ensure node_exporter textfile writer group for the shared textfile directory
   ansible.builtin.group:
     name: "{{ (monitoring | default({})).node_exporter_textfile_group | default('node_exporter_textfile') }}"
     system: true
@@ -41,7 +41,7 @@
     home: /nonexistent
     create_home: false
 
-- name: Ensure shared node_exporter textfile directory for the field-report ingest
+- name: Ensure shared node_exporter textfile directory for the field-report link
   ansible.builtin.file:
     path: "{{ (monitoring | default({})).node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}"
     state: directory
@@ -119,3 +119,16 @@
     daemon_reload: true
   # A fresh check-mode host has no unit to start yet; the planned install above shows the change.
   when: not (ansible_check_mode and _subscription_field_report_unit.changed)
+
+# The ingest writes its aggregate in its own state directory and has no write access to the shared
+# textfile directory; node_exporter follows this root-owned link. force replaces the regular file
+# that an earlier ingest version wrote here.
+- name: Link the field-report aggregate into the node_exporter textfile directory
+  ansible.builtin.file:
+    src: /var/lib/vpn-field-report/vpn_field_report.prom
+    dest: "{{ (monitoring | default({})).node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/vpn_field_report.prom"
+    state: link
+    owner: root
+    group: root
+    force: true
+    follow: false
