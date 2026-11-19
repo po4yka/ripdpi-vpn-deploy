@@ -48,6 +48,10 @@
       - >-
         observability_control_plane.ingest_identities | map(attribute='node_id') |
         list | unique | length == observability_control_plane.ingest_identities | length
+      # The relay admits field reports only from these enrolled identities.
+      - >-
+        (observability_control_plane.field_report | default({})).source_nodes | default([]) |
+        difference(observability_control_plane.ingest_identities | map(attribute='node_id') | list) | length == 0
     fail_msg: >-
       observability_control_plane requires exact bounded receiver settings,
       pinned Prometheus and node-label relay archives, private ingress IP SAN identity,

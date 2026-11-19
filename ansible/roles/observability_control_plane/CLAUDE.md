@@ -109,9 +109,11 @@ existence and do not need read access to its contents.
 When explicitly enabled, expected targets are validated from a repository
 inventory and rendered as bounded contract metrics; source/deploy identity,
 TSDB capacity, and pipeline status use the existing bounded evidence families.
-The relay keeps payload `node` only for `vpn_protocol_probe_*` whose ingress label
-holds the collector's own agent identity, so probe series name the probed node;
-other senders cannot.
+The relay drops `vpn_protocol_probe_*` from every identity except the collector's
+own agent, whose probe series keep the probed node, and drops `vpn_field_report_*`
+from every identity outside `field_report.source_nodes`; the field-report rules read
+only those nodes too. `vpn_awg_*` and `vpn_hysteria_*` describe their sender, which
+every node may send under its own certificate identity.
 The protocol-liveness adapter consumes only the canonical evaluator's published
 redacted evidence. It maps that evidence to bounded one-hot metrics and never
 executes probes or recomputes sentinel, variant, profile, or quorum semantics.
