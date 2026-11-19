@@ -110,6 +110,11 @@ def test_enabled_field_reports_publish_only_the_client_fields():
         "endpoint": "https://sub.example.test:8444/v1/field-report", "cohort_token": "a" * 43, "max_reports_per_day": 4}
     with pytest.raises(ValueError, match="invalid-field-report-config"):
         bundle_health.field_report_block({"field_report": {**source, "endpoint": "http://sub.example.test/v1/field-report"}})
+    hinted = {**source, "network_hint_endpoint": "https://sub.example.test:8444/v1/network-hint"}
+    assert bundle_health.field_report_block({"field_report": hinted})["network_hint_endpoint"] == \
+        "https://sub.example.test:8444/v1/network-hint"
+    with pytest.raises(ValueError, match="invalid-field-report-config"):
+        bundle_health.field_report_block({"field_report": {**hinted, "network_hint_endpoint": "http://sub.example.test/v1/network-hint"}})
 
 
 def _rerun_emit(tmp_path: Path, extra_env: dict, field_report: dict | None) -> subprocess.CompletedProcess:

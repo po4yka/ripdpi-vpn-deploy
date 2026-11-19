@@ -149,4 +149,10 @@ def field_report_block(document: dict) -> dict | None:
             or not isinstance(token, str) or not TOKEN.fullmatch(token)
             or type(per_day) is not int or not 1 <= per_day <= 24):
         raise ValueError("invalid-field-report-config")
-    return {"endpoint": endpoint, "cohort_token": token, "max_reports_per_day": per_day}
+    block = {"endpoint": endpoint, "cohort_token": token, "max_reports_per_day": per_day}
+    hint = source.get("network_hint_endpoint")
+    if hint is not None:
+        if not isinstance(hint, str) or not re.fullmatch(r"https://[^\s/?#@]+(/[^\s#]*)?", hint):
+            raise ValueError("invalid-field-report-config")
+        block["network_hint_endpoint"] = hint
+    return block

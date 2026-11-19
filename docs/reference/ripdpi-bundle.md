@@ -71,17 +71,18 @@ The tag prefix selects the sentinel profile (`p0-reality-`, `p1-xhttp-`, `p2-hys
 
 ## `ripdpi.field_report`
 
-Optional opt-in configuration for anonymous client field reports. Absent when the operator has not enabled field reports. The generator copies `endpoint`, `cohort_token` and `max_reports_per_day` from the SOPS key `field_report` when `field_report.enabled` is true; the previous token never reaches a bundle. All fields are required:
+Optional opt-in configuration for anonymous client field reports. Absent when the operator has not enabled field reports. The generator copies `endpoint`, `cohort_token`, `max_reports_per_day` and the optional `network_hint_endpoint` from the SOPS key `field_report` when `field_report.enabled` is true; the previous token never reaches a bundle. All fields except `network_hint_endpoint` are required:
 
 | Field | Type | Rule |
 |---|---|---|
 | `endpoint` | string | `https://` URL without userinfo, whitespace or fragment; plain `http` is rejected. |
 | `cohort_token` | string | 22 to 64 base64url characters. One token is shared by every device of a cohort and never derives from a device identity. |
 | `max_reports_per_day` | integer | 1 to 24. |
+| `network_hint_endpoint` | string | Optional. `https://` URL of the [network hint](#client-network-hint-v1), same rules as `endpoint`. Absent: the client sends only `network.source` `sim` or `none`. |
 
 ## Client field report v1
 
-[`contract/client-field-report.schema.json`](../../contract/client-field-report.schema.json) is the canonical contract for one report, checked by `scripts/validate-field-report.py`. [`contract/client-field-report.golden.json`](../../contract/client-field-report.golden.json) is the golden report; `contract/negative/report-*.json` are the rejected cases. RIPDPI vendors the schema and fixtures byte-identically. Every object sets `additionalProperties: false`.
+[`contract/client-field-report.schema.json`](../../contract/client-field-report.schema.json) is the canonical contract for one report, checked by `scripts/validate-field-report.py`. [`contract/client-field-report.golden.json`](../../contract/client-field-report.golden.json) is the golden `server_hint` report and [`contract/client-field-report.golden-sim.json`](../../contract/client-field-report.golden-sim.json) the golden `sim` report; `contract/negative/report-*.json` are the rejected cases. RIPDPI vendors the schema and fixtures byte-identically. Every object sets `additionalProperties: false`.
 
 | Field | Rule |
 |---|---|
@@ -90,12 +91,22 @@ Optional opt-in configuration for anonymous client field reports. Absent when th
 | `window.duration_hours` | 1 to 24. |
 | `client.app_version` | `major.minor` only. |
 | `client.platform` | `android`. |
-| `network.asn` | Integer 1 to 4294967295. |
-| `network.country` | ISO 3166-1 alpha-2, upper case. |
+| `network.source` | Required. Where the network identity came from: `sim`, `server_hint` or `none`. |
+| `network.operator` | `{mcc, mnc}`: MCC 3 digits, MNC 2 or 3 digits, both strings. Only with `source` `sim`. |
+| `network.asn` | Integer 1 to 4294967295. Only with `source` `server_hint`, where it is required. |
+| `network.country` | Optional. ISO 3166-1 alpha-2, upper case. |
 | `network.network_type` | One of three link classes, listed below the table. |
 | `buckets[]` | 1 to 256 buckets. |
 
 The `network_type` values are `wifi`, `cellular` and `other`.
+
+The client never looks up its own ASN or public address. The network identity comes from one source, named by `network.source`:
+
+- `sim`: the SIM or registered network operator code (`TelephonyManager`, no network request). It requires `operator`, forbids `asn` and requires `network_type` `cellular`, because the SIM code does not describe a Wi-Fi path.
+- `server_hint`: the `asn` (and usually `country`) of a fresh [network hint](#client-network-hint-v1). It requires `asn` and forbids `operator`.
+- `none`: no identity. It forbids both `asn` and `operator`.
+
+The schema enforces these rules with `if`/`then` on `network.source`; `contract/negative/report-*source*`, `report-sim-*`, `report-server-hint-*`, `report-none-*` and `report-operator-*` are the rejected cases.
 
 Each bucket has `server_ref` (the bundle `endpoints` key), `protocol` (`vless-reality`, `xhttp`, `hysteria2`, `amneziawg`, `naiveproxy` or `local-desync`), `outcome` (`success` or `failure`), `attempts` and `latency_ms_histogram`. `failure_stage` is present if and only if `outcome` is `failure`; it is one of `dns`, `tcp_connect`, `tcp_reset`, `tls_handshake`, `reality_auth`, `quic_handshake`, `proxy_auth`, `protocol_error`, `idle_timeout`, `throttled` or `unknown`.
 
@@ -116,6 +127,20 @@ The client sends one report as `POST` to `field_report.endpoint` with `Content-T
 | `429` | The per-address nginx rate is exceeded. The ingest has no second rate limit. |
 
 The whole report is validated first; an invalid report changes no counter. In an accepted report, a bucket under `subscription_field_report.min_attempts` attempts (5 or more) is dropped and counted in `vpn_field_report_dropped_buckets_total`, and the rest is aggregated. Because the contract already rejects a bucket under 5 attempts, a report that holds one is refused with `400`. Every `pattern` anchors at the end of input as in ECMA-262: the validator does not accept a trailing newline that Python's `$` would admit. The ingest exports only aggregate counters with the labels `protocol`, `failure_stage`, `asn`, `country` and `server_ref`. `asn` and `country` keep their value only when it was in the top N of the previous window (`asn_top_n` 20, `country_top_n` 10), otherwise `other`; `server_ref` keeps its value only when it is in `subscription_field_report.server_refs`, otherwise `other`. A label-set budget (`max_series`) folds further new sets into `other`. No address, token or body is written to a log, a metric or a file.
+
+## Client network hint v1
+
+[`contract/client-network-hint.schema.json`](../../contract/client-network-hint.schema.json) is the canonical response of `GET field_report.network_hint_endpoint`; [`contract/client-network-hint.golden.json`](../../contract/client-network-hint.golden.json) is the golden hint and `contract/negative/hint-*.json` are the rejected cases. The client sends the request with `Authorization: Bearer <cohort_token>` directly over the device network, not through the tunnel, at the same time it fetches the bundle. It discards a hint that was fetched through the tunnel, because that hint names the VPN node's network.
+
+| Field | Rule |
+|---|---|
+| `schema_version` | `1`. |
+| `asn` | Integer 1 to 4294967295. |
+| `country` | ISO 3166-1 alpha-2 registration country of the ASN, upper case. |
+| `observed_at` | Lookup time in UTC, rounded down to the hour. |
+| `ttl_seconds` | 300 to 86400. After `observed_at` plus `ttl_seconds` the client stops using the hint and sends `source` `sim` or `none`. |
+
+The subscription host answers `200` with this body, `204` with no body when the request address has no routed ASN in its offline dataset, `401` for an unknown token, `400` when the request carries a client forwarding header, and `429` over the per-address rate. The response never holds the request address.
 
 **Forbidden data:** a report never carries an IP address, a device or user identifier, a subscription token, a hostname or a timestamp finer than the hour. The schema rejects them: no field can hold them, and `server_ref` and `start_utc` patterns reject an IPv4, IPv6 or hostname value and nonzero minutes or seconds. Validator diagnostics name the failed constraint and its path, never the rejected value.
 
