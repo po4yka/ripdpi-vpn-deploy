@@ -107,6 +107,13 @@ subscription_field_report:
   nginx_burst: 20
   # Buckets under this many attempts are dropped and counted.
   min_attempts: 5
+  # Reports are unauthenticated client input under one shared cohort token.
+  # One report adds at most this many attempts; a larger report is scaled
+  # down and counted in vpn_field_report_capped_reports_total.
+  max_attempts_per_report: 1000
+  # A network needs this many accepted reports in a window, not one large
+  # report, before the next window labels it by its own asn or country.
+  top_n_min_reports: 3
   # asn/country label a value only when it was in the top N of the previous
   # window; every other value is "other".
   asn_top_n: 20

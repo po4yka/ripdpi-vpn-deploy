@@ -768,6 +768,34 @@
       "alert_use": true
     },
     {
+      "name": "vpn_field_report_capped_reports_total",
+      "owner": "subscription_host",
+      "type": "counter",
+      "unit": null,
+      "labels": [
+        "node"
+      ],
+      "max_series": 8,
+      "cadence_seconds": 60,
+      "stale_after_seconds": 180,
+      "alert_use": false
+    },
+    {
+      "name": "vpn_field_report_network_reports_total",
+      "owner": "subscription_host",
+      "type": "counter",
+      "unit": null,
+      "labels": [
+        "node",
+        "protocol",
+        "asn"
+      ],
+      "max_series": 512,
+      "cadence_seconds": 60,
+      "stale_after_seconds": 180,
+      "alert_use": true
+    },
+    {
       "name": "vpn_field_report_attempts_total",
       "owner": "subscription_host",
       "type": "counter",
