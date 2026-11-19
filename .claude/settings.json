@@ -15,9 +15,13 @@
       "Edit(/vpnd/tests/**/*.py)"
     ],
     "deny": [
-      "Read(./secrets/local/*/*/**)",
-      "Read(./secrets/local/README.md)",
-      "Read(./secrets/local/.*)",
+      "Read(./secrets/local/keys/**)",
+      "Read(./secrets/local/recovery/**)",
+      "Read(./secrets/local/state-backups/**)",
+      "Read(./secrets/local/**/recipient.json)",
+      "Read(./secrets/local/**/*.conf)",
+      "Read(./secrets/local/**/*config.txt)",
+      "Read(./secrets/local/**/links.txt)",
       "Read(.env)",
       "Read(.envrc)",
       "Read(**/*.tfstate)",
