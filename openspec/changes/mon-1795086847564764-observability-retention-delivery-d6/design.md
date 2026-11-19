@@ -25,3 +25,10 @@ Existing limits: collector `MemoryMax`, finite collector retention and a pinned 
 ## Migration Plan
 
 Forward only. Rollback reverts the table and flags. The delivery drill sends one test message.
+
+## Implementation notes
+
+- Every data class already had a finite bound in the rendered configuration; no retention flag was missing. The journald values moved from literals in the monitoring task to `monitoring.journald_system_max_use` and `monitoring.journald_max_retention` with the same defaults, so every row of the table is a role variable or a pinned template value.
+- The receipt is the `deliveryReceipt` definition in `contract/observability-evidence.schema.json`. `observability-operator.py drill --receipt PATH` (Make: `OBSERVABILITY_DRILL_RECEIPT`) writes it only after the existing exact-nonce relay receipt is proven, from the Telegram message id that the relay reports.
+- Dependency: the relay (`observability-telegram-relay.py`, owned by `MON-1794126016474351`) does not yet return the Telegram message id in its drill receipt, although it already reads it from the Bot API reply. Until that change lands, `--receipt` refuses with "delivery receipt lacks a Telegram message id" and the drill itself keeps its current result. This change does not edit the relay.
+- Field-report raw retention is `none` by contract; no ingest exists yet, so the listing scenario of REQ-RET-FIELDREPORT is proven by the D2 ingest tests when D2 lands.
