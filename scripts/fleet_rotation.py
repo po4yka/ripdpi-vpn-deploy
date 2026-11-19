@@ -321,7 +321,8 @@ def block_hints(path):
         document = json.loads(read_regular(path))
     except (ValueError, RecursionError):
         raise RotationError("block-hints-invalid") from None
-    alerts = document.get("data", {}).get("alerts") if isinstance(document, dict) else document
+    data = document.get("data") if isinstance(document, dict) else None
+    alerts = data.get("alerts") if isinstance(data, dict) else document if isinstance(document, list) else None
     if not isinstance(alerts, list):
         raise RotationError("block-hints-invalid")
     lines = []
@@ -333,8 +334,9 @@ def block_hints(path):
         state = alert.get("state") or (status.get("state") if isinstance(status, dict) else None)
         if labels.get("alertname") != "FieldReportNetworkBlocked" or state not in ("firing", "active"):
             continue
+        stage_mix = annotations.get("stage_mix", "")
         fields = [labels.get("protocol"), labels.get("asn"), labels.get("country"),
-                  annotations.get("stage_mix", "").strip() or "-", annotations.get("rotation_hint")]
+                  (stage_mix.strip() or "-") if isinstance(stage_mix, str) else stage_mix, annotations.get("rotation_hint")]
         if not all(isinstance(field, str) and HINT_TEXT.match(field) for field in fields):
             lines.append("  hint: one blocked-network alert has unprintable fields; read it in the alert panel")
             continue
