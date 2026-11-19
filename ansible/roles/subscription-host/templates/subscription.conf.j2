@@ -126,6 +126,35 @@ server {
         error_log /dev/null crit;
         access_log /var/log/nginx/vpn-sub.categorical.log vpn_sub_category;
     }
+{% if subscription_field_report.network_hint.enabled | default(false) %}
+
+    # Network hint (contract/client-network-hint.schema.json): the ASN of the TCP peer address.
+    # The vhost has no real_ip module setting, so $remote_addr is the peer; nginx replaces any
+    # client copy of the peer header and sends no forwarding header, and a request that carries
+    # one is refused before the backend sees it. The categorical log holds no address.
+    location = {{ subscription_field_report.network_hint.path }} {
+        limit_except GET { deny all; }
+        if ($vpn_network_hint_forwarded) {
+            return 400;
+        }
+        limit_req zone=vpn_network_hint_per_ip burst={{ subscription_field_report.network_hint.nginx_burst }} nodelay;
+        limit_req_status 429;
+
+        proxy_pass http://127.0.0.1:{{ subscription_field_report.listen_port }};
+        proxy_http_version 1.1;
+        proxy_pass_request_body off;
+        proxy_set_header Host $host;
+        proxy_set_header Connection "";
+        proxy_set_header Content-Length "";
+        proxy_set_header X-Network-Hint-Peer $remote_addr;
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header Forwarded "";
+        proxy_set_header X-Real-IP "";
+
+        error_log /dev/null crit;
+        access_log /var/log/nginx/vpn-sub.categorical.log vpn_sub_category;
+    }
+{% endif %}
 
 {% endif %}
 {% if vpn.share_bundles | default([]) | length > 0 %}

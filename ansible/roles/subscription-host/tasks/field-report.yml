@@ -34,6 +34,43 @@
     quiet: true
   no_log: true
 
+- name: Require bounded network-hint settings and a pinned dataset
+  ansible.builtin.assert:
+    that:
+      - subscription_field_report.network_hint.path is match('^/[a-z0-9/_-]{1,64}\\Z')
+      - subscription_field_report.network_hint.path != subscription_field_report.path
+      - subscription_field_report.network_hint.nginx_rate is match('^[1-9][0-9]{0,3}r/[sm]\\Z')
+      - subscription_field_report.network_hint.nginx_burst | int is ge(0)
+      - subscription_field_report.network_hint.nginx_burst | int is le(100)
+      - subscription_field_report.network_hint.ttl_seconds | int is ge(300)
+      - subscription_field_report.network_hint.ttl_seconds | int is le(86400)
+      - subscription_field_report.network_hint.dataset_version is match('^[0-9]{8}T[0-9]{6}Z\\Z')
+      - subscription_field_report.network_hint.dataset_sha256 is match('^[0-9a-f]{64}\\Z')
+    fail_msg: The network hint needs a bounded path, rate and TTL and a pinned dataset version and SHA-256.
+    quiet: true
+  when: subscription_field_report.network_hint.enabled | bool
+
+# The dataset is never fetched at deploy time: scripts/refresh-ip-asn-dataset.sh stores the reviewed copy on the
+# controller, and this task refuses any other bytes before the host changes.
+- name: Verify the pinned network-hint dataset on the controller
+  ansible.builtin.stat:
+    path: "{{ role_path }}/../../../.cache/ip-asn/ip2asn-combined-{{ subscription_field_report.network_hint.dataset_version }}.tsv.gz"
+    checksum_algorithm: sha256
+    get_checksum: true
+  delegate_to: localhost
+  become: false
+  register: _subscription_network_hint_dataset
+  when: subscription_field_report.network_hint.enabled | bool
+
+- name: Require the controller dataset to match its pin
+  ansible.builtin.assert:
+    that:
+      - _subscription_network_hint_dataset.stat.exists
+      - _subscription_network_hint_dataset.stat.checksum == subscription_field_report.network_hint.dataset_sha256
+    fail_msg: Run scripts/refresh-ip-asn-dataset.sh and pin its version and SHA-256, or restore the pinned file under .cache/ip-asn/.
+    quiet: true
+  when: subscription_field_report.network_hint.enabled | bool
+
 - name: Ensure node_exporter textfile writer group for the shared textfile directory
   ansible.builtin.group:
     name: "{{ (monitoring | default({})).node_exporter_textfile_group | default('node_exporter_textfile') }}"
@@ -89,6 +126,23 @@
     - {src: vpn-field-report.py, dest: vpn-field-report.py}
     - {src: "{{ role_path }}/../../../scripts/validate-field-report.py", dest: validate_field_report.py}
     - {src: "{{ role_path }}/../../../contract/client-field-report.schema.json", dest: client-field-report.schema.json}
+  notify: Restart vpn-field-report
+
+- name: Install the pinned network-hint dataset
+  ansible.builtin.copy:
+    src: "{{ _subscription_network_hint_dataset.stat.path }}"
+    dest: /usr/local/lib/vpn-field-report/ip2asn-combined.tsv.gz
+    owner: root
+    group: root
+    mode: "0644"
+  when: subscription_field_report.network_hint.enabled | bool
+  notify: Restart vpn-field-report
+
+- name: Remove the network-hint dataset when the hint is off
+  ansible.builtin.file:
+    path: /usr/local/lib/vpn-field-report/ip2asn-combined.tsv.gz
+    state: absent
+  when: not (subscription_field_report.network_hint.enabled | bool)
   notify: Restart vpn-field-report
 
 - name: Install field-report ingest limits

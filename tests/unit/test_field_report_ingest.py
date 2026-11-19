@@ -450,3 +450,201 @@ def test_validator_package_is_pinned_for_each_supported_release(release, package
     templar = Templar(loader=DataLoader(), variables={"subscription_field_report": defaults,
                                                       "ansible_facts": {"distribution_release": release}})
     assert templar.template(trust_as_template(install["ansible.builtin.apt"]["name"])) == package
+
+
+DATASET_ROWS = (b"1.0.0.0\t1.0.0.255\t0\tNone\tNot routed\n"
+                b"192.0.2.0\t192.0.2.255\t64500\tZZ\tTEST-NET-ONE \xc3\xa9\n"
+                b"198.51.100.0\t198.51.100.255\t0\tNone\tNot routed\n"
+                b"203.0.113.0\t203.0.113.255\t64502\tNone\tNo country\n"
+                b"2001:db8::\t2001:db8::ffff\t64501\tZY\tTEST-SIX\n")
+HINT_PATH = "/v1/network-hint"
+
+
+def _dataset(tmp_path: Path, rows: bytes = DATASET_ROWS) -> dict:
+    import gzip
+    import hashlib
+
+    path = tmp_path / "ip2asn-combined.tsv.gz"
+    path.write_bytes(gzip.compress(rows))
+    return {"path": HINT_PATH, "ttl_seconds": 21600, "database": str(path),
+            "database_sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+
+def _get(config: dict, peer: str | None, token: str | None = TOKEN, path: str = HINT_PATH) -> tuple[int, bytes, dict]:
+    connection = http.client.HTTPConnection("127.0.0.1", config["port"], timeout=5)
+    headers = {}
+    if token is not None:
+        headers["Authorization"] = f"Bearer {token}"
+    if peer is not None:
+        headers["X-Network-Hint-Peer"] = peer
+    try:
+        connection.request("GET", path, headers=headers)
+        response = connection.getresponse()
+        return response.status, response.read(), dict(response.getheaders())
+    finally:
+        connection.close()
+
+
+def test_network_hint_answers_from_the_peer_header_and_never_keeps_the_address(ingest, tmp_path):
+    spec = importlib.util.spec_from_file_location("validate_field_report_for_hint_test", ROOT / "scripts/validate-field-report.py")
+    contract = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(contract)
+    checker = contract.validator(json.loads((ROOT / "contract/client-network-hint.schema.json").read_text()))
+    process, config = ingest(network_hint=_dataset(tmp_path))
+    before = _metrics(config)
+
+    # The socket peer is loopback; only the header that nginx sets names the client address.
+    status, body, headers = _get(config, "192.0.2.77")
+    hint = json.loads(body)
+    assert status == 200 and headers["Content-Type"] == "application/json" and headers["Cache-Control"] == "no-store"
+    assert list(checker.iter_errors(hint)) == []
+    assert (hint["asn"], hint["country"], hint["ttl_seconds"]) == (64500, "ZZ", 21600)
+    assert hint["observed_at"].endswith(":00:00Z") and b"192.0.2.77" not in body
+    assert json.loads(_get(config, "2001:db8::1")[1])["asn"] == 64501
+    assert json.loads(_get(config, "::ffff:192.0.2.1")[1])["asn"] == 64500
+    # Not routed, no country, outside every range, malformed or missing: no hint.
+    for peer in ("198.51.100.9", "203.0.113.9", "10.0.0.1", "192.0.2.1, 203.0.113.9", "not-an-address", None):
+        assert _get(config, peer)[:2] == (204, b"")
+    assert _get(config, "192.0.2.77", token="wrongTokenValue_00000000000")[:2] == (401, b"")
+    assert _get(config, "192.0.2.77", token=None)[0] == 401
+    assert _get(config, "192.0.2.77", path=FIELD_REPORT_PATH)[0] == 404
+    # The hint changes no report counter.
+    assert _metrics(config) == before
+
+    process.terminate()
+    stdout, stderr = process.communicate(timeout=5)
+    stored = "".join(path.read_text() for path in Path(config["textfile"]).parent.iterdir())
+    for needle in ("192.0.2.77", "2001:db8::1", TOKEN):
+        assert needle not in stdout + stderr and needle not in stored
+
+
+def test_network_hint_route_is_absent_without_a_dataset(ingest):
+    _, config = ingest()
+    assert _get(config, "192.0.2.77")[0] == 404
+
+
+@pytest.mark.parametrize("rows,pin_matches", [
+    (DATASET_ROWS, False),
+    (DATASET_ROWS + b"192.0.2.128\t192.0.2.200\t64503\tZZ\toverlaps\n", True),
+    (DATASET_ROWS + b"203.0.114.0\t203.0.114.255\tAS64503\tZZ\tnot a number\n", True),
+    (DATASET_ROWS + b"203.0.114.9\t203.0.114.0\t64503\tZZ\treversed\n", True),
+    (DATASET_ROWS + b"203.0.114.0\n", True),
+    (b"2001:db8::\t2001:db8::ffff\t64501\tZY\tno IPv4\n", True),
+    (None, True),
+], ids=["pin-mismatch", "overlap", "asn-text", "reversed", "short-line", "no-ipv4", "truncated-gzip"])
+def test_a_damaged_or_unpinned_dataset_stops_the_service(tmp_path, rows, pin_matches):
+    hint = _dataset(tmp_path, rows or DATASET_ROWS)
+    if rows is None:
+        # A truncated gzip stream whose pin matches its bytes.
+        import hashlib
+        data = Path(hint["database"]).read_bytes()[:-12]
+        Path(hint["database"]).write_bytes(data)
+        hint["database_sha256"] = hashlib.sha256(data).hexdigest()
+    if not pin_matches:
+        hint["database_sha256"] = "0" * 64
+    config = _config(tmp_path, port=_free_port(), network_hint=hint)
+    (tmp_path / "config.json").write_text(json.dumps(config))
+    (tmp_path / "tokens.json").write_text(json.dumps({"current": TOKEN}))
+    result = subprocess.run([sys.executable, "-I", "-B", str(SERVICE), "--config", str(tmp_path / "config.json"),
+                             "--tokens", str(tmp_path / "tokens.json")], capture_output=True, text=True, timeout=20)
+    assert result.returncode == 2
+    assert "network hint dataset" in result.stderr and "Traceback" not in result.stderr
+    assert not Path(config["textfile"]).exists()
+
+
+def test_nginx_hint_location_uses_only_the_peer_address_and_refuses_forwarding_headers():
+    defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())["subscription_field_report"]["network_hint"]
+    vhost = _rendered("subscription.conf.j2", network_hint={**defaults, "enabled": True})
+    location = vhost.split(f"location = {HINT_PATH} {{", 1)[1].split("\n    }", 1)[0]
+    assert "limit_except GET { deny all; }" in location
+    assert "if ($vpn_network_hint_forwarded) {\n            return 400;\n        }" in location
+    assert "limit_req zone=vpn_network_hint_per_ip burst=10 nodelay;" in location
+    assert "proxy_set_header X-Network-Hint-Peer $remote_addr;" in location
+    for header in ("X-Forwarded-For", "Forwarded", "X-Real-IP"):
+        assert f'proxy_set_header {header} "";' in location
+    assert "proxy_pass_request_body off;" in location
+    assert "access_log /var/log/nginx/vpn-sub.categorical.log vpn_sub_category;" in location
+    assert "error_log /dev/null crit;" in location
+    # A real_ip setting would let a client choose the address that the hint looks up.
+    assert "set_real_ip_from" not in vhost and "real_ip_header" not in vhost
+    limits = _rendered("rate-limit.conf.j2", network_hint={**defaults, "enabled": True})
+    assert "limit_req_zone $binary_remote_addr zone=vpn_network_hint_per_ip:10m rate=30r/m;" in limits
+    assert ('map "$http_x_forwarded_for$http_forwarded$http_x_real_ip$http_x_network_hint_peer" '
+            '$vpn_network_hint_forwarded {\n    ""      0;\n    default 1;\n}') in limits
+    assert "network-hint" not in _rendered("subscription.conf.j2")
+    assert "vpn_network_hint" not in _rendered("rate-limit.conf.j2")
+    config = json.loads(_rendered("vpn-field-report.json.j2", network_hint={**defaults, "enabled": True}))
+    assert config["network_hint"] == {"path": HINT_PATH, "ttl_seconds": 21600,
+                                      "database": "/usr/local/lib/vpn-field-report/ip2asn-combined.tsv.gz",
+                                      "database_sha256": defaults["dataset_sha256"]}
+    assert json.loads(_rendered("vpn-field-report.json.j2"))["network_hint"] is None
+
+
+def _hint_assert_holds(**changes) -> bool:
+    """Evaluate the network-hint settings assert as the assert module does, with the pinned ansible-core templar."""
+    from ansible.parsing.dataloader import DataLoader
+    from ansible.template import Templar, trust_as_template
+
+    tasks = yaml.safe_load((ROLE / "tasks/field-report.yml").read_text())
+    task = next(task for task in tasks if task["name"] == "Require bounded network-hint settings and a pinned dataset")
+    defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())["subscription_field_report"]
+    settings = {**defaults, "network_hint": {**defaults["network_hint"], "enabled": True, **changes}}
+    templar = Templar(loader=DataLoader(), variables={"subscription_field_report": settings})
+    return all(templar.evaluate_conditional(trust_as_template(condition)) for condition in task["ansible.builtin.assert"]["that"])
+
+
+@pytest.mark.parametrize("change", [{"path": FIELD_REPORT_PATH}, {"path": HINT_PATH + "\n"}, {"ttl_seconds": 299},
+                                    {"ttl_seconds": 86401}, {"dataset_version": "latest"},
+                                    {"dataset_version": "20261101T093850Z\n"}, {"dataset_sha256": ""},
+                                    {"dataset_sha256": "A" * 64}, {"nginx_rate": "30r/m\n"}],
+                         ids=lambda change: repr(change))
+def test_hint_settings_assert_refuses_unbounded_or_unpinned_values(change):
+    assert _hint_assert_holds()
+    assert not _hint_assert_holds(**change)
+
+
+def test_role_copies_only_the_pinned_controller_dataset():
+    tasks = {task["name"]: task for task in yaml.safe_load((ROLE / "tasks/field-report.yml").read_text())}
+    probe = tasks["Verify the pinned network-hint dataset on the controller"]
+    assert probe["delegate_to"] == "localhost" and probe["ansible.builtin.stat"]["checksum_algorithm"] == "sha256"
+    assert probe["ansible.builtin.stat"]["path"].endswith(
+        "/.cache/ip-asn/ip2asn-combined-{{ subscription_field_report.network_hint.dataset_version }}.tsv.gz")
+    assert tasks["Require the controller dataset to match its pin"]["ansible.builtin.assert"]["that"][1] == \
+        "_subscription_network_hint_dataset.stat.checksum == subscription_field_report.network_hint.dataset_sha256"
+    copy_task = tasks["Install the pinned network-hint dataset"]["ansible.builtin.copy"]
+    assert copy_task["src"] == "{{ _subscription_network_hint_dataset.stat.path }}"
+    assert not any("get_url" in str(task) or "uri" in task for task in tasks.values())
+
+
+def test_refresh_script_pins_only_a_dataset_the_ingest_can_load(tmp_path):
+    import gzip
+
+    good = tmp_path / "good.tsv.gz"
+    good.write_bytes(gzip.compress(DATASET_ROWS))
+    bad = tmp_path / "bad.tsv.gz"
+    bad.write_bytes(gzip.compress(DATASET_ROWS + b"192.0.2.128\t192.0.2.200\t64503\tZZ\toverlaps\n"))
+    stub = tmp_path / "bin"
+    stub.mkdir()
+    # The stub stands in for the download: it writes the chosen file and a Last-Modified header.
+    (stub / "curl").write_text('#!/bin/sh\nwhile [ $# -gt 0 ]; do case "$1" in --dump-header) h="$2"; shift;; '
+                               '--output) o="$2"; shift;; esac; shift; done\n'
+                               'printf "HTTP/2 200\\r\\nlast-modified: Sun, 01 Nov 2026 09:38:50 GMT\\r\\n\\r\\n" > "$h"\n'
+                               'cp "$STUB_DATASET" "$o"\n')
+    (stub / "curl").chmod(0o755)
+    cache = tmp_path / "cache"
+    script = ROOT / "scripts/refresh-ip-asn-dataset.sh"
+    env = {"PATH": f"{stub}:/usr/bin:/bin", "IP_ASN_CACHE_DIR": str(cache), "TMPDIR": str(tmp_path)}
+    result = subprocess.run(["bash", str(script)], capture_output=True, text=True, timeout=30,
+                            env={**env, "STUB_DATASET": str(good)})
+    assert result.returncode == 0, result.stderr
+    import hashlib
+    stored = cache / "ip2asn-combined-20261101T093850Z.tsv.gz"
+    assert stored.read_bytes() == good.read_bytes()
+    assert f'dataset_sha256: "{hashlib.sha256(good.read_bytes()).hexdigest()}"' in result.stdout
+    assert 'dataset_version: "20261101T093850Z"' in result.stdout
+    stored.unlink()
+    refused = subprocess.run(["bash", str(script)], capture_output=True, text=True, timeout=30,
+                             env={**env, "STUB_DATASET": str(bad)})
+    assert refused.returncode != 0 and not list(cache.iterdir())
+    assert subprocess.run(["bash", str(script)], capture_output=True, text=True, timeout=30,
+                          env={**env, "STUB_DATASET": str(good), "IP_ASN_DATASET_URL": "http://iptoasn.com/x"}).returncode == 1

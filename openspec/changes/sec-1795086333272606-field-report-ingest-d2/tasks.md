@@ -16,7 +16,7 @@ One writer owns `ansible/roles/subscription-host/` ingest files, the new metric 
 - [x] SEC-1795086432958533 Add unit tests in tests/unit/ for the status codes, label bounds, no-IP logging and attempts floor #feature !high @item:SEC-1795086333272606
 - [x] SEC-1795086456490841 Run the security-review skill on the endpoint and record findings in verification.md #feature !high @item:SEC-1795086333272606
 - [x] SEC-1795104397840245 Label field-report metrics by network source (MCC-MNC for sim, AS number for server_hint, unknown for none) with separate operator and ASN top-N rankings, and alerts per operator or per ASN #feature !high @item:SEC-1795086333272606
-- [ ] SEC-1795104413322531 Add the network-hint GET endpoint with cohort-token auth, nginx per-address limit, peer address from nginx only and refused client forwarding headers, a pinned offline IP-to-ASN dataset and its operator refresh script #feature !high @item:SEC-1795086333272606
+- [x] SEC-1795104413322531 Add the network-hint GET endpoint with cohort-token auth, nginx per-address limit, peer address from nginx only and refused client forwarding headers, a pinned offline IP-to-ASN dataset and its operator refresh script #feature !high @item:SEC-1795086333272606
 - [ ] SEC-1795104428184651 Rerun the security-review skill on the network-source and network-hint amendment and record the verdict in verification.md #feature !high @item:SEC-1795086333272606
 
 ## Verification

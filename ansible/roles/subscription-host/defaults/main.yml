@@ -134,3 +134,21 @@ subscription_field_report:
   # Bundle endpoint ids (ripdpi.endpoints keys) admitted as server_ref
   # labels; any other value is "other". At most 64.
   server_refs: []
+  # Network hint (GET, contract/client-network-hint.schema.json): the ASN and
+  # country of the request address from a pinned offline dataset, for
+  # clients whose report has no SIM operator. It needs the ingest enabled and
+  # uses the same cohort token. The address is looked up in memory only.
+  network_hint:
+    enabled: false
+    path: /v1/network-hint
+    # Its own per-address nginx zone; the only rate limit on this route.
+    nginx_rate: "30r/m"
+    nginx_burst: 10
+    # How long a client may use one hint (contract bounds 300 to 86400).
+    ttl_seconds: 21600
+    # iptoasn.com ip2asn-combined.tsv.gz, Public Domain Dedication and
+    # License 1.0 (THIRD_PARTY_NOTICES.md). scripts/refresh-ip-asn-dataset.sh
+    # downloads a new copy into .cache/ip-asn/ on the controller and prints the
+    # version and SHA-256 to pin here; deploy copies the pinned file only.
+    dataset_version: "20261101T093850Z"
+    dataset_sha256: "1634a0e449f3ee11088bba85493447a51007b44dff3ac18328f1f2d9127c0a9e"
