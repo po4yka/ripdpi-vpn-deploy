@@ -286,3 +286,29 @@ def test_unit_delivers_tokens_as_credential_and_keeps_the_hardening_floor():
     config = json.loads(_rendered("vpn-field-report.json.j2", server_refs=["p0-reality-upcloud-prod"]))
     assert config["listen"] == "127.0.0.1"
     assert config["server_refs"] == ["p0-reality-upcloud-prod"]
+
+
+def _settings_assert_holds(**changes) -> bool:
+    """Evaluate the role's real settings assert with the pinned ansible-core templar."""
+    from ansible.parsing.dataloader import DataLoader
+    from ansible.template import Templar, trust_as_template
+
+    tasks = yaml.safe_load((ROLE / "tasks/field-report.yml").read_text())
+    task = next(task for task in tasks if task["name"] == "Require bounded field-report ingest settings and cohort tokens")
+    defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())["subscription_field_report"]
+    field_report = {"cohort_token": TOKEN, "previous_cohort_token": PREVIOUS,
+                    "previous_cohort_token_valid_until": "2999-01-01T00:00:00Z"}
+    settings = {**defaults, "server_refs": ["p0-reality-upcloud-prod"]}
+    for key, value in changes.items():
+        (field_report if key in field_report else settings)[key] = value
+    templar = Templar(loader=DataLoader(), variables={"subscription_field_report": settings, "field_report": field_report})
+    return all(templar.template(trust_as_template("{{ " + condition + " }}")) for condition in task["ansible.builtin.assert"]["that"])
+
+
+@pytest.mark.parametrize("key", ["path", "cohort_token", "previous_cohort_token", "previous_cohort_token_valid_until",
+                                 "server_refs"])
+def test_settings_assert_refuses_a_trailing_newline(key):
+    assert _settings_assert_holds()
+    value = {"path": FIELD_REPORT_PATH, "cohort_token": TOKEN, "previous_cohort_token": PREVIOUS,
+             "previous_cohort_token_valid_until": "2999-01-01T00:00:00Z", "server_refs": "p0-reality-upcloud-prod"}[key]
+    assert not _settings_assert_holds(**{key: [value + "\n"] if key == "server_refs" else value + "\n"})

@@ -4,7 +4,7 @@
 - name: Require bounded field-report ingest settings and cohort tokens
   ansible.builtin.assert:
     that:
-      - subscription_field_report.path is match('^/[a-z0-9/_-]{1,64}$')
+      - subscription_field_report.path is match('^/[a-z0-9/_-]{1,64}\Z')
       - subscription_field_report.listen_port | int is ge(1024)
       - subscription_field_report.max_body_bytes | int is ge(1024)
       - subscription_field_report.max_body_bytes | int is le(1048576)
@@ -17,13 +17,13 @@
       - subscription_field_report.max_series | int is ge(50)
       - subscription_field_report.max_series | int is le(1000)
       - subscription_field_report.server_refs | length <= 64
-      - subscription_field_report.server_refs | reject('match', '^[A-Za-z0-9_-]{1,64}$') | list | length == 0
+      - subscription_field_report.server_refs | reject('match', '^[A-Za-z0-9_-]{1,64}\Z') | list | length == 0
       - field_report is mapping
-      - field_report.cohort_token | default('') is match('^[A-Za-z0-9_-]{22,64}$')
+      - field_report.cohort_token | default('') is match('^[A-Za-z0-9_-]{22,64}\Z')
       - >-
         field_report.previous_cohort_token | default(none) is none or
-        (field_report.previous_cohort_token is match('^[A-Za-z0-9_-]{22,64}$') and
-         field_report.previous_cohort_token_valid_until | default('') is match('^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'))
+        (field_report.previous_cohort_token is match('^[A-Za-z0-9_-]{22,64}\Z') and
+         field_report.previous_cohort_token_valid_until | default('') is match('^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z'))
     fail_msg: Field-report ingest needs bounded limits and a well-formed field_report cohort token set in the secrets file.
     quiet: true
   no_log: true
