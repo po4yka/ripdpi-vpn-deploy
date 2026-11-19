@@ -14,7 +14,7 @@ openspec_change: tst-1795087041877687-field-analytics-e2e-d7
 created: 2026-11-19
 updated: 2026-11-19
 related_tasks: []
-status_detail: "External gate: po4yka/RIPDPI DGN-1795085357320979 (R2 contracts), DGN-1795085498592630 (R3 field report client), DAT-1795085420746769 (R4 bundle v3 failover) must be done and in the tested build."
+status_detail: "Harness and runbook done locally (TST-1795087071905692). The DROP, RST and recovery steps need an authorized staging node, collector and device with the RIPDPI R2-R4 build; external gate: po4yka/RIPDPI DGN-1795085357320979, DGN-1795085498592630 and DAT-1795085420746769 must be done and in the tested build."
 ---
 
 ## Goal
