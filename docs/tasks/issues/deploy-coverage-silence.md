@@ -2,7 +2,7 @@
 id: MON-1794937115554282
 title: Silence external coverage alert during transport deploys
 kind: feature
-status: doing
+status: review
 area: monitoring
 priority: medium
 risk: standard
@@ -12,8 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: mon-1794937115554282-deploy-coverage-silence
 created: 2026-11-17
-updated: 2026-11-17
+updated: 2026-11-19
 related_tasks: []
+status_detail: Live acceptance on node-c at 42a5ab8b recorded in verification.md (PR 639)
 ---
 
 ## Goal
