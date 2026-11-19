@@ -51,3 +51,10 @@ The independent review's findings that touch this contract are recorded here; th
 - L5, client contract change in `docs/reference/ripdpi-bundle.md` (a79d6e0d): the public report and hint routes answer an unknown cohort token with the vhost's uniform `404`, no longer `401`; any hint answer other than `200` means no hint, and a report answered `404` is discarded until a new bundle. A dataset that fails to load makes the hint route answer `404`. RIPDPI R3 must follow this contract; the client is not implemented yet, so no shipped client depends on `401`.
 
 At 9a506f2d (logs in the session run directory runs-nethint-fix, verify-*.log): focused pytest of 15 files (ingest, alert rules with promtool 3.15.1, peer exporters, bundle schema and generation, acceptance, rotation, observability contract, control-plane and agent render, secrets coverage and schema, agent instructions, governance, docs index) exit 0, 824 passed; `ansible-lint --offline` on subscription-host, observability_control_plane, hysteria and amneziawg exit 0; yamllint on the same roles exit 0; shellcheck exit 0; `check-templates-render.py` exit 0; `check-secrets-coverage.py` exit 0; `make snapshot-check` exit 0; `make docs-check` exit 0; the golden field reports validate exit 0; `./taskctl openspec cli validate --strict` exit 0 for D1, D2 and D5; `./taskctl validate` exit 0. `make molecule-test` and `make check` were not run.
+
+## Re-review of 60a05950..6a03765e
+
+The code fixes are recorded in the D2 verification file. Changes to this contract and design:
+
+- L5, `docs/reference/ripdpi-bundle.md` (b9347724): a method other than the route's own also gets the uniform `404`; `400`, `413` and `429` stay distinguishable, accepted because both paths are published in every bundle.
+- N3, `design.md` and `docs/reference/ripdpi-bundle.md` (5a9177eb): the fleet-address `204` covers each inventory host's `vpn_service_address`, any address in the /64 of its `server_ipv6`, and `honeypot_listen_addr`; an exit outside the inventory relies on the client rule. `make docs-check` and OpenSpec strict pass (logs in the session run directory runs-rereview-fix).
