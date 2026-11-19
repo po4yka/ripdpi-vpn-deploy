@@ -19,6 +19,18 @@ MAX_VARIANTS = 16
 ALIAS = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
 DECISIONS = frozenset({"healthy", "degraded", "unknown", "rotation_candidate"})
 VERDICTS = frozenset({"ok", "blocked", "throttled", "error", "unknown"})
+# Sentinel profile -> client field-report protocol enum value.
+PROTOCOLS = {
+    "p0-reality": "vless-reality",
+    "p1-xhttp": "xhttp",
+    "p2-hysteria2": "hysteria2",
+    "p2-amneziawg": "amneziawg",
+}
+SUCCESS = {"ok": 1, "throttled": 1, "blocked": 0, "error": 0}
+# Upper bounds in seconds; the same bounds as the client field-report latency histogram.
+BUCKETS = (0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0)
+MAX_DURATION_MS = 600_000
+MAX_STATE_BYTES = 256 * 1024
 
 
 class AdapterError(Exception):
@@ -179,6 +191,15 @@ def _validate(
                 ):
                     raise AdapterError("invalid evidence")
                 seen_variants.add(row["variant"])
+        durations = item.get("profile_durations_ms", {})
+        if (
+            not isinstance(durations, dict)
+            or set(durations) - set(profiles)
+            or not all(
+                _integer(value, maximum=MAX_DURATION_MS) for value in durations.values()
+            )
+        ):
+            raise AdapterError("invalid evidence")
     return evaluated_at, decision, evidence, sorted(candidates), failures
 
 
@@ -195,8 +216,135 @@ def _failure(state: str, stale_after: int) -> bytes:
     ).encode("utf-8")
 
 
+def _probe_labels(protocol: str, node: str, vantage: str) -> str:
+    return f'node="{node}",protocol="{protocol}",vantage="{vantage}"'
+
+
+def _probe_lines(
+    evidence: list[dict[str, Any]],
+    *,
+    now: int,
+    stale_after: int,
+    histogram: dict[str, dict[str, Any]],
+) -> list[str]:
+    """Per-protocol probe gauges plus cumulative latency histograms.
+
+    `histogram` maps "protocol|node|vantage" to the last counted observed_at,
+    per-bucket counts and the millisecond sum. It is replaced with the current
+    series only, so an absent series restarts from zero (a counter reset).
+    """
+    success: list[str] = []
+    observed: list[str] = []
+    durations: list[str] = []
+    current: dict[str, dict[str, Any]] = {}
+    for item in sorted(evidence, key=lambda value: (value["policy"], value["sentinel"])):
+        fresh = now - item["observed_at"] <= stale_after
+        for profile, verdict in sorted(item["profiles"].items()):
+            protocol = PROTOCOLS.get(profile)
+            if protocol is None:
+                continue
+            key = f"{protocol}|{item['policy']}|{item['sentinel']}"
+            labels = _probe_labels(protocol, item["policy"], item["sentinel"])
+            observed.append(
+                f"vpn_protocol_probe_observed_timestamp_seconds{{{labels}}} {item['observed_at']}"
+            )
+            series = histogram.get(key)
+            if series is None:
+                series = {"observed_at": -1, "bins": [0] * (len(BUCKETS) + 1), "sum_ms": 0}
+            current[key] = series
+            # A stale or indeterminate probe is unknown: no success value is published.
+            if not fresh or verdict not in SUCCESS:
+                continue
+            success.append(f"vpn_protocol_probe_success{{{labels}}} {SUCCESS[verdict]}")
+            duration = item.get("profile_durations_ms", {}).get(profile)
+            if SUCCESS[verdict] and duration is not None and item["observed_at"] > series["observed_at"]:
+                seconds = duration / 1000
+                index = next(
+                    (i for i, bound in enumerate(BUCKETS) if seconds <= bound), len(BUCKETS)
+                )
+                series["bins"][index] += 1
+                series["sum_ms"] += duration
+                series["observed_at"] = item["observed_at"]
+    for key, series in sorted(current.items()):
+        labels = _probe_labels(*key.split("|"))
+        cumulative = 0
+        for bound, count in zip((*BUCKETS, None), series["bins"]):
+            cumulative += count
+            le = "+Inf" if bound is None else repr(bound)
+            durations.append(
+                f'vpn_protocol_probe_duration_seconds_bucket{{{labels},le="{le}"}} {cumulative}'
+            )
+        durations.append(
+            f"vpn_protocol_probe_duration_seconds_sum{{{labels}}} {series['sum_ms'] / 1000}"
+        )
+        durations.append(f"vpn_protocol_probe_duration_seconds_count{{{labels}}} {cumulative}")
+    histogram.clear()
+    histogram.update(current)
+    return [
+        "# TYPE vpn_protocol_probe_success gauge",
+        *success,
+        "# TYPE vpn_protocol_probe_observed_timestamp_seconds gauge",
+        *observed,
+        "# TYPE vpn_protocol_probe_duration_seconds histogram",
+        *durations,
+    ]
+
+
+def _load_histogram(path: Path | None) -> dict[str, dict[str, Any]]:
+    """Read bounded adapter-owned histogram state; anything unexpected starts from zero."""
+    if path is None:
+        return {}
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except FileNotFoundError:
+        return {}
+    except OSError as exc:
+        raise AdapterError("invalid state") from exc
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid not in {0, os.geteuid()}
+            or metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+        ):
+            raise AdapterError("invalid state")
+        payload = os.read(descriptor, MAX_STATE_BYTES + 1)
+    finally:
+        os.close(descriptor)
+    try:
+        document = json.loads(payload)
+    except (UnicodeDecodeError, ValueError):
+        return {}
+    if not isinstance(document, dict) or len(payload) > MAX_STATE_BYTES:
+        return {}
+    valid: dict[str, dict[str, Any]] = {}
+    for key, series in document.items():
+        parts = key.split("|") if isinstance(key, str) else []
+        if (
+            len(parts) != 3
+            or parts[0] not in PROTOCOLS.values()
+            or not all(_alias(part) for part in parts[1:])
+            or not isinstance(series, dict)
+            or set(series) != {"observed_at", "bins", "sum_ms"}
+            or not isinstance(series["observed_at"], int)
+            or isinstance(series["observed_at"], bool)
+            or not isinstance(series["bins"], list)
+            or len(series["bins"]) != len(BUCKETS) + 1
+            or not all(_integer(count) for count in series["bins"])
+            or not _integer(series["sum_ms"])
+        ):
+            return {}
+        valid[key] = series
+    return valid
+
+
 def render(
-    document: dict[str, Any], *, now: int, stale_after: int, max_future: int
+    document: dict[str, Any],
+    *,
+    now: int,
+    stale_after: int,
+    max_future: int,
+    histogram: dict[str, dict[str, Any]] | None = None,
 ) -> bytes:
     evaluated_at, decision, evidence, candidates, failures = _validate(document)
     if evaluated_at > now + max_future:
@@ -255,6 +403,14 @@ def render(
                         1,
                     )
                 )
+    lines.extend(
+        _probe_lines(
+            evidence,
+            now=now,
+            stale_after=stale_after,
+            histogram={} if histogram is None else histogram,
+        )
+    )
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
@@ -333,6 +489,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--evidence", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--state", type=Path)
     parser.add_argument("--now", type=int, default=int(time.time()))
     parser.add_argument("--stale-after", type=int, required=True)
     parser.add_argument("--max-future", type=int, required=True)
@@ -348,15 +505,19 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
     try:
-        _atomic_write(
-            args.output,
-            render(
-                _load(args.evidence),
-                now=args.now,
-                stale_after=args.stale_after,
-                max_future=args.max_future,
-            ),
+        histogram = _load_histogram(args.state)
+        payload = render(
+            _load(args.evidence),
+            now=args.now,
+            stale_after=args.stale_after,
+            max_future=args.max_future,
+            histogram=histogram,
         )
+        if args.state is not None:
+            _atomic_write(
+                args.state, json.dumps(histogram, sort_keys=True).encode("utf-8")
+            )
+        _atomic_write(args.output, payload)
     except AdapterError as exc:
         state = (
             "future"

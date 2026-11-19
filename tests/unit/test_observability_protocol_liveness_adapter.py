@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import stat
@@ -60,7 +61,7 @@ def _evidence(decision: str = "healthy", observed_at: int = 1_800_000_000) -> di
 
 
 def _run(
-    tmp_path: Path, document: dict, *, now: int = 1_800_000_010
+    tmp_path: Path, document: dict, *, now: int = 1_800_000_010, state: Path | None = None
 ) -> subprocess.CompletedProcess[str]:
     evidence = tmp_path / "last-evidence.json"
     output = tmp_path / "protocol-liveness.prom"
@@ -73,6 +74,7 @@ def _run(
             str(evidence),
             "--output",
             str(output),
+            *(["--state", str(state)] if state is not None else []),
             "--now",
             str(now),
             "--stale-after",
@@ -555,3 +557,145 @@ def test_enabled_and_disabled_molecule_scenarios_prove_adapter_lifecycle() -> No
     disabled_verify = (ROLE / "molecule/default/verify.yml").read_text()
     assert "observability-protocol-liveness-adapter.service" in disabled_verify
     assert "protocol-liveness.prom" in disabled_verify
+
+
+def _probe_evidence(observed_at: int = 1_800_000_000) -> dict:
+    document = _evidence(observed_at=observed_at)
+    document["evidence"][0]["profiles"] = {
+        "p0-reality": "ok",
+        "p1-xhttp": "throttled",
+        "p2-hysteria2": "ok",
+        "p2-amneziawg": "error",
+    }
+    document["evidence"][0]["profile_durations_ms"] = {
+        "p0-reality": 40,
+        "p1-xhttp": 3000,
+        "p2-hysteria2": 700,
+        "p2-amneziawg": 15000,
+    }
+    return document
+
+
+def _samples(metrics: str, family: str) -> dict[str, str]:
+    return {
+        line.split(" ")[0]: line.split(" ")[1]
+        for line in metrics.splitlines()
+        if line.startswith(family + "{")
+    }
+
+
+def test_probe_success_uses_protocol_node_and_vantage_labels_only(tmp_path: Path) -> None:
+    result = _run(tmp_path, _probe_evidence(), state=tmp_path / "state.json")
+
+    assert result.returncode == 0, result.stderr
+    metrics = (tmp_path / "protocol-liveness.prom").read_text(encoding="utf-8")
+    assert _samples(metrics, "vpn_protocol_probe_success") == {
+        'vpn_protocol_probe_success{node="vpn-path",protocol="vless-reality",vantage="sentinel-a"}': "1",
+        'vpn_protocol_probe_success{node="vpn-path",protocol="xhttp",vantage="sentinel-a"}': "1",
+        'vpn_protocol_probe_success{node="vpn-path",protocol="hysteria2",vantage="sentinel-a"}': "1",
+        # The node refused the probe credential: only this protocol records failure.
+        'vpn_protocol_probe_success{node="vpn-path",protocol="amneziawg",vantage="sentinel-a"}': "0",
+    }
+    assert "# TYPE vpn_protocol_probe_duration_seconds histogram" in metrics
+
+
+def test_stale_probe_is_unknown_and_leaves_other_vantages_unaffected(tmp_path: Path) -> None:
+    document = _probe_evidence(observed_at=1_800_000_000)
+    stopped = json.loads(json.dumps(document["evidence"][0]))
+    stopped["sentinel"] = "sentinel-b"
+    # Stopped for longer than twice the 120 s interval while the evaluation stays fresh.
+    stopped["observed_at"] = 1_800_000_000 - 250
+    document["evidence"].append(stopped)
+
+    result = _run(tmp_path, document)
+
+    assert result.returncode == 0, result.stderr
+    metrics = (tmp_path / "protocol-liveness.prom").read_text(encoding="utf-8")
+    success = _samples(metrics, "vpn_protocol_probe_success")
+    assert len(success) == 4
+    assert all('vantage="sentinel-a"' in series for series in success)
+    observed = _samples(metrics, "vpn_protocol_probe_observed_timestamp_seconds")
+    assert observed[
+        'vpn_protocol_probe_observed_timestamp_seconds{node="vpn-path",protocol="xhttp",vantage="sentinel-b"}'
+    ] == str(1_800_000_000 - 250)
+
+
+def test_unknown_verdict_publishes_no_success_value(tmp_path: Path) -> None:
+    document = _probe_evidence()
+    document["evidence"][0]["profiles"]["p2-hysteria2"] = "unknown"
+
+    assert _run(tmp_path, document).returncode == 0
+    metrics = (tmp_path / "protocol-liveness.prom").read_text(encoding="utf-8")
+    assert not any(
+        'protocol="hysteria2"' in series
+        for series in _samples(metrics, "vpn_protocol_probe_success")
+    )
+
+
+def test_latency_histogram_is_cumulative_and_counts_each_observation_once(tmp_path: Path) -> None:
+    state = tmp_path / "state.json"
+    labels = 'node="vpn-path",protocol="xhttp",vantage="sentinel-a"'
+    assert _run(tmp_path, _probe_evidence(1_800_000_000), state=state, now=1_800_000_010).returncode == 0
+    # Re-adapting the same evidence must not count the observation again.
+    assert _run(tmp_path, _probe_evidence(1_800_000_000), state=state, now=1_800_000_020).returncode == 0
+    second = _probe_evidence(1_800_000_120)
+    second["evidence"][0]["profile_durations_ms"]["p1-xhttp"] = 80
+    assert _run(tmp_path, second, state=state, now=1_800_000_130).returncode == 0
+
+    metrics = (tmp_path / "protocol-liveness.prom").read_text(encoding="utf-8")
+    buckets = _samples(metrics, "vpn_protocol_probe_duration_seconds_bucket")
+    assert buckets[f'vpn_protocol_probe_duration_seconds_bucket{{{labels},le="0.05"}}'] == "0"
+    assert buckets[f'vpn_protocol_probe_duration_seconds_bucket{{{labels},le="0.1"}}'] == "1"
+    assert buckets[f'vpn_protocol_probe_duration_seconds_bucket{{{labels},le="2.5"}}'] == "1"
+    assert buckets[f'vpn_protocol_probe_duration_seconds_bucket{{{labels},le="5.0"}}'] == "2"
+    assert buckets[f'vpn_protocol_probe_duration_seconds_bucket{{{labels},le="+Inf"}}'] == "2"
+    assert _samples(metrics, "vpn_protocol_probe_duration_seconds_count")[
+        f"vpn_protocol_probe_duration_seconds_count{{{labels}}}"
+    ] == "2"
+    assert _samples(metrics, "vpn_protocol_probe_duration_seconds_sum")[
+        f"vpn_protocol_probe_duration_seconds_sum{{{labels}}}"
+    ] == "3.08"
+    # A failed probe has no latency observation.
+    amneziawg = 'node="vpn-path",protocol="amneziawg",vantage="sentinel-a"'
+    assert _samples(metrics, "vpn_protocol_probe_duration_seconds_count")[
+        f"vpn_protocol_probe_duration_seconds_count{{{amneziawg}}}"
+    ] == "0"
+
+
+def test_malformed_histogram_state_restarts_counts_from_zero(tmp_path: Path) -> None:
+    state = tmp_path / "state.json"
+    state.write_text(json.dumps({"xhttp|vpn-path|sentinel-a": {"bins": "forged"}}))
+    state.chmod(0o600)
+
+    assert _run(tmp_path, _probe_evidence(), state=state).returncode == 0
+    metrics = (tmp_path / "protocol-liveness.prom").read_text(encoding="utf-8")
+    assert _samples(metrics, "vpn_protocol_probe_duration_seconds_count")[
+        'vpn_protocol_probe_duration_seconds_count{node="vpn-path",protocol="xhttp",vantage="sentinel-a"}'
+    ] == "1"
+    assert "forged" not in state.read_text()
+
+
+def test_invalid_probe_duration_replaces_metrics_with_malformed_state(tmp_path: Path) -> None:
+    document = _probe_evidence()
+    document["evidence"][0]["profile_durations_ms"]["p0-reality"] = "40"
+
+    assert _run(tmp_path, document).returncode == 2
+    metrics = (tmp_path / "protocol-liveness.prom").read_text(encoding="utf-8")
+    assert 'state="malformed"' in metrics
+    assert "vpn_protocol_probe_success" not in metrics
+
+
+def test_probe_metric_families_are_declared_in_canonical_manifest(tmp_path: Path) -> None:
+    assert _run(tmp_path, _probe_evidence(), state=tmp_path / "state.json").returncode == 0
+    manifest = json.loads(
+        (ROOT / "contract/observability-metric-manifest.example.json").read_text(encoding="utf-8")
+    )
+    declared = {family["name"]: family for family in manifest["families"]}
+    for line in (tmp_path / "protocol-liveness.prom").read_text(encoding="utf-8").splitlines():
+        if not line or line.startswith("#"):
+            continue
+        name = line.split("{", 1)[0].split(" ", 1)[0]
+        family = re.sub(r"_(bucket|sum|count)$", "", name) if name.startswith("vpn_protocol_probe_duration") else name
+        assert family in declared, name
+        labels = set(re.findall(r'([a-z_]+)="', line)) - {"le"}
+        assert labels == set(declared[family]["labels"]), line

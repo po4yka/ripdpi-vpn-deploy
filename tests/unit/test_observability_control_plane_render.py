@@ -198,8 +198,16 @@ def test_ingress_requires_relay_and_relay_writes_only_to_loopback_prometheus() -
         "-maxLabelValueLen": "128",
     }
     rules = _relay_rules()
+    # Only the collector's own agent may name the probed node of a probe series.
+    assert rules[0] == {
+        "action": "replace",
+        "source_labels": ["__name__", "ingress_node", "node"],
+        "regex": "vpn_protocol_probe_[a-z_]+;vpn-p2;([a-z][a-z0-9-]{0,63})",
+        "target_label": "ingress_node",
+        "replacement": "$1",
+    }
     # Payload node goes first, then the ingress identity becomes node and its carrier label goes.
-    assert rules[:3] == [
+    assert rules[1:4] == [
         {"action": "labeldrop", "regex": "node"},
         {"action": "labelmap", "regex": "ingress_node", "replacement": "node"},
         {"action": "labeldrop", "regex": "ingress_node"},
@@ -220,6 +228,7 @@ def test_ingress_requires_relay_and_relay_writes_only_to_loopback_prometheus() -
 def _relay_rules() -> list[dict]:
     values = _values()
     values["observability_alert_policy"] = {"required_systemd_units": ["nginx.service", "xray.service"]}
+    values["observability_push"] = {"node_id": "vpn-p2"}
     return yaml.safe_load(render_template(ROLE / "templates/observability-prometheus-relay-relabel.yml.j2", values))
 
 
@@ -236,6 +245,10 @@ def _relabel(rules: list[dict], labels: dict[str, str]) -> dict[str, str] | None
             labels = {name: value for name, value in labels.items() if regex.fullmatch(name)}
         elif rule["action"] == "labeldrop":
             labels = {name: value for name, value in labels.items() if not regex.fullmatch(name)}
+        elif rule["action"] == "replace":
+            match = regex.fullmatch(";".join(labels.get(name, "") for name in rule["source_labels"]))
+            if match:
+                labels[rule["target_label"]] = match.expand(rule["replacement"].replace("$1", r"\1"))
         elif rule["action"] == "labelmap":
             labels.update({rule["replacement"]: value for name, value in labels.items() if regex.fullmatch(name)})
         else:
@@ -287,6 +300,33 @@ def test_relay_keeps_allowed_series_and_only_allowed_labels() -> None:
         assert _relabel(rules, {**kept, "ingress_node": "vpn-p0"}) == {**kept, "node": "vpn-p0"}
 
 
+@pytest.mark.parametrize(
+    ("ingress", "name", "expected_node"),
+    [
+        ("vpn-p2", "vpn_protocol_probe_success", "vpn-path"),
+        ("vpn-p2", "vpn_protocol_probe_duration_seconds_bucket", "vpn-path"),
+        # Another enrolled node cannot claim a probed node, and no other family keeps payload node.
+        ("vpn-p0", "vpn_protocol_probe_success", "vpn-p0"),
+        ("vpn-p2", "vpn_observability_evidence_state", "vpn-p2"),
+    ],
+)
+def test_relay_keeps_probed_node_only_for_collector_probe_series(
+    ingress: str, name: str, expected_node: str
+) -> None:
+    labels = _relabel(
+        _relay_rules(),
+        {
+            "__name__": name, "job": "node-exporter", "node": "vpn-path", "ingress_node": ingress,
+            "protocol": "xhttp", "vantage": "sentinel-a", "le": "0.1",
+        },
+    )
+
+    assert labels is not None
+    assert labels["node"] == expected_node
+    assert "ingress_node" not in labels
+    assert (labels["protocol"], labels["vantage"]) == ("xhttp", "sentinel-a")
+
+
 def test_relay_allowlist_matches_the_sender() -> None:
     """The lists are literals in both templates; this fails when one side changes alone."""
     values = merge_render_vars()
@@ -296,7 +336,7 @@ def test_relay_allowlist_matches_the_sender() -> None:
     node, systemd, agent = (job["metric_relabel_configs"] for job in sender["scrape_configs"])
     relay = yaml.safe_load(
         render_template(ROLE / "templates/observability-prometheus-relay-relabel.yml.j2", values)
-    )[3:]
+    )[4:]
 
     def inner(regex: str) -> str:
         assert regex.startswith("^(") and regex.endswith(")$")

@@ -240,4 +240,20 @@ tests:
       - eval_time: 10m
         alertname: ObservabilityCollectorRelayDeliveryLoss
         exp_alerts: []
-{% endfor -%}
+{% endfor %}
+  - interval: 1m
+    input_series:
+      - series: 'vpn_protocol_probe_observed_timestamp_seconds{environment="staging",node="vpn-path",protocol="vless-reality",vantage="sentinel-a"}'
+        values: '0+60x30'
+      # The xhttp probe stops after two minutes; the other protocol keeps reporting.
+      - series: 'vpn_protocol_probe_observed_timestamp_seconds{environment="staging",node="vpn-path",protocol="xhttp",vantage="sentinel-a"}'
+        values: '0+60x2 _x28'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: ObservabilityProtocolProbeStale
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: ObservabilityProtocolProbeStale
+        exp_alerts:
+          - exp_labels: {component: protocol-probe, environment: staging, node: vpn-path, protocol: xhttp, vantage: sentinel-a, severity: warning}
+            exp_annotations: {incident_family: protocol-probe, evidence_class: probe-stale, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A protocol probe stopped reporting; health of this protocol is unknown., runbook: docs/how-to/monitoring-alerts.md#protocol-probe, action: "Check the liveness sentinel for this vantage and the published evidence. Do not treat the protocol as healthy."}
