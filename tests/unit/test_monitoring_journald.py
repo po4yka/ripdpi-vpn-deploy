@@ -4,9 +4,11 @@ from configparser import ConfigParser
 from pathlib import Path
 
 import yaml
+from jinja2 import Environment, StrictUndefined
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TASKS = REPO_ROOT / "ansible" / "roles" / "monitoring" / "tasks" / "enable.yml"
+DEFAULTS = REPO_ROOT / "ansible" / "roles" / "monitoring" / "defaults" / "main.yml"
 
 
 def test_journald_policy_keeps_fourteen_days_within_a_one_gigabyte_budget() -> None:
@@ -18,7 +20,10 @@ def test_journald_policy_keeps_fourteen_days_within_a_one_gigabyte_budget() -> N
     )
     policy = ConfigParser()
     policy.optionxform = str
-    policy.read_string(dropin["content"])
+    defaults = yaml.safe_load(DEFAULTS.read_text(encoding="utf-8"))
+    policy.read_string(
+        Environment(undefined=StrictUndefined).from_string(dropin["content"]).render(defaults)
+    )
 
     assert dropin["dest"] == "/etc/systemd/journald.conf.d/vpn.conf"
     assert dict(policy["Journal"]) == {

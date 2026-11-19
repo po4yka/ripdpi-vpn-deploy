@@ -156,6 +156,24 @@ Before deployment, validate the manifest, expected inventory, rendered rules and
 
 Producer timestamps and bounded validity deadlines determine evidence freshness; a new exporter scrape cannot renew a frozen textfile. Adapter completion has its own freshness boundary. Missing or future timing evidence remains unavailable. Expected-target presence follows its reviewed required families, and required service expectations follow the enabled node profile. An absent required unit is missing evidence, separately from an observed inactive or failed service.
 
+## Retention
+
+Every observability data class has one finite retention. The values below are the rendered defaults; `tests/unit/test_observability_retention.py` fails when a row is missing, says unlimited, or differs from the rendered Prometheus, vmagent, journald or logrotate configuration. Change a value through its role variable and this table together.
+
+| Data class | Bound | Value | Enforced by |
+|---|---|---|---|
+| Prometheus TSDB | time | `7d` | `observability_control_plane.tsdb_retention_time` as `--storage.tsdb.retention.time` |
+| Prometheus TSDB | size | `1GB` | `observability_control_plane.tsdb_retention_size` as `--storage.tsdb.retention.size` |
+| vmagent sender queue | size | `536870912 bytes` | `observability_agent.queue_max_disk_bytes` as `-remoteWrite.maxDiskUsagePerURL`; the oldest blocks are dropped and counted when it is full |
+| Collector relay queue | size | `67108864 bytes` | relay `-remoteWrite.maxDiskUsagePerURL`; used only for in-memory blocks flushed on a graceful stop |
+| Service logs | time | `7 daily rotations` | `logrotate-xray.j2` and `logrotate-nginx.j2` (`daily`, `rotate 7`) |
+| Journal | time | `14day` | `monitoring.journald_max_retention` as `MaxRetentionSec` |
+| Journal | size | `1G` | `monitoring.journald_system_max_use` as `SystemMaxUse` |
+| Field-report raw report | time | `none` | no raw report store exists; the field-report ingest (`SEC-1795086333272606`) must discard each report after aggregation |
+| Field-report aggregates | time | `7d` | stored only as Prometheus series, so they inherit the TSDB retention |
+
+Retention cleanup is not part of disabling a role: disable keeps the TSDB, queues and journals until their own bounds expire them.
+
 ## Independent Kuma monitoring and Telegram evidence
 
 Kuma 2.5.9 is pinned to scanned architecture-specific child manifests in role defaults. The build source is `images/observability-kuma`; the publisher records the separate provenance index. Production and test images share the scan gate, with distinct stable categories for the observer architectures. The private panel image omits unused notification tooling. Restore admits the exact current image and the explicitly retained previous image for that architecture. Its UI is host-loopback only on port 13001, reached through an already approved authenticated operator path. The private HTTPS 9444 vhost permits exact enrolled source addresses and GET push paths only: no UI, setup, websocket administration, metrics, status pages or query parameters. TLS verifies the private IP SAN. Token-bearing access/error/application logging is disabled.

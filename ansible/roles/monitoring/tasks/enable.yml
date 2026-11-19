@@ -272,8 +272,8 @@
     content: |
       [Journal]
       Storage=persistent
-      SystemMaxUse=1G
-      MaxRetentionSec=14day
+      SystemMaxUse={{ monitoring.journald_system_max_use | default('1G') }}
+      MaxRetentionSec={{ monitoring.journald_max_retention | default('14day') }}
       ForwardToSyslog=no
   notify: Restart journald
 
