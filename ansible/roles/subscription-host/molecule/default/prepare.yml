@@ -1,0 +1,4 @@
+---
+# LoadCredential needs shared /run mount propagation inside the Molecule container.
+- name: Prepare genuine isolated credential delivery
+  ansible.builtin.import_playbook: ../../../../molecule/prepare-transport-credentials.yml
