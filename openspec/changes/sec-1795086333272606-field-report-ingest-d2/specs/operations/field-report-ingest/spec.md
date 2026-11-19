@@ -58,6 +58,15 @@ The alert rules MUST include a rule that fires when the client failure ratio for
 - **WHEN** promtool replays a series with 60 percent failures for one protocol and ASN and one with 5 percent
 - **THEN** the first fires and the second does not
 
+### Requirement: REQ-INGEST-POISON-BOUNDS — One report cannot dominate the aggregate
+
+The field reports are unauthenticated client input under one shared cohort token. The ingest MUST add at most `max_attempts_per_report` attempts from one report, scaling a larger report down and counting it, MUST rank asn and country top-N candidates by accepted reports and require `top_n_min_reports` of them, and MUST export accepted reports by protocol and ASN so alerts can require several reports.
+
+#### Scenario: one large report is bounded
+
+- **WHEN** one report holds 4000 attempts with a cap of 1000, and one network sends a single report with 100000 attempts while 20 other networks send three or more small reports
+- **THEN** the report adds 1000 attempts in its original proportions and is counted as capped, and only the 20 networks with enough reports receive their own label
+
 ### Requirement: REQ-INGEST-SECREVIEW — Security review is recorded
 
 The verification file MUST record the `security-review` skill result for the endpoint covering authentication, abuse limits, input validation, log content and denial of service.
