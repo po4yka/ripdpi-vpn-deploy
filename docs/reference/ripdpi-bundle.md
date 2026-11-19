@@ -122,7 +122,7 @@ The client sends one report as `POST` to `field_report.endpoint` with `Content-T
 |---|---|
 | `202` | Accepted and aggregated. The report is then discarded. |
 | `400` | The body is not JSON or fails `scripts/validate-field-report.py`. |
-| `401` | The token is neither the current cohort token nor the previous one inside its overlap. |
+| `404` | The token is neither the current cohort token nor the previous one inside its overlap, or the route is off. The vhost gives the same answer as for any unknown path, so a request without the token cannot tell the route exists. The client discards the report and sends no more until it has a new bundle. |
 | `413` | The body is larger than `subscription_field_report.max_body_bytes`. |
 | `429` | The per-address nginx rate is exceeded. The ingest has no second rate limit. |
 
@@ -140,7 +140,7 @@ The whole report is validated first; an invalid report changes no counter. In an
 | `observed_at` | Lookup time in UTC, rounded down to the hour. |
 | `ttl_seconds` | 300 to 86400. After `observed_at` plus `ttl_seconds` the client stops using the hint and sends `source` `sim` or `none`. |
 
-The subscription host answers `200` with this body, `204` with no body when the request address has no routed ASN in its offline dataset, `401` for an unknown token, `400` when the request carries a client forwarding header, and `429` over the per-address rate. The response never holds the request address.
+The subscription host answers `200` with this body, `204` with no body when the request address has no routed ASN in its offline dataset, `404` (the vhost's uniform not-found answer) for an unknown token, a disabled hint or a dataset that failed to load, `400` when the request carries a client forwarding header, and `429` over the per-address rate. The response never holds the request address. Any answer other than `200` means no hint: the client sends `source` `sim` or `none`.
 
 On the server, `subscription_field_report.network_hint.enabled` adds the route to the field-report ingest (same process, same cohort tokens; the ingest must be enabled). nginx passes the TCP peer address `$remote_addr` to the ingest in its own `X-Network-Hint-Peer` header, replaces any client copy of that header, sends no `X-Forwarded-For`, `Forwarded` or `X-Real-IP`, and refuses with `400` a request that carries any of them; the vhost sets no `real_ip` module directive, so a client cannot choose the address that is looked up. A CDN or reverse proxy in front of the subscription host would make every hint name the proxy's network, so the hint is only correct on a directly reached host. The ingest looks the address up in memory and drops it: it is never logged, counted or stored. The lookup uses the pinned offline dataset IPtoASN `ip2asn-combined.tsv.gz` (Public Domain Dedication and License 1.0, recorded in `ansible/roles/subscription-host/THIRD_PARTY_NOTICES.md`). `scripts/refresh-ip-asn-dataset.sh` downloads a new copy into the ignored `.cache/ip-asn/` directory, checks that the ingest loads it and prints the `dataset_version` and `dataset_sha256` to pin; deploy verifies the controller file against that pin and copies it, and the ingest checks the SHA-256 again at start. No host fetches the dataset. Ranges with AS 0 (not routed) or without a two-letter country give `204`.
 
