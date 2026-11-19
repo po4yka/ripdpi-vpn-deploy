@@ -48,3 +48,8 @@ The token MUST be shared per cohort and MUST NOT derive from a device identity. 
 
 - **WHEN** the operator rotates the cohort token
 - **THEN** new bundles carry the new token, the ingest accepts both during the overlap and the old token is rejected after it, and the logs contain neither
+
+#### Scenario: second rotation inside the overlap
+
+- **WHEN** the operator rotates again while the previous token is still accepted
+- **THEN** the command refuses and changes nothing unless `FORCE=1` states the cut-off of devices that hold the older token

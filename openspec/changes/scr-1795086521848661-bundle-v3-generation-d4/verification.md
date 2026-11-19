@@ -3,7 +3,7 @@ task_id: SCR-1795086521848661
 change: scr-1795086521848661-bundle-v3-generation-d4
 commit_sha: f3ab9ad2
 local: passed
-local_evidence: Implementation at f3ab9ad2. `tests/unit/test_bundle_v3_generation.py` (18 tests) plus the secrets schema and coverage tests exit 0 (176 passed); a focused run of 41 emit, client, recipient, bundle, secrets, audit, docs, governance and CI-selection files has 1009 passed and 16 errors, all in `test_device_lifecycle_probe_native.py`, which downloads the pinned Snell release from the network (environment gap, not a regression); `scripts/validate-secrets.py` and `scripts/check-secrets-coverage.py` exit 0; shellcheck on `scripts/rotate-cohort-token.sh` and `scripts/emit-bundle.sh` exit 0; `make snapshot-check` exit 0; `make docs-check` exit 0; `./taskctl openspec cli validate --strict` exit 0. A real sops 3.13.3 run against a throwaway age key generated a token, rotated it twice, kept unrelated keys and printed no token (`d4-real-sops-rotation.log`). `make check` was not run. Logs are in the session run directory runs-d2d4d5 (d4-*.log).
+local_evidence: Second security review fixes at b94e0398 pass the local checks in the section of that name at cba6b1e8. Implementation at f3ab9ad2. `tests/unit/test_bundle_v3_generation.py` (18 tests) plus the secrets schema and coverage tests exit 0 (176 passed); a focused run of 41 emit, client, recipient, bundle, secrets, audit, docs, governance and CI-selection files has 1009 passed and 16 errors, all in `test_device_lifecycle_probe_native.py`, which downloads the pinned Snell release from the network (environment gap, not a regression); `scripts/validate-secrets.py` and `scripts/check-secrets-coverage.py` exit 0; shellcheck on `scripts/rotate-cohort-token.sh` and `scripts/emit-bundle.sh` exit 0; `make snapshot-check` exit 0; `make docs-check` exit 0; `./taskctl openspec cli validate --strict` exit 0. A real sops 3.13.3 run against a throwaway age key generated a token, rotated it twice, kept unrelated keys and printed no token (`d4-real-sops-rotation.log`). `make check` was not run. Logs are in the session run directory runs-d2d4d5 (d4-*.log).
 remote_ci: required
 remote_ci_evidence: Not run; no push is authorized.
 dry_run: required
@@ -55,3 +55,12 @@ Verdict: APPROVE with these findings.
 - Dry run: a rotation against the operator SOPS file needs authorization.
 - Client: RIPDPI R4 consumes a generated v3 bundle.
 - Artifact: a generated example bundle at the verified SHA.
+
+## Second security review (1a159bc1..0f3b138b)
+
+An independent security review of the whole field-analytics range returned REQUEST CHANGES. The findings that this change owns are fixed below, each in its own commit with a regression test that fails before the fix. Verdict after the fixes: APPROVE for local evidence; staging, remote CI and Molecule stay open as listed above.
+
+- Finding 11, fixed in b94e0398: `scripts/rotate-cohort-token.sh` replaced a previous token whose overlap was still open. It now refuses while `previous_cohort_token_valid_until` is in the future or unreadable, unless `FORCE=1`; `docs/reference/secrets.md` says so. `test_rotation_refuses_to_drop_a_previous_token_inside_its_overlap` fails before; the three-rotation test passes `FORCE=1` on its third run.
+- Finding 5 also hardens this change's output check: `validate-bundle.py` now anchors patterns at end of input (8ed78023).
+
+At cba6b1e8 (logs in the session run directory runs-secfix-d7, verify-*.log): focused pytest of 17 files (contract, ingest, rotation, exporters, relay render, alert rules with promtool 3.15.1, observability contract, agent render, retention, secrets schema, audit hooks, agent instructions, governance, docs index, journald, operator) exit 0, 895 passed; `ansible-lint --offline` on subscription-host, observability_control_plane and hysteria exit 0; yamllint on the same roles exit 0; shellcheck exit 0; `make snapshot-check` exit 0; `make docs-check` exit 0; every contract fixture validates and every negative fixture is rejected exit 0; `./taskctl openspec cli validate --strict` exit 0 for D1 to D5 and D7; `./taskctl validate` exit 0. Each fix commit carries a regression test that failed on the code before it (red runs in the same directory). `make molecule-test` and `make check` were not run.
