@@ -481,6 +481,14 @@ def main() -> int:
 
     validator = jsonschema.Draft202012Validator(schema)
     errors = sorted(validator.iter_errors(doc), key=lambda e: list(e.absolute_path))
+    # A device operation record keeps each document as it was written, so the
+    # XHTTP path minimum, which is newer than those records, applies to the
+    # current path only.
+    errors = [
+        e for e in errors
+        if not (e.validator == "minLength" and list(e.absolute_path)[:1] == ["device_operations"]
+                and list(e.absolute_path)[-2:] == ["xray", "xhttp_path"])
+    ]
     if errors:
         print(f"validate-secrets: {len(errors)} schema violation(s) in {target}:",
               file=sys.stderr)

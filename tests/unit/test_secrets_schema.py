@@ -10,6 +10,7 @@ Two threats this catches:
 from __future__ import annotations
 
 import base64
+import copy
 import json
 import importlib.util
 import shutil
@@ -1208,3 +1209,15 @@ def test_xhttp_path_needs_a_slash_and_sixteen_more_characters(filled, tmp_path):
     assert _validate_cli(filled, tmp_path).returncode != 0
     filled["xray"]["xhttp_path"] = "/5f3a9c0e1b7d4a26"
     assert not errors()
+
+
+def test_xhttp_path_minimum_spares_device_operation_records(filled, tmp_path):
+    # A record keeps the document as it was written before the minimum existed.
+    earlier = copy.deepcopy(filled)
+    earlier["xray"]["xhttp_path"] = "/app-sync"
+    filled["device_operations"] = {"op-1": {"after": {"upcloud:prod": earlier}}}
+    reported = _validate_cli(filled, tmp_path).stderr
+    assert "device_operations.op-1" in reported
+    assert "xray.xhttp_path" not in reported
+    filled["xray"]["xhttp_path"] = "/app-sync"
+    assert "  xray.xhttp_path: failed minLength constraint" in _validate_cli(filled, tmp_path).stderr
