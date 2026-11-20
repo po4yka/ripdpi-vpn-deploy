@@ -396,7 +396,7 @@ Native Alertmanager timeout coverage publishes split alert updates inside a real
 
 CI jobs that execute the real taskctl/workspace integration fetch complete Git history: immutable archive-link projections require the reachable terminal source commit. Missing history remains a refusal, never an inferred receipt match.
 
-Real log rotation uses the configured authenticated-probe deadline across process replacement. The pinned REALITY engine has a five-second cold target-record learning loop; steady-state destination-boundary probes retain their three-second socket budget.
+Real log rotation must leave the Xray process in place: the native lanes compare `MainPID` across a forced rotation and require the rotated copy plus continued authenticated traffic.
 
 Watchdog race regressions replace socket ownership after vacancy admission and during the canary. Success and server recovery both require the retained client PID to own its loopback listener.
 
@@ -583,7 +583,7 @@ fixture-only signal cleanup cannot prove the installed service's restoration beh
 Pinned receiver readiness retries only expected startup HTTP 503 and refused or
 timed-out loopback connections within one deadline; unexpected errors propagate.
 
-Runtime audit regressions cover guarded and unguarded Xray log rotation, exact
+Runtime audit regressions cover restart-free Xray log rotation on every profile, exact
 producer-owned metric files with foreign-owner, symlink, hardlink and ancestor
 refusal, and named AWG observers including a failed secondary instance. Native
 Linux cases clear both IPv6 neighbor caches before strict-firewall exchanges and

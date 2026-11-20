@@ -106,7 +106,7 @@ retention; this role owns only the Xray-side counter contract.
 component without following links, claims the log directory as root:xray 0750,
 and validates regular single-link logs before descriptor-backed metadata writes.
 Xray owns only the 0640 log files; startup has no privileged pathname repair.
-Rotation creates fresh runtime-writable files and restarts the active service.
+Rotation truncates the held log files in place (`copytruncate`) and never restarts the service.
 The command appends `--check` only in check mode; normal convergence sends no
 placeholder argument. JSON change reporting is evaluated only after a successful
 helper exit, preserving the helper's original failure result.
@@ -162,6 +162,7 @@ the preflight refuses zero. Probes send the configured `xray_utls_fingerprint`.
   is identical.
 - **Binary-pin drift on apt-update** — never `apt upgrade xray` blindly;
   the binary is hash-pinned via the release-line tracker.
+- **Sniffing is `routeOnly`** — the sniffed name feeds only the BitTorrent, UDP/443 and operator WARP rules; the client's own destination goes to the normalizer unchanged. Destination override made the server re-resolve every sniffed name and broke connections whose SNI is not their real target.
 - **10085 belongs to XHTTP** — keep StatsService on 10086 or another validated
   loopback port; the pre-flight guard rejects public binds and collisions.
 

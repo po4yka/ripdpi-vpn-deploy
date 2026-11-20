@@ -56,73 +56,27 @@ if [[ "${INACTIVE:-0}" == 1 ]]; then exit 3; fi
     assert log.read_text().splitlines() == ["is-active --quiet nginx.service"]
 
 
-def test_xray_rotation_restarts_active_service_and_propagates_failure(tmp_path):
-    import os
-    import subprocess
+def test_xray_rotation_never_restarts_or_signals_the_service():
+    import yaml
 
-    variables = merge_render_vars()
-    variables["vpn"].update(
-        {"enable_xray_reality": False, "enable_nginx_xhttp": False, "enable_hysteria": False}
-    )
-    policy = render_template(ROLE / "templates/logrotate-xray.j2", variables)
-    body = policy.split("postrotate", 1)[1].split("endscript", 1)[0]
-    assert "HUP" not in body
-    binary = tmp_path / "systemctl"
-    log = tmp_path / "calls"
-    binary.write_text("""#!/usr/bin/env bash
-printf '%s\\n' "$*" >> "$CALLS"
-if [[ "$1" == 'restart' ]]; then exit "${RESTART_STATUS:-0}"; fi
-if [[ "${INACTIVE:-0}" == 1 ]]; then exit 3; fi
-""")
-    binary.chmod(0o755)
-    env = {**os.environ, "PATH": f'{tmp_path}:{os.environ["PATH"]}', "CALLS": str(log)}
-    result = subprocess.run(["bash", "-c", body], env=env, capture_output=True)
-    assert result.returncode == 0
-    assert log.read_text().splitlines() == [
-        "is-active --quiet xray.service",
-        "restart xray.service",
-        "is-active --quiet xray.service",
-    ]
-    failed = subprocess.run(
-        ["bash", "-c", body], env={**env, "RESTART_STATUS": "23"}, capture_output=True
-    )
-    assert failed.returncode == 23
-    log.unlink()
-    inactive = subprocess.run(
-        ["bash", "-c", body], env={**env, "INACTIVE": "1"}, capture_output=True
-    )
-    assert inactive.returncode == 0
-    assert log.read_text().splitlines() == ["is-active --quiet xray.service"]
-
-
-def test_guarded_xray_rotation_uses_admitted_recovery_without_direct_restart(tmp_path):
-    import os
-    import subprocess
-
-    variables = merge_render_vars()
-    policy = render_template(ROLE / "templates/logrotate-xray.j2", variables)
-    body = policy.split("postrotate", 1)[1].split("endscript", 1)[0]
-    calls = tmp_path / "calls"
-    systemctl = tmp_path / "systemctl"
-    systemctl.write_text("#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$CALLS\"\nexit \"${INACTIVE:-0}\"\n")
-    systemctl.chmod(0o755)
-    python = tmp_path / "python3"
-    python.write_text("#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$CALLS\"\nexit \"${RECOVERY_STATUS:-0}\"\n")
-    python.chmod(0o755)
-    environment = {**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}", "CALLS": str(calls)}
-    result = subprocess.run(["bash", "-c", body], env=environment, capture_output=True)
-    assert result.returncode == 0
-    assert calls.read_text().splitlines() == [
-        "is-active --quiet xray.service",
-        "-Es /usr/local/libexec/ripdpi-transport-egress/generation.py recover --config /etc/ripdpi/transport-egress/generation.json --normalizer-config /etc/ripdpi/transport-egress/normalizer.json --unit xray.service",
-    ]
-    failed = subprocess.run(["bash", "-c", body], env={**environment, "RECOVERY_STATUS": "23"}, capture_output=True)
-    assert failed.returncode == 23
-    assert "restart" not in calls.read_text()
-    calls.unlink()
-    inactive = subprocess.run(["bash", "-c", body], env={**environment, "INACTIVE": "3"}, capture_output=True)
-    assert inactive.returncode == 0
-    assert calls.read_text().splitlines() == ["is-active --quiet xray.service"]
+    # Regression: a postrotate restart dropped every client session at each
+    # daily rotation. Xray appends through a held descriptor, so the policy
+    # truncates in place and runs no script on any profile.
+    renders = {"defaults": merge_render_vars()}
+    for profile in sorted((REPO_ROOT / "ansible" / "group_vars").glob("vpn-*.yml")):
+        variables = merge_render_vars()
+        variables.update(yaml.safe_load(profile.read_text(encoding="utf-8")) or {})
+        renders[profile.name] = variables
+    assert len(renders) > 1
+    for name, variables in renders.items():
+        policy = render_template(ROLE / "templates/logrotate-xray.j2", variables)
+        directives = [line.split("#", 1)[0].split() for line in policy.splitlines()]
+        words = {word for line in directives for word in line}
+        assert "copytruncate" in words, name
+        assert not words & {
+            "postrotate", "prerotate", "firstaction", "lastaction", "preremove",
+            "endscript", "create", "systemctl", "python3",
+        }, name
 
 
 def test_xhttp_only_retains_xray_logs_and_subscription_only_has_no_xray_policy():
@@ -136,41 +90,3 @@ def test_xhttp_only_retains_xray_logs_and_subscription_only_has_no_xray_policy()
     assert render_fragment("xray-diagnostics-selector.txt.j2", selector, variables).strip() == "True"
     variables["vpn_subscription_only"] = True
     assert render_fragment("xray-diagnostics-selector.txt.j2", selector, variables).strip() == "False"
-
-
-def test_every_protected_profile_rotates_xray_through_guarded_recovery():
-    import yaml
-
-    # Profiles replace the canonical vpn map, so an omitted optional toggle must
-    # not select a direct restart that the generation controller treats as a fault.
-    guarded = "generation.py recover"
-    profiles = sorted((REPO_ROOT / "ansible" / "group_vars").glob("vpn-*.yml"))
-    assert profiles
-    for profile in profiles:
-        data = yaml.safe_load(profile.read_text(encoding="utf-8")) or {}
-        variables = merge_render_vars()
-        variables.update(data)
-        vpn = variables["vpn"]
-        protected = not data.get("vpn_subscription_only", False) and any(
-            vpn.get(key, True)
-            for key in ("enable_xray_reality", "enable_nginx_xhttp", "enable_hysteria")
-        )
-        policy = render_template(ROLE / "templates/logrotate-xray.j2", variables)
-        body = policy.split("postrotate", 1)[1].split("endscript", 1)[0]
-        if protected:
-            assert guarded in body, profile.name
-            assert "systemctl restart" not in body, profile.name
-        else:
-            assert guarded not in body, profile.name
-
-
-@pytest.mark.parametrize("protected", [True, False])
-def test_postrotate_parses_with_ansible_whitespace_settings(protected):
-    variables = merge_render_vars()
-    variables["vpn"].update(enable_xray_reality=protected, enable_nginx_xhttp=False, enable_hysteria=False)
-    environment = template_environment(FileSystemLoader(str(ROLE / "templates")))
-    environment.trim_blocks = True
-    policy = environment.get_template("logrotate-xray.j2").render(**variables)
-    body = policy.split("postrotate", 1)[1].split("endscript", 1)[0]
-    result = subprocess.run(["sh", "-n"], input=body, capture_output=True, text=True)
-    assert result.returncode == 0, result.stderr

@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-20
+goal: ANS-1795163234714653 Stop the daily Xray restart from log rotation and
+  tighten Xray runtime settings
