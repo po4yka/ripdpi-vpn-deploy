@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-11-18
+goal: XRY-1795014272195404 Qualify storage-mediated fallback before admission
