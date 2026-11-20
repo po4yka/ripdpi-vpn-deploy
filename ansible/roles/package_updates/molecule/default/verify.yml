@@ -33,6 +33,11 @@
         cmd: grep -F 'APT::Periodic::Unattended-Upgrade "1";' /etc/apt/apt.conf.d/51ripdpi-unattended-upgrades
       changed_when: false
 
+    - name: The upgrade timer has a fixed per-host delay
+      ansible.builtin.command:
+        cmd: grep -Fx 'FixedRandomDelay=true' /etc/systemd/system/apt-daily-upgrade.timer.d/ripdpi-stagger.conf
+      changed_when: false
+
     - name: unattended-upgrades dry-run succeeds
       ansible.builtin.command:
         cmd: unattended-upgrade -d --dry-run

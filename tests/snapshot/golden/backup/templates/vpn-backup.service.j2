@@ -6,6 +6,9 @@ After=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/vpn-backup.sh
+# A oneshot has no start deadline by default: one hung restic or rclone call
+# would keep the unit activating and block every later timer run.
+TimeoutStartSec=1h
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7

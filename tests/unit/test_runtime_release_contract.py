@@ -3257,3 +3257,19 @@ def test_locked_helper_refuses_same_name_swap_before_public_unlink(
 
     assert swapped
     assert public.read_text() == "attacker-owned\n"
+
+
+def test_activation_lock_refuses_after_a_bounded_wait_instead_of_blocking() -> None:
+    import fcntl
+
+    helper = _activator_module()
+    helper.LOCK_TIMEOUT_SECONDS = 0
+    with _trusted_temporary_path() as trusted_root:
+        holder = os.open(trusted_root, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            fcntl.flock(holder, fcntl.LOCK_EX)
+            with pytest.raises(helper.UnsafeState, match="install-root-locked"):
+                helper._lock_directory(trusted_root, check=False)
+        finally:
+            os.close(holder)
+        helper._lock_directory(trusted_root, check=False).close()

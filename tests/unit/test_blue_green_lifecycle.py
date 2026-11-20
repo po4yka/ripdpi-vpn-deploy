@@ -71,6 +71,7 @@ if environment == 'green':
     if previous and not (root / (previous + '.complete')).exists():
         sys.exit('dependent phase started before ' + previous)
     if phase in ('dry-run', 'deploy', 'verify', 'smoke-test'):
+        (root / 'green-secrets-path').write_text(os.environ['SECRETS_FILE'])
         assert (root / 'migration-prepare.complete').exists()
         assert pathlib.Path(os.environ['SECRETS_FILE']).read_text() == 'prepared target credentials'
         assert os.environ['SOPS_FILE'] == os.environ['GREEN_SOPS_FILE']
@@ -94,6 +95,9 @@ if action == 'prepare':
     pathlib.Path(os.environ['GREEN_SOPS_FILE']).write_text('prepared target credentials')
 if action == 'publish': assert (root / 'smoke-test.complete').exists()
 if action == 'ready': assert (root / 'migration-publish.complete').exists()
+if action == 'ready':
+    plaintext = pathlib.Path((root / 'green-secrets-path').read_text())
+    (root / 'green-secrets-after-pivot').write_text('present' if plaintext.exists() else 'absent')
 (root / ('migration-' + action + '.complete')).touch()
 """)
     executable(scripts / "terraform-env.sh", """#!/bin/sh
@@ -253,6 +257,12 @@ def test_completed_handover_keeps_migrated_environment_identity(tmp_path):
     assert 'Keep operating under PROVIDER=upcloud ENV=green' in result.stdout
     assert 'separately reviewed migration' in result.stdout
     assert 'rename green.tfvars' not in result.stdout
+
+
+def test_green_plaintext_secrets_do_not_outlive_the_manual_pivot(tmp_path):
+    result, _ = run_blue_green(tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / 'repo/green-secrets-after-pivot').read_text() == 'absent'
 
 
 def test_plan_selection_conflict_refuses_before_provider_mutation(tmp_path):

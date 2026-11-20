@@ -23,11 +23,11 @@ set -euo pipefail
 umask 077
 
 CLIENT="${1:-}"
-[[ "$CLIENT" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || { echo "client name must contain only letters, digits, underscores, or dashes" >&2; exit 1; }
 [[ -n "$CLIENT" && "$CLIENT" != "-h" && "$CLIENT" != "--help" ]] || {
   sed -n '2,/^set -euo/p' "$0" | sed '$d' >&2
   exit 1
 }
+[[ "$CLIENT" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || { echo "client name must contain only letters, digits, underscores, or dashes" >&2; exit 1; }
 shift
 
 EXPIRES=""
@@ -62,8 +62,9 @@ PY
 fi
 
 server_ip="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
-admin_user="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw admin_user 2>/dev/null || echo admin)"
-server_hostname="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_hostname 2>/dev/null || echo "$server_ip")"
+# No fallback: a guessed user or a bare address would publish to, or name, the wrong endpoint.
+admin_user="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw admin_user)"
+server_hostname="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_hostname)"
 
 payload="$("${REPO_ROOT}/scripts/emit-singbox.sh" "$CLIENT")"
 [[ -n "$payload" ]] || { echo "empty payload from emit-singbox.sh" >&2; exit 1; }
@@ -138,9 +139,12 @@ if [[ -n "$EXPIRES" ]]; then
   echo "  * server-side expiry: ${EXPIRES} (410 after that date)"
 fi
 
+# The token is already installed, so a missing QR tool must not skip the audit entry below.
+if (( EMIT_QR )) && ! command -v qrencode >/dev/null 2>&1; then
+  echo "qrencode not installed; skip --qr" >&2
+  EMIT_QR=0
+fi
 if (( EMIT_QR )); then
-  command -v qrencode >/dev/null 2>&1 || {
-    echo "qrencode not installed; skip --qr" >&2; exit 0; }
   qr_out="${CLIENT}.bootstrap.qr.png"
   # Replace atomically so legacy 0644 files never expose the new payload.
   (

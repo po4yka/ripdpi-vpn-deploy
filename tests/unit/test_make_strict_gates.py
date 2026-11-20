@@ -750,6 +750,52 @@ def test_inventory_guard_refuses_missing_or_empty_selected_file(tmp_path, custom
     assert not marker.exists()
 
 
+def _run_recipe_with_recorders(tmp_path, goal, *assignments, recorders):
+    """Run one real Makefile recipe against scripts that only record their arguments."""
+    root = Path(__file__).resolve().parents[2]
+    calls = tmp_path / "calls.jsonl"
+    (tmp_path / "scripts").mkdir()
+    for name in recorders:
+        script = tmp_path / "scripts" / name
+        script.write_text(
+            f"#!{sys.executable}\nimport json, pathlib, sys\n"
+            f"with pathlib.Path({str(calls)!r}).open('a') as stream:\n"
+            "    stream.write(json.dumps([pathlib.Path(sys.argv[0]).name, *sys.argv[1:]]) + '\\n')\n")
+        script.chmod(0o755)
+    env = {key: value for key, value in os.environ.items()
+           if key not in {"MAKEFILES", "MAKEFLAGS", "GNUMAKEFLAGS", "MFLAGS", "CLIENT", "FORMAT", "EXPIRES", "QR",
+                          "ENV", "SKIP_PRECHECK", "SECRETS_FILE"}}
+    result = subprocess.run(
+        ["make", "--no-print-directory", "-f", str(root / "Makefile"), goal, *assignments],
+        cwd=tmp_path, env=env, capture_output=True, text=True, timeout=20, check=False,
+    )
+    return result, [json.loads(line) for line in calls.read_text().splitlines()] if calls.exists() else []
+
+
+@pytest.mark.parametrize("assignments,expected", [
+    ([], ["phone"]),
+    (["FORMAT=ripdpi", "EXPIRES=2027-01-01", "QR=1"],
+     ["phone", "--format", "ripdpi", "--expires", "2027-01-01", "--qr"]),
+])
+def test_issue_sub_token_recipe_passes_only_the_selected_options(tmp_path, assignments, expected):
+    result, calls = _run_recipe_with_recorders(
+        tmp_path, "issue-sub-token", "CLIENT=phone", *assignments, recorders=["issue-sub-token.sh"])
+    assert result.returncode == 0, result.stderr
+    assert calls == [["issue-sub-token.sh", *expected]]
+
+
+@pytest.mark.parametrize("environment,validated", [("prod", True), ("ci-staging-1", False)])
+def test_precheck_bypass_keeps_the_placeholder_check_outside_ci(tmp_path, environment, validated):
+    secrets = tmp_path / "secrets.yaml"
+    secrets.write_text("synthetic: value\n")
+    result, calls = _run_recipe_with_recorders(
+        tmp_path, "pre-deploy-check", "SKIP_PRECHECK=1", f"ENV={environment}", f"SECRETS_FILE={secrets}",
+        recorders=["validate-secrets.py", "spot-check-secrets.py", "check-certs.sh"])
+    assert result.returncode == 0, result.stderr
+    assert calls == ([["validate-secrets.py", str(secrets), "--strict", "--environment", environment]]
+                     if validated else [])
+
+
 def test_xray_diagnostics_rejects_unsafe_extra_vars_files():
     root = Path(__file__).resolve().parents[2]
     makefile = (root / "Makefile").read_text()

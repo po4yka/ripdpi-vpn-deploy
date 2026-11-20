@@ -1,0 +1,30 @@
+---
+# tailscaled uploads its client logs to the vendor by default, and every node
+# would do so under one tailnet identity. The running daemon is never restarted
+# here, because the deploy can be connected through it: the setting applies at
+# the next tailscaled start (a reboot or `make os-maintenance`).
+- name: Ensure the tailscaled drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/tailscaled.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Disable tailscaled log upload
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/tailscaled.service.d/ripdpi-no-logs.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Service]
+      Environment=TS_NO_LOGS_NO_SUPPORT=true
+  register: _tailnet_no_logs
+
+- name: Load the tailscaled log policy
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when:
+    - _tailnet_no_logs.changed
+    - not ansible_check_mode

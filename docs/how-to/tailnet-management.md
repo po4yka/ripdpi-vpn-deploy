@@ -128,6 +128,8 @@ An offline boot inspection on the pre-rollout P0 node found no Tailscale binary,
 
 The package defaults pin the first-install Tailscale stable version `1.104.4` and the official repository key digest. After enrollment the node updates Tailscale itself from that signed repository: automatic update is on for every node, and the role does not hold the installed version. The role does not set that preference; `tailscale debug prefs` shows it as `AutoUpdate`. Updating either pin requires reviewing the official stable package repository, focused controller tests, the role's Molecule scenario, full CI and fresh staging proof before production use.
 
+The role writes the systemd drop-in `tailscaled.service.d/ripdpi-no-logs.conf` with `TS_NO_LOGS_NO_SUPPORT=true`, so tailscaled does not upload client logs to the vendor. Bootstrap writes it before the first daemon start. On an enrolled node the role does not restart tailscaled, so the setting applies at the next daemon start, for example the reboot in `make os-maintenance`; `systemctl show -p Environment tailscaled.service` shows the loaded value.
+
 Ordinary Tailnet role execution removes `/etc/apt/preferences.d/tailscale`. Earlier bootstraps wrote an exact priority-1001 pin there, which made apt propose a downgrade after the daemon updated itself. A node can thus run a later stable version than the first-install pin; record the running version from `tailscale version` when you need it as evidence.
 
 

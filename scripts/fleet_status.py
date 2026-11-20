@@ -40,7 +40,7 @@ def watchdog_health(report, now, expected=True):
         timer = report["services"]["vpn-watchdog.timer"]
         if (not expected and service.get("status") == timer.get("status") == "observed"
                 and service.get("load_state") == timer.get("load_state") == "not-found"):
-            # Profiles such as vpn-p1-web and vpn-p2-udp disable the watchdog; that is not a failed observation.
+            # Profiles such as vpn-p0-minimal disable the watchdog; that is not a failed observation.
             return {"status": "not-installed", "reason": "watchdog-not-installed"}
         if service.get("status") != "observed" or service.get("load_state") != "loaded":
             return {"status": "unknown", "reason": "service-unobserved"}

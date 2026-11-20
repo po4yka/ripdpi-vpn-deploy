@@ -135,7 +135,8 @@ def test_live_explicit_profile_surfaces_are_locked():
     assert p2_udp["enable_hysteria"] is True
     assert p2_udp["enable_amneziawg"] is True
     for service_profile in (minimal, p1_web, p2_udp):
-        assert service_profile["enable_watchdog"] is False
+        # A wedged nginx, Hysteria or AmneziaWG needs the local watchdog.
+        assert service_profile["enable_watchdog"] is (service_profile is not minimal)
         assert service_profile["enable_monitoring"] is True
         assert service_profile["enable_backup"] is True
         assert service_profile["enable_tailnet_management"] is True

@@ -44,6 +44,11 @@ SOPS documents, create runtime VPN secrets or supply Ansible authority.
 **Destroy confirms a parsed hostname** — `destroy.sh` reads only a quoted
 `server_name` from the tfvars file and refuses before Terraform when there is
 none. Its EXIT trap removes the ordinary saved destroy plan on every exit.
+Its `_destroy_override.tf` (like the observability cleanup override) lifts `prevent_destroy` for every environment of the
+provider root, so `terraform-env.sh` refuses plan, apply and destroy from any
+other caller while the file exists, `policy-plan.sh` refuses too, and the plan
+policy refuses a server deletion. It removes the shared inventory only when no
+other node is listed in it.
 
 **Destructive scripts always audit** — they append to
 `audit-log.sh append-best-effort` after a successful run; there is no
@@ -194,6 +199,7 @@ Independent controller homes are not a supported shared-ownership mechanism.
 - **Python scripts must run under the venv-less system python3** — operator
   workstations don't all have uv/poetry. Use stdlib + the pinned deps in
   `requirements.in`. Don't import `requests` (use `urllib.request`).
+- **A null Terraform output is absent from the state** — a read by name fails for it exactly as for a broken state. `render-inventory.sh` reads optional addresses from the full `output -json` listing and stops when that fails.
 - **Never run raw Terraform from an operator script** — it silently uses the active workspace. Set `PROVIDER` and `ENV` on `terraform-env.sh` instead.
 - **Galaxy drift lookups read only their temp install** — `ansible-galaxy collection list --collections-path <tmp>` also reports the configured default paths such as `~/.ansible/collections`, listed first. `check-ansible-galaxy-updates.py` must select the entry keyed by the resolved temp `ansible_collections` dir (macOS `/tmp` is a symlink); taking the first match reports an operator's stale local copy as latest and passes outdated pins. CI runners have no default collections, so only the manual review on operator machines exposes a regression.
 - **Active REALITY target monitoring is filtered-vantage only.** `monitor-reality-target.sh` rejects an absent or `unfiltered` vantage, resolves the active target through the canonical secrets gate, and persists only a target fingerprint plus technical IP/ASN/prefix observations. It requires two consecutive unhealthy runs before notifying and never edits SOPS or invokes deployment actions.

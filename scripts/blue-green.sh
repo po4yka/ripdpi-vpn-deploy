@@ -357,6 +357,8 @@ for goal in verify smoke-test; do
     ENV="$GREEN_ENV" PROVIDER="$PROVIDER" run_make "$goal"
 done
 run_migration publish
+# No later step reads green's plaintext secrets. Do not hold them through the manual pivot.
+shred -u -- "$GREEN_SECRETS_FILE" 2>/dev/null || rm -f -- "$GREEN_SECRETS_FILE"
 
 # ---------------------------------------------------------------------------
 # 6. Operator pivot — flip clients / DNS / floating IP

@@ -47,6 +47,8 @@ def _run_watchdog(
     reality_enabled: bool = True,
     nginx_config_invalid: bool = False,
     xray_config_invalid: bool = False,
+    kicks_per_hour: int = 1,
+    kicks_per_outage: int = 3,
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
@@ -175,7 +177,8 @@ def _run_watchdog(
             "XRAY_TERM_MARKER": str(term_marker),
             "STATE_FILE": str(state_file),
             "FAIL_THRESHOLD": "1",
-            "KICKS_PER_HOUR_MAX": "1",
+            "KICKS_PER_HOUR_MAX": str(kicks_per_hour),
+            "KICKS_PER_OUTAGE_MAX": str(kicks_per_outage),
             "SYSTEMCTL_LOG": str(tmp_path / "systemctl.log"),
             "WATCHDOG_STATE_BIN": str(bin_dir / "watchdog-state"),
             "WATCHDOG_NOTIFY_BIN": str(bin_dir / "watchdog-notify"),
@@ -242,8 +245,8 @@ def test_owned_site_root_can_require_exact_200_status(tmp_path):
 
 
 def test_recovery_kicks_are_bounded_per_hour(tmp_path):
-    first = _run_watchdog(tmp_path, stats_service_ready=False)
-    second = _run_watchdog(tmp_path, stats_service_ready=False)
+    first = _run_watchdog(tmp_path, stats_service_ready=False, canary_status="500")
+    second = _run_watchdog(tmp_path, stats_service_ready=False, canary_status="500")
 
     assert first.returncode != 0, first.stderr
     assert second.returncode != 0, second.stderr
@@ -270,8 +273,41 @@ def test_xray_client_early_exit_is_a_probe_failure(tmp_path):
     assert "consecutive_fails=1" in (tmp_path / "state").read_text()
 
 
-def test_stats_service_failure_is_a_probe_failure_and_restarts_xray(tmp_path):
+def test_stats_service_failure_alone_never_restarts_a_serving_xray(tmp_path):
     result = _run_watchdog(tmp_path, stats_service_ready=False)
+
+    assert result.returncode != 0, result.stderr
+    assert "FAIL  xray StatsService query" in result.stdout
+    assert "OK    xray REALITY TCP/443 round-trip" in result.stdout
+    assert not (tmp_path / "recovery.log").exists()
+    assert "restart" not in (tmp_path / "systemctl.log").read_text()
+
+
+def test_recovery_stops_after_the_outage_budget_and_resumes_after_a_green_run(tmp_path):
+    red = {"stats_service_ready": False, "canary_status": "500", "kicks_per_hour": 10, "kicks_per_outage": 2}
+    recovery = tmp_path / "recovery.log"
+
+    results = [_run_watchdog(tmp_path, **red) for _ in range(3)]
+
+    assert recovery.read_text().count("--unit xray.service") == 2
+    assert "RESTART WITHHELD  xray.service (recovery attempts exhausted)" in results[2].stdout
+    assert results[2].returncode != 0
+    assert _run_watchdog(tmp_path, kicks_per_hour=10, kicks_per_outage=2).returncode == 0
+    _run_watchdog(tmp_path, **red)
+    assert recovery.read_text().count("--unit xray.service") == 3
+
+
+def test_malformed_outage_counter_withholds_recovery(tmp_path):
+    (tmp_path / "state.outage").write_text("many\n")
+
+    result = _run_watchdog(tmp_path, stats_service_ready=False, canary_status="500")
+
+    assert "RESTART WITHHELD  xray.service (recovery attempts exhausted)" in result.stdout
+    assert not (tmp_path / "recovery.log").exists()
+
+
+def test_stats_service_failure_with_a_failed_round_trip_restarts_xray(tmp_path):
+    result = _run_watchdog(tmp_path, stats_service_ready=False, canary_status="500")
 
     assert result.returncode != 0, result.stderr
     assert "FAIL  xray StatsService query" in result.stdout
@@ -289,7 +325,7 @@ def test_cohort_only_non_base_listener_does_not_trigger_recovery(tmp_path):
 
 
 def test_failed_guarded_recovery_never_falls_back_to_direct_restart(tmp_path):
-    result = _run_watchdog(tmp_path, stats_service_ready=False, recovery_succeeds=False)
+    result = _run_watchdog(tmp_path, stats_service_ready=False, canary_status="500", recovery_succeeds=False)
     assert result.returncode != 0
     assert "RESTART FAILED  xray.service" in result.stdout
     assert "--unit xray.service" in (tmp_path / "recovery.log").read_text()
@@ -403,3 +439,32 @@ def test_invalid_xray_config_withholds_guarded_recovery(tmp_path):
     recovery = tmp_path / "recovery.log"
     assert not recovery.exists() or "--unit xray.service" not in recovery.read_text()
     assert "restart xray.service" not in (tmp_path / "systemctl.log").read_text()
+
+
+def test_outage_counter_with_a_leading_zero_withholds_recovery_instead_of_aborting(tmp_path):
+    (tmp_path / "state.outage").write_text("08\n")
+
+    result = _run_watchdog(tmp_path, stats_service_ready=False, canary_status="500")
+
+    assert "RESTART WITHHELD  xray.service (recovery attempts exhausted)" in result.stdout
+    assert "consecutive_fails=1" in (tmp_path / "state").read_text()
+
+
+@pytest.mark.parametrize("local_fault", [{"foreign_listener": True}, {"socks_ready": False}, {"xray_client_exits": True}])
+def test_stats_failure_with_a_local_probe_fault_never_restarts_xray(tmp_path, local_fault):
+    result = _run_watchdog(tmp_path, stats_service_ready=False, **local_fault)
+
+    assert result.returncode != 0
+    assert "FAIL  xray StatsService query" in result.stdout
+    assert not (tmp_path / "recovery.log").exists()
+
+
+def test_a_red_run_that_selects_no_unit_ends_the_outage(tmp_path):
+    red = {"stats_service_ready": False, "canary_status": "500", "kicks_per_hour": 10, "kicks_per_outage": 1}
+    _run_watchdog(tmp_path, **red)
+    assert (tmp_path / "state.outage").read_text() == "1\n"
+
+    diagnostic_only = _run_watchdog(tmp_path, canary_status="500", kicks_per_hour=10, kicks_per_outage=1)
+
+    assert diagnostic_only.returncode != 0
+    assert (tmp_path / "state.outage").read_text() == "0\n"

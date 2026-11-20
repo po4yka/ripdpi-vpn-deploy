@@ -12,6 +12,8 @@
 
 **Isolation scores are diagnostic** — `systemd-analyze security` reports unit configuration, not service vulnerabilities. Retain nonzero and unavailable results privately; check mode produces no collected isolation report.
 
+**The scan stays offline** — the collector adds a private profile with `skip-upgrade-test=yes`. Lynis loads it after its default profile; without it the audit queries a vendor DNS name for the latest version.
+
 ## What's done well
 
 - Lynis is the only package installed by default, and only for this explicit audit playbook.

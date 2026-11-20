@@ -214,7 +214,7 @@ For a PR, use `gh pr view <number> --json headRefOid,headRefName` to identify it
 | `make validate-target` | live probe of REALITY target (TLS / H2 / SAN / uTLS / ASN / template OPSEC) |
 | `make monitor-reality-target VANTAGE=<technical-label>` | filtered-vantage active-target path and ASN/prefix signal; unhealthy observations on two consecutive UTC days alert |
 | `make plan` | terraform plan (catches infrastructure drift) |
-| `make dry-run` / `make deploy` / `make verify` | **pre-deploy-check** runs first: spot-check-secrets + check-certs; bypass with `SKIP_PRECHECK=1` |
+| `make dry-run` / `make deploy` / `make verify` | **pre-deploy-check** runs first: spot-check-secrets + check-certs; `SKIP_PRECHECK=1` skips both, but the strict placeholder check still runs outside `ci-*` environments |
 | `make deploy-canary` | same deploy path as `make deploy`, with `ENV=canary` forced by the Makefile wrapper |
 | `make deploy` | role handlers run validate-before-restart (Xray, nftables, nginx) |
 | `make verify` | post-deploy gates assert services up, listeners present; after `source-drift` passes, records a known-good receipt for each selected node |

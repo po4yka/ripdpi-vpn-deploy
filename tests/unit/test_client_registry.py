@@ -539,6 +539,52 @@ with output.open('wb') as stream:
     assert (tmp_path / artifact).stat().st_mode & 0o777 == 0o600
 
 
+def test_bootstrap_issuance_without_qrencode_is_still_audited(tmp_path):
+    env, payload_file, _, _ = _harness(tmp_path)
+    # One directory of links to every command on PATH except qrencode.
+    links = tmp_path / "path-without-qrencode"
+    links.mkdir()
+    for entry in env["PATH"].split(os.pathsep):
+        for tool in (Path(entry).iterdir() if Path(entry).is_dir() else ()):
+            link = links / tool.name
+            if tool.name != "qrencode" and not link.is_symlink():
+                link.symlink_to(tool.resolve())
+    # The stubs find their fixtures next to themselves, so they stay ahead of the links.
+    env["PATH"] = os.pathsep.join([str(tmp_path / "bin"), str(STUBS_BIN), str(links)])
+    # The harness has no age key; in debug mode the audit hook reports that it ran.
+    env["AUDIT_LOG_DEBUG"] = "1"
+    result = subprocess.run(
+        ["bash", str(BOOTSTRAP_ISSUER), "phone", "--qr"],
+        env=env, cwd=tmp_path, text=True, capture_output=True, timeout=20,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "qrencode not installed" in result.stderr
+    assert payload_file.exists() and not (tmp_path / "phone.bootstrap.qr.png").exists()
+    assert "audit-log append skipped; age or key unavailable" in result.stderr
+
+
+def test_bootstrap_issuer_shows_usage_for_the_help_flag(tmp_path):
+    result = subprocess.run(["bash", str(BOOTSTRAP_ISSUER), "--help"], text=True, capture_output=True, timeout=20)
+    assert result.returncode == 1
+    assert "Usage:" in result.stderr and "client name must" not in result.stderr
+
+
+@pytest.mark.parametrize("output", ["admin_user", "server_hostname"])
+def test_bootstrap_issuer_stops_when_a_terraform_output_read_fails(tmp_path, output):
+    env, payload_file, ssh_marker, _ = _harness(tmp_path)
+    real = STUBS_BIN / "terraform"
+    _write_executable(
+        tmp_path / "bin/terraform",
+        f'#!/bin/sh\ncase "$*" in *"output -raw {output}") echo "state unreadable" >&2; exit 1 ;; esac\nexec "{real}" "$@"\n',
+    )
+    result = subprocess.run(
+        ["bash", str(BOOTSTRAP_ISSUER), "phone"],
+        env=env, cwd=tmp_path, text=True, capture_output=True, timeout=20,
+    )
+    assert result.returncode != 0
+    assert not ssh_marker.exists() and not payload_file.exists()
+
+
 @pytest.mark.parametrize("script_name", ["issue-sub-token.sh", "issue-bootstrap.sh"])
 @pytest.mark.parametrize(
     "directory",

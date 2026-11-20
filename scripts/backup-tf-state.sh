@@ -137,7 +137,9 @@ pending=""
 
 echo "wrote $OUT"
 
-# Retain last 30 backups per (provider, env) tuple.
+# Retain the last 30 backups per (provider, env) tuple, and every backup of
+# the last 30 days: a count alone lets repeated runs after a bad apply push
+# out every good backup.
 # Match the complete timestamp so an environment prefix cannot select siblings.
 # SC2012: `ls -1t` is needed for mtime-ordered listing portable across
 # Linux and macOS without GNU coreutils; `find -printf` is GNU-only.
@@ -145,6 +147,7 @@ echo "wrote $OUT"
 ls -1t "${BACKUP_DEST}/${PROVIDER}-${ENV}-"[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z.tfstate.age 2>/dev/null \
   | tail -n +31 \
   | while read -r old; do
+      [[ -n "$(find "$old" -mtime +30)" ]] || continue
       rm -f "$old"
       echo "removed old backup $old"
     done

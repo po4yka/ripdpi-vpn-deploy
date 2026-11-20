@@ -75,6 +75,12 @@ def collect(directory):
     log = root / "lynis.log"
     if os.path.lexists(report) or os.path.lexists(log):
         raise ValueError("report path is not fresh")
+    # Without this option the scan asks a vendor DNS name for the latest
+    # version, which tells the resolver and the vendor that the node runs Lynis.
+    profile = root / "offline.prf"
+    with profile.open("x", encoding="utf-8") as stream:
+        os.fchmod(stream.fileno(), 0o600)
+        stream.write("skip-upgrade-test=yes\n")
     started = time.time()
     environment = {**os.environ, "TZ": "UTC", "LC_ALL": "C"}
     result = subprocess.run(
@@ -84,6 +90,8 @@ def collect(directory):
             "system",
             "--quick",
             "--no-colors",
+            "--profile",
+            str(profile),
             "--report-file",
             str(report),
             "--log-file",

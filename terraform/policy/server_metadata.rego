@@ -29,6 +29,24 @@ deny[msg] {
   )
 }
 
+# server_is_not_deleted_by_an_ordinary_plan
+#
+# prevent_destroy stops Terraform from planning a server deletion. Only
+# scripts/destroy.sh lifts it, with an override file that covers every
+# environment of the provider root, and its destroy plan does not pass through
+# this policy. A plan made while that override exists can replace the server,
+# so a deletion or replacement that reaches this policy is refused.
+deny[msg] {
+  rc := input.resource_changes[_]
+  server_resource_types[rc.type]
+  rc.change.actions[_] == "delete"
+
+  msg := sprintf(
+    "resource %q: an ordinary plan deletes or replaces the server; use make destroy",
+    [rc.address],
+  )
+}
+
 # active_edge_firewall_stays_active
 #
 # A fresh UpCloud node starts with firewall = false (the provider firewall is
