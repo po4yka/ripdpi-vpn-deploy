@@ -62,6 +62,7 @@ tiers:
   network-exposure-gate: tactical # reviewed controller gate, disabled by default
   security_audit: tactical  # operator-run non-blocking host audit reports
   reality-self-steal: tactical # owned loopback TLS/H2 target for P0 REALITY
+  public-site: tactical     # scheduled publication of an operator site bundle; no listener
 
   # RESEARCH — experimental / unconfirmed; never in a family deploy
   split-hop-egress: research  # two-VPS dual-role defense; pilot, unconfirmed

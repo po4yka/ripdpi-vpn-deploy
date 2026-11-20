@@ -1,0 +1,37 @@
+---
+# Run by the caller after its vhost activation has succeeded.
+- name: List delivered and published bundles
+  ansible.builtin.find:
+    paths: [/etc/public-site, /var/lib/public-site]
+    file_type: directory
+    patterns: ['^[0-9a-f]{64}$']
+    use_regex: true
+  register: _public_site_present
+
+- name: Select bundles that no enabled vhost names
+  ansible.builtin.set_fact:
+    _public_site_replaced: >-
+      {{ _public_site_present.files | map(attribute='path')
+         | reject('search', '/(' ~ (public_site_published.values() | join('|')) ~ ')$') | sort }}
+
+# A timer run that extracts a bundle while it is removed would create it again.
+- name: Stop the publisher while replaced bundles are removed
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+  loop:
+    - public-site-publish.timer
+    - public-site-publish.service
+  when: _public_site_replaced | length > 0
+
+- name: Remove bundles that no enabled vhost names
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ _public_site_replaced }}"
+
+- name: Start the publisher timer after removal
+  ansible.builtin.systemd_service:
+    name: public-site-publish.timer
+    state: started
+  when: _public_site_replaced | length > 0

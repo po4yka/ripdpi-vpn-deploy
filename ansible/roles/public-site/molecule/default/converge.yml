@@ -1,0 +1,33 @@
+---
+- name: Build the fixture bundle on the controller
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Build the site bundle from the repository fixture
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - "{{ playbook_dir }}/../../../../../scripts/public_site.py"
+          - build
+          - --dir
+          - "{{ playbook_dir }}/../../../../../tests/fixtures/public-site-identity"
+          - --out
+          - "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/bundle"
+      # The build is reproducible, so a second converge writes the same bytes.
+      changed_when: false
+
+- name: Converge the public site publisher
+  hosts: all
+  become: true
+  pre_tasks:
+    # The published tree belongs to nginx's group; the scenario has no nginx role.
+    - name: Create the web server group
+      ansible.builtin.group:
+        name: www-data
+        system: true
+  roles:
+    - role: public-site
+      vars:
+        public_site_bundle_dirs:
+          - "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/bundle"
