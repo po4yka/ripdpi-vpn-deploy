@@ -98,14 +98,14 @@ The value must be an https origin; convergence fails closed on the `nginx-xhttp`
 The decoy content itself is operator-owned on production hosts. The pages bundled under `ansible/roles/nginx-xhttp/` are committed in a public repository, so every node that keeps them serves one byte-identical identity that a scanner can cluster. Put a complete static site (at least `404.html`; any further files and subdirectories are published at the same relative paths) in a controller-local directory and name it in the same override file:
 
 ```bash
-echo 'nginx_xhttp_public_site_dir: "/path/to/owned-site"' >> secrets/local/decoy-origin.yml
+echo 'nginx_xhttp_public_site_dir: "/path/to/site-bundle"' >> secrets/local/decoy-origin.yml
 ```
 
-Use an absolute path with safe owner-controlled directories and regular files. Links, hard links, hidden entries and special files are refused. The tree is limited to 1024 entries, 16 path components, 4 MiB per file and 16 MiB in total. The controller uses a private snapshot and rechecks the source before host writes.
+The value names a site bundle from `make public-site-build`: its `site/` directory holds the static tree (at least `index.html` and `404.html`), and `backlog.tar.gz` with `schedule.json`, when present, let the node publish later generations without a deploy. A production deploy and dry run refuse a bundle that `make public-site-check` refuses. Use an absolute path with safe owner-controlled directories and regular files. Links, hard links, hidden entries and special files are refused. The tree is limited to 1024 entries, 16 path components, 4 MiB per file and 16 MiB in total. The controller uses a private snapshot and rechecks the source before host writes.
 
 A production host is one whose inventory `env` or `vpn_build_environment` is `prod`. `make inventory` writes `vpn_build_environment` from the Terraform `build_env` variable, so a permanent workspace with its own name is a production host too. A production host refuses convergence while the variable is empty; staging, lab and Molecule hosts may keep the bundled pages.
 
-The REALITY self-steal site follows the same contract through `reality_self_steal_public_site_dir`. Its tree must contain `index.html` and `404.html`; the three pages bundled under `ansible/roles/reality-self-steal/` are refused on a production host and removed where the operator tree does not provide them.
+The REALITY self-steal site follows the same contract through `reality_self_steal_public_site_dir`. Its bundle has the same layout; the three pages bundled under `ansible/roles/reality-self-steal/` are refused on a production host and removed where the operator tree does not provide them.
 
 ### One TLS identity for each production address
 

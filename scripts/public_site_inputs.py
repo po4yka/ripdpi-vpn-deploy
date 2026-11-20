@@ -1,4 +1,8 @@
-"""Read one bounded operator-owned static tree without following links."""
+"""Read one bounded operator-owned site bundle without following links.
+
+A bundle holds its static tree in site/; `make public-site-build` adds the
+generation archive and its schedule beside it.
+"""
 
 import hashlib
 import os
@@ -73,8 +77,8 @@ def read_site(value):
                 raise SiteInputError("unsafe public site ancestry")
             fingerprints.append(("ancestor", info.st_dev, info.st_ino, info.st_uid, info.st_mode))
         walk(fd, ".", 0)
-        if entries.get("404.html") is None:
-            raise SiteInputError("public site requires a regular 404.html")
+        if entries.get("site/404.html") is None or entries.get("site/index.html") is None:
+            raise SiteInputError("public site bundle requires regular site/index.html and site/404.html")
         return entries, fingerprints
     except OSError:
         raise SiteInputError("unreadable or unsafe public site") from None

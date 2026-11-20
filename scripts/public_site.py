@@ -7,7 +7,7 @@
   public_site.py status --bundle BUNDLE
 
 DIR holds identity.yml, theme/ and articles/. BUNDLE receives site/ (the
-initial generation), backlog.tar (every generation as a delta) and
+initial generation), backlog.tar.gz (every generation as a delta) and
 schedule.json. The repository supplies no prose, theme or asset: an operator
 writes them, and `check` refuses content that another site also serves.
 `check` protects an operator from an accidental copy; it is not a defence
@@ -17,6 +17,7 @@ against an operator who hides a copy on purpose. No subcommand uses the network.
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import importlib.util
 import io
@@ -60,6 +61,8 @@ SIMILARITY_LIMIT = 0.10
 MIN_SHINGLES = 20
 # Two unrelated sites can both hold a three-line robots.txt; a shared larger file is a copy.
 MIN_IDENTICAL_BYTES = 200
+# The deploy controller reads no site file above this size (scripts/public_site_inputs.py).
+MAX_ARCHIVE_BYTES = 4 * 1024 * 1024
 
 
 class SiteError(Exception):
@@ -265,7 +268,10 @@ def build(directory: Path, out: Path) -> None:
             target.write_bytes(body)
             os.utime(target, (times[0].timestamp(), times[0].timestamp()))
         # A member is stored in the first generation that changes it; generation n is members 0..n overlaid.
-        with tarfile.open(staging / "backlog.tar", "w", format=tarfile.GNU_FORMAT) as archive:
+        # A fixed gzip header time keeps the archive, and so its digest, the same for the same input.
+        with (open(staging / "backlog.tar.gz", "wb") as raw,
+              gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as packed,
+              tarfile.open(fileobj=packed, mode="w", format=tarfile.GNU_FORMAT) as archive):
             previous: dict[str, bytes] = {}
             for number, (tree, moment) in enumerate(zip(generations, times)):
                 if previous.keys() - tree.keys():
@@ -276,6 +282,9 @@ def build(directory: Path, out: Path) -> None:
                         member.size, member.mtime, member.mode = len(tree[relative]), int(moment.timestamp()), 0o644
                         archive.addfile(member, io.BytesIO(tree[relative]))
                 previous = tree
+        if (staging / "backlog.tar.gz").stat().st_size > MAX_ARCHIVE_BYTES:
+            raise SiteError("backlog.tar.gz exceeds 4 MiB; a page that lists every article on every article page "
+                            "is stored again for each generation")
         plan = {"version": 1, "generations": [{"n": n, "not_before": int(t.timestamp())} for n, t in enumerate(times)]}
         (staging / "schedule.json").write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
         if out.exists():
@@ -341,7 +350,7 @@ def containment(page: set[str], reference: set[str]) -> float:
 def bundle_files(bundle: Path) -> list[tuple[str, bytes]]:
     """Every version of every file the bundle can serve: site/ and each archive member."""
     files = {(relative, path.read_bytes()) for relative, path in regular_files(bundle / "site").items()}
-    archive_path = bundle / "backlog.tar"
+    archive_path = bundle / "backlog.tar.gz"
     if archive_path.is_file():
         with tarfile.open(archive_path) as archive:
             for member in archive.getmembers():
@@ -483,7 +492,10 @@ def main(argv: list[str] | None = None) -> int:
             return 1 if findings else 0
         else:
             unpublished, days = status(args.bundle, time.time())
-            print(f"unpublished generations: {unpublished}; days until the last publication: {days}")
+            if (args.bundle / "schedule.json").is_file():
+                print(f"unpublished generations: {unpublished}; days until the last publication: {days}")
+            else:
+                print("static bundle: no scheduled publication")
     except (SiteError, OSError, yaml.YAMLError, jinja2.TemplateError, tarfile.TarError, KeyError, ValueError) as error:
         print(f"public-site: {error}", file=sys.stderr)
         return 1

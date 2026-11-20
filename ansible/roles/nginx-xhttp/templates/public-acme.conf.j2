@@ -7,7 +7,8 @@ server {
     server_tokens off;
     access_log off;
     error_log /dev/null crit;
-    root /var/www/public-site;
+    root {{ ('/var/lib/public-site/' ~ (public_site_published | default({}))[nginx_xhttp_public_site_dir | default('')] ~ '/current')
+            if (nginx_xhttp_public_site_dir | default('')) in (public_site_published | default({})) else '/var/www/public-site' }};
     error_page 404 /404.html;
     location = /404.html { internal; }
     location ^~ /.well-known/acme-challenge/ {

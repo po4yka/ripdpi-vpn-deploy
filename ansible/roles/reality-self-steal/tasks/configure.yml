@@ -24,18 +24,18 @@
       - "'404.html' in _self_steal_operator_files"
       - >-
         (_self_steal_operator_site.files | rejectattr('isreg') | rejectattr('isdir') | map(attribute='path')
-         | map('relpath', reality_self_steal_public_site_dir)
+         | map('relpath', reality_self_steal_public_site_dir ~ '/site')
          | reject('search', '(^|/)\.(?!well-known(/|$))') | list | length) == 0
     fail_msg: >-
-      reality_self_steal_public_site_dir must contain index.html and 404.html and only
-      regular files and directories.
+      reality_self_steal_public_site_dir must name a site bundle: its site/ directory
+      must contain index.html and 404.html and only regular files and directories.
   when: reality_self_steal_public_site_dir | length > 0
 - name: Refuse repository-bundled bytes in the operator-owned tree
   ansible.builtin.include_tasks: '{{ role_path }}/tasks/decoy-content.yml'
   vars:
     decoy_site_files: >-
       {{ _self_steal_operator_site.files | selectattr('path', 'in', _self_steal_operator_files
-         | map('regex_replace', '^', (reality_self_steal_public_site_dir | regex_replace('/+$', '')) ~ '/')) }}
+         | map('regex_replace', '^', (reality_self_steal_public_site_dir | regex_replace('/+$', '')) ~ '/site/')) }}
     decoy_site_variable: reality_self_steal_public_site_dir
   when: reality_self_steal_public_site_dir | length > 0
 - name: Install the self-steal TLS runtime without premature default activation
@@ -171,7 +171,7 @@
     nginx_transaction_files: >-
       {{ nginx_transaction_files + [{'path': reality_self_steal_site_root ~ '/' ~ item,
           'kind': 'file', 'content_b64': lookup('ansible.builtin.pipe',
-            'base64 < ' ~ ((reality_self_steal_public_site_dir ~ '/' ~ item) | quote) ~ ' | tr -d "\n"'),
+            'base64 < ' ~ ((reality_self_steal_public_site_dir ~ '/site/' ~ item) | quote) ~ ' | tr -d "\n"'),
           'mode': '0644', 'uid': 0, 'gid': 0}] }}
   loop: '{{ _self_steal_operator_files }}'
   no_log: true

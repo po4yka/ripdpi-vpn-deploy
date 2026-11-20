@@ -157,17 +157,22 @@ tailnet_management:
     - 100.116.80.32
     - fd7a:115c:a1e0::4701:50a4
 public_site_canonical_url: "https://vpn.example.com:8443"
-# Operator-owned static site served by nginx-xhttp instead of the bundled
-# decoy. A controller-local directory holding at least 404.html; every regular
-# file below it is published at the same relative path. The bundled pages are
+# Operator-owned site bundle served by nginx-xhttp instead of the bundled
+# decoy. A controller-local directory from `make public-site-build`: every
+# regular file below its site/ directory (at least index.html and 404.html) is
+# published at the same relative path, and backlog.tar.gz with schedule.json,
+# when present, lets the node publish later generations. The bundled pages are
 # committed in a public repository, so every deployment that keeps them serves
 # one byte-identical identity; production hosts (inventory env or vpn_build_environment: prod) refuse
 # convergence while this is empty. Supply it in the same private extra-vars
 # file as public_site_canonical_url.
 nginx_xhttp_public_site_dir: ""
-# The same contract for the REALITY self-steal site (at least index.html and
-# 404.html); production hosts refuse the bundled self-steal pages.
+# The same contract for the REALITY self-steal site; production hosts refuse
+# the bundled self-steal pages. One hostname on both roles names one bundle.
 reality_self_steal_public_site_dir: ""
+# Set by the public-site role: bundle directory to the digest of its published
+# archive. A vhost of a published bundle reads /var/lib/public-site/<digest>/current.
+public_site_published: {}
 # Result of `NODE_ADDRESS=<node address> make validate-target` for a borrowed
 # REALITY target: same_asn, different_asn or unknown. Production refuses
 # different_asn unless tls_identity_exception holds a reason.

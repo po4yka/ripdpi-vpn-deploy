@@ -382,8 +382,8 @@ if goal=='deploy':
     if getattr(request, 'param', None) == 'known-inputs':
         site = kit / 'site'
         site.mkdir(mode=0o700)
-        write(site / 'index.html', '<html>fixture</html>')
-        write(site / '404.html', 'missing')
+        write(site / 'site/index.html', '<html>fixture</html>')
+        write(site / 'site/404.html', 'missing')
         write(kit / 'exposure.json', '{}')
         write(kit / 'trusted.pem', 'synthetic-public-key')
         write(kit / 'extra', json.dumps({'nginx_xhttp_public_site_dir': str(site),
@@ -933,9 +933,9 @@ def test_known_omitted_dependencies_are_discovered_and_frozen(maintenance, chang
     if change == 'site-add':
         write(kit / 'site' / 'new.txt', '')
     elif change == 'site-remove':
-        (kit / 'site' / 'index.html').unlink()
+        (kit / 'site' / 'site' / 'index.html').unlink()
     elif change == 'site-empty':
-        write(kit / 'site' / 'index.html', '')
+        write(kit / 'site' / 'site' / 'index.html', '')
     else:
         write(kit / ('exposure.json' if change == 'artifact' else 'trusted.pem'), 'changed')
     assert command('start', '--approval', approval).returncode != 0

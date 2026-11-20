@@ -34,7 +34,7 @@ def install(tmp_path: Path, archive: Path, times: list[int]) -> tuple[Path, str]
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
     target = tmp_path / "bundles" / digest
     target.mkdir(parents=True, exist_ok=True)
-    shutil.copy(archive, target / "backlog.tar")
+    shutil.copy(archive, target / "backlog.tar.gz")
     schedule(target, times)
     return tmp_path / "bundles", digest
 
@@ -53,7 +53,7 @@ def served(state: Path, digest: str) -> dict[str, tuple[bytes, float]]:
 @pytest.fixture
 def archive(tmp_path: Path) -> Path:
     public_site.build(FIXTURE, tmp_path / "bundle")
-    return tmp_path / "bundle" / "backlog.tar"
+    return tmp_path / "bundle" / "backlog.tar.gz"
 
 
 def test_publisher_serves_the_scheduled_generation_and_advances_with_the_clock(tmp_path: Path, archive: Path) -> None:
@@ -179,7 +179,7 @@ def test_leftovers_of_an_interrupted_run_do_not_stay_readable(tmp_path: Path, ar
 
 def test_an_archive_that_does_not_match_its_directory_name_is_refused(tmp_path: Path, archive: Path) -> None:
     bundles, digest = install(tmp_path, archive, [PAST] * 4)
-    with open(bundles / digest / "backlog.tar", "ab") as handle:
+    with open(bundles / digest / "backlog.tar.gz", "ab") as handle:
         handle.write(b"\0" * 512)
     result = run(bundles, tmp_path / "state")
     assert result.returncode == 1 and "digest does not match" in result.stderr

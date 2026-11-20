@@ -6,7 +6,9 @@ server {
     server_name {{ reality_self_steal.server_name }};
 
     server_tokens off;
-    root {{ reality_self_steal_site_root | default('/var/www/reality-self-steal') }};
+{% set self_steal_site_digest = (public_site_published | default({})).get(reality_self_steal_public_site_dir | default(''), '') %}
+    root {{ ('/var/lib/public-site/' ~ self_steal_site_digest ~ '/current') if self_steal_site_digest
+            else (reality_self_steal_site_root | default('/var/www/reality-self-steal')) }};
     index index.html;
 
     ssl_certificate {{ reality_self_steal_tls_dir | default('/etc/nginx/reality-self-steal') }}/current/fullchain.pem;

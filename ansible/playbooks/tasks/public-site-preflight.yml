@@ -1,0 +1,60 @@
+---
+# A production site that shares text or assets with the bundled pages, or with
+# the node's other site, links the node to every node that serves the same
+# content. The check reads controller files only and runs in check mode too, so
+# a dry run refuses the same bundle before any task changes the host.
+- name: Resolve the site bundles that an enabled vhost role serves
+  ansible.builtin.set_fact:
+    _public_site_bundles: >-
+      {{ ([{'dir': nginx_xhttp_public_site_dir | default(''), 'origin': public_site_canonical_url | default('')}]
+          if ((vpn.enable_nginx_xhttp | default(true) | bool) and not (vpn_subscription_only | default(false) | bool)) else [])
+         + ([{'dir': reality_self_steal_public_site_dir | default(''),
+              'origin': 'https://' ~ ((reality_self_steal | default({})).server_name | default('') | lower)
+                        ~ ('' if (xray_port | default(443) | int) == 443 else ':' ~ (xray_port | int))}]
+            if ((vpn.enable_reality_self_steal | default(false) | bool)
+                and not (vpn_subscription_only | default(false) | bool)) else []) }}
+
+- name: Refuse a production site bundle that shares content with another site
+  ansible.builtin.command:
+    argv: >-
+      {{ [ansible_playbook_python, playbook_dir ~ '/../../scripts/public_site.py', 'check',
+          '--bundle', item.dir, '--url', item.origin]
+         + (_public_site_bundles | map(attribute='dir') | select | unique | reject('equalto', item.dir)
+            | map('regex_replace', '^', '--peer=') | list) }}
+  loop: "{{ _public_site_bundles | selectattr('dir') | unique(attribute='dir') | list }}"
+  loop_control:
+    label: "{{ item.origin }}"
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+  when: "'prod' in [env | default(''), vpn_build_environment | default('')]"
+
+- name: Read the unpublished material of each site bundle
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - "{{ playbook_dir }}/../../scripts/public_site.py"
+      - status
+      - --bundle
+      - "{{ item.dir }}"
+  loop: "{{ _public_site_bundles | selectattr('dir') | unique(attribute='dir') | list }}"
+  loop_control:
+    label: "{{ item.origin }}"
+  register: _public_site_runway
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+
+- name: Warn when a site bundle has less than 30 days of unpublished material
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: the site bundle {{ item.item.dir }} for {{ item.item.origin }} publishes its last article in
+      {{ item.stdout | regex_findall('[0-9]+') | last }} days; add articles
+      and run make public-site-build.
+  loop: "{{ _public_site_runway.results }}"
+  loop_control:
+    label: "{{ item.item.origin }}"
+  # The status line ends with the number of days; a static bundle prints no number.
+  when: item.stdout is search('last publication') and (item.stdout | regex_findall('[0-9]+') | last | int) < 30

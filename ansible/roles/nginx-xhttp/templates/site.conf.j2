@@ -1,6 +1,9 @@
 # Managed by Ansible role `nginx-xhttp`. Direct (no CDN) baseline.
 # CDN-fronted variant lives in docs/decisions/0001-cdn-not-filtered-path-baseline.md as opt-in.
 {% set nginx_redirect_port = nginx_xhttp_public_port | int %}
+{# The public-site role publishes scheduled generations of a bundle; every server of this site reads the same one. #}
+{% set nginx_site_digest = (public_site_published | default({})).get(nginx_xhttp_public_site_dir | default(''), '') %}
+{% set nginx_site_root = ('/var/lib/public-site/' ~ nginx_site_digest ~ '/current') if nginx_site_digest else '/var/www/public-site' %}
 {% set nginx_fallback_enabled = nginx_xhttp.fallback_enabled | default(false) %}
 {% set nginx_fallback_name = nginx_xhttp.fallback_server_name | default(nginx_xhttp.server_name) %}
 {% set nginx_same_public_host = (nginx_fallback_name | lower) == (nginx_xhttp.server_name | lower) %}
@@ -15,7 +18,7 @@
 {% if https_port == 443 %}
     return 301 https://$host$request_uri;
 {% else %}
-    root /var/www/public-site;
+    root {{ nginx_site_root }};
     index index.html;
     error_page 404 /404.html;
     location = /404.html {
@@ -76,7 +79,7 @@ server {
     server_name {{ nginx_xhttp.server_name }};
 
     server_tokens off;
-    root /var/www/public-site;
+    root {{ nginx_site_root }};
     index index.html;
 
     ssl_certificate     /etc/nginx/tls/{{ nginx_xhttp.server_name }}.fullchain.pem;
@@ -180,7 +183,7 @@ server {
     server_name {{ nginx_fallback_name }};
 
     server_tokens off;
-    root /var/www/public-site;
+    root {{ nginx_site_root }};
     index index.html;
 
     ssl_certificate     /etc/nginx/tls/{{ nginx_fallback_name }}.fullchain.pem;
@@ -319,7 +322,7 @@ server {
     server_tokens off;
     access_log off;
     error_log /dev/null crit;
-    root /var/www/public-site;
+    root {{ nginx_site_root }};
     error_page 404 /404.html;
     location = /404.html {
         internal;
