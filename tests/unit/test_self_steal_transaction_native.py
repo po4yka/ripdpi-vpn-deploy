@@ -65,7 +65,7 @@ def test_actual_role_rotation_and_prebuilt_disable_collect_latest_tls_under_lock
                 "-addext",
                 "subjectAltName=DNS:edge.example.test",
                 "-days",
-                "30",
+                "90",
             ]
         )
         pairs.append((certificate.read_text(), key.read_text()))
