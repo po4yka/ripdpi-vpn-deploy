@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-20
+goal: ANS-1795162466557355 Generate a unique self-updating public site for each
+  operator
