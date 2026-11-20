@@ -426,7 +426,7 @@ if '--' not in sys.argv:
  if (k/'wrong-source').exists():manifest['deployable_digest']='0'*64
  print(json.dumps({'schema_version':1,'observed_at':datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00','Z'),
   'services':{unit:{'status':'unknown'} for unit in fleet_inspection.SERVICES},'manifest':manifest,
-  'listeners':{'status':'unknown'},'backup':{'latest_snapshot':{'status':'unknown'},'restore':{'status':'unknown'}}}))
+  'listeners':{'status':'unknown'},'backup':{'latest_snapshot':{'status':'unknown'},'restore':{'status':'unknown'}},'reboot_required':False}))
  sys.exit(0)
 name=sys.argv[sys.argv.index('--')+1]
 import yaml
