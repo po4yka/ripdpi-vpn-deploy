@@ -2,7 +2,7 @@
 id: ANS-1795162466557355
 title: Generate a unique self-updating public site for each operator
 kind: feature
-status: backlog
+status: doing
 area: ansible
 priority: medium
 risk: high

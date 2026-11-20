@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+<title>{{ site.name }}</title>
+<id>{{ site.origin }}/</id>
+<link rel="self" href="{{ site.origin }}/feed.xml"/>
+<updated>{{ updated.isoformat() }}</updated>
+{% for article in articles %}<entry><title>{{ article.title }}</title><id>{{ article.url }}</id><link href="{{ article.url }}"/><updated>{{ article.date.isoformat() }}</updated></entry>
+{% endfor %}</feed>

@@ -808,7 +808,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         observability-remove observability-silence-create observability-silence-delete observability-staging-prepare observability-staging-materialize observability-staging-acceptance \
         observability-staging-cleanup-preflight observability-staging-cleanup-snapshot observability-staging-cleanup-seal observability-staging-cleanup-validate observability-staging-cleanup \
         awg-evidence-provision \
-        native-naive-build test-native-runtime test-probe-matrix-mtproto test-unit test-unit-profile test-unit-shard snapshot-check snapshot-update public-site-render validate-secrets \
+        native-naive-build test-native-runtime test-probe-matrix-mtproto test-unit test-unit-profile test-unit-shard snapshot-check snapshot-update public-site-new public-site-build public-site-check public-site-status validate-secrets \
         actionlint-check zizmor-check zizmor-test cloud-init-schema tf-test yamllint-check shellcheck \
         ci-fast bats-test vpnd-test vpnd-lint vpnd-dependency-check vpnd-package-check vpnd-parity-check vpnd-mutants tf-policy-verify \
         task-tools task-check task-list task-ready task-graph task-federation \
@@ -980,7 +980,10 @@ help:
 	@echo "  test-probe-matrix-mtproto   Run the compiled Go helper tests"
 	@echo "  snapshot-check             Diff every Jinja render against tests/snapshot/golden/"
 	@echo "  snapshot-update            Refresh the goldens (run after intentional change)"
-	@echo "  public-site-render         Render the bundled site into a new operator-owned tree (PUBLIC_SITE_URL, PUBLIC_SITE_DIR)"
+	@echo "  public-site-new            Create a private site identity and brief (PUBLIC_SITE_DIR, PUBLIC_SITE_URL, PUBLIC_SITE_NAME, PUBLIC_SITE_SUBJECT)"
+	@echo "  public-site-build          Build the site bundle from identity, theme and articles (PUBLIC_SITE_DIR, PUBLIC_SITE_BUNDLE)"
+	@echo "  public-site-check          Refuse a bundle that shares content with the bundled site or a peer (PUBLIC_SITE_BUNDLE, PUBLIC_SITE_URL, PUBLIC_SITE_PEERS)"
+	@echo "  public-site-status         Report unpublished generations and days of material left (PUBLIC_SITE_BUNDLE)"
 	@echo "  validate-secrets           jsonschema check (strict if SECRETS_FILE is set)"
 	@echo "  validate-bundle            jsonschema + fingerprint check of a ripdpi bundle (BUNDLE=… or example)"
 	@echo "  actionlint-check           Validate every GitHub Actions workflow"
@@ -1602,11 +1605,26 @@ snapshot-check:
 snapshot-update:
 	python3 scripts/render-snapshots.py --update
 
-# Values reach the playbook through the environment, never the recipe's shell text.
-public-site-render: export PUBLIC_SITE_URL := $(PUBLIC_SITE_URL)
-public-site-render: export PUBLIC_SITE_DIR := $(PUBLIC_SITE_DIR)
-public-site-render:
-	cd $(ANSIBLE_DIR) && ansible-playbook -i 'localhost,' playbooks/render-public-site.yml
+# Values reach the script through the environment, never the recipe's shell text.
+PUBLIC_SITE_BUNDLE ?= $(if $(PUBLIC_SITE_DIR),$(PUBLIC_SITE_DIR)/bundle)
+public-site-new public-site-build public-site-check public-site-status: export PUBLIC_SITE_URL := $(PUBLIC_SITE_URL)
+public-site-new public-site-build public-site-check public-site-status: export PUBLIC_SITE_DIR := $(PUBLIC_SITE_DIR)
+public-site-new public-site-build public-site-check public-site-status: export PUBLIC_SITE_BUNDLE := $(PUBLIC_SITE_BUNDLE)
+public-site-new: export PUBLIC_SITE_NAME := $(PUBLIC_SITE_NAME)
+public-site-new: export PUBLIC_SITE_SUBJECT := $(PUBLIC_SITE_SUBJECT)
+public-site-check: export PUBLIC_SITE_PEERS := $(PUBLIC_SITE_PEERS)
+public-site-new:
+	@python3 scripts/public_site.py new --dir "$$PUBLIC_SITE_DIR" --url "$$PUBLIC_SITE_URL" --name "$$PUBLIC_SITE_NAME" --subject "$$PUBLIC_SITE_SUBJECT"
+
+public-site-build:
+	@python3 scripts/public_site.py build --dir "$$PUBLIC_SITE_DIR" --out "$$PUBLIC_SITE_BUNDLE"
+
+public-site-check:
+	@set --; for peer in $$PUBLIC_SITE_PEERS; do set -- "$$@" --peer "$$peer"; done; \
+	python3 scripts/public_site.py check --bundle "$$PUBLIC_SITE_BUNDLE" --url "$$PUBLIC_SITE_URL" "$$@"
+
+public-site-status:
+	@python3 scripts/public_site.py status --bundle "$$PUBLIC_SITE_BUNDLE"
 
 validate-secrets:
 	@if [ -f "$(SECRETS_FILE)" ]; then \

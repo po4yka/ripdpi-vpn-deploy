@@ -1,0 +1,8 @@
+origin: https://platen.example.org
+name: Platen and Carriage
+subject: repair notes for manual typewriters
+seed: 5d0c1e9a7b3f42688c1d2e0f9a4b6c7d
+start: '2026-03-02'
+cadence_days: 9
+initial_articles: 2
+article_path: bench/{slug}.html
