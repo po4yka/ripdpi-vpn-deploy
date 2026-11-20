@@ -19,7 +19,7 @@ EXPECTED_DIGESTS = {
         "02d15910a73d42dd68ad1e7830ddcdb2dfc0ce3701081ea6fb96cd76da4fe4a4"
     },
     "ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-ubuntu2404": {
-        "c0c95a5fac289593eb502570cd84cf46a651ef9622a261cc9124d1a4ecdafc95"
+        "4f260aba1e82b795e58e515edf52c1f97fb3aceb3a90bcc251c3b7449aebd06a"
     },
 }
 

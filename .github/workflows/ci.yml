@@ -696,7 +696,7 @@ jobs:
           galaxy: "true"
       - name: Create the isolated native transport systemd environment
         env:
-          RTA_IMAGE: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-ubuntu2404@sha256:c0c95a5fac289593eb502570cd84cf46a651ef9622a261cc9124d1a4ecdafc95
+          RTA_IMAGE: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-ubuntu2404@sha256:4f260aba1e82b795e58e515edf52c1f97fb3aceb3a90bcc251c3b7449aebd06a
           RTA_OWNER: ${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set -euo pipefail
@@ -798,7 +798,7 @@ jobs:
           TRANSPORT_NATIVE_ISOLATED=1 python3 tests/native/transport_acceptance/prepare_awg.py
       - name: Create owned systemd and TUN acceptance environment
         env:
-          NATIVE_IMAGE: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-ubuntu2404@sha256:c0c95a5fac289593eb502570cd84cf46a651ef9622a261cc9124d1a4ecdafc95
+          NATIVE_IMAGE: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-ubuntu2404@sha256:4f260aba1e82b795e58e515edf52c1f97fb3aceb3a90bcc251c3b7449aebd06a
           NATIVE_OWNER: ${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set -euo pipefail
