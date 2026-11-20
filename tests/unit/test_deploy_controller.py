@@ -370,6 +370,25 @@ with pathlib.Path({str(workspace['calls'])!r}).open('a') as stream:
         missing.stdout + missing.stderr + decrypted.stdout + decrypted.stderr + result.stdout + result.stderr)
 
 
+def test_dry_run_checks_the_same_tags_as_the_deploy(workspace):
+    result = invoke(workspace, target="dry-run", limit="node-one", ANSIBLE_TAGS="baseline,firewall,backup")
+    assert result.returncode == 0, result.stderr
+    site = [entry for entry in calls(workspace) if entry["program"] == "ansible-playbook"][0]["args"]
+    assert site[-4:] == ["--check", "--diff", "--tags", "baseline,firewall,backup"]
+
+
+@pytest.mark.parametrize("environment,expected", [("prod", ["validate-secrets.py"]), ("ci-staging-1", [])])
+def test_precheck_bypass_keeps_the_placeholder_check_outside_ci(workspace, environment, expected):
+    inventory = workspace["inventory"]
+    inventory.write_text(inventory.read_text().replace("env=prod", "env=" + environment))
+    result = invoke(workspace, target="dry-run", limit="node-one", SKIP_PRECHECK="1", ENV=environment)
+    assert result.returncode == 0, result.stderr
+    prechecks = [entry for entry in calls(workspace)
+                 if entry["program"] in ("validate-secrets.py", "spot-check-secrets.py", "check-certs.sh")]
+    assert [entry["program"] for entry in prechecks] == expected
+    assert all(entry["args"][1:] == ["--strict", "--environment", environment] for entry in prechecks)
+
+
 @pytest.mark.parametrize("cohosted_collector", [False, True])
 @pytest.mark.parametrize("limit,expected", [
     ("", ["100.64.0.1", "100.64.0.2"]),

@@ -294,7 +294,7 @@ Hand the AmneziaWG private key (printed by the script) to the device through a s
 
 ## Selective deploy with tags
 
-The controller currently forwards `ANSIBLE_TAGS` only for `deploy`; `dry-run` checks the full site playbook even when that variable is supplied. It cannot provide a matching tagged preflight. Use the [ordinary full re-deploy recipe](#ordinary-re-deploy-recipe) for the reviewed workflow, preserving its explicit empty `ANSIBLE_TAGS=` overrides. A filtered check-mode capability needs a separate controller change before this runbook can offer selective recipes. The role tags remain defined in `ansible/playbooks/site.yml`; baseline and firewall carry `always` tags and also run during a tagged deploy.
+The controller forwards `ANSIBLE_TAGS` to both `dry-run` and `deploy`, so a tagged dry-run reviews the same roles that the tagged deploy applies. Give both commands the same value. Use the [ordinary full re-deploy recipe](#ordinary-re-deploy-recipe) for the reviewed full workflow, and keep its explicit empty `ANSIBLE_TAGS=` overrides. The role tags remain defined in `ansible/playbooks/site.yml`; baseline and firewall carry `always` tags and also run during a tagged deploy.
 
 Initial firewall convergence retains the accepted AWG peer policy. New AWG policy is accepted by the complete AWG runtime transaction after protected transports commit. A tagged run that omits protected consumers refuses a changed protected listener contract before publishing it. Use the ordinary full re-deploy recipe when transport ports or enabled transports change.
 

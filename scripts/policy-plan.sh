@@ -10,6 +10,14 @@ case "$PROVIDER" in upcloud|hetzner|vultr|scaleway) ;; *) exit 2 ;; esac
   echo 'usage: policy-plan.sh check|apply' >&2
   exit 2
 }
+# A saved plan keeps the configuration it was made from, so refuse here too:
+# terraform-env.sh cannot see an override that is gone when the plan is applied.
+for override in _destroy_override.tf _observability_cleanup_override.tf; do
+  [[ ! -e "${REPO_ROOT}/terraform/providers/${PROVIDER}/${override}" ]] || {
+    echo "refusing: terraform/providers/${PROVIDER}/${override} disables prevent_destroy; a destroy is running or crashed" >&2
+    exit 1
+  }
+done
 PLAN_SOURCE="${REPO_ROOT}/terraform/providers/${PROVIDER}/${ENV}.tfplan"
 [[ -f "$PLAN_SOURCE" && ! -L "$PLAN_SOURCE" ]] || {
   echo 'saved plan is missing or is not a regular non-symlink file' >&2

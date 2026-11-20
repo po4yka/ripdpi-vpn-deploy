@@ -935,14 +935,17 @@ def controller(mode):
             if overrides:
                 arguments += ["--extra-vars", "@" + str(overrides)]
             prepared.append((host, command, playbooks, arguments))
-        if os.environ.get("DEPLOY_SKIP_PRECHECK", "") != "1":
-            # Reclaim precheck secret copies even if their EXIT traps are killed.
-            # Keep Ansible's default temp root: nested paths exceed macOS's RPC socket limit.
-            precheck_environment = {**environment, "TMPDIR": str(directory)}
-            scope = [argument for host in hosts
-                     for argument in ("--environment", str(metadata[host["name"]].get("env", "")))]
+        skip_precheck = os.environ.get("DEPLOY_SKIP_PRECHECK", "") == "1"
+        # Reclaim precheck secret copies even if their EXIT traps are killed.
+        # Keep Ansible's default temp root: nested paths exceed macOS's RPC socket limit.
+        precheck_environment = {**environment, "TMPDIR": str(directory)}
+        environments = [str(metadata[host["name"]].get("env", "")) for host in hosts]
+        # The bypass keeps the placeholder check outside disposable ci-* environments.
+        if not skip_precheck or not all(name.startswith("ci-") for name in environments):
+            scope = [argument for name in environments for argument in ("--environment", name)]
             checked([sys.executable, str(root / "scripts/validate-secrets.py"), str(secrets), "--strict", *scope],
                     environment=precheck_environment, cwd=directory)
+        if not skip_precheck:
             checked([sys.executable, str(root / "scripts/spot-check-secrets.py")],
                     environment=precheck_environment, cwd=directory)
             for _host, _command, playbooks, _arguments in prepared:
@@ -980,7 +983,8 @@ def controller(mode):
                 site =["ansible-playbook", str(playbooks["site"]), *arguments]
                 if mode == "dry-run":
                     site += ["--check", "--diff"]
-                elif os.environ.get("DEPLOY_TAGS"):
+                # The dry-run takes the same tags, so the reviewed diff matches the deploy.
+                if os.environ.get("DEPLOY_TAGS"):
                     site += ["--tags", os.environ["DEPLOY_TAGS"]]
                 # The complete first-convergence graph can exceed one hour on small nodes.
                 checked_environment = site_environment

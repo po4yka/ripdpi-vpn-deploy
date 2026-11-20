@@ -61,7 +61,7 @@ Variables (override on command line):
   apply                      terraform apply $TFPLAN
   inventory                  Render Ansible inventory from TF outputs
   wait                       Wait for cloud-init to finish
-  pre-deploy-check           spot-check-secrets + check-certs (auto for deploy/verify; SKIP_PRECHECK=1 to bypass)
+  pre-deploy-check           spot-check-secrets + check-certs (auto for deploy/verify; SKIP_PRECHECK=1 skips all but the placeholder check)
   backup-configure          Configure one exact ANSIBLE_LIMIT during an exclusive stopped-backup window; never runs backups or timers
   dry-run                    Serial exact-node check; requires DEPLOY_SSH_CONTEXTS_FILE
   migrate-ssh-ownership      Exact SSH ownership or observer hardening transaction

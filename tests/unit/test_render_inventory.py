@@ -745,6 +745,23 @@ def test_unknown_cohort_fails_before_terraform_and_preserves_inventory(tmp_path,
     assert (root / "ansible/inventory/generated.ini").read_text() == "last-good\n"
 
 
+def test_failed_optional_address_read_stops_before_the_inventory_changes(tmp_path):
+    root, env = _isolated_inventory_repo(tmp_path)
+    bindir = tmp_path / "bin"
+    (bindir / "terraform").rename(bindir / "terraform.real")
+    # Only the full output listing fails, as it does for an unreadable state.
+    _make_stub(bindir, "terraform",
+               'case "$*" in *"output -json") echo "state lock failed" >&2; exit 1 ;; esac\n'
+               f'exec "{bindir}/terraform.real" "$@"')
+    result = subprocess.run(
+        ["bash", str(root / "scripts/render-inventory.sh")],
+        env=env, capture_output=True, text=True, timeout=20,
+    )
+    assert result.returncode == 1
+    assert "cannot read Terraform outputs for upcloud:test" in result.stderr
+    assert (root / "ansible/inventory/generated.ini").read_text() == "last-good\n"
+
+
 def test_duplicate_host_alias_preserves_last_inventory(tmp_path):
     root, env = _isolated_inventory_repo(tmp_path)
     env["HOSTS"] = "upcloud:test,hetzner:test"

@@ -957,7 +957,8 @@ def _run_tf(
         completed = subprocess.run(
             [str(TF_WRAPPER), *arguments],
             cwd=ROOT,
-            env=environment,
+            # This controller owns its prevent_destroy override; the wrapper refuses other callers.
+            env={**environment, "VPN_DESTROY_OVERRIDE_OWNER": "1"},
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,

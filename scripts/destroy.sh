@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Safe `make destroy`. Asks for explicit confirmation twice, removes the
 # `prevent_destroy` lifecycle block in a temp override file (so the source
-# stays clean), runs `terraform destroy`, removes the override, and clears
-# the inventory.
+# stays clean), runs `terraform destroy`, removes the override, and removes
+# the inventory when it lists no other node.
 #
 # Required env: PROVIDER, ENV. `--non-interactive` is restricted to ci-* ENV
 # values and exists only for short-lived CI nodes.
@@ -198,7 +198,7 @@ resource "${DESTROY_RESOURCE%%.*}" "${DESTROY_RESOURCE#*.}" {
 EOF
 
 # Plan destroy first so the operator sees the diff
-env PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" plan -destroy \
+env PROVIDER="$PROVIDER" ENV="$ENV" VPN_DESTROY_OVERRIDE_OWNER=1 "${REPO_ROOT}/scripts/terraform-env.sh" plan -destroy \
   -var-file="environments/${ENV}.tfvars" \
   -out="$PLAN_PATH"
 
@@ -262,13 +262,14 @@ if [[ "$STAGING_GUARDED" == "true" && "$PROVIDER" == "vultr" ]]; then
   env \
     PROVIDER="$PROVIDER" \
     ENV="$ENV" \
+    VPN_DESTROY_OVERRIDE_OWNER=1 \
     VULTR_STAGING_MARK_APPLY=true \
     VULTR_STAGING_PLAN_FD="$PLAN_FD" \
     VULTR_STAGING_MANIFEST="$STAGING_MANIFEST" \
     VULTR_STAGING_EVIDENCE="$POST_DESTROY_EVIDENCE" \
     "${REPO_ROOT}/scripts/terraform-env.sh" apply "$PLAN_INPUT"
 else
-  env PROVIDER="$PROVIDER" ENV="$ENV" \
+  env PROVIDER="$PROVIDER" ENV="$ENV" VPN_DESTROY_OVERRIDE_OWNER=1 \
     "${REPO_ROOT}/scripts/terraform-env.sh" apply "$PLAN_INPUT"
 fi
 APPLY_STARTED=true
@@ -297,12 +298,25 @@ fi
 
 if [[ "$STAGING_GUARDED" != "true" ]]; then
   rm -f "${TF_DIR}/${PLAN_PATH}"
+  env ENV="$ENV" PROVIDER="$PROVIDER" \
+    "${REPO_ROOT}/scripts/audit-log.sh" append-best-effort \
+      --action destroy \
+      --env "$ENV" \
+      --provider "$PROVIDER" \
+      --note "hostname=${expected} resource=${DESTROY_RESOURCE}"
 fi
 
-# Clean inventory and ask if they want a state backup
+# The inventory can list several nodes. Remove it only when no other node is in it.
 if [[ "$STAGING_GUARDED" != "true" && -f "$INV" ]]; then
-  rm -f "$INV"
-  echo "removed $INV"
+  # awk compares literally and its failure stops the script, so an unreadable file is kept.
+  other_hosts="$(awk -v own=" provider=${PROVIDER} env=${ENV} " \
+    '/ provider=[^ ]+ env=[^ ]+( |$)/ && index($0 " ", own) == 0 { n++ } END { print n + 0 }' "$INV")"
+  if (( other_hosts == 0 )); then
+    rm -f "$INV"
+    echo "removed $INV"
+  else
+    echo "kept $INV: it lists ${other_hosts} other host(s). Render it again without ${PROVIDER}:${ENV} (make inventory HOSTS=...) before the next fleet command."
+  fi
 fi
 
 cat <<'EOF'

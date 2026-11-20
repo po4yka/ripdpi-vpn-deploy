@@ -43,6 +43,7 @@ def _test_repo(tmp_path: Path) -> Path:
         shutil.copy2(REPO_ROOT / "scripts" / name, scripts / name)
     for provider in ("upcloud", "hetzner", "vultr", "scaleway"):
         (root / f"terraform/providers/{provider}/environments").mkdir(parents=True)
+    _audit_stub(root)
     return root
 
 
@@ -441,6 +442,7 @@ def _run(
         "PROVIDER": provider,
         "ENV": env_name,
         "STUB_LOG": str(stub_dir / "terraform.log"),
+        "AUDIT_LOG_STUB": str(stub_dir / "audit.log"),
         "OVERRIDE_PATH": str(
             root / f"terraform/providers/{provider}/_destroy_override.tf"
         ),
@@ -799,6 +801,115 @@ def test_destroy_refuses_to_run_over_a_stale_override(tmp_path: Path) -> None:
     assert "prevent_destroy" in result.stderr
     assert stale.exists()
     assert not (stub.parent / "terraform.log").exists()
+
+
+@pytest.mark.parametrize("override", ["_destroy_override.tf", "_observability_cleanup_override.tf"])
+@pytest.mark.parametrize("command", ["plan", "apply", "destroy"])
+def test_terraform_wrapper_refuses_changes_while_a_destroy_override_exists(
+    tmp_path: Path, command: str, override: str
+) -> None:
+    root = _test_repo(tmp_path)
+    stub = _terraform_stub(tmp_path)
+    (root / "terraform/providers/upcloud" / override).write_text("# another destroy\n")
+    env = os.environ | {
+        "PATH": f"{stub.parent}:{os.environ['PATH']}",
+        "PROVIDER": "upcloud",
+        "ENV": "prod",
+        "STUB_LOG": str(tmp_path / "terraform.log"),
+    }
+    wrapper = ["bash", str(root / "scripts/terraform-env.sh")]
+
+    refused = subprocess.run([*wrapper, command], env=env, text=True, capture_output=True)
+    read_only = subprocess.run([*wrapper, "output", "-raw", "server_ipv4"], env=env, text=True, capture_output=True)
+
+    assert refused.returncode == 1
+    assert override + " disables prevent_destroy" in refused.stderr
+    assert read_only.returncode == 0, read_only.stderr
+    owner = subprocess.run([*wrapper, command], env=env | {"VPN_DESTROY_OVERRIDE_OWNER": "1"},
+                           text=True, capture_output=True)
+    assert owner.returncode == 0, owner.stderr
+
+
+@pytest.mark.parametrize("goal", ["check", "apply"])
+def test_saved_plan_policy_refuses_while_a_destroy_override_exists(tmp_path: Path, goal: str) -> None:
+    root = _test_repo(tmp_path)
+    shutil.copy2(REPO_ROOT / "scripts/policy-plan.sh", root / "scripts/policy-plan.sh")
+    stub = _terraform_stub(tmp_path)
+    provider_root = root / "terraform/providers/upcloud"
+    (provider_root / "prod.tfplan").write_text("saved plan\n")
+    (provider_root / "_destroy_override.tf").write_text("# another destroy\n")
+    env = os.environ | {
+        "PATH": f"{stub.parent}:{os.environ['PATH']}",
+        "PROVIDER": "upcloud",
+        "ENV": "prod",
+        "STUB_LOG": str(tmp_path / "terraform.log"),
+    }
+
+    result = subprocess.run(
+        ["bash", str(root / "scripts/policy-plan.sh"), goal], env=env, text=True, capture_output=True
+    )
+
+    assert result.returncode == 1
+    assert "_destroy_override.tf disables prevent_destroy" in result.stderr
+    assert not (tmp_path / "terraform.log").exists()
+    assert (provider_root / "prod.tfplan").exists()
+
+
+@pytest.mark.parametrize(
+    "other_host,kept",
+    [
+        ("", False),
+        ("vpn-b ansible_host=192.0.2.2 provider=upcloud env=prod-b ansible_port=22\n", True),
+        ("vpn-b ansible_host=192.0.2.2 provider=upcloud env=ci-123-shared-2 ansible_port=22\n", True),
+        ("vpn-b ansible_host=192.0.2.2 provider=hetzner env=ci-123-shared\n", True),
+    ],
+    ids=["only-this-node", "another-node", "environment-with-this-prefix", "same-environment-other-provider"],
+)
+def test_destroy_keeps_an_inventory_that_lists_another_node(tmp_path: Path, other_host: str, kept: bool) -> None:
+    root = _test_repo(tmp_path)
+    env_name = "ci-123-shared"
+    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text(
+        'server_name = "vpn-ci.test"\n'
+    )
+    inventory = root / "ansible/inventory/generated.ini"
+    inventory.parent.mkdir(parents=True)
+    content = (
+        "[vpn]\n"
+        f"vpn-ci.test ansible_host=192.0.2.1 provider=upcloud env={env_name} ansible_port=22\n"
+        + other_host
+        + "\n[vpn:vars]\nansible_python_interpreter=/usr/bin/python3\n"
+    )
+    inventory.write_text(content)
+    stub = _terraform_stub(tmp_path)
+
+    result = _run(root, stub.parent, env_name)
+
+    assert result.returncode == 0, result.stderr
+    assert inventory.exists() is kept
+    if kept:
+        assert inventory.read_text() == content
+        assert "1 other host(s)" in result.stdout
+
+
+def test_completed_destroy_appends_an_audit_record(tmp_path: Path) -> None:
+    root = _test_repo(tmp_path)
+    env_name = "ci-123-audit"
+    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text(
+        'server_name = "vpn-ci.test"\n'
+    )
+    stub = _terraform_stub(tmp_path)
+
+    failed = _run(root, stub.parent, env_name, fail_apply=True)
+    assert failed.returncode != 0
+    assert not (stub.parent / "audit.log").exists()
+
+    result = _run(root, stub.parent, env_name)
+
+    assert result.returncode == 0, result.stderr
+    assert (stub.parent / "audit.log").read_text().splitlines() == [
+        f"append-best-effort --action destroy --env {env_name} --provider upcloud"
+        " --note hostname=vpn-ci.test resource=upcloud_server.vpn"
+    ]
 
 
 def test_failed_ci_destroy_keeps_inventory_for_diagnosis(tmp_path: Path) -> None:

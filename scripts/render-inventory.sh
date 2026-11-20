@@ -378,7 +378,15 @@ for i in "${!host_pairs[@]}"; do
   fi
 
   ip="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
-  ipv6="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv6 2>/dev/null || true)"
+  # Terraform keeps no null output in the state, so a read by name fails for a
+  # null value and for a broken state alike. The full listing fails only for
+  # the second; an absent or null entry is an address the node does not have.
+  if ! optional_addresses="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -json \
+      | jq -er '"\(.server_ipv6.value // "")|\(.honeypot_ipv4.value // "")"')"; then
+    echo "cannot read Terraform outputs for ${prov}:${env}; the inventory was not changed" >&2
+    exit 1
+  fi
+  ipv6="${optional_addresses%%|*}"
   user="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw admin_user)"
   ssh_port="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw ssh_port)"
   hostname="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_hostname)"
@@ -400,7 +408,7 @@ for i in "${!host_pairs[@]}"; do
   # host var so the role binds the canary listener to a dedicated
   # address rather than 0.0.0.0. Null when additional_public_ip is
   # false in the terraform vars.
-  honey_ip="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw honeypot_ipv4 2>/dev/null || true)"
+  honey_ip="${optional_addresses#*|}"
 
   if ! [[ "$ssh_port" =~ ^[1-9][0-9]*$ ]] || (( ssh_port > 65535 )); then
     echo "invalid ssh_port output for ${prov}:${env}: ${ssh_port}" >&2
