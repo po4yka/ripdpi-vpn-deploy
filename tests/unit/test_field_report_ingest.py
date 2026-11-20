@@ -534,7 +534,7 @@ def test_validator_package_is_pinned_for_each_supported_release(release, package
     assert templar.template(trust_as_template(install["ansible.builtin.apt"]["name"])) == package
 
 
-DATASET_ROWS = (b"1.0.0.0\t1.0.0.255\t0\tNone\tNot routed\n"
+DATASET_ROWS = (b"100.64.0.0\t100.64.0.255\t0\tNone\tNot routed\n"
                 b"192.0.2.0\t192.0.2.255\t64500\tZZ\tTEST-NET-ONE \xc3\xa9\n"
                 b"198.51.100.0\t198.51.100.255\t0\tNone\tNot routed\n"
                 b"203.0.113.0\t203.0.113.255\t64502\tNone\tNo country\n"
@@ -615,9 +615,9 @@ def test_network_hint_route_is_absent_without_a_dataset(ingest):
 @pytest.mark.parametrize("rows,pin_matches", [
     (DATASET_ROWS, False),
     (DATASET_ROWS + b"192.0.2.128\t192.0.2.200\t64503\tZZ\toverlaps\n", True),
-    (DATASET_ROWS + b"203.0.114.0\t203.0.114.255\tAS64503\tZZ\tnot a number\n", True),
-    (DATASET_ROWS + b"203.0.114.9\t203.0.114.0\t64503\tZZ\treversed\n", True),
-    (DATASET_ROWS + b"203.0.114.0\n", True),
+    (DATASET_ROWS + b"233.252.0.0\t233.252.0.255\tAS64503\tZZ\tnot a number\n", True),
+    (DATASET_ROWS + b"233.252.0.9\t233.252.0.0\t64503\tZZ\treversed\n", True),
+    (DATASET_ROWS + b"233.252.0.0\n", True),
     (b"2001:db8::\t2001:db8::ffff\t64501\tZY\tno IPv4\n", True),
     (None, True),
 ], ids=["pin-mismatch", "overlap", "asn-text", "reversed", "short-line", "no-ipv4", "truncated-gzip"])
@@ -793,7 +793,7 @@ def test_refresh_script_pins_only_a_dataset_the_ingest_can_load(tmp_path):
     assert 'dataset_version: "20261101T093850Z"' in result.stdout
     # A second build with the same version must not replace the copy that a committed pin names.
     other = tmp_path / "other.tsv.gz"
-    other.write_bytes(gzip.compress(DATASET_ROWS + b"203.0.114.0\t203.0.114.255\t64503\tZZ\tnewer build\n"))
+    other.write_bytes(gzip.compress(DATASET_ROWS + b"233.252.0.0\t233.252.0.255\t64503\tZZ\tnewer build\n"))
     clobber = subprocess.run(["bash", str(script)], capture_output=True, text=True, timeout=30,
                              env={**env, "STUB_DATASET": str(other)})
     assert clobber.returncode == 1 and "already exists" in clobber.stderr
