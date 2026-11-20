@@ -26,6 +26,7 @@ import os
 import re
 import secrets
 import shutil
+import string
 import sys
 import tarfile
 import time
@@ -69,12 +70,66 @@ class SiteError(Exception):
     pass
 
 
-def forbidden_terms() -> tuple[str, ...]:
-    """The public site vocabulary contract has one home: the news refresher that enforces it on a node."""
+def refresher():
+    """The node's live-data refresher: the one home of the vocabulary contract, the page markers and
+    the bundled markup."""
     spec = importlib.util.spec_from_file_location("refresh_model_news", REFRESHER)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.FORBIDDEN
+    return module
+
+
+def forbidden_terms() -> tuple[str, ...]:
+    return refresher().FORBIDDEN
+
+
+def bundled_sources() -> list[dict]:
+    defaults = yaml.safe_load((REPO / "ansible/roles/nginx-xhttp/defaults/main.yml").read_text(encoding="utf-8"))
+    return defaults["nginx_xhttp_model_news_sources"]
+
+
+def source_keys(sources: list[dict]) -> set[tuple[str, str]]:
+    return {(source["kind"], source.get("org") or source.get("url") or "") for source in sources}
+
+
+MARKUP_FIELDS = {"section": {"name", "items"}, "item": {"link", "title", "source", "date", "date_text"},
+                 "updated": {"date", "time", "date_text"}}
+
+
+def validate_live(live: object) -> dict | None:
+    """The optional live-data page: a top-level theme page with the two markers, its sources and its markup."""
+    if live is None:
+        return None
+    if not isinstance(live, dict) or set(live) != {"page", "sources", "markup"}:
+        raise SiteError("identity live must hold page, sources and markup")
+    if not isinstance(live["page"], str) or not re.fullmatch(r"[a-z0-9-]+\.html", live["page"]) or live["page"] == "404.html":
+        raise SiteError("identity live page must be a top-level lowercase .html file name other than 404.html")
+    sources = live["sources"]
+    if not isinstance(sources, list) or not sources:
+        raise SiteError("identity live sources must be a non-empty list")
+    for source in sources:
+        text = isinstance(source, dict) and all(isinstance(value, str) and value.strip() for value in source.values())
+        if not text or source.get("kind") not in ("hub", "feed") or not {"name", "section"} <= set(source):
+            raise SiteError("a live source needs name, section and kind hub or feed, all as text")
+        if source["kind"] == "hub" and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", source.get("org", "")):
+            raise SiteError("a hub live source needs an org name")
+        if source["kind"] == "feed" and not re.fullmatch(r"https://[^\s\"'<>]+", source.get("url", "")):
+            raise SiteError("a feed live source needs an https url")
+    markup = live["markup"]
+    if not isinstance(markup, dict) or set(markup) != set(MARKUP_FIELDS):
+        raise SiteError("identity live markup must hold section, item and updated")
+    for key, allowed in MARKUP_FIELDS.items():
+        try:
+            parsed = [part for part in string.Formatter().parse(str(markup[key])) if part[1] is not None]
+        except ValueError as error:
+            raise SiteError(f"identity live markup {key} is not a valid format string") from error
+        fields = {name for _, name, _, _ in parsed}
+        # A format spec can hold another field and an unbounded width, so plain fields only.
+        plain = all(not spec and not conversion for _, _, spec, conversion in parsed)
+        if (not isinstance(markup[key], str) or not plain or not fields <= allowed
+                or (key == "section" and "items" not in fields)):
+            raise SiteError(f"identity live markup {key} may use only the plain fields {', '.join(sorted(allowed))}")
+    return live
 
 
 def regular_files(root: Path) -> dict[str, Path]:
@@ -114,6 +169,7 @@ def validate_identity(identity: object) -> dict:
         date.fromisoformat(str(identity.get("start")))
     except ValueError as error:
         raise SiteError("identity start must be an ISO date") from error
+    validate_live(identity.get("live"))
     return identity
 
 
@@ -147,6 +203,17 @@ or from this repository's bundled site; `make public-site-check` refuses them.
 - {count} articles cover one year at this cadence.
 - These terms must not appear anywhere: {forbidden}.
 
+## Optional live page
+
+A page that the node refreshes from public feeds. Add `live` to `identity.yml`:
+
+- `page`: a top-level theme page, for example `radar.html`, that holds the comments
+  `{items_marker}` and `{updated_marker}`.
+- `sources`: a list of `{{name, section, kind: feed, url}}` or `{{name, section, kind: hub, org}}`.
+  Choose sources that fit the subject; do not copy another site's list.
+- `markup`: the HTML of `section` (fields `{{name}}`, `{{items}}`), `item` (`{{link}}`, `{{title}}`, `{{source}}`,
+  `{{date}}`, `{{date_text}}`) and `updated` (`{{date}}`, `{{time}}`, `{{date_text}}`). Write your own.
+
 Then run `make public-site-build` and `make public-site-check`.
 """
 
@@ -162,7 +229,8 @@ def new(directory: Path, origin: str, name: str, subject: str, start: date, cade
     for part in ("theme", "articles"):
         (directory / part).mkdir(parents=True, exist_ok=True)
     brief = BRIEF.format(name=name, subject=subject, origin=origin, count=initial + 365 // cadence_days,
-                         forbidden=", ".join(forbidden_terms()), types=" ".join(TEXT_TYPES + BINARY_TYPES))
+                         forbidden=", ".join(forbidden_terms()), types=" ".join(TEXT_TYPES + BINARY_TYPES),
+                         items_marker=refresher().ITEMS_MARKER, updated_marker=refresher().UPDATED_MARKER)
     for item, text in (("identity.yml", yaml.safe_dump(values, sort_keys=False, allow_unicode=True)), ("brief.md", brief)):
         with open(directory / item, "x", encoding="utf-8") as handle:
             handle.write(text)
@@ -249,6 +317,12 @@ def render_generations(directory: Path) -> tuple[list[dict[str, bytes]], list[da
             tree[target] = environment.get_template("article.html.j2").render(context, article=article).encode()
         generations.append(tree)
     findings = type_findings(generations[-1]) + resource_findings(sorted(generations[-1].items()), identity["origin"])
+    live = identity.get("live")
+    if live:
+        markers = (refresher().ITEMS_MARKER, refresher().UPDATED_MARKER)
+        findings += [f"generation {number}: live page {live['page']} must hold both markers {' and '.join(markers)}"
+                     for number, tree in enumerate(generations)
+                     if not all(marker.encode() in tree.get(live["page"], b"") for marker in markers)]
     if findings:
         raise SiteError("; ".join(findings))
     return generations, times
@@ -256,6 +330,7 @@ def render_generations(directory: Path) -> tuple[list[dict[str, bytes]], list[da
 
 def build(directory: Path, out: Path) -> None:
     generations, times = render_generations(directory)
+    live = yaml.safe_load((directory / "identity.yml").read_text(encoding="utf-8")).get("live")
     if out.is_symlink() or (out.exists() and not (out / "schedule.json").is_file()):
         raise SiteError(f"{out} exists and is not a site bundle")
     staging = out.with_name(out.name + ".building")
@@ -287,6 +362,8 @@ def build(directory: Path, out: Path) -> None:
                             "is stored again for each generation")
         plan = {"version": 1, "generations": [{"n": n, "not_before": int(t.timestamp())} for n, t in enumerate(times)]}
         (staging / "schedule.json").write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
+        if live:
+            (staging / "live.json").write_text(json.dumps(live, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         if out.exists():
             shutil.rmtree(out)
         staging.rename(out)
@@ -434,6 +511,27 @@ def check(bundle: Path, origin: str, peers: list[Path]) -> list[str]:
         text = unicodedata.normalize("NFKC", text).casefold()
         findings += [f"{relative}: contains the forbidden term {term!r}" for term in terms if term in text]
     findings += type_findings(relative for relative, _ in files) + resource_findings(files, origin)
+    if (bundle / "live.json").is_file():
+        try:
+            documents = {str(path): json.loads((path / "live.json").read_text(encoding="utf-8"))
+                         for path in [bundle, *peers] if (path / "live.json").is_file()}
+        except ValueError as error:
+            raise SiteError(f"live.json is not valid JSON: {error}") from error
+        live = validate_live(documents[str(bundle)])
+        shell = dict(files).get(live["page"], b"")
+        if not all(marker.encode() in shell for marker in (refresher().ITEMS_MARKER, refresher().UPDATED_MARKER)):
+            findings.append(f"live.json: {live['page']} is not a page of site/ with both markers")
+        declared = unicodedata.normalize("NFKC", json.dumps(live, ensure_ascii=False)).casefold()
+        findings += [f"live.json: contains the forbidden term {term!r}" for term in terms if term in declared]
+        # One source list or one markup on many nodes gives them one identical page.
+        if source_keys(live["sources"]) == source_keys(bundled_sources()):
+            findings.append("live.json: the sources are the bundled default list")
+        if any(live["markup"][key] == value for key, value in refresher().DEFAULT_MARKUP.items()):
+            findings.append("live.json: the markup is the bundled markup")
+        for peer in peers:
+            other = documents.get(str(peer))
+            if isinstance(other, dict) and other.get("markup") == live["markup"]:
+                findings.append(f"live.json: the markup is the same as in {peer}")
     return list(dict.fromkeys(findings))
 
 

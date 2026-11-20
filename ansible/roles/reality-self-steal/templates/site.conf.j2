@@ -27,6 +27,18 @@ server {
     location = /404.html {
         internal;
     }
+{% set self_steal_site_live = (public_site_live | default({})).get(reality_self_steal_public_site_dir | default(''), {}) %}
+{% if self_steal_site_live %}
+
+    # The node refreshes this page outside the generation; until the first refresh the generation's shell answers.
+    location = /{{ self_steal_site_live.page }} {
+        root /var/lib/public-site-live/{{ self_steal_site_live.digest }};
+        try_files $uri @public_site_live_shell;
+    }
+    location @public_site_live_shell {
+        root /var/lib/public-site/{{ self_steal_site_live.digest }}/current;
+    }
+{% endif %}
 
     location / {
         try_files $uri $uri/ =404;

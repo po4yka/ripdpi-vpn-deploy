@@ -4,6 +4,20 @@
 {# The public-site role publishes scheduled generations of a bundle; every server of this site reads the same one. #}
 {% set nginx_site_digest = (public_site_published | default({})).get(nginx_xhttp_public_site_dir | default(''), '') %}
 {% set nginx_site_root = ('/var/lib/public-site/' ~ nginx_site_digest ~ '/current') if nginx_site_digest else '/var/www/public-site' %}
+{% set nginx_site_live = (public_site_live | default({})).get(nginx_xhttp_public_site_dir | default(''), {}) %}
+{# The node refreshes this page outside the generation; until the first refresh the generation's shell answers. #}
+{% macro nginx_live_page() %}
+{% if nginx_site_live %}
+
+    location = /{{ nginx_site_live.page }} {
+        root /var/lib/public-site-live/{{ nginx_site_live.digest }};
+        try_files $uri @public_site_live_shell;
+    }
+    location @public_site_live_shell {
+        root {{ nginx_site_root }};
+    }
+{% endif %}
+{% endmacro %}
 {% set nginx_fallback_enabled = nginx_xhttp.fallback_enabled | default(false) %}
 {% set nginx_fallback_name = nginx_xhttp.fallback_server_name | default(nginx_xhttp.server_name) %}
 {% set nginx_same_public_host = (nginx_fallback_name | lower) == (nginx_xhttp.server_name | lower) %}
@@ -23,7 +37,7 @@
     error_page 404 /404.html;
     location = /404.html {
         internal;
-    }
+    }{{ nginx_live_page() }}
     location / {
         try_files $uri $uri/ =404;
     }
@@ -137,7 +151,7 @@ server {
         types { }
         default_type application/atom+xml;
         try_files $uri =404;
-    }
+    }{{ nginx_live_page() }}
 {% if nginx_xhttp_model_news_enabled | default(true) | bool and not (nginx_xhttp_public_site_dir | default('')) %}
 
     # Refreshed by model-news.timer outside the published site tree; the page
@@ -229,7 +243,7 @@ server {
         types { }
         default_type application/atom+xml;
         try_files $uri =404;
-    }
+    }{{ nginx_live_page() }}
 {% if nginx_xhttp_model_news_enabled | default(true) | bool and not (nginx_xhttp_public_site_dir | default('')) %}
 
     # Refreshed by model-news.timer outside the published site tree; the page

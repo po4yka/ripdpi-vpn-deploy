@@ -6,6 +6,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -70,7 +71,7 @@ def _serve(monkeypatch: pytest.MonkeyPatch, bodies: dict[str, bytes]) -> None:
     monkeypatch.setattr(news.urllib.request, "urlopen", urlopen)
 
 
-def _run(tmp_path: Path, sources: list[dict]) -> tuple[int, Path]:
+def _run(tmp_path: Path, sources: list[dict] | dict) -> tuple[int, Path]:
     sources_file = tmp_path / "sources.json"
     sources_file.write_text(json.dumps(sources))
     shell_file = tmp_path / "shell.html"
@@ -280,6 +281,57 @@ def test_model_news_changes_inside_a_protected_ingress_wait_for_the_commit(
     commit = names.index("Commit the ready protected ingress and egress composition")
     # The two public site removal tasks also follow the commit and precede these.
     assert commit < names.index(post_commit_task) <= commit + 4
+
+
+SITE_DOCUMENT = {
+    "page": "sightings.html",
+    "sources": [{"name": "Wire & Co", "kind": "feed", "section": "Seen <now>", "url": "https://news.example/feed"}],
+    "markup": {"section": "<h3>{name}</h3><ul>{items}</ul>",
+               "item": "<li>{date} <a href=\"{link}\">{title}</a> by {source}</li>",
+               "updated": "Checked {date} {time}"},
+}
+
+
+def _run_site(tmp_path: Path, document: dict) -> tuple[int, Path]:
+    """Run as the per-bundle unit does: the declaration names the page inside both directories."""
+    (tmp_path / "generation").mkdir(exist_ok=True)
+    (tmp_path / "live").mkdir(exist_ok=True)
+    (tmp_path / "generation" / "sightings.html").write_text(SHELL)
+    (tmp_path / "live.json").write_text(json.dumps(document))
+    status = news.main(["refresh", str(tmp_path / "live.json"), str(tmp_path / "generation"), str(tmp_path / "live")])
+    return status, tmp_path / "live" / "sightings.html"
+
+
+def test_a_site_document_supplies_its_own_page_sources_and_markup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _serve(monkeypatch, {"https://news.example/feed": RSS})
+    status, output = _run_site(tmp_path, SITE_DOCUMENT)
+    page = output.read_text()
+
+    assert status == 0
+    assert "<h3>Seen &lt;now&gt;</h3><ul><li>2026-11-03 <a href=\"https://news.example/a\">" in page
+    assert "Lab ships &lt;script&gt;alert(1)&lt;/script&gt; model</a> by Wire &amp; Co</li></ul>" in page
+    # Only the declared feed, and none of the bundled page's markup.
+    assert "huggingface.co" not in page and "news-section" not in page and "Last refreshed" not in page
+    assert "ＶＰＮ" not in page and "Plain link item" not in page
+    assert re.search(r"<p>Checked \d{4}-\d\d-\d\d \d\d:\d\d</p>", page)
+
+
+@pytest.mark.parametrize("change", [
+    {"page": "../escape.html"}, {"page": "notes/sightings.html"}, {"page": 7},
+    {"markup": {**SITE_DOCUMENT["markup"], "item": "<li>{title:{link.__class__}}</li>"}},
+    {"markup": {**SITE_DOCUMENT["markup"], "item": "<li>{missing}</li>"}},
+], ids=["parent-path", "nested-path", "not-text", "nested-field", "unknown-field"])
+def test_a_site_document_the_build_would_refuse_keeps_the_previous_page(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: dict) -> None:
+    _serve(monkeypatch, {"https://news.example/feed": RSS})
+    status, output = _run_site(tmp_path, SITE_DOCUMENT)
+    assert status == 0
+    before = output.read_bytes()
+    status, _ = _run_site(tmp_path, {**SITE_DOCUMENT, **change})
+    assert status == 2
+    assert output.read_bytes() == before
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["generation", "live", "live.json"]
+    assert [path.name for path in (tmp_path / "live").iterdir()] == ["sightings.html"]
 
 
 def test_standalone_convergence_follows_the_accepted_nginx_transaction() -> None:

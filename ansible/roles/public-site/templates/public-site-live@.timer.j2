@@ -1,0 +1,13 @@
+[Unit]
+Description=Refresh the live page of public site bundle %i
+
+[Timer]
+# First run soon after deploy, then every six hours with jitter so a fleet
+# does not poll its sources in step.
+OnActiveSec=5min
+OnUnitActiveSec=6h
+RandomizedDelaySec=30min
+Unit=public-site-live@%i.service
+
+[Install]
+WantedBy=timers.target

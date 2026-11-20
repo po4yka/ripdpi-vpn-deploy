@@ -1,8 +1,11 @@
 ---
 # Run by the caller after its vhost activation has succeeded.
+- name: Retire live pages that no bundle declares
+  ansible.builtin.include_tasks: live-retire.yml
+
 - name: List delivered and published bundles
   ansible.builtin.find:
-    paths: [/etc/public-site, /var/lib/public-site]
+    paths: [/etc/public-site, /var/lib/public-site, /var/lib/public-site-live]
     file_type: directory
     patterns: ['^[0-9a-f]{64}$']
     use_regex: true

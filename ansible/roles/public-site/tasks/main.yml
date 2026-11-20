@@ -32,6 +32,34 @@
               | zip(_public_site_archive_stats.results | selectattr('stat.exists') | map(attribute='stat.checksum')))
          if public_site_role_enabled else {} }}
 
+# The fact always describes this run: a bundle that dropped its page loses its entry.
+- name: Start with no live page
+  ansible.builtin.set_fact:
+    public_site_live: {}
+
+- name: Read each published bundle's live page declaration on the controller
+  ansible.builtin.set_fact:
+    public_site_live: >-
+      {{ public_site_live | combine({item.key: {
+           'digest': item.value,
+           'page': (lookup('ansible.builtin.file', item.key ~ '/live.json') | from_json).page}}) }}
+  loop: "{{ public_site_published | dict2items }}"
+  loop_control:
+    label: "{{ item.value[:12] }}"
+  when: (item.key ~ '/live.json') is file
+
+# The page name reaches nginx location names and node paths.
+- name: Refuse a live page that is not a plain file name
+  ansible.builtin.assert:
+    that:
+      - item.page is string
+      - item.page is match('^[a-z0-9-]+[.]html$')
+      - item.page != '404.html'
+    fail_msg: A site bundle's live page must be a lowercase .html file name in the site root.
+  loop: "{{ public_site_live.values() | list }}"
+  loop_control:
+    label: "{{ item.digest[:12] }}"
+
 - name: Converge the public site publisher
   ansible.builtin.include_tasks: enable.yml
   when: public_site_published | length > 0

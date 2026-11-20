@@ -6,3 +6,11 @@ start: '2026-03-02'
 cadence_days: 9
 initial_articles: 2
 article_path: bench/{slug}.html
+live:
+  page: sightings.html
+  sources:
+    - {name: Typosphere, kind: feed, section: Seen this week, url: 'https://feeds.example.org/typosphere.xml'}
+  markup:
+    section: '<h2 class="heard">{name}</h2><ul class="heard-list">{items}</ul>'
+    item: '<li>{date}: <a href="{link}">{title}</a> ({source})</li>'
+    updated: 'Looked at the feeds on {date_text} at {time}.'
