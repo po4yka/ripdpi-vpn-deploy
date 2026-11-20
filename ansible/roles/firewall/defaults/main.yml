@@ -13,6 +13,8 @@ firewall_awg_uplink6_interface: ""
 
 # Empty selects the observed IPv6 route, then IPv4 for first IPv6 acquisition.
 firewall_dhcpv6_uplink_interface: ""
+# DHCPv4 reply scope; empty selects the observed IPv4 default-route interface.
+firewall_dhcpv4_uplink_interface: ""
 # Exact canonical IPv6 server addresses for legacy unicast; no prefixes.
 firewall_dhcpv6_server_addresses: []
 
