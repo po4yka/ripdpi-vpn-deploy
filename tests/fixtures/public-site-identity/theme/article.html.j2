@@ -1,0 +1,7 @@
+{% extends "_base.html.j2" %}
+{% block title %}{{ article.title }} · {{ site.name }}{% endblock %}
+{% block path %}{{ article.path }}{% endblock %}
+{% block main %}
+<article><h1>{{ article.title }}</h1><time datetime="{{ article.date.isoformat() }}">{{ article.date.strftime("%d %B %Y") }}</time>
+{{ article.html }}</article>
+{% endblock %}

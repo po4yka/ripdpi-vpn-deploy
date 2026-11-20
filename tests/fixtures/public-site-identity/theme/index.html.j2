@@ -1,0 +1,7 @@
+{% extends "_base.html.j2" %}
+{% block main %}
+<p>Bench log, last entry {{ updated.strftime("%d %B %Y") }}.</p>
+<ol>
+{% for article in articles %}<li><a href="{{ article.path }}">{{ article.title }}</a> <time datetime="{{ article.date.isoformat() }}">{{ article.date.strftime("%Y-%m-%d") }}</time> {{ article.summary }}</li>
+{% endfor %}</ol>
+{% endblock %}

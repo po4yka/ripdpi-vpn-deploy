@@ -175,7 +175,10 @@ Variables (override on command line):
   test-probe-matrix-mtproto   Run the compiled Go helper tests
   snapshot-check             Diff every Jinja render against tests/snapshot/golden/
   snapshot-update            Refresh the goldens (run after intentional change)
-  public-site-render         Render the bundled site into a new operator-owned tree (PUBLIC_SITE_URL, PUBLIC_SITE_DIR)
+  public-site-new            Create a private site identity and brief (PUBLIC_SITE_DIR, PUBLIC_SITE_URL, PUBLIC_SITE_NAME, PUBLIC_SITE_SUBJECT)
+  public-site-build          Build the site bundle from identity, theme and articles (PUBLIC_SITE_DIR, PUBLIC_SITE_BUNDLE)
+  public-site-check          Refuse a bundle that shares content with the bundled site or a peer (PUBLIC_SITE_BUNDLE, PUBLIC_SITE_URL, PUBLIC_SITE_PEERS)
+  public-site-status         Report unpublished generations and days of material left (PUBLIC_SITE_BUNDLE)
   validate-secrets           jsonschema check (strict if SECRETS_FILE is set)
   validate-bundle            jsonschema + fingerprint check of a ripdpi bundle (BUNDLE=… or example)
   actionlint-check           Validate every GitHub Actions workflow

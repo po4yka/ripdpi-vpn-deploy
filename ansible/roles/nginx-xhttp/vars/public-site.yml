@@ -1,6 +1,5 @@
 ---
-# The bundled public site, shared by enable.yml and playbooks/render-public-site.yml
-# so an operator-owned tree can be rendered from the same pages.
+# The bundled public site that enable.yml publishes on a non-production host.
 nginx_xhttp_bundled_site_assets: [favicon.svg, logo.svg, 404.html, assets/site.css]
 nginx_xhttp_bundled_site_pages:
   - {src: index.html.j2, dest: index.html}
