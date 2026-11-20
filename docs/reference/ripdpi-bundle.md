@@ -55,7 +55,7 @@ Optional map from `server_ref` to per-endpoint metadata. A `server_ref` is the o
 
 **Expiry rule:** the client treats a `health` whose `observed_at` plus `ttl_seconds` is in the past as `unknown`, whatever `status` says. [`contract/ripdpi-bundle.health-expired.json`](../../contract/ripdpi-bundle.health-expired.json) is the expiry case: evaluated at its `_evaluated_at` instant, every endpoint is effectively `unknown`. The generator derives health from server-side liveness data; a missing or stale input is published as `unknown`.
 
-**Generation:** `scripts/emit-bundle.sh` publishes `ripdpi.endpoints` only when `BUNDLE_HEALTH_FILE` names a health configuration, so subscription delivery and drift checks, which pass no such file, stay deterministic. The configuration is a JSON object with these optional keys:
+**Generation:** Bundle emission, subscription issuance and subscription refresh publish `ripdpi.endpoints` when `BUNDLE_HEALTH_FILE` names a health configuration. Refresh the published subscription to deliver a new snapshot on the client's next fetch. The delivery drift check compares configuration and credentials independently of these expiring observations. The configuration is a JSON object with these optional keys:
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -67,7 +67,7 @@ Optional map from `server_ref` to per-endpoint metadata. A `server_ref` is the o
 | `max_ttl_seconds` | `86400` | Operator ceiling for `ttl_seconds`, at most the contract maximum. |
 | `min_failed_vantages` | `2` | Blocked vantages that make an endpoint `down`. |
 
-The tag prefix selects the sentinel profile (`p0-reality-`, `p1-xhttp-`, `p2-hysteria2-`; AWG entries use `p2-amneziawg`). With fresh evidence for the host's policy, `down` means at least `min_failed_vantages` vantages saw the profile blocked, `healthy` means every vantage saw `ok`, and any other mix with a working or blocked vantage is `degraded`. No fresh evidence, no policy for the host, a transport without a sentinel profile, or a configured cascade leg that is not proven healthy gives `unknown`. `observed_at` is the newest fresh observation, or the generation time for `unknown` without one.
+The tag prefix selects the sentinel profile (`p0-reality-`, `p1-xhttp-`, `p2-hysteria2-`; AWG entries use `p2-amneziawg`). The generator matches each non-AWG endpoint to its exact `server_ref` in the sentinel evidence. In a v3 bundle the alternate XHTTP tag starts with `p1-xhttp-_alternate-`. With fresh evidence for the host's policy, `down` means at least `min_failed_vantages` vantages saw the endpoint blocked, `healthy` means every fresh matching observation reports `ok`, and any other mix with a working or blocked vantage is `degraded`. No fresh matching evidence, no policy for the host, a transport without a sentinel profile, or a configured cascade leg that is not proven healthy gives `unknown`. `observed_at` is the newest fresh observation, or the generation time for `unknown` without one.
 
 ## `ripdpi.field_report`
 

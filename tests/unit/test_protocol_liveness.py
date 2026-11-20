@@ -429,6 +429,11 @@ def test_aggregate_whitelists_public_identity_without_claiming_server_source(tmp
         "payload_transport": "tcp-https", "target_address_family": "unknown",
         "dns_through_tunnel": True, "authenticated_handshake": True}
     assert item["profile_durations_ms"] == {name: 40 for name in item["profiles"]}
+    # The missing sentinel stays in the configured roster even though it did not publish evidence.
+    assert payload["expected_probes"] == {
+        "tls-freeze-a": {"policy": "fullstack", "profiles": sorted(PROFILES)},
+        "udp-filtered-b": {"policy": "fullstack", "profiles": sorted(PROFILES)},
+    }
     assert "secret-marker" not in json.dumps(payload)
 
 
@@ -850,8 +855,10 @@ def test_working_alternate_retains_degraded_primary_without_rotation(tmp_path, p
     for sentinel in config["sentinels"]:
         report = _report(sentinel["id"], {profile: "ok" for profile in PROFILES})
         profile = next(p for p in report["profiles"] if p["profile"] == "p1-xhttp")
-        profile["variants"] = [{"variant": 1, "verdict": primary, "duration_ms": 40},
-                               {"variant": 2, "verdict": "ok", "duration_ms": 40}]
+        profile["variants"] = [
+            {"variant": 1, "verdict": primary, "duration_ms": 40, "server_ref": "p1-xhttp-primary"},
+            {"variant": 2, "verdict": "ok", "duration_ms": 40, "server_ref": "p1-xhttp-alternate"},
+        ]
         reports[sentinel["ssh_target"]] = report
     result = _run(tmp_path, config_path, reports)
     assert result.returncode == 0, result.stderr
@@ -861,7 +868,9 @@ def test_working_alternate_retains_degraded_primary_without_rotation(tmp_path, p
     for evidence in payload["evidence"]:
         assert evidence["profiles"]["p1-xhttp"] == "ok"
         assert evidence["endpoint_variants"]["p1-xhttp"] == [
-            {"variant": 1, "verdict": primary}, {"variant": 2, "verdict": "ok"}]
+            {"variant": 1, "verdict": primary, "server_ref": "p1-xhttp-primary"},
+            {"variant": 2, "verdict": "ok", "server_ref": "p1-xhttp-alternate"},
+        ]
 
 
 def _ipv6_refused(report: dict, *, ipv4: str = "ok", ipv6_kind: str = "policy_refused") -> dict:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import datetime as dt
 import json
 from pathlib import Path
 
@@ -54,8 +55,41 @@ def test_selected_device_receives_both_identities_and_matching_native_mode(input
     assert all(v['streamSettings']['xhttpSettings']['mode'] == mode for v in native)
     assert [v['endpoint'] for v in built['public_profiles']] == ['primary', 'alternate']
     assert len(built['runtime']['xray']['profiles']['p1-xhttp']) == 2
+    assert built['runtime']['xray']['endpoint_refs']['p1-xhttp'] == [
+        'p1-xhttp-upcloud-fixture', 'p1-xhttp-_alternate-upcloud-fixture',
+    ]
     public = json.dumps(built['public_profiles'])
     assert all(client['uuid'] not in public for client in document['xray']['clients'])
+
+
+def test_bundle_distinguishes_primary_and_alternate_health(inputs, tmp_path, monkeypatch):
+    _, _, _, emit = inputs
+    primary = "p1-xhttp-upcloud-fixture"
+    alternate = "p1-xhttp-_alternate-upcloud-fixture"
+    observed = int(dt.datetime.now(dt.timezone.utc).timestamp()) - 60
+    variants = [
+        {"variant": 1, "server_ref": alternate, "verdict": "ok"},
+        {"variant": 2, "server_ref": primary, "verdict": "blocked"},
+    ]
+    evidence = tmp_path / "evidence.json"
+    evidence.write_text(json.dumps({"evidence": [
+        {"sentinel": sentinel, "policy": "fixture-policy", "observed_at": observed, "profiles": {"p1-xhttp": "ok"},
+         "endpoint_variants": {"p1-xhttp": variants}}
+        for sentinel in ("fixture-a", "fixture-b")
+    ]}))
+    config = tmp_path / "health.json"
+    config.write_text(json.dumps({"liveness": str(evidence), "policies": {"upcloud:fixture": "fixture-policy"}}))
+    monkeypatch.setenv("BUNDLE_HEALTH_FILE", str(config))
+    payload, _ = emit(extended=True)
+
+    assert [outbound["tag"] for outbound in payload["outbounds"] if outbound["type"] == "vless"] == [primary, alternate]
+    endpoints = payload["ripdpi"]["endpoints"]
+    assert {tag: endpoint["health"]["status"] for tag, endpoint in endpoints.items()} == {
+        primary: "down", alternate: "healthy",
+    }
+    import jsonschema
+
+    jsonschema.validate(payload["ripdpi"], json.loads((ROOT / "contract/ripdpi-bundle.schema.json").read_text()))
 
 
 def test_disabled_alternate_never_exports_stale_identity(inputs):
@@ -204,13 +238,14 @@ def test_mixed_payload_policy_exports_tuned_tcp_reserves(inputs):
     assert payload['route']['final'] == 'select'
 
 
-def test_alternate_tag_does_not_collide_with_another_primary_name(inputs):
+@pytest.mark.parametrize("extended", [False, True])
+def test_alternate_tag_does_not_collide_with_another_primary_name(inputs, extended):
     document, _, options, _ = inputs
     options['hosts'] = ['upcloud:fixture', 'upcloud:fixture-alternate']
     options['cohorts'] = ['fullstack', 'fullstack']
     source = str(Path('fixture').absolute())
     payload, _ = client_payload.materialize('laptop', options,
-        documents={source: document}, source_paths=['fixture', 'fixture'])
+        documents={source: document}, source_paths=['fixture', 'fixture'], extended=extended)
     tags = [v['tag'] for v in payload['outbounds']]
     assert len(tags) == len(set(tags))
 
@@ -253,10 +288,13 @@ def test_liveness_keeps_failed_primary_when_alternate_completes(inputs):
     failed = dict(verdict='blocked', duration_ms=10, error_kind='connect', payload_transport='unknown',
                   target_address_family='unknown')
     delivered = dict(verdict='ok', duration_ms=20, payload_transport='tcp', target_address_family='ipv4')
-    observation = runner.aggregate_variants('p1-xhttp', [failed, delivered])
+    refs = built['runtime']['xray']['endpoint_refs']['p1-xhttp']
+    observation = runner.aggregate_variants('p1-xhttp', [failed, delivered], refs)
     assert observation['verdict'] == 'ok'
-    assert [(identity['endpoint'], result['verdict']) for identity, result in
-            zip(built['public_profiles'], observation['variants'])] == [('primary', 'blocked'), ('alternate', 'ok')]
+    assert [(result['server_ref'], result['verdict']) for result in observation['variants']] == [
+        ('p1-xhttp-upcloud-fixture', 'blocked'),
+        ('p1-xhttp-_alternate-upcloud-fixture', 'ok'),
+    ]
 
 
 @pytest.mark.parametrize('mode', ['auto', 'packet-up'])

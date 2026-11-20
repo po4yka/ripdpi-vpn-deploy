@@ -310,6 +310,7 @@ def validate_report(raw: str, sentinel: dict, config: dict, now: int) -> tuple[d
             if not isinstance(variants, list) or not variants:
                 return None, f"{sentinel['id']}: invalid endpoint variant evidence"
             variant_ids: set[int] = set()
+            variant_refs: set[str] = set()
             for variant in variants:
                 if not isinstance(variant, dict):
                     return None, f"{sentinel['id']}: invalid endpoint variant evidence"
@@ -322,6 +323,12 @@ def validate_report(raw: str, sentinel: dict, config: dict, now: int) -> tuple[d
                 ):
                     return None, f"{sentinel['id']}: invalid endpoint variant evidence"
                 variant_ids.add(variant_id)
+                if "server_ref" in variant:
+                    ref = variant["server_ref"]
+                    if (not isinstance(ref, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,64}", ref) is None
+                            or not ref.startswith(name + "-") or ref in variant_refs):
+                        return None, f"{sentinel['id']}: invalid endpoint variant reference"
+                    variant_refs.add(ref)
             variant_verdicts = {variant["verdict"] for variant in variants}
             expected_verdict = next(value for value in ("ok", "throttled", "error", "unknown", "blocked") if value in variant_verdicts)
             if verdict != expected_verdict:
@@ -361,7 +368,7 @@ def aggregate(config: dict, reports: dict[str, dict], errors: list[str]) -> dict
             errors.append(f"{sentinel_id}: indeterminate protocol evidence")
         endpoint_variants = {
             name: [
-                {"variant": variant["variant"], "verdict": variant["verdict"]}
+                {key: variant[key] for key in ("variant", "verdict", "server_ref") if key in variant}
                 for variant in profile_results[name].get("variants") or []
             ]
             for name in required
@@ -418,6 +425,13 @@ def aggregate(config: dict, reports: dict[str, dict], errors: list[str]) -> dict
         "candidate_policies": candidates,
         "failed_vantages": dict(sorted(failed_by_policy.items())),
         "monitoring_errors": sorted(set(errors)),
+        "expected_probes": {
+            sentinel_id: {
+                "policy": sentinel["policy"],
+                "profiles": sorted(policy_map[sentinel["policy"]]["required_profiles"]),
+            }
+            for sentinel_id, sentinel in sorted(sentinels.items())
+        },
         "evidence": evidence,
     }
 

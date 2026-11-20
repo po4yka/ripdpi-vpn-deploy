@@ -54,7 +54,7 @@
     },
     {
       "type": "vless",
-      "tag": "p1-xhttp-upcloud-fixture:alternate",
+      "tag": "p1-xhttp-_alternate-upcloud-fixture",
       "server": "192.0.2.10",
       "server_port": 2083,
       "uuid": "abcdef12-3456-4789-8abc-def012345678",
@@ -97,7 +97,7 @@
       "tag": "select",
       "outbounds": [
         "p1-xhttp-upcloud-fixture",
-        "p1-xhttp-upcloud-fixture:alternate",
+        "p1-xhttp-_alternate-upcloud-fixture",
         "p2-hysteria2-upcloud-fixture",
         "auto"
       ],
@@ -109,7 +109,7 @@
       "tag": "auto",
       "outbounds": [
         "p1-xhttp-upcloud-fixture",
-        "p1-xhttp-upcloud-fixture:alternate",
+        "p1-xhttp-_alternate-upcloud-fixture",
         "p2-hysteria2-upcloud-fixture"
       ],
       "url": "https://www.gstatic.com/generate_204",

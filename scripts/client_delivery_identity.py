@@ -28,6 +28,10 @@ def authority(document, *, create=False):
 
 def digest(client, options, payload, bindings, auth):
     validate_options(options)
+    ripdpi = payload.get('ripdpi')
+    if isinstance(ripdpi, dict) and 'endpoints' in ripdpi:
+        # Health observations expire and change independently of delivery configuration.
+        payload = {**payload, 'ripdpi': {key: value for key, value in ripdpi.items() if key != 'endpoints'}}
     data = json.dumps(dict(domain='vpn-client-delivery', version=1, client=client, options=options,
                            bindings=bindings, payload=payload), sort_keys=True, separators=(',', ':'), allow_nan=False).encode()
     return dict(version=1, generation=auth['generation'], digest=hmac.new(bytes.fromhex(auth['key']), data, hashlib.sha256).hexdigest())

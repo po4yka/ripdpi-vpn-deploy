@@ -205,6 +205,13 @@ def xhttp_tuning(raw: dict) -> dict:
             "hMaxReusableSecs": 0, "cMaxReuseTimes": 0}
 
 
+def xhttp_bundle_tag(tag: str) -> str:
+    if tag.endswith(":alternate"):
+        # A primary starts with the provider, which cannot start with an underscore.
+        return "p1-xhttp-_alternate-" + tag.removeprefix("p1-xhttp-").removesuffix(":alternate")
+    return tag
+
+
 def xhttp_endpoints(doc: dict, context: dict) -> list[dict]:
     """Resolve only configured direct listeners, retaining each TLS identity."""
     frontend = {**context.get("nginx_xhttp", {}), **doc.get("nginx_xhttp", {})}

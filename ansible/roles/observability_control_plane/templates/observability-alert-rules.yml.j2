@@ -403,9 +403,8 @@ groups:
 {# "other" and "unknown" fold many networks into one value, so a block alert on them names no network to rotate away from. #}
 {% set block_origin = '{node=~"' ~ report_nodes ~ '",network!~"other|unknown"}' %}
       - alert: FieldReportNetworkBlocked
-        # The sentinel sees the protocol healthy on every node and vantage while clients in one network fail:
-        # the network blocks the path. A failing or missing sentinel series keeps this silent, so a server
-        # outage stays with the protocol and liveness alerts. topk picks the network's dominant country label.
+        # The collector proves each configured probe of the protocol succeeded until the oldest one expires.
+        # A failing or missing probe removes that proof. topk picks the network's dominant country label.
         expr: >-
           (
             (
@@ -417,7 +416,7 @@ groups:
             and on (environment, protocol, network)
             sum by (environment, protocol, network) (increase(vpn_field_report_network_reports_total{{ block_origin }}[{{ block_window }}])) >= {{ field_report.block_min_reports | default(10) }}
             and on (environment, protocol)
-            (min by (environment, protocol) (vpn_protocol_probe_success) == 1)
+            (vpn_protocol_probe_complete_until_seconds{node="protocol-liveness"} > time())
           )
           * on (environment, protocol, network) group_left (country)
           (0 * topk by (environment, protocol, network) (1, sum by (environment, protocol, network, country) (increase(vpn_field_report_attempts_total{{ block_origin }}[{{ block_window }}]))) + 1)

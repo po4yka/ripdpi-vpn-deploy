@@ -56,11 +56,15 @@ def wrap_payload(payload, proof):
     extension = result.get('ripdpi')
     if not isinstance(extension, dict):
         raise MigrationRefused('migration-requires-ripdpi-bundle')
+    endpoints = extension.get('endpoints', {})
     for target in proof['awg_previous_tags']:
         selected = extension.get('amneziawg', [])
         if len(selected) != 1:
             raise MigrationRefused('migration-awg-tag-changed')
+        previous = selected[0]['tag']
         selected[0]['tag'] = target
+        if previous in endpoints:
+            endpoints[target] = endpoints.pop(previous)
     extension['migration'] = copy.deepcopy(proof)
     return result
 
@@ -256,7 +260,7 @@ class Migration:
                         suffix = '-'.join(self.plan['target']['host'].split(':'))
                         tags = [v['tag'] for v in payload['outbounds'] if v.get('type') in ('vless', 'hysteria2', 'snell')
                                 and v.get('server') == self.io.endpoint(self.plan['target']['host'])
-                                and (v['tag'].endswith('-' + suffix) or '-' + suffix + '-' in v['tag'] or v['tag'].endswith('-' + suffix + ':alternate'))]
+                                and (v['tag'].endswith('-' + suffix) or '-' + suffix + '-' in v['tag'])]
                         previous = {}
                         if options['awg_host'] in ('', self.plan['target']['host']) and payload['ripdpi']['amneziawg']:
                             tag = 'migration-awg-' + delivery_id

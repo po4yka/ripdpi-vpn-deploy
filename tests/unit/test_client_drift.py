@@ -1,6 +1,7 @@
 """Real SOPS and shared materializer drift, privacy and transaction regressions."""
 from __future__ import annotations
 
+import datetime as dt
 import importlib.util
 import json
 import os
@@ -297,6 +298,40 @@ def test_endpoint_and_renderer_failure_have_categorical_verdict(lab, monkeypatch
     assert drift._verdict('phone')[0] == 'stale'
     monkeypatch.setattr(payload, 'command', lambda *a, **k: (_ for _ in ()).throw(subprocess.TimeoutExpired(MARKER, 1)))
     assert drift._verdict('phone') == ('unknown', 'private input or materialization unavailable')
+
+
+def test_subscription_refresh_publishes_health_without_config_drift(lab, monkeypatch, capsys):
+    path, capture, drift = lab
+    evidence = path.parent / "evidence.json"
+    settings = path.parent / "health.json"
+    settings.write_text(json.dumps({"liveness": str(evidence), "policies": {"upcloud:prod": "fixture-policy"}}))
+    monkeypatch.setenv("BUNDLE_HEALTH_FILE", str(settings))
+
+    def publish_observation(verdict):
+        observed = int(dt.datetime.now(dt.timezone.utc).timestamp()) - 60
+        evidence.write_text(json.dumps({"evidence": [
+            {"sentinel": sentinel, "policy": "fixture-policy", "observed_at": observed,
+             "profiles": {"p2-amneziawg": verdict}}
+            for sentinel in ("fixture-a", "fixture-b")
+        ]}))
+
+    publish_observation("ok")
+    assert deliver() == 0
+    token = capsys.readouterr().out.strip()
+    bundle = json.loads(capture.read_bytes())["ripdpi"]
+    tag = bundle["amneziawg"][0]["tag"]
+    assert bundle["endpoints"][tag]["health"]["status"] == "healthy"
+
+    publish_observation("blocked")
+    assert drift._verdict("phone")[0] == "current"
+    args = issuer.argparse.Namespace(client="phone", format=None, expires=None, refresh_token=token,
+                                     print_token_only=True, qr=False)
+    assert issuer.issue(args) == 0
+    refreshed = json.loads(capture.read_bytes())["ripdpi"]
+    assert refreshed["endpoints"][tag]["health"]["status"] == "down"
+
+    settings.unlink()
+    assert drift._verdict("phone")[0] == "current"
 
 
 def test_refresh_keeps_expiry_and_canonical_private_choices(lab, capsys):

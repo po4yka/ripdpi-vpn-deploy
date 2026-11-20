@@ -110,6 +110,22 @@ def validate_sing_box(config: dict) -> None:
         raise ValueError("sing-box settings invalid")
 
 
+def validate_endpoint_refs(config: dict) -> None:
+    for engine_name in ("sing_box", "xray"):
+        settings = config.get(engine_name) or {}
+        if "endpoint_refs" not in settings:
+            continue
+        refs_by_profile = settings["endpoint_refs"]
+        profiles = settings["profiles"]
+        if (not isinstance(refs_by_profile, dict) or refs_by_profile.keys() != profiles.keys()
+                or any(not isinstance(refs, list) or len(refs) != len(profiles[profile])
+                       or any(not isinstance(ref, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,64}", ref) is None
+                              or not ref.startswith(profile + "-") for ref in refs)
+                       or len(set(refs)) != len(refs)
+                       for profile, refs in refs_by_profile.items())):
+            raise ValueError("endpoint references invalid")
+
+
 def verify_awg_source_correction(inputs: dict) -> None:
     """Admit the full identity through the installed, reviewed source helper."""
     correction = inputs.get("goSourceCorrection")
@@ -442,10 +458,11 @@ def wait_for_ports(process: subprocess.Popen[str], ports: list[int], timeout: fl
     return not pending
 
 
-def aggregate_variants(profile: str, variants: list[dict]) -> dict:
+def aggregate_variants(profile: str, variants: list[dict], refs: list[str] | None = None) -> dict:
     evidence = [
         {
             "variant": index,
+            **({"server_ref": refs[index - 1]} if refs is not None else {}),
             "verdict": item["verdict"],
             "duration_ms": item.get("duration_ms"),
             **({"error_kind": item["error_kind"]} if item.get("error_kind") else {}),
@@ -551,7 +568,7 @@ def probe_runtime_profiles(runtime: str, settings: dict, config: dict, control_a
                         "duration_ms": result.get("duration_ms"),
                         "error_kind": "control_unavailable",
                     }
-            results.append(aggregate_variants(profile, variants))
+            results.append(aggregate_variants(profile, variants, settings.get("endpoint_refs", {}).get(profile)))
         if process.poll() is not None:
             return [process_result(profile, {"verdict": "error", "duration_ms": None,
                                              "error_kind": "runtime_exited"}) for profile in sorted(profile_ports)]
@@ -798,6 +815,12 @@ def main() -> int:
                 or not re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?", expected_xray)):
             print("vpn-protocol-liveness: invalid xray profile or expected_runtime.xray pin", file=sys.stderr)
             return 2
+
+    try:
+        validate_endpoint_refs(config)
+    except ValueError:
+        print("vpn-protocol-liveness: invalid endpoint references", file=sys.stderr)
+        return 2
 
     try:
         validate_target_identity(config)
