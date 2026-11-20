@@ -112,7 +112,7 @@ def test_current_real_delivery_matches_private_artifact_and_ciphertext_rewrap(la
     jsonschema.validate(actual['ripdpi'], json.loads((ROOT / 'contract/ripdpi-bundle.schema.json').read_text()))
     awg = actual['ripdpi']['amneziawg'][0]
     assert awg['address'] == ['10.66.66.2/32', 'fd42:42:42::2/128']
-    assert awg['mtu'] == 1420
+    assert awg['mtu'] == 1280
     rendered, bindings = payload.materialize('phone', entry['delivery_options'], extended=True)
     assert actual == rendered
     assert entry['last_payload_identity'] == identities.digest('phone', entry['delivery_options'], actual, bindings, identities.authority(document))
@@ -157,7 +157,7 @@ def test_consumed_private_change_is_stale(lab, field, capsys):
             d['amneziawg_secrets']['instances'][0]['peers'][0]['allowed_ips'][field] = (
                 '10.66.66.3/32' if field == 'ipv4' else 'fd42:42:42::3/128')
         elif field == 'mtu':
-            d['amneziawg_secrets']['instances'][0]['mtu'] = 1280
+            d['amneziawg_secrets']['instances'][0]['mtu'] = 1420
         else:
             d['client_registry']['phone']['token_expires'] = '2028-01-01'
     change(path, mutate)

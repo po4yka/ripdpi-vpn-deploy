@@ -1179,7 +1179,7 @@ PUBLISHED_AWG_SET = {"jc": 4, "jmin": 40, "jmax": 70, "s1": 50, "s2": 100}
 
 @pytest.mark.parametrize(("change", "location"), [
     ({"listen_port": 51820}, "amneziawg_secrets.instances.0.listen_port: production refuses the WireGuard default port"),
-    (PUBLISHED_AWG_SET, "amneziawg_secrets.instances.0: production refuses the published junk and padding value set"),
+    (PUBLISHED_AWG_SET, "amneziawg_secrets.instances.0: production refuses the published junk or padding values"),
 ], ids=["wireguard-default-port", "published-value-set"])
 def test_strict_production_refuses_published_awg_values_and_staging_keeps_them(filled, tmp_path, change, location):
     filled["amneziawg_secrets"]["instances"][0].update(change)
