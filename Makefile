@@ -865,7 +865,7 @@ help:
 	@echo "  apply                      terraform apply $(TFPLAN)"
 	@echo "  inventory                  Render Ansible inventory from TF outputs"
 	@echo "  wait                       Wait for cloud-init to finish"
-	@echo "  pre-deploy-check           spot-check-secrets + check-certs (auto for deploy/verify; SKIP_PRECHECK=1 to bypass)"
+	@echo "  pre-deploy-check           spot-check-secrets + check-certs (auto for deploy/verify; SKIP_PRECHECK=1 skips all but the placeholder check)"
 	@echo "  backup-configure          Configure one exact ANSIBLE_LIMIT during an exclusive stopped-backup window; never runs backups or timers"
 	@echo "  dry-run                    Serial exact-node check; requires DEPLOY_SSH_CONTEXTS_FILE"
 	@echo "  migrate-ssh-ownership      Exact SSH ownership or observer hardening transaction"
@@ -1112,7 +1112,8 @@ validate-ansible-extra-vars:
 pre-deploy-check:
 	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run 'make decrypt'"; exit 1; }
 	@if [ "$(SKIP_PRECHECK)" = "1" ]; then \
-	  echo "pre-deploy-check: skipped (SKIP_PRECHECK=1)"; \
+	  echo "pre-deploy-check: spot-check and certificate checks skipped (SKIP_PRECHECK=1)"; \
+	  case "$(ENV)" in ci-*) ;; *) python3 ./scripts/validate-secrets.py $(SECRETS_FILE) --strict --environment "$(ENV)" ;; esac; \
 	else \
 	  python3 ./scripts/validate-secrets.py $(SECRETS_FILE) --strict --environment "$(ENV)" && \
 	  VPN_SECRETS_FILE=$(SECRETS_FILE) python3 ./scripts/spot-check-secrets.py && \
@@ -1890,7 +1891,8 @@ issue-sub-token:
 	@test -n "$${CLIENT:-}" || { echo "usage: make issue-sub-token CLIENT=phone [FORMAT=singbox|ripdpi] [EXPIRES=YYYY-MM-DD] [QR=1]"; exit 1; }
 	HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" SOPS_FILE="$(SOPS_FILE)" SOPS_FILES="$(SOPS_FILES)" \
 	./scripts/issue-sub-token.sh "$${CLIENT}" \
-	  $(if $(FORMAT),--format $(FORMAT)) \	  $(if $(EXPIRES),--expires $(EXPIRES)) \
+	  $(if $(FORMAT),--format $(FORMAT)) \
+	  $(if $(EXPIRES),--expires $(EXPIRES)) \
 	  $(if $(filter 1 yes true,$(QR)),--qr)
 
 sub-reads:

@@ -130,18 +130,13 @@ test_deny_upcloud_server_update_keeps_firewall_off {
   count(result) == 1
 }
 
-test_allow_upcloud_first_creation_and_replacement {
+test_allow_upcloud_first_creation {
   result := deny with input as {
     "resource_changes": [
       {
         "address": "upcloud_server.fresh",
         "type": "upcloud_server",
         "change": {"actions": ["create"], "before": null, "after": {"firewall": false, "metadata": true}},
-      },
-      {
-        "address": "upcloud_server.replaced",
-        "type": "upcloud_server",
-        "change": {"actions": ["delete", "create"], "before": {"firewall": false}, "after": {"firewall": false, "metadata": true}},
       },
     ]
   }
@@ -228,11 +223,6 @@ test_allow_server_with_known_or_pending_provider_firewall {
         "type": "scaleway_instance_server",
         "change": {"actions": ["create"], "after": {}, "after_unknown": {"security_group_id": true}},
       },
-      {
-        "address": "hcloud_server.destroyed",
-        "type": "hcloud_server",
-        "change": {"actions": ["delete"], "before": {"firewall_ids": []}, "after": null},
-      },
     ]
   }
   count(result) == 0
@@ -255,4 +245,46 @@ test_scaleway_inbound_default_policy {
     }]
   }
   count(drop) == 0
+}
+
+# -- an ordinary plan never deletes or replaces the server --
+
+test_deny_server_replacement {
+  result := deny with input as {
+    "resource_changes": [{
+      "address": "upcloud_server.replaced",
+      "type": "upcloud_server",
+      "change": {"actions": ["delete", "create"], "before": {"firewall": false}, "after": {"firewall": false, "metadata": true}},
+    }]
+  }
+  count(result) == 1
+}
+
+test_deny_server_deletion {
+  result := deny with input as {
+    "resource_changes": [{
+      "address": "hcloud_server.destroyed",
+      "type": "hcloud_server",
+      "change": {"actions": ["delete"], "before": {"firewall_ids": []}, "after": null},
+    }]
+  }
+  count(result) == 1
+}
+
+test_allow_server_update_and_other_deletion {
+  result := deny with input as {
+    "resource_changes": [
+      {
+        "address": "hcloud_server.vpn",
+        "type": "hcloud_server",
+        "change": {"actions": ["update"], "after": {"metadata": true, "firewall_ids": [1001]}},
+      },
+      {
+        "address": "hcloud_firewall.vpn",
+        "type": "hcloud_firewall",
+        "change": {"actions": ["delete"], "after": null},
+      },
+    ]
+  }
+  count(result) == 0
 }

@@ -57,6 +57,22 @@ if ! tf workspace select "$workspace" >/dev/null 2>&1; then
   exit 1
 fi
 
+# destroy.sh and the observability staging cleanup disable prevent_destroy for
+# the whole provider root, so for every environment of that provider. Only the
+# owner's plan and apply may run meanwhile.
+if [[ "${VPN_DESTROY_OVERRIDE_OWNER:-}" != "1" ]]; then
+  for override in "${TF_DIR}/_destroy_override.tf" "${TF_DIR}/_observability_cleanup_override.tf"; do
+    [[ -e "$override" ]] || continue
+    case "$1" in
+      plan|apply|destroy)
+        echo "refusing terraform $1: ${override} disables prevent_destroy for every ${PROVIDER} environment." >&2
+        echo "A destroy is running or crashed. Wait for it, or confirm that no destroy runs and remove the file." >&2
+        exit 1
+        ;;
+    esac
+  done
+fi
+
 if [[ "$PROVIDER" == "vultr" ]]; then
   case "$1" in
     plan|apply|destroy|import|refresh)

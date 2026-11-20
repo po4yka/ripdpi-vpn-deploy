@@ -267,6 +267,9 @@ def main() -> int:
         data = yaml.safe_load(defaults.read_text()) or {}
         group_keys.update(data.keys())
 
+    # shortcut: only top-level names are compared, so a template can read a nested
+    # key (xray.missing) that the example file lacks. Resolve attribute chains
+    # against the example when such a miss reaches a deploy.
     legitimate = NON_SECRET_TOPLEVEL | group_keys | example_keys
 
     unresolved = {

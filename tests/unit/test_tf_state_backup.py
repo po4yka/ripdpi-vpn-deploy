@@ -46,6 +46,28 @@ def publish_backup(destination, name, ciphertext, timestamp):
     return path
 
 
+def test_retention_keeps_recent_backups_beyond_the_count(backup_workspace):
+    """Repeated runs after a bad apply must not push out the last good backups."""
+    import time
+
+    repo, destination, _, settings = backup_workspace
+    state = repo / "terraform/providers/upcloud/terraform.tfstate"
+    state.parent.mkdir(parents=True)
+    state.write_bytes(b'{"version":4,"resources":[],"serial":7,"lineage":"synthetic"}\n')
+    ciphertext = encrypt(b"prior synthetic state", settings["AGE_RECIPIENT"])
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    recent = [publish_backup(destination, f"upcloud-prod-{start + timedelta(days=index):%Y%m%dT%H%M%SZ}.tfstate.age",
+                             ciphertext, time.time() - 3600 - index) for index in range(31)]
+
+    result = subprocess.run(
+        ["bash", str(repo / "scripts/backup-tf-state.sh")],
+        env=settings | {"ENV": "prod"}, text=True, capture_output=True, timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert all(path.exists() for path in recent) and "removed old backup" not in result.stdout
+
+
 @pytest.mark.parametrize("environment", ["prod", "prod-green"])
 def test_retention_preserves_other_exact_environments(backup_workspace, environment):
     repo, destination, identity, settings = backup_workspace
