@@ -48,6 +48,7 @@ Complete one task against real infrastructure. Every guide names its preconditio
 | [Multi-cohort host](how-to/multi-cohort.md) | Run several VLESS+REALITY inbounds on one host, each with its own port, flow mode, finalmask and clients | — |
 | [Multi-operator RBAC](how-to/multi-operator.md) | Per-scope SOPS rules, role-scoped secrets files and audit-log boundaries for more than one operator | TACTICAL |
 | [Per-ASN payload-size throttling probe](how-to/payload-throttle.md) | Probe for a silent per-path throughput penalty above a response-size threshold | — |
+| [Build and maintain an operator-owned public site](how-to/public-site.md) | Create a site identity, write its content, build and check the bundle, deploy it and add articles | TACTICAL |
 | [Topology-aware multi-protocol probe matrix](how-to/probe-matrix.md) | Topology-aware authenticated probe matrix with paired single-IP and split-hop targets | RESEARCH |
 | [Real-VPS AWG/NAT evidence sentinel](how-to/real-vps-awg-nat.md) | Standalone three-host AmneziaWG/NAT evidence lane provisioned after decrypting SOPS | — |
 | [Deploy-side regression baseline](how-to/regression-baseline.md) | Four-layer block-checker verdict harness for before-and-after deployment measurement | — |

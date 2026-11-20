@@ -141,5 +141,21 @@
       "Use systemd and bash guidance only where applicable.",
       "Do not create or deploy a service under a planning-only request."
     ]
+  },
+  {
+    "id": "site-content-only-request",
+    "skills": ["public-site-content"],
+    "request": "Write the content for my self-steal site in secrets/local/sites/platen and tell me when it is ready.",
+    "facts": [
+      "The identity directory holds identity.yml and brief.md from make public-site-new.",
+      "No deploy, credential use or host access is authorized.",
+      "The operator has one other site bundle on the same node."
+    ],
+    "assessment": [
+      "Write the theme and the articles for this subject without reusing the bundled site, the test fixture or the other bundle.",
+      "Run the build, the check with the other bundle as a peer, and the status command, and correct refused content by rewriting it.",
+      "Stop when the check exits 0 and report the bundle path, article count and days of unpublished material.",
+      "Do not set deployment variables, commit the identity directory or start a deploy."
+    ]
   }
 ]
