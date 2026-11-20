@@ -1,0 +1,151 @@
+---
+# The fixture schedule lies in the past, so the publisher serves its last
+# generation. Clock-dependent selection is covered by tests/unit/test_public_site_publisher.py.
+- name: Verify the public site publisher
+  hosts: all
+  become: true
+  tasks:
+    - name: Verify the installed units
+      ansible.builtin.command:
+        cmd: systemd-analyze verify /etc/systemd/system/public-site-publish.service /etc/systemd/system/public-site-publish.timer
+      changed_when: false
+
+    - name: Read the timer state
+      ansible.builtin.command:
+        cmd: systemctl is-enabled public-site-publish.timer
+      register: timer_enabled
+      changed_when: false
+
+    - name: Run the installed publisher inside its sandbox
+      ansible.builtin.command:
+        cmd: systemctl start public-site-publish.service
+      changed_when: false
+
+    - name: Find the served generations
+      ansible.builtin.find:
+        paths: /var/lib/public-site
+        file_type: link
+        patterns: current
+        recurse: true
+        depth: 2
+      register: served
+
+    - name: Read the newest article and its neighbours
+      ansible.builtin.stat:
+        path: "{{ served.files[0].path }}/{{ item }}"
+      loop:
+        - index.html
+        - bench/cleaning-type-slugs.html
+      register: pages
+
+    - name: List generation directories
+      ansible.builtin.find:
+        paths: "{{ served.files[0].path | dirname }}/generations"
+        file_type: directory
+      register: generations
+
+    - name: Read the delivered archive mode
+      ansible.builtin.find:
+        paths: /etc/public-site
+        patterns: backlog.tar
+        recurse: true
+      register: archives
+
+    - name: Assert the publisher contract
+      ansible.builtin.assert:
+        that:
+          - timer_enabled.stdout == 'enabled'
+          - served.files | length == 1
+          - pages.results | map(attribute='stat.exists') | list == [true, true]
+          # Only nginx's group reads the published pages.
+          - pages.results | map(attribute='stat.gr_name') | unique | list == ['www-data']
+          - pages.results | map(attribute='stat.mode') | unique | list == ['0640']
+          - pages.results | map(attribute='stat.pw_name') | unique | list == ['public-site']
+          # One generation directory: earlier ones are removed after the switch.
+          - generations.files | length == 1
+          # Unpublished generations are readable by the publisher group only.
+          - archives.files | length == 1
+          - archives.files[0].mode == '0640'
+          - archives.files[0].gr_name == 'public-site'
+
+    - name: Request the published tree as nginx's group would
+      ansible.builtin.command:
+        cmd: setpriv --reuid=65534 --regid=www-data --clear-groups cat {{ served.files[0].path }}/index.html
+      register: as_web_server
+      changed_when: false
+
+    - name: Assert that the web server group reads the page and others do not
+      ansible.builtin.assert:
+        that: "'Platen and Carriage' in as_web_server.stdout"
+
+    - name: Read the page as an unrelated user
+      ansible.builtin.command:
+        cmd: setpriv --reuid=65534 --regid=65534 --clear-groups cat {{ served.files[0].path }}/index.html
+      register: as_other
+      changed_when: false
+      # cat exits 1 for a refused read; another code means the command itself did not run.
+      failed_when: as_other.rc != 1
+
+    # The role never removes state itself; the caller does after vhost activation.
+    - name: Deliver a stale bundle directory beside the served one
+      ansible.builtin.file:
+        path: "{{ item }}/{{ '0' * 64 }}"
+        state: directory
+        mode: "0750"
+      loop: [/etc/public-site, /var/lib/public-site]
+
+    - name: Run the removal of replaced bundles as a vhost role does
+      ansible.builtin.include_role:
+        name: public-site
+        tasks_from: retire.yml
+      vars:
+        public_site_published: {served: "{{ served.files[0].path | dirname | basename }}"}
+
+    - name: Read the stale and served bundle directories
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/public-site/{{ '0' * 64 }}
+        - /var/lib/public-site/{{ '0' * 64 }}
+        - "{{ served.files[0].path }}"
+      register: after_retire
+
+    - name: Read the timer after removal
+      ansible.builtin.command:
+        cmd: systemctl is-active public-site-publish.timer
+      register: timer_after_retire
+      changed_when: false
+
+    - name: Assert that only the replaced bundle is gone
+      ansible.builtin.assert:
+        that:
+          - after_retire.results | map(attribute='stat.exists') | list == [false, false, true]
+          - timer_after_retire.stdout == 'active'
+
+    - name: Retire the publisher as a vhost role does when no bundle has an archive
+      ansible.builtin.include_role:
+        name: public-site
+        tasks_from: absent.yml
+
+    - name: Read what the retired publisher left
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/public-site
+        - /var/lib/public-site
+        - /usr/local/libexec/public-site-publish
+        - /etc/systemd/system/public-site-publish.service
+        - /etc/systemd/system/public-site-publish.timer
+      register: after_absent
+
+    - name: Read the publisher account
+      ansible.builtin.getent:
+        database: passwd
+        key: public-site
+        fail_key: false
+
+    - name: Assert that retirement removed units, state and user
+      ansible.builtin.assert:
+        that:
+          - after_absent.results | map(attribute='stat.exists') | unique | list == [false]
+          - ansible_facts.getent_passwd['public-site'] is none

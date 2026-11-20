@@ -303,7 +303,7 @@ jobs:
           - naive
           - observability_kuma
           - hysteria observability_agent observability_deadman
-          - amneziawg baseline cdn-front geodata
+          - amneziawg baseline cdn-front geodata public-site
           - subscription-host network-exposure-gate dns-morph-bridge hysteria-realm
           - transport-egress tailnet-management cascade-egress
           - xray honeypot observability_control_plane intrusion_prevention

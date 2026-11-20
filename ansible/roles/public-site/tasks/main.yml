@@ -1,0 +1,46 @@
+---
+- name: Validate the public site publisher inputs
+  ansible.builtin.assert:
+    that:
+      - public_site_role_enabled is boolean
+      - public_site_bundle_dirs is sequence
+      - public_site_bundle_dirs is not string
+      - public_site_bundle_dirs | select('match', '^/') | list | length == public_site_bundle_dirs | length
+    fail_msg: public_site_bundle_dirs must list absolute controller paths of site bundles.
+
+- name: Inspect each bundle archive on the controller
+  ansible.builtin.stat:
+    path: "{{ item }}/backlog.tar"
+    follow: false
+    checksum_algorithm: sha256
+  loop: "{{ public_site_bundle_dirs | unique }}"
+  register: _public_site_archive_stats
+  delegate_to: localhost
+  become: false
+
+- name: Refuse a bundle archive that is not a regular file
+  ansible.builtin.assert:
+    that: _public_site_archive_stats.results | selectattr('stat.exists') | rejectattr('stat.isreg') | list | length == 0
+    fail_msg: A site bundle's backlog.tar must be a regular file.
+
+# The vhost roles read this map to name the served generation of their bundle.
+# One archive digest has one delivery directory, whichever bundle directory named it.
+- name: Resolve the published bundles by archive digest
+  ansible.builtin.set_fact:
+    public_site_published: >-
+      {{ dict(_public_site_archive_stats.results | selectattr('stat.exists') | map(attribute='item')
+              | zip(_public_site_archive_stats.results | selectattr('stat.exists') | map(attribute='stat.checksum')))
+         if public_site_role_enabled else {} }}
+
+- name: Converge the public site publisher
+  ansible.builtin.include_tasks: enable.yml
+  when: public_site_published | length > 0
+
+# A vhost that is still active, or one that a failed activation restores, names
+# the state of the previous bundle. This role runs before the vhost roles, so it
+# never removes anything itself: the caller runs tasks_from retire.yml or
+# absent.yml after its vhost activation has succeeded, and inside a protected
+# ingress transaction after the commit.
+- name: Record the removal that the caller runs after vhost activation
+  ansible.builtin.set_fact:
+    _public_site_remove_after_commit: "{{ 'retire' if public_site_published | length > 0 else 'absent' }}"

@@ -1,0 +1,14 @@
+[Unit]
+Description=Publish scheduled public site generations
+
+[Timer]
+# A scheduled article appears within half an hour of its time. The run is local
+# and cheap; the delay keeps a fleet from switching in the same second.
+OnCalendar=*:0/15
+RandomizedDelaySec=15min
+# A node that was down at a scheduled time publishes when it returns.
+Persistent=true
+Unit=public-site-publish.service
+
+[Install]
+WantedBy=timers.target

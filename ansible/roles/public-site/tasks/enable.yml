@@ -1,0 +1,112 @@
+---
+- name: Create the public site system group
+  ansible.builtin.group:
+    name: public-site
+    system: true
+
+- name: Create the public site system user
+  ansible.builtin.user:
+    name: public-site
+    group: public-site
+    system: true
+    shell: /usr/sbin/nologin
+    home: /nonexistent
+    create_home: false
+
+- name: Create public site script, bundle and state directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    # A fresh host may lack libexec.
+    - {path: /usr/local/libexec, owner: root, group: root, mode: "0755"}
+    - {path: /etc/public-site, owner: root, group: public-site, mode: "0750"}
+    # Setgid, so files the publisher writes inherit nginx's group.
+    - {path: /var/lib/public-site, owner: public-site, group: www-data, mode: "2750"}
+
+- name: Create one bundle directory for each archive digest
+  ansible.builtin.file:
+    path: /etc/public-site/{{ item }}
+    state: directory
+    owner: root
+    group: public-site
+    mode: "0750"
+  loop: "{{ public_site_published.values() | unique }}"
+  loop_control:
+    label: "{{ item[:12] }}"
+
+- name: Install the public site publisher
+  ansible.builtin.copy:
+    src: public_site_publish.py
+    dest: /usr/local/libexec/public-site-publish
+    owner: root
+    group: root
+    mode: "0755"
+
+# Future generations are unpublished content: only the publisher's group reads them.
+- name: Deliver each bundle archive and schedule
+  ansible.builtin.copy:
+    src: "{{ item.0.value }}/{{ item.1 }}"
+    dest: /etc/public-site/{{ item.0.key }}/{{ item.1 }}
+    owner: root
+    group: public-site
+    mode: "0640"
+  # Keyed by digest: two bundle directories with one archive are delivered once.
+  loop: >-
+    {{ dict(public_site_published.values() | zip(public_site_published.keys())) | dict2items
+       | product(['backlog.tar', 'schedule.json']) | list }}
+  loop_control:
+    label: "{{ item.0.key[:12] }}/{{ item.1 }}"
+
+- name: Install the public site publisher units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: /etc/systemd/system/{{ item }}
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - public-site-publish.service
+    - public-site-publish.timer
+  register: _public_site_units
+
+- name: Reload systemd after public site unit changes
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: _public_site_units.changed and not ansible_check_mode
+
+# The run happens inside the unit's sandbox. Its result is a function of the
+# bundle and the clock, not of this deploy, so it is not reported as a change.
+# The unit fails when any delivered bundle is refused, and that stops the deploy.
+- name: Publish the scheduled generation before a vhost names it
+  ansible.builtin.systemd_service:
+    name: public-site-publish.service
+    state: started
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Inspect the served generation of each bundle
+  ansible.builtin.stat:
+    path: /var/lib/public-site/{{ item }}/current/index.html
+  loop: "{{ public_site_published.values() | unique }}"
+  loop_control:
+    label: "{{ item[:12] }}"
+  register: _public_site_served
+  when: not ansible_check_mode
+
+- name: Require a served generation for each bundle
+  ansible.builtin.assert:
+    that: _public_site_served.results | rejectattr('stat.exists') | list | length == 0
+    fail_msg: The publisher left a bundle without a served generation; read the public-site-publish.service journal.
+  when: not ansible_check_mode
+
+- name: Enable the public site publisher timer
+  ansible.builtin.systemd_service:
+    name: public-site-publish.timer
+    enabled: true
+    # A changed schedule only applies after the timer restarts.
+    state: "{{ 'restarted' if _public_site_units.changed else 'started' }}"
+  when: not ansible_check_mode or not _public_site_units.changed

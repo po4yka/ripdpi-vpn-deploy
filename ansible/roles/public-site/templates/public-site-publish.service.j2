@@ -1,0 +1,37 @@
+[Unit]
+Description=Serve the scheduled generation of each public site bundle
+
+[Service]
+Type=oneshot
+User=public-site
+Group=public-site
+# The state directory is public-site:www-data 2750 and owned by Ansible: new
+# files inherit nginx's group, and this umask makes them 0640.
+UMask=0027
+ExecStart=/usr/bin/python3 /usr/local/libexec/public-site-publish /etc/public-site /var/lib/public-site
+TimeoutStartSec=300
+# Local files only: no network, no capabilities, read-only system, writes
+# confined to the state directory that nginx reads through its group.
+PrivateNetwork=true
+RestrictAddressFamilies=none
+IPAddressDeny=any
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/public-site

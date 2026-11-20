@@ -1,0 +1,46 @@
+---
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../../../requirements.yml
+    role-file: ../../../requirements.yml
+
+driver:
+  name: docker
+
+platforms:
+  - name: vpn-public-site-debian13
+    image: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-debian13@sha256:02d15910a73d42dd68ad1e7830ddcdb2dfc0ce3701081ea6fb96cd76da4fe4a4
+    pre_build_image: true
+    privileged: true
+    command: /lib/systemd/systemd
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    cgroupns_mode: host
+
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_ROLES_PATH: ../../..
+  inventory:
+    host_vars:
+      vpn-public-site-debian13:
+        ansible_user: root
+  config_options:
+    defaults:
+      callback_result_format: yaml
+
+verifier:
+  name: ansible
+
+# converge.yml builds the bundle from the repository fixture on the controller.
+# verify.yml starts the installed publisher inside its systemd sandbox.
+scenario:
+  test_sequence:
+    - dependency
+    - syntax
+    - create
+    - converge
+    - idempotence
+    - verify
+    - destroy
