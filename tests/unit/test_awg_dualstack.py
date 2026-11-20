@@ -47,7 +47,7 @@ def test_mtu_precedence_is_instance_then_cohort_then_role_then_baseline():
     raw = document()['amneziawg_secrets']
     def mtu(defaults=None, cohort=None):
         return effective_awg_instances(raw, defaults, cohort)[0]['mtu']
-    assert mtu() == 1420
+    assert mtu() == 1280
     assert mtu({'mtu': 1400}) == 1400
     assert mtu({'mtu': 1400}, {'mtu': 1360}) == 1360
     raw['instances'][0]['mtu'] = 1280

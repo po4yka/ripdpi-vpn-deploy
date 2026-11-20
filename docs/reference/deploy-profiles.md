@@ -13,7 +13,7 @@ Family profiles are listed in `ansible/role-tiers.yml` under `family_profiles`. 
 | `vpn-p0-minimal.yml` | Xray REALITY only | default family controls | smallest P0 endpoint |
 | `vpn-p0-self-steal.yml` | Xray REALITY + owned loopback TLS/H2 target | default family controls; no additional public listener | P0 endpoint after DNS and certificate promotion gates pass |
 | `vpn-p1-web.yml` | public HTTP/HTTPS site + nginx-xhttp on TCP/443 | default family controls | domain-facing P1 endpoint |
-| `vpn-p2-udp.yml` | Hysteria2 + AmneziaWG | default family controls | UDP-only fallback endpoint |
+| `vpn-p2-udp.yml` | Hysteria2 (with its masquerade site over TCP) + AmneziaWG | default family controls | UDP-only fallback endpoint |
 | `vpn-family-standard.yml` | Xray REALITY + nginx-xhttp + Hysteria2 | default family controls | normal family node without AmneziaWG |
 | `vpn-device-full.yml` | family-standard + AmneziaWG | default family controls | full device-VPN family node |
 | `vpn-device-full-tailnet.yml` | family-standard + AmneziaWG; ordinary OpenSSH over the Tailnet | default family controls | device-full node managed over the Tailnet |
@@ -29,6 +29,8 @@ Family profiles are listed in `ansible/role-tiers.yml` under `family_profiles`. 
 `vpn-p0-minimal.yml` intentionally leaves `vpn.enable_reality_self_steal` off. Use `vpn-p0-self-steal.yml` only after adding the owned certificate secret contract and changing `xray.target` plus `xray.server_names` together; the role adds a private loopback TLS target without widening the profile's public listener surface.
 
 `vpn-p1-web.yml` disables subscription delivery. Its public surface contains only TCP/80 and TCP/443; device delivery does not open another port on this host.
+
+`vpn-p2-udp` sets `hysteria_masquerade_tcp`, so Hysteria serves its masquerade site on TCP/443 as well as over HTTP/3, and on TCP/80 when native ACME is off. Before the first deploy with this setting, add the listeners to the node's Terraform `public_listeners` and apply: `{ name = "hysteria-masquerade", protocol = "tcp", port = 443, port_range = null }`, and the same entry with port 80 unless the list already has `hysteria-acme` on TCP/80. Without these entries the deploy refuses in the listener contract check before it changes the host. The profile also sets `hysteria_resource_profile_default: bbr-conservative`; a secrets document that states `hysteria.resource_profile` overrides it, so change a stated `bandwidth-capped` (the example value) to `bbr-conservative`; client exports then also stop carrying bandwidth hints.
 
 The separate `vpn-p0-minimal`, `vpn-p1-web` and `vpn-p2-udp` profiles keep monitoring and backup enabled. `vpn-p1-web` and `vpn-p2-udp` also run the local watchdog, which probes and recovers their transports and, with the default `watchdog.provider: none`, sends nothing off the node; `vpn-p0-minimal` disables it. The watchdog needs an operator-owned HTTPS canary in `watchdog_secrets.reality_probe_url` and a dedicated probe identity named `watchdog`: an `xray.clients` entry on `vpn-p1-web` and a `hysteria.clients` entry on `vpn-p2-udp`. Private panel monitoring and provider notifications do not use ntfy or Pushover.
 

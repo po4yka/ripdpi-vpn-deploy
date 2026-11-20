@@ -12,3 +12,11 @@ baseline_stock_accounts:
 # Per-socket UDP ceilings; bounded independently from TCP congestion control.
 baseline_udp_receive_buffer_max: 7500000
 baseline_udp_send_buffer_max: 7500000
+
+# Connection tracking budget. One entry costs about 320 bytes, so the default
+# is bounded near 42 MiB on the smallest node. A UDP flow without a reply keeps
+# its entry for the first timeout; a flow with traffic in both directions keeps
+# it for the stream timeout, which covers a QUIC idle period behind AWG NAT.
+baseline_conntrack_max: 131072
+baseline_conntrack_udp_timeout: 60
+baseline_conntrack_udp_timeout_stream: 180

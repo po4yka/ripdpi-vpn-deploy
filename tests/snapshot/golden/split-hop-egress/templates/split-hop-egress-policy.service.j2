@@ -6,8 +6,23 @@ Before=wg-quick@shop0.service
 
 [Service]
 Type=oneshot
+# The loaded table outlives the process; an inactive unit would hide a failed boot load.
+RemainAfterExit=yes
 ExecStart=/usr/sbin/nft -c -f /etc/wireguard/split-hop-egress.nft
 ExecStart=/usr/sbin/nft -f /etc/wireguard/split-hop-egress.nft
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=yes
+ProtectHome=yes
+ProtectSystem=strict
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
 
 [Install]
 WantedBy=multi-user.target

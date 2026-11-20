@@ -32,6 +32,10 @@ def test_only_explicit_optional_performance_settings_can_ignore_native_failure()
         "-net.ipv4.tcp_congestion_control = bbr",
         "-net.core.rmem_max = {{ baseline_udp_receive_buffer_max }}",
         "-net.core.wmem_max = {{ baseline_udp_send_buffer_max }}",
+        "-net.netfilter.nf_conntrack_buckets = {{ (baseline_conntrack_max // 4) }}",
+        "-net.netfilter.nf_conntrack_max = {{ baseline_conntrack_max }}",
+        "-net.netfilter.nf_conntrack_udp_timeout = {{ baseline_conntrack_udp_timeout }}",
+        "-net.netfilter.nf_conntrack_udp_timeout_stream = {{ baseline_conntrack_udp_timeout_stream }}",
     ]
     assert "failed_when:" not in tasks
     assert "/usr/local/libexec/vpn-baseline-sysctl" in tasks
@@ -68,7 +72,9 @@ def test_mptcp_disable_is_mandatory_only_on_supported_kernels(present):
 
     template = ROOT / "ansible/roles/baseline/templates/sysctl-vpn.conf.j2"
     rendered = render_template(template, {"_baseline_mptcp_sysctl": {"stat": {"exists": present}},
-        "baseline_udp_receive_buffer_max": 7500000, "baseline_udp_send_buffer_max": 7500000})
+        "baseline_udp_receive_buffer_max": 7500000, "baseline_udp_send_buffer_max": 7500000,
+        "baseline_conntrack_max": 131072, "baseline_conntrack_udp_timeout": 60,
+        "baseline_conntrack_udp_timeout_stream": 180})
     assert ("net.mptcp.enabled = 0" in rendered) is present
     assert "-net.mptcp.enabled" not in rendered
     tasks = yaml.safe_load((ROOT / "ansible/roles/baseline/tasks/main.yml").read_text())
@@ -82,7 +88,9 @@ def test_bpf_jit_hardening_is_mandatory_only_where_the_kernel_exposes_it(present
 
     template = ROOT / "ansible/roles/baseline/templates/sysctl-vpn.conf.j2"
     rendered = render_template(template, {"_baseline_bpf_jit_sysctl": {"stat": {"exists": present}},
-        "baseline_udp_receive_buffer_max": 7500000, "baseline_udp_send_buffer_max": 7500000})
+        "baseline_udp_receive_buffer_max": 7500000, "baseline_udp_send_buffer_max": 7500000,
+        "baseline_conntrack_max": 131072, "baseline_conntrack_udp_timeout": 60,
+        "baseline_conntrack_udp_timeout_stream": 180})
     settings = [line for line in rendered.splitlines() if line and not line.startswith("#")]
     assert ("net.core.bpf_jit_harden = 2" in settings) is present
     assert not any(line.startswith("-net.core.bpf_jit_harden") for line in settings)

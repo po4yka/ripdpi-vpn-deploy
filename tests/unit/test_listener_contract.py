@@ -365,9 +365,10 @@ def test_p1_web_listener_surface_is_normal_http_and_https() -> None:
     assert contract.check({"expected": expected, "actual": actual}) == []
 
 
-def test_p2_udp_listener_surface_has_no_public_tcp_service() -> None:
+def test_p2_udp_listener_surface_serves_its_masquerade_site_over_tcp() -> None:
     actual = _profile_manifest("vpn-p2-udp.yml")
-    expected = [_expected("hysteria", "udp", 443), _expected("amneziawg", "udp", 51820)]
+    expected = [_expected("hysteria", "udp", 443), _expected("amneziawg", "udp", 51820),
+                _expected("hysteria-masquerade", "tcp", 80), _expected("hysteria-masquerade", "tcp", 443)]
     assert contract.check({"expected": expected, "actual": actual}) == []
 
 

@@ -38,10 +38,11 @@ obfs:
     password: {{ hysteria.salamander_password | to_json }}
 {% endif %}
 
-{% if hysteria.resource_profile | default('bandwidth-capped') != 'bandwidth-capped' %}
+{% set _resource_profile = hysteria.resource_profile | default(hysteria_resource_profile_default) %}
+{% if _resource_profile != 'bandwidth-capped' %}
 congestion:
   type: bbr
-  bbrProfile: {{ hysteria.resource_profile | replace('bbr-', '') | to_json }}
+  bbrProfile: {{ _resource_profile | replace('bbr-', '') | to_json }}
 ignoreClientBandwidth: true
 {% endif %}
 bandwidth:
@@ -54,6 +55,16 @@ masquerade:
   proxy:
     url: {{ hysteria.masquerade_url | to_json }}
     rewriteHost: true
+{% endif %}
+{% if hysteria_masquerade_tcp | bool %}
+  # The same site answers over TCP, as a real HTTP/3 origin does.
+{% if hysteria.acme is not defined %}
+  # CertMagic treats a bound TCP/80 as its own challenge server, so this
+  # listener exists only without native ACME; HTTP-01 keeps the port then.
+  listenHTTP: ":80"
+  forceHTTPS: true
+{% endif %}
+  listenHTTPS: ":443"
 {% endif %}
 
 {% if hysteria_traffic_stats_enabled | default(false) | bool %}

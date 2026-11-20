@@ -43,6 +43,7 @@ class FirewallAcceptRule:
     input_interfaces: frozenset[str]
     unknown_predicate: bool
     dhcpv6_kind: str | None
+    dhcpv4_reply: bool
     collector_ingress: bool
 
 
@@ -291,6 +292,21 @@ def _dhcpv6_rule_kind(
     return None
 
 
+def _dhcpv4_reply_rule(expressions: list) -> bool:
+    """An accept of server port 67 to client port 68 over IPv4 on one named interface."""
+    parsed = _rule_matches(expressions)
+    if parsed is None or parsed[0] != 'accept' or len(parsed[1]) != 4:
+        return False
+    rights = {json.dumps(match['left'], sort_keys=True): match['right']
+              for match in parsed[1] if match['op'] == '=='}
+    interface = rights.pop(json.dumps({'meta': {'key': 'iifname'}}), None)
+    return isinstance(interface, str) and interface not in ('', 'lo', 'tailscale0') and rights == {
+        json.dumps({'meta': {'key': 'nfproto'}}): 'ipv4',
+        json.dumps({'payload': {'field': 'sport', 'protocol': 'udp'}}, sort_keys=True): 67,
+        json.dumps({'payload': {'field': 'dport', 'protocol': 'udp'}}, sort_keys=True): 68,
+    }
+
+
 def _right_values(value: object) -> set[object]:
     if isinstance(value, dict):
         if isinstance(value.get("set"), list):
@@ -479,6 +495,7 @@ def _firewall_rules(
                 input_interfaces=frozenset(input_interfaces),
                 unknown_predicate=unknown_predicate,
                 dhcpv6_kind=_dhcpv6_rule_kind(expressions, dhcpv6_uplink, dhcpv6_servers),
+                dhcpv4_reply=_dhcpv4_reply_rule(expressions),
                 collector_ingress=_collector_rule(expressions, collector),
             )
         )
@@ -557,6 +574,7 @@ def _violations(
     dhcpv6_accept_positions: list[int] = []
     dhcpv6_deny_positions: list[int] = []
     collector_seen = 0
+    dhcpv4_seen = 0
     established_positions = [r.position for r in firewall if r.verdict == 'accept' and r.established_only]
     for rule in firewall:
         selector = rule.selector
@@ -574,6 +592,9 @@ def _violations(
             continue
         if rule.collector_ingress:
             collector_seen += 1
+            continue
+        if rule.dhcpv4_reply:
+            dhcpv4_seen += 1
             continue
         if rule.dhcpv6_kind is not None:
             dhcpv6_counts[rule.dhcpv6_kind] += 1
@@ -632,6 +653,8 @@ def _violations(
             violations.append("invalid Tailnet collector ingress rule count")
         if ("tcp", 9443) in sockets:
             violations.append("public Tailnet collector socket tcp 9443")
+    if dhcpv4_seen > 1:
+        violations.append('duplicate DHCPv4 reply rule')
     if dhcpv6_counts['link-local'] != 1:
         violations.append('invalid DHCPv6 link-local reply rule count')
     if dhcpv6_counts['approved-server'] != int(bool(dhcpv6_servers)):

@@ -48,6 +48,8 @@ table inet filter {
     # before generic established acceptance, including unicast renewals.
     iifname "eth0" ip6 saddr fe80::/10 fib daddr type local udp sport 547 udp dport 546 counter accept comment "dhcpv6-client-reply"
     meta nfproto ipv6 udp sport 547 udp dport 546 counter drop comment "dhcpv6-client-reply-denied"
+    # A rebinding client broadcasts its request, so the server reply matches no conntrack entry.
+    iifname "eth0" meta nfproto ipv4 udp sport 67 udp dport 68 counter accept comment "dhcpv4-client-reply"
     ct state established,related accept
 
     # ICMP follows the shaping floor: stateless error reports pass so
@@ -92,6 +94,10 @@ table inet filter {
     oifname "awg0" meta nfproto ipv4 ip daddr != { 10.66.66.2/32 } counter drop
     iifname "awg0" meta nfproto ipv6 ip6 saddr != { fd42:42:42::2/128 } counter drop
     oifname "awg0" meta nfproto ipv6 ip6 daddr != { fd42:42:42::2/128 } counter drop
+    # A device may keep a larger configured MTU than this instance; fit both directions of forwarded TCP.
+    iifname "awg0" meta nfproto ipv4 tcp flags syn tcp option maxseg size set 1240 comment "awg-mss-awg0"
+    iifname "awg0" meta nfproto ipv6 tcp flags syn tcp option maxseg size set 1220 comment "awg-mss-v6-awg0"
+    oifname "awg0" tcp flags syn tcp option maxseg size set rt mtu comment "awg-mss-reply-awg0"
     ct state established,related accept
     # New client traffic may leave only via the configured uplink; replies use conntrack above.
     ct state new iifname "awg0" oifname "eth0" accept
