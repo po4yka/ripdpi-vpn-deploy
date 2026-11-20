@@ -36,6 +36,7 @@
 - [Operator maintenance](/md/how-to/operator-maintenance.md)
 - [Exact payload probes](/md/how-to/payload-throttle.md)
 - [Topology-aware multi-protocol probe matrix](/md/how-to/probe-matrix.md)
+- [Build and maintain an operator-owned public site](/md/how-to/public-site.md)
 - [Real-VPS AWG/NAT evidence sentinel](/md/how-to/real-vps-awg-nat.md)
 - [Deploy-side regression baseline](/md/how-to/regression-baseline.md)
 - [Automatic vpnd releases](/md/how-to/release-please.md)
