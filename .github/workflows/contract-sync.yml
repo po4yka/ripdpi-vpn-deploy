@@ -10,10 +10,8 @@
 # repo's SoT and fails on any drift, catching it at the source (the PR that
 # changes the schema here).
 #
-# Both repos are public, so the client's vendored copy is fetched with an
-# anonymous shallow sparse clone — no token or secret to configure, so this
-# check always enforces. If po4yka/RIPDPI is ever made private, switch the clone
-# URL to use a read-only token (see git history of this file).
+# PR checks compare a pinned client revision so paired contract changes can
+# be validated before either PR merges. Checks outside PRs compare client main.
 name: contract-sync
 
 on:
@@ -35,21 +33,39 @@ jobs:
         with:
           persist-credentials: false
 
+      # Contract PRs can update this pin with the matching client revision
+      # before the client PR merges. Main and scheduled checks read client main.
+      - name: Read paired client revision
+        if: github.event_name == 'pull_request'
+        id: client-pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '[:space:]' < .github/contract-client-git-sha.txt)"
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ || "$sha" == "0000000000000000000000000000000000000000" ]]; then
+            echo "invalid RIPDPI contract revision" >&2
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the client contract
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: po4yka/RIPDPI
+          ref: ${{ steps.client-pin.outputs.sha || 'main' }}
+          path: client
+          sparse-checkout: core/data/src/test/resources/contract
+          persist-credentials: false
+
       - name: Compare client vendored contract against this repo's SoT
         env:
-          CLIENT_REPO: po4yka/RIPDPI
           CLIENT_CONTRACT_DIR: core/data/src/test/resources/contract
         run: |
           set -euo pipefail
 
-          # Anonymous shallow sparse clone of just the vendored contract dir.
-          git clone --depth 1 --filter=blob:none --sparse \
-            "https://github.com/${CLIENT_REPO}.git" client
-          git -C client sparse-checkout set "${CLIENT_CONTRACT_DIR}"
-
           client_dir="client/${CLIENT_CONTRACT_DIR}"
           if [ ! -d "${client_dir}" ]; then
-            echo "::error title=missing client dir::${CLIENT_CONTRACT_DIR} not found in ${CLIENT_REPO} (renamed or removed?)."
+            echo "::error title=missing client dir::${CLIENT_CONTRACT_DIR} not found in po4yka/RIPDPI (renamed or removed?)."
             exit 1
           fi
           fail=0
@@ -71,7 +87,7 @@ jobs:
           # Flag client-vendored files that no longer exist in the SoT.
           while IFS= read -r cf; do
             rel="${cf#"${client_dir}/"}"
-            case "$rel" in README.md|*/README.md) continue ;; esac
+            case "$rel" in README.md|*/README.md|vendored-deploy-contracts.sha256) continue ;; esac
             if [ ! -f "contract/${rel}" ]; then
               echo "::error title=orphan vendored file::client vendors ${rel} but it no longer exists in contract/; remove it."
               fail=1
