@@ -4,15 +4,21 @@
     paths: ['{{ reality_self_steal_public_site_dir }}']
     recurse: true
     file_type: any
+    hidden: true
+    get_checksum: true
+    checksum_algorithm: sha256
   register: _self_steal_operator_site
   delegate_to: localhost
   become: false
   when: reality_self_steal_public_site_dir | length > 0
+# The tree is often a checkout: `.git` and other dot paths are never published.
 - name: Resolve the published self-steal site layout
   ansible.builtin.set_fact:
     _self_steal_operator_files: >-
       {{ (_self_steal_operator_site.files | default([])) | selectattr('isreg') | map(attribute='path')
-         | map('relpath', reality_self_steal_public_site_dir) | sort }}
+         | map('relpath', reality_self_steal_public_site_dir)
+         | reject('search', '(^|/)\.(?!well-known(/|$))') | sort }}
     _self_steal_operator_dirs: >-
       {{ (_self_steal_operator_site.files | default([])) | selectattr('isdir') | map(attribute='path')
-         | map('relpath', reality_self_steal_public_site_dir) | sort }}
+         | map('relpath', reality_self_steal_public_site_dir)
+         | reject('search', '(^|/)\.(?!well-known(/|$))') | sort }}

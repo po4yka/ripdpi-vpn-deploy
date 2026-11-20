@@ -26,6 +26,33 @@
     }
 {% endif %}
 {% endmacro %}
+{# One TLS policy for every TLS server: nginx negotiates the protocol and the
+   session cache from the default server of a listener, before it reads SNI. #}
+{% macro nginx_tls_policy() %}
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ecdh_curve      X25519:prime256v1:secp384r1;
+    ssl_ciphers         ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache   shared:vpn:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+{% endmacro %}
+{# An idle tunnel is ordinary: a stream-up upload or a downlink can stay silent
+   far longer than nginx's 60 s defaults. #}
+{% macro nginx_xhttp_proxy() %}
+        # Upstream refusals and an absent upstream answer as the ordinary site
+        # 404, so a probe sees one identity whether or not Xray is running.
+        proxy_intercept_errors on;
+        error_page 400 401 403 404 405 408 409 413 429 500 501 502 503 504 =404 /404.html;
+
+        # Streaming-friendly
+        client_max_body_size 0;
+        client_body_timeout 3600s;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+{% endmacro %}
 {% if (vpn.enable_snell | default(false)) and (snell | default({})).evaluation_enabled | default(false) %}
 limit_req_zone $binary_remote_addr zone=snell_evaluation:1m rate=10r/s;
 {% endif %}
@@ -55,14 +82,7 @@ server {
     ssl_certificate     /etc/nginx/tls/{{ nginx_xhttp.server_name }}.fullchain.pem;
     ssl_certificate_key /etc/nginx/tls/{{ nginx_xhttp.server_name }}.key;
 
-    ssl_protocols       TLSv1.3;
-    ssl_ecdh_curve      X25519;
-    ssl_ciphers         ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
-    ssl_prefer_server_ciphers off;
-    ssl_session_cache   shared:vpn:10m;
-    ssl_session_timeout 1d;
-    ssl_session_tickets off;
-
+{{ nginx_tls_policy() }}
     add_header Strict-Transport-Security "max-age={{ 31536000 if nginx_primary_hsts else 0 }}" always;
     add_header Content-Security-Policy "default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
@@ -100,18 +120,7 @@ server {
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header Forwarded "";
 
-        # Upstream refusals and an absent upstream answer as the ordinary site
-        # 404, so a probe sees one identity whether or not Xray is running.
-        proxy_intercept_errors on;
-        error_page 400 403 404 405 500 502 503 504 =404 /404.html;
-
-        # Streaming-friendly
-        client_max_body_size 0;
-        proxy_buffering off;
-        proxy_request_buffering off;
-        proxy_read_timeout 300s;
-        proxy_send_timeout 300s;
-
+{{ nginx_xhttp_proxy() }}
         proxy_pass http://127.0.0.1:{{ nginx_xhttp_port }};
     }
 
@@ -177,14 +186,7 @@ server {
     ssl_certificate     /etc/nginx/tls/{{ nginx_fallback_name }}.fullchain.pem;
     ssl_certificate_key /etc/nginx/tls/{{ nginx_fallback_name }}.key;
 
-    ssl_protocols       TLSv1.3;
-    ssl_ecdh_curve      X25519;
-    ssl_ciphers         ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
-    ssl_prefer_server_ciphers off;
-    ssl_session_cache   shared:vpn:10m;
-    ssl_session_timeout 1d;
-    ssl_session_tickets off;
-
+{{ nginx_tls_policy() }}
     add_header Strict-Transport-Security "max-age={{ 31536000 if nginx_fallback_hsts else 0 }}" always;
     add_header Content-Security-Policy "default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
@@ -210,18 +212,7 @@ server {
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header Forwarded "";
 
-        # Upstream refusals and an absent upstream answer as the ordinary site
-        # 404, so a probe sees one identity whether or not Xray is running.
-        proxy_intercept_errors on;
-        error_page 400 403 404 405 500 502 503 504 =404 /404.html;
-
-        # Streaming-friendly
-        client_max_body_size 0;
-        proxy_buffering off;
-        proxy_request_buffering off;
-        proxy_read_timeout 300s;
-        proxy_send_timeout 300s;
-
+{{ nginx_xhttp_proxy() }}
         proxy_pass http://127.0.0.1:{{ nginx_xhttp_port }};
     }
 
@@ -276,8 +267,8 @@ server {
     server_tokens off;
     ssl_certificate /etc/nginx/tls/{{ nginx_xhttp.server_name }}.fullchain.pem;
     ssl_certificate_key /etc/nginx/tls/{{ nginx_xhttp.server_name }}.key;
-    ssl_protocols TLSv1.3;
-    ssl_ecdh_curve X25519;
+{{ nginx_tls_policy() }}
+    add_header Strict-Transport-Security "max-age={{ 31536000 if nginx_redirect_port == 443 else 0 }}" always;
     access_log off;
     error_log /dev/null crit;
     return 301 {{ public_site_canonical_url }}$request_uri;
@@ -293,6 +284,31 @@ server {
 }
 
 {% endif -%}
+{% for nginx_tls_port in ([nginx_xhttp_public_port | int] + ([nginx_xhttp_fallback_port | int] if nginx_fallback_enabled else [])) | unique %}
+# A handshake without SNI or with a foreign name, such as a scan of the node
+# address, is refused before any certificate is sent, so the address does not
+# disclose the hostname. A request that carries the right SNI and another Host
+# gets the site's ordinary 404 page and never reaches the XHTTP path.
+server {
+    listen {{ nginx_tls_port }} ssl http2 default_server;
+    listen [::]:{{ nginx_tls_port }} ssl http2 default_server;
+    server_name _;
+    ssl_reject_handshake on;
+{{ nginx_tls_policy() }}
+    server_tokens off;
+    access_log off;
+    error_log /dev/null crit;
+    root /var/www/public-site;
+    error_page 404 /404.html;
+    location = /404.html {
+        internal;
+    }
+    location / {
+        return 404;
+    }
+}
+
+{% endfor %}
 # Any other Host, such as the node address, gets the site's ordinary 404 page.
 # This file is the only owner of the default server: its transaction retires the
 # packaged default site, which the earlier managed-TLS publication does not.

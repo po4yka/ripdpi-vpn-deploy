@@ -6,5 +6,13 @@ reality_self_steal_tls_dir: /etc/nginx/reality-self-steal
 # Controller-local directory with the operator-owned static site (index.html and
 # 404.html at least). Empty publishes the bundled site, which production refuses.
 reality_self_steal_public_site_dir: ""
+# Deploy refuses a certificate with fewer days left; `make renew-self-steal-cert` reissues it.
+reality_self_steal_min_cert_lifetime_days: 30
+# The target holds every unauthenticated TCP/443 connection that Xray forwards,
+# so the packaged 768 connections for each worker are too few.
+reality_self_steal_worker_connections: 8192
+# Opt-in TCP/80 redirect for the owned hostname. It needs TCP/80 in the provider
+# listener contract and the firewall first; the role refuses it otherwise.
+reality_self_steal_http_redirect: false
 
 reality_self_steal_role_enabled: "{{ vpn.enable_reality_self_steal | default(false) | bool }}"

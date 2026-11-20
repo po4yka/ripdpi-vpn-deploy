@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-20
+goal: ANS-1795163402704344 Harden the decoy sites against content clustering and
+  bare-address probes

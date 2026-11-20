@@ -7,6 +7,9 @@ server {
     server_tokens off;
     access_log off;
     error_log /dev/null crit;
+    root /var/www/public-site;
+    error_page 404 /404.html;
+    location = /404.html { internal; }
     location ^~ /.well-known/acme-challenge/ {
         root /var/lib/vpn-public-tls;
         default_type text/plain;
@@ -16,10 +19,7 @@ server {
     location / { return 301 {{ public_site_canonical_url }}$request_uri; }
 {% else %}
     # Port 80 never redirects to a port other than 443; it serves the site itself.
-    root /var/www/public-site;
     index index.html;
-    error_page 404 /404.html;
-    location = /404.html { internal; }
     location / { try_files $uri $uri/ =404; }
 {% endif %}
 }

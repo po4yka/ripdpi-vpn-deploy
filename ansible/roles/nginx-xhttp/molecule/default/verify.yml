@@ -82,8 +82,44 @@
           grep -q 'listen 8443 ssl http2;' /etc/nginx/sites-available/vpn-xhttp.conf
           grep -q 'proxy_pass http://127.0.0.1:10085;' /etc/nginx/sites-available/vpn-xhttp.conf
           grep -q 'client_max_body_size 0;' /etc/nginx/sites-available/vpn-xhttp.conf
-          grep -q 'ssl_protocols       TLSv1.3;' /etc/nginx/sites-available/vpn-xhttp.conf
-          ! grep -q 'TLSv1.2' /etc/nginx/sites-available/vpn-xhttp.conf
+        executable: /bin/bash
+      changed_when: false
+
+    - name: The owned name negotiates TLS 1.2, TLS 1.3 and the common key exchange groups
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          for option in -tls1_2 -tls1_3 '-groups X25519' '-groups prime256v1' '-groups secp384r1'; do
+            openssl s_client -connect 127.0.0.1:8443 -servername vpn.example.test $option </dev/null 2>&1 |
+              grep -q 'Verification\|Verify return code'
+          done
+        executable: /bin/bash
+      changed_when: false
+
+    - name: A handshake without SNI or with a foreign name receives no certificate
+      ansible.builtin.shell:
+        cmd: |
+          set -uo pipefail
+          for sni in -noservername '-servername other.example.test'; do
+            out="$(openssl s_client -connect 127.0.0.1:8443 $sni </dev/null 2>&1)"
+            grep -q 'unrecognized name' <<<"$out" || exit 1
+            grep -q 'BEGIN CERTIFICATE' <<<"$out" && exit 1
+          done
+          exit 0
+        executable: /bin/bash
+      changed_when: false
+
+    - name: The right SNI with another Host gets the site 404 and never the tunnel
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          for path in / /index.html /7c2e9a41d05b3f68/probe; do
+            out="$(curl --silent --insecure --http1.1 --write-out '\n%{http_code}' \
+              --resolve vpn.example.test:8443:127.0.0.1 --header 'Host: 192.0.2.1' \
+              "https://vpn.example.test:8443${path}")"
+            test "$(tail -n1 <<<"$out")" = 404
+            grep -q 'Page not found' <<<"$out"
+          done
         executable: /bin/bash
       changed_when: false
 
