@@ -294,6 +294,10 @@
       {{ ansible_facts['distribution_release'] }} main
   when: tailnet_management_install_package | bool
 
+# Before the package's first daemon start, so no log leaves a fresh node.
+- name: Keep tailscaled logs on the node
+  ansible.builtin.import_tasks: no-logs.yml
+
 - name: Install exact stable Tailscale package
   ansible.builtin.apt:
     name: "tailscale={{ tailnet_management_package_version }}"

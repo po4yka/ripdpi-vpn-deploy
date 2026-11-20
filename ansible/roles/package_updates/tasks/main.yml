@@ -70,6 +70,37 @@
     group: root
     mode: "0644"
 
+- name: Ensure the upgrade timer drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/apt-daily-upgrade.timer.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# The distribution timer fires on every host at 06:00 with a one-hour delay.
+# A fixed delay is derived from the machine ID, so each host keeps its own
+# slot. The calendar time is unchanged, so a deploy never makes the timer due.
+- name: Stagger the unattended-upgrade window per host
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/apt-daily-upgrade.timer.d/ripdpi-stagger.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Timer]
+      RandomizedDelaySec=12h
+      FixedRandomDelay=true
+  register: _package_updates_stagger
+
+- name: Apply the staggered upgrade window
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when:
+    - _package_updates_stagger.changed
+    - ansible_facts.service_mgr == "systemd"
+    - not ansible_check_mode
+
 - name: Validate unattended-upgrades configuration
   ansible.builtin.command:
     cmd: unattended-upgrade -d --dry-run

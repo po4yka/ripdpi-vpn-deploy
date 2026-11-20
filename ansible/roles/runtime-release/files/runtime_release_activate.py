@@ -14,12 +14,16 @@ import pwd
 import re
 import stat
 import sys
+import time
 import uuid
 from pathlib import Path
 from typing import Callable
 
 SAFE_NAME = re.compile(r"^[A-Za-z0-9._+-]+$")
 TRANSACTION_RECEIPT = ".runtime-release-transaction.json"
+
+
+LOCK_TIMEOUT_SECONDS = 600
 
 
 class UnsafeState(RuntimeError):
@@ -459,10 +463,18 @@ def _lock_directory(root: Path, *, check: bool) -> _DirectoryGuard:
         guard = _open_directory(lock_root)
     except (FileNotFoundError, NotADirectoryError, OSError) as error:
         raise UnsafeState("unsafe-install-root") from error
+    # A hung earlier activation must refuse this one, not block its deploy forever.
+    deadline = time.monotonic() + LOCK_TIMEOUT_SECONDS
     try:
-        fcntl.flock(guard.descriptor, fcntl.LOCK_EX)
-        return guard
-    except Exception:
+        while True:
+            try:
+                fcntl.flock(guard.descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return guard
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise UnsafeState("install-root-locked") from None
+                time.sleep(0.2)
+    except BaseException:
         guard.close()
         raise
 

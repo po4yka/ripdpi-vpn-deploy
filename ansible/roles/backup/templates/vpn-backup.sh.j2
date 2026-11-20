@@ -449,8 +449,9 @@ local_succeeded_at="$(timestamp)"
 active_stage=""
 publish_outcome
 
-# Fail the backup run if repository integrity is damaged or no recent
-# vpn-stack snapshot is available for restore.
+# Fail the backup run if repository integrity is damaged or the snapshot just
+# written is not listed after retention. Missed runs are visible in the stage
+# marker times, not here: this check always follows a new snapshot.
 integrity_attempted_at="$(timestamp)"
 active_stage="integrity"
 publish_outcome
@@ -480,16 +481,32 @@ remote_result="pending"
 remote_attempted_at="$(timestamp)"
 active_stage="remote"
 publish_outcome
-RCLONE_CONFIG=/etc/rclone/rclone.conf \
-  rclone sync --quiet \
+export RCLONE_CONFIG=/etc/rclone/rclone.conf
+REMOTE="{{ backup.remote.rclone_remote }}:{{ backup.remote.rclone_path }}/$(hostname)"
+
+# A recreated node holds a newly initialized repository, and a sync would
+# replace the offsite history of the old one. restic never rewrites a
+# repository's config file, so an existing remote copy must hold these bytes.
+remote_listing_status=0
+remote_listing="$(rclone lsf --files-only --include /config "$REMOTE")" || remote_listing_status=$?
+# rclone exits 3 when the remote directory does not exist yet (first sync).
+if (( remote_listing_status != 0 && remote_listing_status != 3 )); then
+  printf '%s\n' 'backup: remote repository identity is unavailable; nothing was synced' >&2
+  exit 1
+fi
+if [[ -n "$remote_listing" ]] && ! rclone cat "$REMOTE/config" | cmp -s - "$REPO/config"; then
+  printf '%s\n' 'backup: the remote repository config is unreadable or differs from the local one; nothing was synced' >&2
+  exit 1
+fi
+
+rclone sync --quiet \
   --transfers={{ backup.remote.transfers | default(4) }} \
   --bwlimit={{ backup.remote.bwlimit | default('off') }} \
   "$REPO" \
-  "{{ backup.remote.rclone_remote }}:{{ backup.remote.rclone_path }}/$(hostname)"
+  "$REMOTE"
 
 # Verify the remote repository matches the checked local repository.
-RCLONE_CONFIG=/etc/rclone/rclone.conf \
-  rclone check "$REPO" "{{ backup.remote.rclone_remote }}:{{ backup.remote.rclone_path }}/$(hostname)"
+rclone check "$REPO" "$REMOTE"
 remote_result="success"
 remote_succeeded_at="$(timestamp)"
 active_stage=""

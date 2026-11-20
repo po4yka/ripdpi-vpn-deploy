@@ -205,9 +205,13 @@ def test_restore_evidence_distinguishes_snapshot_and_drill_freshness():
     m = module()
     raw = {"version": 1, "repository_source": "local", "snapshot_id": "private-id",
            "snapshot_time": "2026-01-01T00:00:00Z", "verified_at": "2026-01-02T00:00:00Z"}
-    result = m.restore_evidence(raw, m.parse_time("2026-01-03T00:00:00Z"))
+    # A weekly drill that is 14 days old missed one run and is still inside the window.
+    result = m.restore_evidence(raw, m.parse_time("2026-01-16T00:00:00Z"))
     assert result["status"] == "observed"
-    assert result["snapshot_freshness"] == "stale"
+    assert result["snapshot_freshness"] == "observed"
+    late = m.restore_evidence(raw, m.parse_time("2026-01-17T00:00:01Z"))
+    assert (late["status"], late["snapshot_freshness"]) == ("stale", "observed")
+    assert m.restore_evidence(raw, m.parse_time("2026-01-17T12:00:01Z"))["snapshot_freshness"] == "stale"
     assert result["repository_source"] == "local"
     assert "private-id" not in json.dumps(result)
     assert m.restore_evidence(raw, m.parse_time("2026-03-03T00:00:00Z"))["status"] == "stale"
@@ -346,7 +350,7 @@ def observation(m, monkeypatch):
     return m.collect()
 
 
-@pytest.mark.parametrize("kind", ["secret", "unit", "listener", "timestamp", "backup", "service"])
+@pytest.mark.parametrize("kind", ["secret", "unit", "listener", "timestamp", "backup", "reboot", "service"])
 def test_controller_rejects_unapproved_remote_fields(monkeypatch, kind):
     m = module()
     report = observation(m, monkeypatch)
@@ -360,10 +364,21 @@ def test_controller_rejects_unapproved_remote_fields(monkeypatch, kind):
         report["observed_at"] = "2099-01-01T00:00:00Z"
     elif kind == "backup":
         report["backup"]["latest_snapshot"] = {"status": "observed"}
+    elif kind == "reboot":
+        report["reboot_required"] = "yes"
     else:
         report["services"]["ssh.service"] = {"status": "unknown", "stderr": "do-not-emit"}
     with pytest.raises(m.InspectionError):
         m.validate_report(report, m.parse_time("2026-08-28T12:00:00Z"))
+
+
+@pytest.mark.parametrize("pending", [False, True])
+def test_pending_reboot_marker_is_reported_without_failing_observation(monkeypatch, pending):
+    m = module()
+    monkeypatch.setattr(m.os.path, "lexists", lambda path: pending and path == "/run/reboot-required")
+    report = observation(m, monkeypatch)
+    assert report["reboot_required"] is pending
+    assert m.validate_report(report, m.parse_time(report["observed_at"])) == report
 
 
 def test_controller_accepts_only_canonical_observation(monkeypatch):

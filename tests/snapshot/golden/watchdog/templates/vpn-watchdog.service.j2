@@ -13,6 +13,9 @@ TimeoutStartSec=565s
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7
+# Each run starts a full Xray and Hysteria client beside the serving ones.
+MemoryMax=512M
+CPUQuota=50%
 
 NoNewPrivileges=true
 PrivateTmp=true

@@ -33,6 +33,8 @@ persistent timer. Revalidate their results under the transaction lock.
 
 **Bootstrap probes are predictive inputs** — source admission, status, preferences, package ownership/version and daemon state execute read-only in check mode. Installation, enrollment and service mutation keep their normal predictive behavior.
 
+**tailscaled keeps its logs on the node** — a systemd drop-in sets `TS_NO_LOGS_NO_SUPPORT=true`, so nodes do not upload client logs under one tailnet identity. Bootstrap writes it before the first daemon start. Ordinary convergence writes it without restarting tailscaled, because the deploy can be connected through that daemon; it applies at the next start.
+
 ## What's done well
 
 - Exact stable package and repository key pins fail closed.

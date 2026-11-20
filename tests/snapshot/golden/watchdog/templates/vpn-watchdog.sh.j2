@@ -9,6 +9,7 @@ set -euo pipefail
 : "${STATE_FILE:=/var/lib/vpn-watchdog/state}"
 : "${ALERTS_PER_HOUR_MAX:=4}"
 : "${KICKS_PER_HOUR_MAX:=3}"
+: "${KICKS_PER_OUTAGE_MAX:=3}"
 : "${XRAY_BIN:=/usr/local/bin/xray}"
 : "${HYSTERIA_BIN:=/usr/local/bin/hysteria}"
 : "${TRANSPORT_GENERATION_BIN:=/usr/local/libexec/ripdpi-transport-egress/generation.py}"
@@ -36,6 +37,9 @@ mkdir -p "$(dirname "$STATE_FILE")"
 #   alerts_hour_started=<unix>
 #   kicks_this_hour=<n>
 #   kicks_hour_started=<unix>
+# ${STATE_FILE}.outage holds one number: recovery attempts since the last run
+# in which no unit failed its diagnostics. It is a separate file because the health adapter admits only the
+# six keys above.
 declare -A STATE
 # Validate the complete prior budget before any recovery or notification action.
 budget="$("$WATCHDOG_STATE_BIN" read "$STATE_FILE")"
@@ -87,6 +91,7 @@ probe_config() {
 }
 
 xray_probe_pid=""
+canary_request_failed=0
 
 cleanup_reality_client() {
   local deadline
@@ -135,6 +140,22 @@ trap cleanup_reality_client EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
 
+# An unreadable or malformed counter withholds recovery instead of resetting it.
+outage_file="${STATE_FILE}.outage"
+kicks_this_outage=0
+if [[ -e "$outage_file" || -L "$outage_file" ]]; then
+  kicks_this_outage="$(cat "$outage_file" 2>/dev/null || true)"
+  [[ ! -L "$outage_file" && "$kicks_this_outage" =~ ^(0|[1-9][0-9]{0,5})$ ]] || kicks_this_outage=999999
+fi
+
+persist_outage() {
+  rm -f "${outage_file}.new"
+  # mv would follow a link to a directory and write inside it.
+  if [[ -L "$outage_file" ]]; then rm -f "$outage_file"; fi
+  ( umask 077; printf '%s\n' "$kicks_this_outage" > "${outage_file}.new" )
+  mv -f "${outage_file}.new" "$outage_file"
+}
+
 persist_state() {
   local key
   for key in consecutive_fails last_alert_epoch alerts_this_hour alerts_hour_started kicks_this_hour kicks_hour_started; do
@@ -161,10 +182,12 @@ reality_canary_round_trip() {
   status="$(curl -sS -o /dev/null -w '%{http_code}' \
     --max-time "$XRAY_REALITY_PROBE_TIMEOUT" \
     --noproxy '' --proxy "socks5h://127.0.0.1:${socks_port}" \
-    "$XRAY_REALITY_PROBE_URL")" || return 1
+    "$XRAY_REALITY_PROBE_URL")" || { canary_request_failed=1; return 1; }
   kill -0 "$xray_probe_pid" 2>/dev/null || return 1
   socks_listener_owned "$socks_port" || return 1
-  [[ "$status" == "$XRAY_REALITY_PROBE_EXPECTED_STATUS" ]]
+  # Only a request that the owned client sent and that failed speaks about the
+  # server; a lost client or a foreign listener does not.
+  [[ "$status" == "$XRAY_REALITY_PROBE_EXPECTED_STATUS" ]] || { canary_request_failed=1; return 1; }
 }
 
 probe_reality_listeners() {
@@ -263,8 +286,12 @@ if [[ "${ENABLE_XRAY:-true}" == "true" ]]; then
   done
   probe_config "xray.service" "xray config valid" \
     "$XRAY_VALIDATE_BIN" --config /etc/xray/config.json
-  probe_unit "xray.service" "xray StatsService query" \
+  # Diagnostic on its own: a failed loopback API query selects Xray for
+  # recovery only when an authenticated canary request fails in the same run.
+  failures_before_stats=$probe_failure_count
+  probe "xray StatsService query" \
     "$XRAY_BIN" api statsquery "--server=${XRAY_API_SERVER}"
+  xray_stats_failed=$(( probe_failure_count > failures_before_stats ))
 fi
 
 if [[ "${ENABLE_NGINX_XHTTP:-true}" == "true" ]]; then
@@ -283,7 +310,11 @@ if [[ "${ENABLE_NGINX_XHTTP:-true}" == "true" ]]; then
 fi
 
 if [[ "${ENABLE_XRAY:-true}" == true || "${ENABLE_NGINX_XHTTP:-false}" == true ]]; then
+  canary_request_failed=0
   probe_reality_listeners
+  if (( ${xray_stats_failed:-0} && canary_request_failed )); then
+    failed_units["xray.service"]=1
+  fi
 fi
 
 if [[ "${ENABLE_HYSTERIA:-false}" == "true" ]]; then
@@ -389,6 +420,12 @@ if (( probe_failure_count > 0 )); then
 else
   STATE[consecutive_fails]=0
 fi
+# A run that selects no unit ends the outage, even while a diagnostic such as
+# the canary or the disk check stays red.
+if [[ -z "${!failed_units[*]}" ]] && (( kicks_this_outage != 0 )); then
+  kicks_this_outage=0
+  persist_outage
+fi
 
 # Reset hourly alert counter if hour rolled over
 if (( now - STATE[alerts_hour_started] >= 3600 )); then
@@ -411,6 +448,11 @@ if (( STATE[consecutive_fails] >= FAIL_THRESHOLD )); then
     if (( STATE[kicks_this_hour] >= KICKS_PER_HOUR_MAX )); then
       break
     fi
+    # Recovery that did not end the outage is not repeated: later runs alert only.
+    if (( kicks_this_outage >= KICKS_PER_OUTAGE_MAX )); then
+      kick_results+=("RESTART WITHHELD  $unit (recovery attempts exhausted)")
+      continue
+    fi
     if [[ "$unit" == "xray.service" || "$unit" == "hysteria-server.service" ]]; then
       recovery=(python3 -Es "$TRANSPORT_GENERATION_BIN" recover
         --config /etc/ripdpi/transport-egress/generation.json
@@ -420,6 +462,8 @@ if (( STATE[consecutive_fails] >= FAIL_THRESHOLD )); then
     fi
     # Reserve the durable attempt before an external action or notification.
     STATE[kicks_this_hour]=$(( STATE[kicks_this_hour] + 1 ))
+    kicks_this_outage=$(( kicks_this_outage + 1 ))
+    persist_outage
     persist_state
     if "${recovery[@]}"; then
       kick_results+=("RESTARTED  $unit")
@@ -480,7 +524,7 @@ fi
 persist_state
 
 # Always log to journal so `journalctl -u vpn-watchdog.service` shows status
-echo "watchdog: consecutive_fails=${STATE[consecutive_fails]} alerts_this_hour=${STATE[alerts_this_hour]} kicks_this_hour=${STATE[kicks_this_hour]} classes=${class_summary:-none}"
+echo "watchdog: consecutive_fails=${STATE[consecutive_fails]} alerts_this_hour=${STATE[alerts_this_hour]} kicks_this_hour=${STATE[kicks_this_hour]} kicks_this_outage=${kicks_this_outage} classes=${class_summary:-none}"
 printf '%s\n' "${probe_results[@]}"
 if [[ -n "${kick_results[*]}" ]]; then
   printf '%s\n' "${kick_results[@]}"

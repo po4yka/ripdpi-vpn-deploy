@@ -63,6 +63,12 @@ requests targeted Xray/Hysteria recovery from the guarded generation controller;
 capped by `kicks_per_hour_max`, notifications by `alerts_per_hour_max`, and a
 red probe run exits non-zero so systemd and external checks retain the signal.
 
+**Recovery stops when it does not help** — `kicks_per_outage_max` counts recovery attempts in `<state_file>.outage` since the last run in which no unit failed its diagnostics. When it is spent, later runs report `RESTART WITHHELD ... (recovery attempts exhausted)` and only alert until one run selects no unit. The counter is a separate file because the health adapter admits exactly the six budget keys; a malformed counter withholds recovery.
+
+**A failed StatsService query alone is diagnostic** — the loopback API can fail while Xray serves clients. It selects Xray for recovery only when a canary request that the owned client sent through Xray fails in the same run; a lost client or an occupied probe port does not count.
+
+**The probe run is resource-bounded** — the unit has `MemoryMax=512M` and `CPUQuota=50%`, because each run starts a full Xray and Hysteria client beside the serving ones on a one-vCPU host. The timer adds up to 150 seconds of random delay, so canary requests keep no fixed cadence.
+
 **Bounded probe cleanup** — the temporary Xray client receives TERM first, then
 KILL after a short deadline. A wedged probe process must never hold the systemd
 oneshot open indefinitely.

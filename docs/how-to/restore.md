@@ -177,7 +177,7 @@ On success, the owner separately performs the approved initial copy and isolated
 
 ## Backup verification (recurring task)
 
-The `backup` role runs a daily snapshot and a monthly non-destructive restore drill. The drill restores the exact latest `vpn-stack` snapshot into private systemd runtime storage, validates the baseline and enabled transport artifacts, removes the restored secrets, and only then updates its success marker. When remote sync is enabled, the drill opens that offsite repository directly and does not fall back to the local copy.
+The `backup` role runs a daily snapshot and a weekly non-destructive restore drill. The drill restores the exact latest `vpn-stack` snapshot into private systemd runtime storage, validates the baseline and enabled transport artifacts, removes the restored secrets, and only then updates its success marker. When remote sync is enabled, the drill opens that offsite repository directly and does not fall back to the local copy.
 
 ```bash
 ssh deploy@<vps>

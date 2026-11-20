@@ -46,6 +46,7 @@ def report(inspection, now):
         "listeners": {"status": "observed", "items": [
             {"protocol": "udp", "address": "0.0.0.0", "port": 443}]},
         "backup": {"latest_snapshot": {"status": "unknown"}, "restore": {"status": "unknown"}},
+        "reboot_required": False,
     }
 
 
@@ -122,7 +123,7 @@ def test_watchdog_disabled_by_profile_is_not_a_failed_observation(modules):
               "result": "success", "exec_main_status": None, "exec_main_exit_timestamp": None}
     observation["services"]["vpn-watchdog.service"] = dict(absent)
     observation["services"]["vpn-watchdog.timer"] = dict(absent)
-    assert status.watchdog_expected({"cohorts": ["p1-web"]}) is False
+    assert status.watchdog_expected({"cohorts": ["p0-minimal"]}) is False
     assert status.watchdog_expected({"cohorts": ["p0-self-steal"]}) is True
     assert status.watchdog_expected({"cohorts": []}) is True
     assert status.watchdog_health(observation, now, expected=False) == {

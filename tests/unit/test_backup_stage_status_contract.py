@@ -154,6 +154,35 @@ def test_remote_copy_outcome_is_published_only_when_the_optional_stage_runs(
     assert payload["remote_copy"]["succeeded_at"]
 
 
+@pytest.mark.parametrize(
+    "remote_config, listing_status, synced",
+    [("same repository\n", 0, True), ("other repository\n", 0, False), (None, 3, True), (None, 1, False)],
+    ids=["same-repository", "different-repository", "first-sync", "listing-failed"],
+)
+def test_remote_sync_refuses_to_replace_a_different_repository(
+    tmp_path: Path, remote_config, listing_status, synced
+) -> None:
+    script, environment, state_dir = _environment(tmp_path, remote_enabled=True)
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "config").write_text("same repository\n")
+    script.write_text(script.read_text().replace("/var/backups/vpn-restic", str(repository)))
+    calls = tmp_path / "rclone.log"
+    (tmp_path / "bin" / "rclone").write_text(
+        f"#!{sys.executable}\nimport sys\n"
+        f"open({str(calls)!r}, 'a').write(sys.argv[1] + '\\n')\n"
+        f"if sys.argv[1] == 'lsf':\n    sys.stdout.write({'config' if remote_config else ''!r})\n    raise SystemExit({listing_status})\n"
+        f"if sys.argv[1] == 'cat':\n    sys.stdout.write({remote_config or ''!r})\n"
+    )
+
+    result = subprocess.run([script], env=environment, capture_output=True, text=True, check=False)
+
+    assert ("sync" in calls.read_text().split()) is synced
+    assert (result.returncode == 0) is synced, result.stderr
+    remote = json.loads((state_dir / "backup-stage-status.json").read_text())["remote_copy"]
+    assert remote["result"] == ("success" if synced else "failed")
+
+
 def test_status_publication_refuses_an_unsafe_existing_destination(
     tmp_path: Path,
 ) -> None:

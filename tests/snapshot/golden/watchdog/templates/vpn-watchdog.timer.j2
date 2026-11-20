@@ -4,7 +4,8 @@ Description=Run VPN watchdog every 5min
 [Timer]
 OnBootSec=2min
 OnUnitActiveSec=5min
-RandomizedDelaySec=30
+# Half the default interval, so canary requests keep no fixed cadence.
+RandomizedDelaySec=150
 Persistent=true
 
 [Install]

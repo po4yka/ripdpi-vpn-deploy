@@ -56,11 +56,15 @@ nginx and watchdog inputs are required when selected. Empty revocation sets are
 valid; missing authority refuses. Resolve archived absolute symlinks inside the
 restored filesystem, never against live host files, before checking bytes or JSON.
 
+**A sync never replaces another repository** — before `rclone sync`, the backup script compares the remote `config` file with the local one. restic never rewrites that file, so different bytes mean that the remote path holds another repository, for example the history of a node that was recreated and initialized again. The run then fails the remote stage and syncs nothing; restore the old repository or select a new `backup.remote.rclone_path` generation. An absent remote copy is a first sync.
+
+**Both oneshots have a start deadline** — `TimeoutStartSec=1h` stops a hung restic or rclone call, which would otherwise keep the unit activating and block every later timer run.
+
 ## What's done well
 
 - **Daily by default; manual trigger via `scripts/`** — no surprise weekend
   backup storms.
-- **Monthly restore drill** — restores the exact latest snapshot into a
+- **Weekly restore drill** — a failed run is repeated at the next weekly slot, inside the 15-day window that `make inspect` and the health adapter allow. It restores the exact latest snapshot into a
   private systemd runtime directory, validates critical artifacts, removes
   restored secrets, then atomically publishes a last-success marker.
 - **Offsite-first verification** — when remote sync is enabled, the drill

@@ -5,6 +5,7 @@ watchdog:
   state_file: /var/lib/vpn-watchdog/state
   alerts_per_hour_max: 4       # rate-limit so a flapping host doesn't spam
   kicks_per_hour_max: 3        # bound systemd restart attempts for failed transports
+  kicks_per_outage_max: 3      # recovery attempts in one outage; later runs only alert
   hysteria_probe_client: watchdog
   hysteria_probe_socks_port: 31110
   reality_probe_client: watchdog
