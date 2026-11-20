@@ -155,6 +155,14 @@ uplink accept, packets from an AWG interface to
 reach provider metadata or private ranges that Xray and Hysteria refuse. Native
 labs whose public stand-in is ULA override only the IPv6 list.
 
+**Forwarded AWG TCP is clamped to the instance MTU** — before the established accept, SYN packets from an AWG interface get an MSS of the instance MTU minus the IPv4 or IPv6 header sizes, and SYN packets to it get the route MTU. The kernel never raises an MSS. A device that keeps a larger configured MTU than the server instance therefore still completes TCP in both directions. The MTU fallback equals the amneziawg role default (unit-tested), because that role's defaults are not visible here.
+
+**The DHCPv4 reply accept is scoped** — UDP 67 to 68 over IPv4 is accepted only on the observed IPv4 default-route interface, before conntrack. A rebinding client broadcasts, so its reply matches no conntrack entry. The live listener verifier admits this exact rule shape at most once and never on `lo` or `tailscale0`; it does not know the uplink name.
+
+**No per-source limit and no family split on public listeners** — one REALITY device opens a TCP connection per proxied flow and one carrier-NAT address carries many devices, so a limit low enough to stop abuse refuses ordinary use; `policy-ratelimit` is the opt-in control. Listener accepts stay family-agnostic because the contract entry has no address family: restricting only this ruleset would disagree with the provider firewall and the verifier. A family field must start in Terraform `public_listeners`.
+
+**Split-hop egress shares the destination boundary** — packets from the split-hop interface to `firewall_awg_destination_deny_v4` drop before the forward accept, so Node A recipients cannot reach Node B's provider metadata or private ranges.
+
 **AWG NAT is evidence-addressable** — each masquerade rule owns a stable `awg-nat-<interface>` comment and counter. Recurring real-VPS tests consume only that counter; preserve the comment when changing rule shape.
 
 **Geo blocking is documented, not implemented** — the firewall role ships no

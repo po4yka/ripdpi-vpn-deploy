@@ -123,7 +123,8 @@ AWG_PARAMETERS = {"jc": 4, "jmin": 40, "jmax": 70, "s1": 50, "s2": 100}
 AWG_PUBLISHED_PORT = 51820
 # Generated ports stay above the default listeners and below the Linux ephemeral range.
 AWG_PORT_RANGE = (20000, 32767)
-AWG_MTU_MIN, AWG_MTU_MAX, AWG_MTU_DEFAULT = 1280, 1420, 1420
+# The default fits a 1340-byte IPv4 and a 1360-byte IPv6 path; 1420 needs a full 1500-byte IPv6 path.
+AWG_MTU_MIN, AWG_MTU_MAX, AWG_MTU_DEFAULT = 1280, 1420, 1280
 MAX_INPUT_BYTES = 4 * 1024 * 1024
 EGRESS_CREDENTIALS = (
     "direct_xray_password", "direct_hysteria_password", "warp_xray_password",
@@ -663,6 +664,12 @@ def parameter_errors(raw: dict, path: str, *, allow_placeholders: bool = False) 
     return errors
 
 
+def awg_published_shape(item: dict) -> bool:
+    """Junk count and bounds, or both padding sizes, of the published set identify it without the rest."""
+    return any(all(item.get(name) == AWG_PARAMETERS[name] for name in names)
+               for names in (("jc", "jmin", "jmax"), ("s1", "s2")))
+
+
 def generate_awg_shape() -> dict:
     """Draw one instance's junk, padding and port values; never the published set."""
     def draw(low: int, high: int) -> int:
@@ -672,7 +679,7 @@ def generate_awg_shape() -> dict:
         jmin = draw(20, 80)
         shape = {"jc": draw(3, 8), "jmin": jmin, "jmax": jmin + draw(20, 200), "s1": draw(15, 150), "s2": draw(15, 150)}
         # Equal initiation (148 + S1) and response (92 + S2) sizes are refused by admission: draw again.
-        if shape != AWG_PARAMETERS and 148 + shape["s1"] != 92 + shape["s2"]:
+        if not awg_published_shape(shape) and 148 + shape["s1"] != 92 + shape["s2"]:
             return {"listen_port": draw(*AWG_PORT_RANGE), **shape}
 
 
@@ -758,8 +765,8 @@ def awg_errors(raw: object, defaults: object = None, cohort: object = None, *,
                        "docs/reference/awg-cohorts.md")
             if port == AWG_PUBLISHED_PORT:
                 errors.append((f"{path}.listen_port", "production refuses the WireGuard default port; " + migrate))
-            if all(item.get(name) == value for name, value in AWG_PARAMETERS.items()):
-                errors.append((path, "production refuses the published junk and padding value set; " + migrate))
+            if awg_published_shape(item):
+                errors.append((path, "production refuses the published junk or padding values; " + migrate))
         for field, version in (("address_v4", 4), ("address_v6", 6)):
             if field not in item:
                 errors.append((f"{path}.{field}", "both server address families are required"))

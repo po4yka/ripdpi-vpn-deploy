@@ -22,7 +22,7 @@ PublicKey = {{ split_hop_egress_secrets.node_a_public_key }}
 {% if (split_hop_egress_secrets.preshared_key | default('') | length) > 0 %}
 PresharedKey = {{ split_hop_egress_secrets.preshared_key }}
 {% endif %}
-Endpoint = {{ split_hop_egress_secrets.node_a_public_ip }}:{{ split_hop_egress.peer_listen_port }}
+Endpoint = {{ split_hop_egress_secrets.node_a_public_ip }}:{{ split_hop_egress.peer_listen_port | default(split_hop_ingress_listen_port | default(51821), true) }}
 # Route everything the tunnel can reach back to Node A — that's the
 # tunnel subnet itself. Client traffic that Node A wants to push
 # through this tunnel hits the AllowedIPs on A's side, not B's.

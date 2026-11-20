@@ -26,9 +26,10 @@ split_hop_egress:
   wg_interface: shop0
 
   # WG listen port on Node A that Node B initiates a handshake to.
-  # B writes this into its peer config; the value lives in secrets
-  # because rotating it does not require a role change.
-  peer_listen_port: 51821
+  # B writes this into its peer config. Empty selects the fleet-wide
+  # `split_hop_ingress_listen_port`; set it only when Node A overrides its
+  # listen port in host variables that Node B does not load.
+  peer_listen_port: ""
 
   # IPv4 subnet of the WG tunnel. /30 is sufficient for a two-peer
   # link; pinning the subnet keeps the role idempotent.
@@ -38,8 +39,9 @@ split_hop_egress:
 
   # NAT egress over the WG interface — every flow forwarded from
   # Node A through the tunnel is SNAT'd to Node B's public IP on the
-  # way out.
-  forward_iface: "eth0"
+  # way out. Empty selects the observed IPv4 default-route interface;
+  # provider images name it differently (eth0, ens2, enp1s0).
+  forward_iface: ""
 
   # Ansible owns the scoped NAT table independently from wg-quick. The
   # rendered file is syntax-checked before it can replace the live table.

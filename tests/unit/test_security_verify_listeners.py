@@ -812,6 +812,31 @@ def test_exact_dhcpv6_server_authority_is_not_a_public_listener(tmp_path, server
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def _dhcpv4_reply(**changes) -> dict:
+    rule = _nft_rule("udp", 68, input_interface="uplink0")
+    rule["rule"]["expr"][-1:-1] = [
+        {"match": {"op": "==", "left": {"meta": {"key": "nfproto"}}, "right": changes.get("family", "ipv4")}},
+        {"match": {"op": "==", "left": {"payload": {"protocol": "udp", "field": "sport"}},
+                   "right": changes.get("sport", 67)}},
+        {"counter": {"packets": 0, "bytes": 0}},
+    ]
+    return rule
+
+
+def test_scoped_dhcpv4_reply_is_not_a_public_listener(tmp_path):
+    rules = [_dhcpv4_reply(), _dhcpv6_reply(), _dhcpv6_deny()]
+    result = _verify_listeners(tmp_path, [], '', dhcpv6_rules=rules)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize('rules', [
+    [_dhcpv4_reply(sport=53)], [_dhcpv4_reply(family="ipv6")], [_dhcpv4_reply(), _dhcpv4_reply()],
+], ids=["other-source-port", "other-family", "duplicate"])
+def test_other_udp_68_accepts_stay_refused(tmp_path, rules):
+    result = _verify_listeners(tmp_path, [], '', dhcpv6_rules=[*rules, _dhcpv6_reply(), _dhcpv6_deny()])
+    assert result.returncode != 0
+
+
 @pytest.mark.parametrize('path,replacement', [
     ((1,), None),
     ((1, 'match', 'right'), 'other0'),

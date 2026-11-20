@@ -41,7 +41,17 @@ net.ipv6.conf.all.forwarding = 0
 # Connection budget (Hysteria + many concurrent VLESS streams)
 net.core.somaxconn = 4096
 net.ipv4.tcp_max_syn_backlog = 4096
-fs.file-max = 1048576
+# Above the per-unit LimitNOFILE (1048576) so one transport cannot take every host descriptor.
+fs.file-max = 2097152
+
+# Connection tracking budget for NAT and stateful filtering. The kernel default
+# follows memory size (7680 entries on a 1 GiB host). The keys exist only while
+# nf_conntrack is loaded, so they are optional here; the role loads the module
+# and modules-load.d loads it before systemd-sysctl at boot.
+-net.netfilter.nf_conntrack_buckets = {{ (baseline_conntrack_max // 4) }}
+-net.netfilter.nf_conntrack_max = {{ baseline_conntrack_max }}
+-net.netfilter.nf_conntrack_udp_timeout = {{ baseline_conntrack_udp_timeout }}
+-net.netfilter.nf_conntrack_udp_timeout_stream = {{ baseline_conntrack_udp_timeout_stream }}
 
 # IPv6: keep RA off by default; if the host has only IPv4, no harm done
 net.ipv6.conf.default.accept_ra = 0

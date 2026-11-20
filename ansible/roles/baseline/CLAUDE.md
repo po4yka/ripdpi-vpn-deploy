@@ -30,6 +30,8 @@ for every candidate and effective context. Custom or partial lists still refuse.
 
 **Site staging retains accepted AWG forwarding** — the site-only defer flag reads the existing exact IPv4/IPv6 forwarding fragment before mutation. The bounded no-follow reader requires root ownership and non-writable ancestry. A selected AWG consumer reconciles desired forwarding only after its lifecycle completes. Failed protected staging and tagged runs that omit AWG keep accepted forwarding. Standalone baseline remains desired-authoritative; no kernel transaction is added.
 
+Connection tracking has an explicit budget: `baseline_conntrack_max` (131072, with a quarter as many hash buckets) and the two UDP timeouts. The kernel default follows memory size and left the 1 GiB NAT node with 7680 entries. The keys exist only while `nf_conntrack` is loaded, so they are optional (`-`) lines; the role loads the module before the sysctl helper runs and `/etc/modules-load.d/vpn-conntrack.conf` loads it before `systemd-sysctl` at boot. A container has no module to load and skips that task. `fs.file-max` is twice the largest unit `LimitNOFILE`.
+
 UDP receive/send socket ceilings are integer role inputs bounded from 1 MiB to 64 MiB before host mutation. Their optional performance application uses the existing per-setting exception boundary; it cannot mask mandatory hardening failure and does not demonstrate QUIC congestion behavior.
 
 The bounded Molecule sysctl diagnostic assigns successful replay status only

@@ -2,7 +2,6 @@
 # Version sentinel — must be overridden in secrets/group_vars.
 # The role asserts this is non-empty at task start.
 hysteria:
-  resource_profile: bandwidth-capped
   version: ""
   linux_amd64_sha256: ""
   linux_arm64_sha256: ""
@@ -33,3 +32,14 @@ hysteria_role_enabled: true
 hysteria_traffic_stats_enabled: false
 hysteria_traffic_stats_listen: "127.0.0.1:25413"
 hysteria_traffic_stats_interval: 60s
+
+# Congestion profile when the secrets document states none; a stated
+# `hysteria.resource_profile` (the example document states one) wins. A profile without
+# another TCP/443 service sets a BBR profile: a fixed send rate deepens loss
+# under UDP policing.
+hysteria_resource_profile_default: bandwidth-capped
+
+# Serve the masquerade site over TCP/443 (and TCP/80 without native ACME) so
+# TCP and UDP probes of the address agree. Enable only where no other role
+# owns TCP/443; the provider listener contract must carry `hysteria-masquerade`.
+hysteria_masquerade_tcp: false

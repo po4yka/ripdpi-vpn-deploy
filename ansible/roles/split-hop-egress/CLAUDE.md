@@ -42,6 +42,8 @@ replies and other host users retain their IPv6 behavior. Marked originals leavin
 the WireGuard interface are source-translated to A's exact tunnel IPv4, so B's
 narrow A/32 peer ACL accepts them and replies traverse the tunnel.
 
+**Uplink and peer port follow observed and shared state** — an empty `forward_iface` selects the IPv4 default-route interface (provider images use `eth0`, `ens2`, `enp1s0`), and an empty `peer_listen_port` selects `split_hop_ingress_listen_port`, the port Node A listens on. Both are resolved where they are used, because the snapshot renderer does not template nested defaults. The boot policy loader has the same sandbox as the ingress loader and `RemainAfterExit=yes`, so a failed boot load shows as a failed unit.
+
 ## What's done well
 
 - **`no_log: true` on the template task** — the rendered config carries

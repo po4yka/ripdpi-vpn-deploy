@@ -373,9 +373,12 @@ def test_generator_cli_prints_one_yaml_mapping():
     ({}, ["amneziawg_secrets.instances.0.listen_port", "amneziawg_secrets.instances.0"]),
     ({"listen_port": 23817}, ["amneziawg_secrets.instances.0"]),
     ({"jc": 5, "jmin": 31, "jmax": 118, "s1": 37, "s2": 121}, ["amneziawg_secrets.instances.0.listen_port"]),
-    ({"listen_port": 23817, "s2": 101}, []),
+    ({"listen_port": 23817, "s2": 101}, ["amneziawg_secrets.instances.0"]),
+    ({"listen_port": 23817, "jc": 5, "jmin": 31, "jmax": 118}, ["amneziawg_secrets.instances.0"]),
+    ({"listen_port": 23817, "jmax": 71, "s2": 101}, []),
     (GENERATED_SHAPE, []),
-], ids=["published-port-and-set", "published-set", "published-port", "one-value-differs", "generated"])
+], ids=["published-port-and-set", "published-set", "published-port", "published-junk", "published-padding",
+        "junk-and-padding-differ", "generated"])
 def test_production_refuses_the_published_port_and_value_set(change, refused):
     raw = {**awg(), **change}
     assert not awg_errors({"instances": [raw]})

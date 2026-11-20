@@ -138,7 +138,7 @@
             if rule.get("expr") != expected:
                 raise SystemExit(1)
       - "{{ split_hop_egress.wg_interface }}"
-      - "{{ split_hop_egress.forward_iface }}"
+      - "{{ (split_hop_egress.forward_iface | default('', true)) or ansible_facts.get('default_ipv4', {}).get('interface', 'eth0') }}"
       - "{{ terraform_nat_source_port_range | default('') }}"
     stdin: "{{ split_hop_egress_policy_state.stdout }}"
   register: split_hop_egress_policy_shape

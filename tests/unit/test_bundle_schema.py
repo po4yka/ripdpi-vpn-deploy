@@ -127,6 +127,21 @@ def test_example_awg_fingerprint_recomputes(example):
     assert entry["cohort_fingerprint"] == cohort_fingerprint(params)
 
 
+def test_absent_wire_profile_is_the_contract_constant_and_other_gaps_refuse():
+    golden = json.loads(GOLDEN.read_text())
+    params = {key: value for key, value in golden["params"].items() if key != "wire_profile"}
+    assert cohort_fingerprint(params) == golden["fingerprint"]
+    assert cohort_fingerprint({**params, "wire_profile": None}) == golden["fingerprint"]
+    script = REPO_ROOT / "scripts" / "ripdpi_cohort_fingerprint.py"
+    for key in ("jc", "h4"):
+        partial = {name: value for name, value in params.items() if name != key}
+        with pytest.raises(ValueError):
+            cohort_fingerprint(partial)
+        result = subprocess.run([sys.executable, str(script), "-"], input=json.dumps(partial),
+                                capture_output=True, text=True, timeout=10)
+        assert result.returncode == 2 and not result.stdout
+
+
 def test_fingerprint_is_order_stable():
     a = {"wire_profile": "awg-3.1-ranges-v1", "jc": 4, "jmin": 10, "jmax": 50, "s1": 0, "s2": 0,
          "h1": '1', "h2": '2', "h3": '3', "h4": '4'}

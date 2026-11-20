@@ -1,12 +1,13 @@
+{% set _forward_iface = (split_hop_egress.forward_iface | default('', true)) or ansible_facts.get('default_ipv4', {}).get('interface', 'eth0') %}
 destroy table inet split_hop_egress
 table inet split_hop_egress {
   chain postrouting {
     type nat hook postrouting priority 100; policy accept;
 {% if terraform_nat_source_port_range | default('') != '' %}
-    iifname "{{ split_hop_egress.wg_interface }}" oifname "{{ split_hop_egress.forward_iface }}" meta l4proto { tcp, udp } masquerade to :{{ terraform_nat_source_port_range }}
-    iifname "{{ split_hop_egress.wg_interface }}" oifname "{{ split_hop_egress.forward_iface }}" meta l4proto != { tcp, udp } masquerade
+    iifname "{{ split_hop_egress.wg_interface }}" oifname "{{ _forward_iface }}" meta l4proto { tcp, udp } masquerade to :{{ terraform_nat_source_port_range }}
+    iifname "{{ split_hop_egress.wg_interface }}" oifname "{{ _forward_iface }}" meta l4proto != { tcp, udp } masquerade
 {% else %}
-    iifname "{{ split_hop_egress.wg_interface }}" oifname "{{ split_hop_egress.forward_iface }}" masquerade
+    iifname "{{ split_hop_egress.wg_interface }}" oifname "{{ _forward_iface }}" masquerade
 {% endif %}
   }
 }

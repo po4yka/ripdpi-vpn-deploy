@@ -67,6 +67,21 @@
   "enabled": (vpn.enable_hysteria | default(false)) and not subscription_only and hysteria is defined and hysteria.acme is defined,
   "reason": "Transient native ACME HTTP-01 challenge"
 }) %}
+{% set _hysteria_masquerade_tcp = (vpn.enable_hysteria | default(false)) and not subscription_only and (hysteria_masquerade_tcp | default(false) | bool) %}
+{% set _ = ns.listeners.append({
+  "role": "hysteria-masquerade",
+  "protocol": "tcp",
+  "port": 443,
+  "enabled": _hysteria_masquerade_tcp,
+  "reason": "Hysteria2 masquerade site over HTTPS"
+}) %}
+{% set _ = ns.listeners.append({
+  "role": "hysteria-masquerade",
+  "protocol": "tcp",
+  "port": 80,
+  "enabled": _hysteria_masquerade_tcp and not (hysteria is defined and hysteria.acme is defined),
+  "reason": "Hysteria2 masquerade site HTTP redirect"
+}) %}
 {% set _hysteria_range = hysteria_port_range | string %}
 {% set _ = ns.listeners.append({
   "role": "hysteria",

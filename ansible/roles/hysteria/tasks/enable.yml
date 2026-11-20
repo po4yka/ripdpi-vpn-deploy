@@ -62,6 +62,16 @@
       - hysteria.masquerade_url == public_site_canonical_url
     fail_msg: Set hysteria.masquerade_url to public_site_canonical_url so probes see the owned public site.
 
+# The TCP listeners serve the same proxy handler, so an origin on this listener requests itself.
+- name: Pre-flight — the TCP masquerade listener must not proxy to its own name
+  ansible.builtin.assert:
+    that:
+      - >-
+        (hysteria.masquerade_url | urlsplit('hostname')) not in
+        ([hysteria.server_name | default('')] + (hysteria.acme.domains | default([]) if hysteria.acme is defined else []))
+    fail_msg: With hysteria_masquerade_tcp the masquerade origin must be an owned site that another listener serves.
+  when: hysteria_masquerade_tcp | bool
+
 - name: Install Hysteria configuration validation dependency
   ansible.builtin.apt:
     name: python3-yaml

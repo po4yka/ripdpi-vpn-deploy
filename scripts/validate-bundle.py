@@ -102,7 +102,10 @@ def _fingerprint_errors(ripdpi: dict) -> list[str]:
         if not isinstance(entry, dict) or "cohort_fingerprint" not in entry:
             continue
         params = {k: entry.get(k) for k in ORDER if entry.get(k) is not None}
-        expected = cohort_fingerprint(params)
+        try:
+            expected = cohort_fingerprint(params)
+        except ValueError:
+            expected = None
         actual = entry["cohort_fingerprint"]
         if actual != expected:
             errors.append(

@@ -33,14 +33,22 @@ import sys
 
 ORDER = ["wire_profile", "jc", "jmin", "jmax", "s1", "s2", "h1", "h2", "h3", "h4",
          "i1", "i2", "i3", "i4", "i5"]
+# The contract fixes this preimage prefix; only i1..i5 may be absent.
+WIRE_PROFILE = "awg-3.1-ranges-v1"
+REQUIRED = ORDER[1:10]
 
 
 def cohort_fingerprint(params: dict) -> str:
     """Return 'sha256:<hex>' for the resolved AWG parameter set in `params`.
 
-    Missing keys render as the empty string (matching the emit-side, where an
-    absent i-value is omitted from the bundle).
+    An absent i-value renders as the empty string (the emit side omits it from
+    the bundle). An absent wire_profile is the contract constant; any other
+    absent value has no defined preimage and raises ValueError.
     """
+    params = {"wire_profile": WIRE_PROFILE, **{k: v for k, v in params.items() if v is not None}}
+    missing = [key for key in REQUIRED if key not in params]
+    if missing:
+        raise ValueError("missing AWG params: " + ", ".join(missing))
     parts = []
     for key in ORDER:
         value = params.get(key)
@@ -65,11 +73,11 @@ def main() -> int:
     else:
         params = {k: getattr(args, k) for k in ORDER if getattr(args, k) is not None}
 
-    if not any(params.get(k) is not None for k in ("jc", "h1")):
-        print("ripdpi_cohort_fingerprint: no AWG params supplied", file=sys.stderr)
+    try:
+        print(cohort_fingerprint(params))
+    except ValueError as error:
+        print(f"ripdpi_cohort_fingerprint: {error}", file=sys.stderr)
         return 2
-
-    print(cohort_fingerprint(params))
     return 0
 
 

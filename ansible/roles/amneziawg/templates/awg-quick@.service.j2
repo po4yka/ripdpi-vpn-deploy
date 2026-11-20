@@ -23,10 +23,13 @@ ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
 RestrictNamespaces=yes
+MemoryDenyWriteExecute=yes
 LockPersonality=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
 SystemCallArchitectures=native
+# CAP_NET_ADMIN workload: do not deny @privileged; awg-quick must program the interface.
+SystemCallFilter=@system-service
 CapabilityBoundingSet=CAP_NET_ADMIN
 AmbientCapabilities=CAP_NET_ADMIN
 ReadWritePaths=/run

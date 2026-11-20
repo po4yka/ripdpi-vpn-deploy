@@ -1,6 +1,6 @@
 ---
 # Profile: UDP transport node.
-# Public listeners: Hysteria2 and AmneziaWG only.
+# Public listeners: Hysteria2, its masquerade site over TCP, and AmneziaWG.
 
 vpn:
   enable_destination_filter: true
@@ -23,6 +23,16 @@ vpn:
   enable_hysteria_realm: false
   enable_split_hop_egress: false
   enable_snell: false
+
+# No other role answers TCP/443 here, so Hysteria serves its masquerade site
+# over TCP too. Terraform `public_listeners` must carry `hysteria-masquerade`
+# tcp/443, and tcp/80 unless native ACME owns that port as `hysteria-acme`.
+hysteria_masquerade_tcp: true
+
+# Fixed-rate Brutal deepens loss under UDP policing. A stated
+# `hysteria.resource_profile` in the secrets document still wins, so a
+# document that states `bandwidth-capped` must change or drop that line.
+hysteria_resource_profile_default: bbr-conservative
 
 # Neutral placeholder. The real decoy origin is operator-supplied per deploy
 # via ANSIBLE_EXTRA_VARS_FILE (see docs/reference/deploy-profiles.md); the hysteria role

@@ -46,8 +46,9 @@ prefixes. Shared normalization rejects old scalar claims and family collisions.
 Every peer prefix must exclude all configured instance server host addresses.
 This applies to routed peers as well as devices; overlapping pools remain valid
 when their peer claims do not contain a server address or another peer claim.
-MTU resolves instance > technical cohort > role default > 1420, with integer
-bounds 1280–1420. Server, standalone, bundle and liveness use that value.
+MTU resolves instance > technical cohort > role default > 1280, with integer
+bounds 1280–1420. The default leaves room for an 80-byte IPv6 outer header on a
+1360-byte path; 1420 fragments on mobile and PPPoE paths and stays an explicit choice. Server, standalone, bundle and liveness use that value.
 Before mutation the exact IPv6 uplink (`firewall_awg_uplink6_interface`, else the
 IPv4 uplink) needs an IPv6 default route with a global
 source. Kernel-owned RA requires per-interface `accept_ra=2`; networkd-owned RA
@@ -149,7 +150,7 @@ interfaces. Fresh absence and recorded enable/disable transitions stay idempoten
 ## Pitfalls
 
 - **A WireGuard message type as header needs a measurement on production** — on a production host `guard-wireguard-shape.yml` refuses an instance in which any of `H1..H4` is a value from 1 to 4, whatever `S1` and `S2` are, unless `awg_wireguard_shaped_measurement` is set. `H4 = 4` makes every data packet a plain WireGuard transport message; padding changes only the handshake.
-- **Production refuses the published wire shape and port** — transport admission (`awg_errors` on a production host) and strict secrets validation refuse the `AWG_PARAMETERS` value set and port 51820. They stay valid for staging, Molecule and fixtures. Replace them in the instance with the output of `transport_semantics.py --generate-awg-shape`, open the new port in `public_listeners`, deploy, then redeliver every device configuration (`docs/reference/awg-cohorts.md`); a second instance beside the old one does not pass, and a cohort file is public, so a new cohort does not replace generated instance values.
+- **Production refuses the published wire shape and port** — transport admission (`awg_errors` on a production host) and strict secrets validation refuse port 51820 and an instance that has the junk count and bounds, or both padding sizes, of the `AWG_PARAMETERS` set; changing one value of the set does not pass. They stay valid for staging, Molecule and fixtures. Replace them in the instance with the output of `transport_semantics.py --generate-awg-shape`, open the new port in `public_listeners`, deploy, then redeliver every device configuration (`docs/reference/awg-cohorts.md`); a second instance beside the old one does not pass, and a cohort file is public, so a new cohort does not replace generated instance values.
 - **amneziawg-go builds with the pinned Go, never distro Go** — the role
   downloads `amneziawg_go_toolchain_version` from go.dev, verifies its sha256
   and builds with `GOTOOLCHAIN=local`. Distro go.env defaults to `auto`, and

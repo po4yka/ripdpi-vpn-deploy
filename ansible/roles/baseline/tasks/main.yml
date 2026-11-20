@@ -146,6 +146,31 @@
     path: /proc/sys/net/core/bpf_jit_harden
   register: _baseline_bpf_jit_sysctl
 
+- name: Ensure the boot module list directory
+  ansible.builtin.file:
+    path: /etc/modules-load.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Load connection tracking before systemd-sysctl at boot
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/vpn-conntrack.conf
+    content: "nf_conntrack\n"
+    owner: root
+    group: root
+    mode: "0644"
+
+# A fresh host has no firewall rule yet, so the module and its sysctl keys are absent.
+- name: Load connection tracking before its sysctl budget is applied
+  ansible.builtin.command:
+    argv: [/usr/sbin/modprobe, nf_conntrack]
+  changed_when: false
+  when:
+    - ansible_facts.get("virtualization_type", "") not in ["docker", "podman", "lxc", "container", "containerd"]
+    - not ansible_check_mode
+
 - name: Drop sysctl tuning
   ansible.builtin.template:
     src: sysctl-vpn.conf.j2
