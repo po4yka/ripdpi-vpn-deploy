@@ -10,14 +10,13 @@ from pathlib import Path
 
 import pytest
 
+from tests.unit import test_field_report_ingest
 from tests.unit.test_emit_bundle_host_selection import (
     test_bundle_uses_feature_host_and_emits_ingress_topology as _emit_setup,
 )
-from tests.unit.test_field_report_ingest import (  # noqa: F401 - ingest is a fixture
-    GOLDEN,
-    _post,
-    ingest,
-)
+from tests.unit.test_field_report_ingest import GOLDEN, _post
+
+ingest = test_field_report_ingest.ingest  # shared fixture; pytest collects it from this module's namespace
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -220,7 +219,7 @@ def _rotate(tmp_path: Path, secrets: Path, **extra_env: str) -> subprocess.Compl
                           text=True, timeout=30)
 
 
-def test_rotation_keeps_one_previous_token_and_the_ingest_honours_the_overlap(tmp_path, ingest):  # noqa: F811
+def test_rotation_keeps_one_previous_token_and_the_ingest_honours_the_overlap(tmp_path, ingest):
     secrets = tmp_path / "prod.secrets.sops.json"
     secrets.write_text(json.dumps({"other": "kept"}))
     secrets.chmod(0o600)

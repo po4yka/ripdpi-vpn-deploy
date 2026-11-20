@@ -426,6 +426,7 @@ def make_handler(ingest: Ingest):
             try:
                 self.connection.shutdown(socket.SHUT_RDWR)
             except OSError:
+                # The peer or finish() already closed the socket, so there is nothing left to unblock.
                 pass
 
         def finish(self):

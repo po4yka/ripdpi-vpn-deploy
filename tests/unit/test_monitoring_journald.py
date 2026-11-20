@@ -22,7 +22,7 @@ def test_journald_policy_keeps_fourteen_days_within_a_one_gigabyte_budget() -> N
     policy.optionxform = str
     defaults = yaml.safe_load(DEFAULTS.read_text(encoding="utf-8"))
     policy.read_string(
-        Environment(undefined=StrictUndefined).from_string(dropin["content"]).render(defaults)
+        Environment(undefined=StrictUndefined, autoescape=True).from_string(dropin["content"]).render(defaults)
     )
 
     assert dropin["dest"] == "/etc/systemd/journald.conf.d/vpn.conf"
