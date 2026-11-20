@@ -20,6 +20,7 @@ import datetime as dt
 import hashlib
 import importlib.util
 import json
+import re
 import socket
 import threading
 import time
@@ -479,15 +480,20 @@ def test_wrong_route_rejected(service):
 # ---------------------------------------------------------------------------
 # X-Real-IP forwarding
 # ---------------------------------------------------------------------------
-def test_x_real_ip_preferred_over_peer(service):
+def test_audit_groups_by_forwarded_source_without_storing_an_address(service):
     token = "xri10000xri10000"
     service.place("sub", token, b"payload")
     service.get(f"/sub/{token}", headers={"X-Real-IP": "203.0.113.7"})
+    service.get(f"/sub/{token}", headers={"X-Real-IP": "203.0.113.7"})
+    service.get(f"/sub/{token}", headers={"X-Real-IP": "203.0.113.8"})
+    service.get(f"/sub/{token}")  # the loopback peer itself
 
-    rec = service.reads()[-1]
-    assert rec["src_ip"] == "203.0.113.7"
-    # peer is loopback — make sure we're not just reading from there
-    assert rec["src_ip"] != "127.0.0.1"
+    first, repeat, other, peer = (rec["src_hash"] for rec in service.reads()[-4:])
+    assert re.fullmatch(r"[0-9a-f]{16}", first)
+    assert first == repeat
+    assert len({first, other, peer}) == 3
+    log = service.reads_log.read_text()
+    assert "203.0.113." not in log and "127.0.0.1" not in log
 
 
 def test_audit_record_shape_locked(service):
@@ -503,7 +509,7 @@ def test_audit_record_shape_locked(service):
         "route",
         "token_prefix",
         "outcome",
-        "src_ip",
+        "src_hash",
         "bytes",
     }
     assert isinstance(rec["ts"], int)

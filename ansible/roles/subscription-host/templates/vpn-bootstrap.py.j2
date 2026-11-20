@@ -16,8 +16,8 @@ Three properties matter:
 
   * Audit log of reads. One JSONL record per successful or rejected
     fetch, written to reads_log. Records carry only the hash prefix
-    (first 8 chars), source IP, route, and bytes — enough to detect
-    mass-pull patterns without leaking secrets to disk.
+    (first 8 chars), a keyed source hash, route, and bytes — enough to
+    detect mass-pull patterns without leaking secrets or addresses to disk.
 
 Revocation: the file revoked_file holds one hash per line. The service
 reloads it on every request so updates take effect instantly without
@@ -71,6 +71,9 @@ MAX_DOCUMENT_BYTES = 6 * 1024 * 1024
 PATH_RE = re.compile(r"^/(bootstrap|sub)/([A-Za-z0-9_-]{16,64})$")
 
 _lock = threading.Lock()
+# The key lives only in this process: records of one service run group by
+# source, and a copied disk cannot link a grant to a client address.
+_SOURCE_KEY = os.urandom(32)
 # The tombstone directory is immutable for this service process. A replacement
 # after startup is unsafe because it could hide a previously consumed token.
 _consumption_directory_identity: tuple[int, int] | None = None
@@ -124,7 +127,7 @@ def _audit(route: str, token_hash: str, outcome: str, src_ip: str, n_bytes: int)
         "route": route,
         "token_prefix": token_hash[:8],
         "outcome": outcome,
-        "src_ip": src_ip,
+        "src_hash": hashlib.blake2s(src_ip.encode(), key=_SOURCE_KEY, digest_size=8).hexdigest(),
         "bytes": n_bytes,
     }
     try:

@@ -1,5 +1,11 @@
-# Per-IP delivery rate limit and bounded categorical diagnostics.
-limit_req_zone $binary_remote_addr zone=vpn_sub_per_ip:10m rate={{ subscription.rate_limit | default('5r/m') }};
+# Per-source delivery rate limit and bounded categorical diagnostics.
+# An IPv6 host can use any address inside its /64, so the first 8 bytes are
+# the key; IPv4 keeps the whole address.
+map $binary_remote_addr $vpn_sub_limit_key {
+    default $binary_remote_addr;
+    "~(?s)^(?<vpn_sub_v6_net>.{8}).{8}$" $vpn_sub_v6_net;
+}
+limit_req_zone $vpn_sub_limit_key zone=vpn_sub_per_ip:10m rate={{ subscription.rate_limit | default('5r/m') }};
 {% if subscription_field_report.enabled | default(false) %}
 # Field reports: a separate per-address zone held in nginx shared memory only.
 limit_req_zone $binary_remote_addr zone=vpn_field_report_per_ip:10m rate={{ subscription_field_report.nginx_rate }};

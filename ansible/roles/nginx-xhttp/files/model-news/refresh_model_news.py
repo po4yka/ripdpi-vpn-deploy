@@ -14,9 +14,11 @@ from __future__ import annotations
 import glob
 import html
 import http.client
+import ipaddress
 import json
 import os
 import signal
+import socket
 import sys
 import unicodedata
 import urllib.parse
@@ -41,8 +43,13 @@ FORBIDDEN = ("vpn", "proxy", "xray", "hysteria", "amnezia", "/admin", "/metrics"
 
 class HttpsOnlyRedirects(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        if urllib.parse.urlsplit(newurl).scheme != "https":
+        target = urllib.parse.urlsplit(newurl)
+        if target.scheme != "https":
             raise ValueError("redirect leaves https")
+        # A source must not steer this host to loopback, private or tailnet services.
+        for *_rest, address in socket.getaddrinfo(target.hostname, target.port or 443, type=socket.SOCK_STREAM):
+            if not ipaddress.ip_address(address[0]).is_global:
+                raise ValueError("redirect leaves the public internet")
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 

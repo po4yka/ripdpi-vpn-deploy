@@ -9,7 +9,7 @@ nginx_xhttp:
 subscription:
   port: 8444
   rate_limit: "5r/m"
-  rate_burst: 3
+  rate_burst: 20
   enable_bootstrap: true
   revoked_tokens:
     - "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
