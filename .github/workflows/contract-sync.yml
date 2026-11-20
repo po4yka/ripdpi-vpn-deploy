@@ -48,51 +48,48 @@ jobs:
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
-      - name: Check out the client contract
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          repository: po4yka/RIPDPI
-          ref: ${{ steps.client-pin.outputs.sha || 'main' }}
-          path: client
-          sparse-checkout: core/data/src/test/resources/contract
-          persist-credentials: false
-
       - name: Compare client vendored contract against this repo's SoT
+        shell: bash
         env:
+          CLIENT_REF: ${{ steps.client-pin.outputs.sha || 'refs/heads/main' }}
           CLIENT_CONTRACT_DIR: core/data/src/test/resources/contract
         run: |
           set -euo pipefail
 
-          client_dir="client/${CLIENT_CONTRACT_DIR}"
-          if [ ! -d "${client_dir}" ]; then
-            echo "::error title=missing client dir::${CLIENT_CONTRACT_DIR} not found in po4yka/RIPDPI (renamed or removed?)."
+          # Read the pinned client revision as data. Never check out its tree
+          # or run any code from it in this workflow.
+          peer="$(mktemp -d)"
+          git init --bare --quiet "$peer"
+          git -C "$peer" remote add origin https://github.com/po4yka/RIPDPI.git
+          git -C "$peer" fetch --quiet --depth 1 --no-tags --filter=blob:none origin "$CLIENT_REF"
+          client_tree="FETCH_HEAD:${CLIENT_CONTRACT_DIR}"
+          if [[ "$(git -C "$peer" cat-file -t "$client_tree")" != tree ]]; then
+            echo "::error title=missing client dir::${CLIENT_CONTRACT_DIR} not found in po4yka/RIPDPI."
             exit 1
           fi
+          git -C "$peer" ls-tree --full-tree -rz --name-only "$client_tree" > "$peer/paths"
           fail=0
 
-          # Every SoT file (except docs) must be byte-identical in the client.
-          while IFS= read -r f; do
+          # Compare Git blob identities for raw file bytes without downloading peer blobs.
+          while IFS= read -r -d '' f; do
             rel="${f#contract/}"
             case "$rel" in README.md|*/README.md) continue ;; esac
-            cf="${client_dir}/${rel}"
-            if [ ! -f "$cf" ]; then
+            if ! client_blob="$(git -C "$peer" rev-parse --verify --quiet "$client_tree/$rel")"; then
               echo "::error title=missing vendored file::client lacks ${rel}; vendor it from contract/${rel}."
               fail=1
-            elif ! cmp -s "$f" "$cf"; then
+            elif [[ "$client_blob" != "$(git hash-object --no-filters -- "$f")" ]]; then
               echo "::error title=contract drift::contract/${rel} differs from the client vendored copy; re-vendor byte-for-byte."
               fail=1
             fi
-          done < <(find contract -type f | sort)
+          done < <(find contract -type f -print0)
 
-          # Flag client-vendored files that no longer exist in the SoT.
-          while IFS= read -r cf; do
-            rel="${cf#"${client_dir}/"}"
+          while IFS= read -r -d '' rel; do
             case "$rel" in README.md|*/README.md|vendored-deploy-contracts.sha256) continue ;; esac
             if [ ! -f "contract/${rel}" ]; then
               echo "::error title=orphan vendored file::client vendors ${rel} but it no longer exists in contract/; remove it."
               fail=1
             fi
-          done < <(find "${client_dir}" -type f | sort)
+          done < "$peer/paths"
 
           if [ "$fail" -eq 0 ]; then
             echo "contract-sync: OK — client vendored copy is byte-identical to the SoT."
