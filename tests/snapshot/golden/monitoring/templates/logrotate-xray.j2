@@ -4,11 +4,8 @@
     compress
     missingok
     notifempty
-    create 0640 xray xray
-    sharedscripts
-    postrotate
-        if systemctl is-active --quiet xray.service; then
-            python3 -Es /usr/local/libexec/ripdpi-transport-egress/generation.py recover --config /etc/ripdpi/transport-egress/generation.json --normalizer-config /etc/ripdpi/transport-egress/normalizer.json --unit xray.service
-        fi
-    endscript
+    # Xray appends through a descriptor it holds while the log is busy and has
+    # no reopen signal, so truncate in place. A postrotate restart here dropped
+    # every client session daily.
+    copytruncate
 }

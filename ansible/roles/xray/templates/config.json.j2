@@ -107,7 +107,7 @@
         "enabled": true,
         "destOverride": ["http", "tls", "quic"],
         "metadataOnly": false,
-        "routeOnly": false
+        "routeOnly": true
       }
     }{% if not loop.last %},{% endif %}
     {%- endfor %}
@@ -142,7 +142,8 @@
       "sniffing": {
         "enabled": true,
         "destOverride": ["http", "tls"],
-        "metadataOnly": false
+        "metadataOnly": false,
+        "routeOnly": true
       }
     }{% endif %}
   ],
@@ -262,8 +263,7 @@
         "handshake": 4,
         "connIdle": 300,
         "uplinkOnly": 2,
-        "downlinkOnly": 5,
-        "bufferSize": 4
+        "downlinkOnly": 5
       }
     },
     "system": {

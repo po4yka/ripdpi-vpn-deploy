@@ -2,17 +2,14 @@
 
 ## Design decisions
 
-Postrotate control tags must preserve shell line separators with Ansible's
-trim_blocks setting. The rendered script is checked by the native shell.
-
-
 Monitoring owns the root-only writable textfile ancestor as well as its shared child. Standalone sender and collector convergence use that same task before publishing metrics; recursive directory creation must not give the ancestor shared-writer permissions.
 
-Xray log retention follows the effective service, including XHTTP-only hosts. Guarded log rotation requests targeted recovery from the generation controller and propagates refusal; unguarded services retain direct restart. Retirement grants only the exact diagnostic textfile to the exporter account.
+Xray log retention follows the effective service, including XHTTP-only hosts. Retirement grants only the exact diagnostic textfile to the exporter account.
 Build the owner map as a complete Jinja dictionary expression. Ansible does not
 expand expressions inside YAML mapping keys.
 
-Xray rotation preserves the explicit 0640 writer/log-reader group contract.
+Xray rotation preserves the explicit 0640 writer/log-reader group contract:
+`copytruncate` keeps the provisioned inode, owner and mode.
 The capability-bounded policy service joins that group; logs have no other
 reader grant. Naive logs and watchdog budgets have no group reader and stay 0600.
 
@@ -43,13 +40,7 @@ runs as node_exporter's own account (`prometheus` by default,
 `monitoring.node_exporter_user`) so its atomic textfile can remain 0600
 instead of granting group or world read access.
 
-**Xray rotation requires admitted recovery** — the pinned runtime has no
-supported HUP log-reopen contract. Rotation recovers only an active Xray through
-the generation controller when guarded. Unguarded services restart directly and
-require active state afterward; either failure propagates from logrotate.
-The guarded branch uses the transport egress preparation predicate, not the
-optional `enable_transport_egress` key: profiles replace the `vpn` map, and a
-direct restart under the controller restarts the whole protected generation.
+**Xray rotation never restarts Xray** — the pinned runtime has no log-reopen signal and holds a busy log open with `O_APPEND` (it reopens by path only after an idle minute), so the policy uses `copytruncate` and runs no script. The earlier `postrotate` recovery restarted Xray on every TCP node at the same daily minute and dropped all client sessions. Lines written between the copy and the truncate can be lost; that is accepted for diagnostic logs.
 
 ## What's done well
 

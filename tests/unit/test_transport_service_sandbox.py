@@ -68,6 +68,17 @@ def test_public_proxy_units_restrict_socket_families() -> None:
         assert "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK" in unit, rel
 
 
+def test_xray_unit_hides_host_state_and_stays_below_the_host_file_table() -> None:
+    unit = (REPO_ROOT / "ansible/roles/xray/templates/xray.service.j2").read_text().splitlines()
+    for directive in ("ProtectProc=invisible", "PrivateDevices=yes", "ProtectClock=yes",
+                      "ProtectKernelLogs=yes", "ProtectHostname=yes", "UMask=0077"):
+        assert directive in unit, directive
+    sysctl = (REPO_ROOT / "ansible/roles/baseline/templates/sysctl-vpn.conf.j2").read_text()
+    file_max = next(int(line.split("=")[1]) for line in sysctl.splitlines() if line.startswith("fs.file-max"))
+    limit = next(int(line.split("=")[1]) for line in unit if line.startswith("LimitNOFILE="))
+    assert limit < file_max
+
+
 def test_public_tls_coordinator_can_inspect_cross_uid_nginx_workers():
     unit = (REPO_ROOT / 'ansible/roles/nginx-xhttp/templates/vpn-public-tls.service.j2').read_text()
     capabilities = next(line.split('=', 1)[1].split() for line in unit.splitlines()

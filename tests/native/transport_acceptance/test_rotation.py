@@ -1,4 +1,4 @@
-"""Actual logrotate must recover the running exact Xray and fresh client traffic."""
+"""Actual logrotate must leave the running exact Xray and its client traffic alone."""
 
 import importlib.util
 from pathlib import Path
@@ -12,7 +12,7 @@ from template_render import render_template
 pytestmark = pytest.mark.native_runtime
 
 
-def test_nonempty_native_log_rotation_recovers_authenticated_xray(tmp_path):
+def test_nonempty_native_log_rotation_keeps_authenticated_xray_running(tmp_path):
     spec = importlib.util.spec_from_file_location(
         "four_rotation_lab",
         ROOT / "tests/integration/transport_runtime_acceptance/fixture.py",
@@ -39,9 +39,9 @@ def test_nonempty_native_log_rotation_recovers_authenticated_xray(tmp_path):
             capture_output=True,
             timeout=90,
         )
-        assert observed.returncode == 0, "native-logrotate-recovery-refused"
+        assert observed.returncode == 0, "native-logrotate-refused"
         assert fields("xray.service")["ActiveState"] == "active"
-        assert fields("xray.service")["MainPID"] != before
+        assert fields("xray.service")["MainPID"] == before
         Adapter(
             [],
             parameters["probe_url"],

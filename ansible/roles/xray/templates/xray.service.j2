@@ -22,7 +22,9 @@ ExecStart={{ xray_runtime_binary }} run -config {{ xray_etc_dir }}/config.json
 Restart=on-failure
 RestartSec=5s
 
-LimitNOFILE=1048576
+# Stay below the host fs.file-max so Xray alone cannot exhaust the file table.
+LimitNOFILE=524288
+UMask=0077
 
 PrivateTmp=true
 ProtectHome=true
@@ -30,6 +32,11 @@ ProtectSystem=strict
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+PrivateDevices=yes
 RestrictNamespaces=yes
 MemoryDenyWriteExecute=yes
 LockPersonality=yes
