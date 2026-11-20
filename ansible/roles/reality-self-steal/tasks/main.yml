@@ -54,8 +54,8 @@
         or 'prod' not in [env | default(''), vpn_build_environment | default('')]
     fail_msg: >-
       Production hosts refuse the repository-bundled self-steal site: set
-      reality_self_steal_public_site_dir to a controller-local directory holding the
-      operator-owned static site (at least index.html and 404.html).
+      reality_self_steal_public_site_dir to a controller-local site bundle whose site/
+      directory holds the operator-owned static site (make public-site-build).
   when: reality_self_steal_role_enabled | bool
 
 - name: Derive the immutable TLS release path

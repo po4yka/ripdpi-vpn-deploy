@@ -1,7 +1,7 @@
 ---
 - name: Enumerate the operator-owned self-steal site on the controller
   ansible.builtin.find:
-    paths: ['{{ reality_self_steal_public_site_dir }}']
+    paths: ['{{ reality_self_steal_public_site_dir }}/site']
     recurse: true
     file_type: any
     hidden: true
@@ -16,9 +16,9 @@
   ansible.builtin.set_fact:
     _self_steal_operator_files: >-
       {{ (_self_steal_operator_site.files | default([])) | selectattr('isreg') | map(attribute='path')
-         | map('relpath', reality_self_steal_public_site_dir)
+         | map('relpath', reality_self_steal_public_site_dir ~ '/site')
          | reject('search', '(^|/)\.(?!well-known(/|$))') | sort }}
     _self_steal_operator_dirs: >-
       {{ (_self_steal_operator_site.files | default([])) | selectattr('isdir') | map(attribute='path')
-         | map('relpath', reality_self_steal_public_site_dir)
+         | map('relpath', reality_self_steal_public_site_dir ~ '/site')
          | reject('search', '(^|/)\.(?!well-known(/|$))') | sort }}

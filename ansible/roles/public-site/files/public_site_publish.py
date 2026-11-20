@@ -3,7 +3,7 @@
 
 Usage: public_site_publish.py BUNDLES_DIR STATE_DIR
 
-BUNDLES_DIR/<sha256>/ holds backlog.tar (named by its own digest) and
+BUNDLES_DIR/<sha256>/ holds backlog.tar.gz (named by its own digest) and
 schedule.json from `make public-site-build`. STATE_DIR/<sha256>/current becomes
 a link to the latest generation whose scheduled time has passed. The result
 depends only on the bundle and the clock, so a recreated node serves the same
@@ -39,7 +39,7 @@ def members(archive: tarfile.TarFile) -> list[tuple[int, str, tarfile.TarInfo]]:
 
 
 def publish(bundle: Path, state: Path, now: float) -> None:
-    archive_path = bundle / "backlog.tar"
+    archive_path = bundle / "backlog.tar.gz"
     if hashlib.sha256(archive_path.read_bytes()).hexdigest() != bundle.name:
         raise ValueError("archive digest does not match its directory name")
     document = json.loads((bundle / "schedule.json").read_text(encoding="utf-8"))

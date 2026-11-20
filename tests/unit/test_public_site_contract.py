@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -1019,7 +1020,7 @@ def test_operator_tree_replaces_every_bundled_page_in_one_publication(tmp_path: 
     (site / "404.html").write_text("missing")
     binary = bytes(range(256)) * 3
     (site / "img" / "deep" / "logo.png").write_bytes(binary)
-    result, staged = _run_site_staging(tmp_path, {"env": "prod", "nginx_xhttp_public_site_dir": str(site)})
+    result, staged = _run_site_staging(tmp_path, {"env": "prod", "nginx_xhttp_public_site_dir": str(site.parent)})
     assert result.returncode == 0, result.stdout + result.stderr
     rows = {row["path"]: row for row in staged["files"]}
     assert rows["/var/www/public-site/index.html"]["kind"] == "file"
@@ -1038,10 +1039,104 @@ def test_operator_tree_without_the_error_page_refuses(tmp_path: Path) -> None:
     site = tmp_path / "site"
     site.mkdir()
     (site / "index.html").write_text("<h1>owned</h1>")
-    result, staged = _run_site_staging(tmp_path, {"env": "staging", "nginx_xhttp_public_site_dir": str(site)})
+    result, staged = _run_site_staging(tmp_path, {"env": "staging", "nginx_xhttp_public_site_dir": str(site.parent)})
     assert result.returncode != 0
     assert staged is None
-    assert "must contain 404.html" in result.stdout
+    assert "must contain index.html and 404.html" in result.stdout.replace("\n", " ").replace("  ", " ")
+
+
+def test_a_tree_without_the_bundle_layout_refuses(tmp_path: Path) -> None:
+    old = tmp_path / "old-layout"
+    old.mkdir()
+    (old / "index.html").write_text("<h1>owned</h1>")
+    (old / "404.html").write_text("missing")
+    result, staged = _run_site_staging(tmp_path, {"env": "staging", "nginx_xhttp_public_site_dir": str(old)})
+    assert result.returncode != 0
+    assert staged is None
+    assert "must name a site bundle" in result.stdout.replace("\n", " ").replace("  ", " ")
+
+
+def _site_roots(conf: str) -> list[str]:
+    return [root for root in re.findall(r"^\s*root (\S+);", conf, re.MULTILINE) if "acme" not in root and "model-news" not in root]
+
+
+def test_every_server_of_a_published_bundle_reads_its_served_generation() -> None:
+    digest = "ab" * 32
+    variables = renderer.merge_render_vars()
+    variables["nginx_xhttp"] = {**variables["nginx_xhttp"], "fallback_enabled": True}
+    variables["nginx_xhttp_public_port"] = 8443
+    static = _site_roots(renderer.render_template(TEMPLATE, variables))
+    assert static and set(static) == {"/var/www/public-site"}
+    variables["nginx_xhttp_public_site_dir"] = "/srv/bundle"
+    variables["public_site_published"] = {"/srv/other": digest}
+    assert _site_roots(renderer.render_template(TEMPLATE, variables)) == static
+    variables["public_site_published"] = {"/srv/bundle": digest}
+    published = _site_roots(renderer.render_template(TEMPLATE, variables))
+    assert published == [f"/var/lib/public-site/{digest}/current"] * len(static)
+
+    self_steal = REPO_ROOT / "ansible/roles/reality-self-steal/templates/site.conf.j2"
+    variables["reality_self_steal_public_site_dir"] = "/srv/bundle"
+    assert _site_roots(renderer.render_template(self_steal, variables)) == [f"/var/lib/public-site/{digest}/current"]
+    variables["public_site_published"] = {}
+    assert _site_roots(renderer.render_template(self_steal, variables)) == ["/var/www/reality-self-steal"]
+
+
+PREFLIGHT = REPO_ROOT / "ansible/playbooks/tasks/public-site-preflight.yml"
+BUNDLE_FIXTURE = REPO_ROOT / "tests/fixtures/public-site-identity"
+
+
+def _run_preflight(tmp_path: Path, variables: dict, *, check: bool = False) -> subprocess.CompletedProcess:
+    # The task file finds the script relative to playbook_dir, as site.yml does.
+    plays = tmp_path / "ansible" / "playbooks"
+    plays.mkdir(parents=True)
+    (tmp_path / "scripts").symlink_to(REPO_ROOT / "scripts")
+    play = plays / "preflight.yml"
+    play.write_text(yaml.safe_dump([{
+        "hosts": "localhost", "connection": "local", "gather_facts": False, "become": False,
+        "vars": {"ansible_python_interpreter": sys.executable, "vpn": {"enable_nginx_xhttp": True}, **variables},
+        "tasks": [{"name": "Preflight", "ansible.builtin.import_tasks": str(PREFLIGHT)}],
+    }]))
+    return subprocess.run(["ansible-playbook", "-i", "localhost,", str(play), *(["--check"] if check else [])],
+                          env={**os.environ, "ANSIBLE_RETRY_FILES_ENABLED": "0"}, cwd=tmp_path,
+                          capture_output=True, text=True, timeout=120, check=False)
+
+
+def _bundled_copy(tmp_path: Path) -> Path:
+    site = tmp_path / "copied" / "site"
+    shutil.copytree(SITE_FILES, site)
+    golden = REPO_ROOT / "tests/snapshot/golden/nginx-xhttp/templates/public-site/index.html.j2"
+    (site / "index.html").write_text(golden.read_text())
+    return site.parent
+
+
+@pytest.mark.parametrize("check", [False, True], ids=["deploy", "dry-run"])
+def test_production_preflight_refuses_a_bundle_that_copies_the_bundled_site(tmp_path: Path, check: bool) -> None:
+    result = _run_preflight(tmp_path, {
+        "env": "prod", "nginx_xhttp_public_site_dir": str(_bundled_copy(tmp_path)),
+        "public_site_canonical_url": "https://notes.example.org"}, check=check)
+    assert result.returncode != 0
+    assert "byte-identical to a file of the bundled site" in result.stdout
+
+
+def test_preflight_admits_independent_content_and_warns_about_a_short_runway(tmp_path: Path) -> None:
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import public_site
+    public_site.build(BUNDLE_FIXTURE, tmp_path / "bundle")
+    variables = {"env": "prod", "nginx_xhttp_public_site_dir": str(tmp_path / "bundle"),
+                 "public_site_canonical_url": "https://platen.example.org"}
+    result = _run_preflight(tmp_path, variables, check=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    # The fixture schedule ended in March 2026.
+    assert (f"the site bundle {tmp_path / 'bundle'} for https://platen.example.org publishes its last article in 0 days"
+            in " ".join(result.stdout.split()))
+
+
+def test_preflight_leaves_a_non_production_host_and_a_static_bundle_alone(tmp_path: Path) -> None:
+    result = _run_preflight(tmp_path, {
+        "env": "staging", "nginx_xhttp_public_site_dir": str(_bundled_copy(tmp_path)),
+        "public_site_canonical_url": "https://notes.example.org"})
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "WARNING" not in result.stdout
 
 
 @pytest.mark.parametrize("env", ["prod", "staging"])

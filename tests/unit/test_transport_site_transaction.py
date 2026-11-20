@@ -93,18 +93,26 @@ def test_site_closes_complete_protected_block_before_unrelated_roles():
     block = protected()
     names = [value.get('ansible.builtin.import_role', {}).get('name') for value in block['block']]
     assert [name for name in names if name] == ['firewall', 'intrusion_prevention', 'nginx-xhttp', 'geodata', 'tailnet-management',
-                                             'transport-egress', 'xray', 'reality-self-steal', 'nginx-xhttp', 'hysteria', 'nginx-xhttp',
+                                             'transport-egress', 'xray', 'reality-self-steal', 'nginx-xhttp', 'hysteria',
+                                             'public-site', 'public-site', 'nginx-xhttp',
                                              'nginx-xhttp', 'nginx-xhttp', 'nginx-xhttp', 'nginx-xhttp']
     assert block['block'][0]['ansible.builtin.import_tasks'] == 'tasks/transport-ingress-begin.yml'
     assert block['block'][1]['vars']['firewall_site_transaction'] is True
     assert 'always' in block['block'][1]['tags']
-    assert block['block'][-9]['ansible.builtin.import_tasks'] == 'tasks/transport-egress-activate.yml'
+    assert block['block'][-11]['ansible.builtin.import_tasks'] == 'tasks/transport-egress-activate.yml'
     # A fresh login, not the run's shared SSH master, must follow publication and precede the commit.
     proofs = [index for index, value in enumerate(block['block'])
               if value.get('ansible.builtin.import_tasks') == 'tasks/fresh-ssh-proof.yml']
-    assert proofs == [2, len(block['block']) - 8]
+    assert proofs == [2, len(block['block']) - 10]
     assert all('always' in block['block'][index]['tags'] for index in proofs)
-    assert block['block'][-7]['ansible.builtin.import_tasks'] == 'tasks/transport-ingress-commit.yml'
+    assert block['block'][-9]['ansible.builtin.import_tasks'] == 'tasks/transport-ingress-commit.yml'
+    # A restored vhost still names the previous site bundle, so its state is removed only after the commit.
+    assert [block['block'][index]['ansible.builtin.import_role']['tasks_from'] for index in (-8, -7)] == ['retire', 'absent']
+    assert [block['block'][index]['when'] for index in (-8, -7)] == [
+        "_public_site_remove_after_commit | default('') == 'retire'",
+        "_public_site_remove_after_commit | default('') == 'absent'"]
+    # The publisher runs before any vhost is rendered and before the protected block opens.
+    assert play['tasks'][0]['ansible.builtin.import_role'] == {'name': 'public-site', 'public': True}
     # Deferred news retirement and convergence run only once the protected commit has succeeded.
     assert block['block'][-6]['ansible.builtin.import_role']['tasks_from'] == 'model-news-absent'
     assert block['block'][-5]['ansible.builtin.import_role']['tasks_from'] == 'model-news'
@@ -115,7 +123,7 @@ def test_site_closes_complete_protected_block_before_unrelated_roles():
     assert finish['ansible.builtin.command']['argv'] == [
         'python3', '-Es', '/usr/local/libexec/ripdpi-consumer/firewall_consumer.py', 'finish', '--owner', 'site']
     assert finish['when'] == '_firewall_site_transaction_active | default(false) | bool'
-    assert play['tasks'][2]['ansible.builtin.import_role']['name'] == 'cdn-front'
+    assert play['tasks'][3]['ansible.builtin.import_role']['name'] == 'cdn-front'
     assert 'post_tasks' not in play
     assert block['rescue'][0]['ansible.builtin.include_tasks'] == 'tasks/transport-ingress-recover-commit.yml'
     assert block['rescue'][1]['ansible.builtin.include_role']['tasks_from'] == 'quiesce'
@@ -264,6 +272,8 @@ if action!='recover-commit':
     _write(roles / 'nginx-xhttp/tasks/model-news.yml', [])
     _write(roles / 'nginx-xhttp/tasks/routing-lists-disable.yml', [])
     _write(roles / 'nginx-xhttp/tasks/routing-lists.yml', [])
+    for name in ('retire', 'absent'):
+        _write(roles / f'public-site/tasks/{name}.yml', [])
     (root / 'firewall-policy').write_bytes(b'accepted firewall')
     _write(roles / 'firewall/tasks/main.yml', [
         {'ansible.builtin.set_fact': {'_firewall_site_transaction_active': True}},
@@ -810,8 +820,8 @@ def test_actual_ingress_declaration_has_exact_candidate_paths_and_optional_secre
     # The site journal refuses a publication path it did not declare, so an operator tree is declared file by file.
     operator = ['404.html', 'assets/site.css', 'index.html', 'notes/first.html'] if mode == 'operator-site' else []
     for name in operator:
-        (root / 'operator-site' / name).parent.mkdir(parents=True, exist_ok=True)
-        (root / 'operator-site' / name).write_text('operator page fixture')
+        (root / 'operator-site/site' / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / 'operator-site/site' / name).write_text('operator page fixture')
     tasks = root / 'roles/reality-self-steal/tasks'
     tasks.mkdir(parents=True)
     shutil.copy(ROOT / 'ansible/roles/reality-self-steal/tasks/operator-site.yml', tasks)

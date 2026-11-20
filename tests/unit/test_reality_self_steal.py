@@ -541,7 +541,7 @@ def test_operator_tree_replaces_the_bundled_self_steal_site(tmp_path: Path) -> N
     (site / "404.html").write_text("missing")
     binary = bytes(range(256)) * 3
     (site / "img" / "deep" / "logo.png").write_bytes(binary)
-    result, staged = _stage_self_steal_site(tmp_path, {"env": "prod", "reality_self_steal_public_site_dir": str(site)})
+    result, staged = _stage_self_steal_site(tmp_path, {"env": "prod", "reality_self_steal_public_site_dir": str(site.parent)})
     assert result.returncode == 0, result.stdout + result.stderr
     rows = {row["path"]: row for row in staged["files"]}
     assert {path: row["kind"] for path, row in rows.items()} == {
@@ -554,13 +554,24 @@ def test_operator_tree_replaces_the_bundled_self_steal_site(tmp_path: Path) -> N
     assert "<h1>owned</h1>" not in result.stdout
 
 
+def test_a_self_steal_tree_without_the_bundle_layout_refuses(tmp_path: Path) -> None:
+    old = tmp_path / "old-layout"
+    old.mkdir()
+    for name in ("index.html", "404.html"):
+        (old / name).write_text("page")
+    result, staged = _stage_self_steal_site(tmp_path, {"env": "staging", "reality_self_steal_public_site_dir": str(old)})
+    assert result.returncode != 0
+    assert staged is None
+    assert "must name a site bundle" in result.stdout.replace("\n", " ").replace("  ", " ")
+
+
 @pytest.mark.parametrize("missing", ["index.html", "404.html"])
 def test_operator_tree_without_a_required_page_refuses(tmp_path: Path, missing: str) -> None:
     site = tmp_path / "site"
     site.mkdir()
     for name in {"index.html", "404.html"} - {missing}:
         (site / name).write_text("page")
-    result, staged = _stage_self_steal_site(tmp_path, {"env": "staging", "reality_self_steal_public_site_dir": str(site)})
+    result, staged = _stage_self_steal_site(tmp_path, {"env": "staging", "reality_self_steal_public_site_dir": str(site.parent)})
     assert result.returncode != 0
     assert staged is None
     assert "must contain index.html and 404.html" in result.stdout.replace("\n", " ").replace("  ", " ")

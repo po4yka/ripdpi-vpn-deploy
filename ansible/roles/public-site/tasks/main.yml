@@ -10,7 +10,7 @@
 
 - name: Inspect each bundle archive on the controller
   ansible.builtin.stat:
-    path: "{{ item }}/backlog.tar"
+    path: "{{ item }}/backlog.tar.gz"
     follow: false
     checksum_algorithm: sha256
   loop: "{{ public_site_bundle_dirs | unique }}"
@@ -21,7 +21,7 @@
 - name: Refuse a bundle archive that is not a regular file
   ansible.builtin.assert:
     that: _public_site_archive_stats.results | selectattr('stat.exists') | rejectattr('stat.isreg') | list | length == 0
-    fail_msg: A site bundle's backlog.tar must be a regular file.
+    fail_msg: A site bundle's backlog.tar.gz must be a regular file.
 
 # The vhost roles read this map to name the served generation of their bundle.
 # One archive digest has one delivery directory, whichever bundle directory named it.

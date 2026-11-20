@@ -98,12 +98,15 @@ def test_rejects_data_plane_and_protocol_overrides(tmp_path: Path, key: str) -> 
 def test_accepts_owned_public_site_and_detects_content_changes(tmp_path):
     site = tmp_path / "site"
     site.mkdir(mode=0o700)
-    (site / "404.html").write_bytes(b"ordinary missing page")
-    (site / "index.html").write_bytes(b"public article")
+    tree = site / "site"
+    tree.mkdir(mode=0o700)
+    (tree / "index.html").write_bytes(b"index page")
+    (tree / "404.html").write_bytes(b"ordinary missing page")
+    (tree / "index.html").write_bytes(b"public article")
     validator.validate(write_yaml(tmp_path, {"nginx_xhttp_public_site_dir": str(site)}))
     entries, before = validator.read_site(str(site))
-    assert entries["index.html"] == b"public article"
-    (site / "index.html").write_bytes(b"changed article")
+    assert entries["site/index.html"] == b"public article"
+    (tree / "index.html").write_bytes(b"changed article")
     assert validator.read_site(str(site))[1] != before
 
 
@@ -112,7 +115,10 @@ def test_accepts_owned_public_site_and_detects_content_changes(tmp_path):
 def test_rejects_unsafe_public_site_tree(tmp_path, fault):
     site = tmp_path / "site"
     site.mkdir(mode=0o700)
-    error = site / "404.html"
+    tree = site / "site"
+    tree.mkdir(mode=0o700)
+    (tree / "index.html").write_bytes(b"index page")
+    error = tree / "404.html"
     error.write_bytes(b"missing page")
     if fault == "relative":
         value = "relative-site"
@@ -126,15 +132,15 @@ def test_rejects_unsafe_public_site_tree(tmp_path, fault):
     else:
         value = str(site)
         if fault == "file-link":
-            (site / "article.html").symlink_to(error)
+            (tree / "article.html").symlink_to(error)
         elif fault == "hardlink":
-            os.link(error, site / "article.html")
+            os.link(error, tree / "article.html")
         elif fault == "fifo":
-            os.mkfifo(site / "pipe")
+            os.mkfifo(tree / "pipe")
         elif fault == "writable":
             error.chmod(0o666)
         elif fault == "hidden":
-            (site / ".env").write_bytes(b"private data")
+            (tree / ".env").write_bytes(b"private data")
     with pytest.raises(ValueError, match="public site"):
         validator.validate(write_yaml(tmp_path, {"nginx_xhttp_public_site_dir": value}))
 
@@ -142,7 +148,10 @@ def test_rejects_unsafe_public_site_tree(tmp_path, fault):
 def test_rejects_foreign_owned_public_site(tmp_path, monkeypatch):
     site = tmp_path / "site"
     site.mkdir(mode=0o700)
-    (site / "404.html").write_bytes(b"missing page")
+    tree = site / "site"
+    tree.mkdir(mode=0o700)
+    (tree / "index.html").write_bytes(b"index page")
+    (tree / "404.html").write_bytes(b"missing page")
     uid = os.geteuid()
     monkeypatch.setattr(os, "geteuid", lambda: uid + 1)
     with pytest.raises(ValueError, match="public site"):
@@ -152,7 +161,10 @@ def test_rejects_foreign_owned_public_site(tmp_path, monkeypatch):
 def test_rejects_oversized_public_site_file(tmp_path):
     site = tmp_path / "site"
     site.mkdir(mode=0o700)
-    with (site / "404.html").open("wb") as stream:
+    tree = site / "site"
+    tree.mkdir(mode=0o700)
+    (tree / "index.html").write_bytes(b"index page")
+    with (tree / "404.html").open("wb") as stream:
         stream.truncate(4 * 1024 * 1024 + 1)
     with pytest.raises(ValueError, match="public site"):
         validator.read_site(str(site))
@@ -162,10 +174,13 @@ def test_rejects_oversized_public_site_file(tmp_path):
 def test_public_site_tree_limits_are_enforced(tmp_path, limit):
     site = tmp_path / "site"
     site.mkdir(mode=0o700)
-    (site / "404.html").write_bytes(b"missing page")
+    tree = site / "site"
+    tree.mkdir(mode=0o700)
+    (tree / "index.html").write_bytes(b"index page")
+    (tree / "404.html").write_bytes(b"missing page")
     if limit == "entries":
         for i in range(1024):
-            (site / f"page-{i}.html").write_bytes(b"page")
+            (tree / f"page-{i}.html").write_bytes(b"page")
     elif limit == "depth":
         child = site
         for _ in range(17):
@@ -173,7 +188,7 @@ def test_public_site_tree_limits_are_enforced(tmp_path, limit):
             child.mkdir(mode=0o700)
     else:
         for i in range(4):
-            with (site / f"asset-{i}").open("wb") as stream:
+            with (tree / f"asset-{i}").open("wb") as stream:
                 stream.truncate(4 * 1024 * 1024)
     with pytest.raises(ValueError, match="limit"):
         validator.read_site(str(site))
@@ -379,7 +394,10 @@ def test_liveness_sentinel_awg_inputs_arrive_as_one_verified_set(tmp_path, mutat
 def test_accepts_the_self_steal_site_and_the_tls_identity_record(tmp_path: Path) -> None:
     site = tmp_path / "site"
     site.mkdir(mode=0o700)
-    (site / "404.html").write_bytes(b"ordinary missing page")
+    tree = site / "site"
+    tree.mkdir(mode=0o700)
+    (tree / "index.html").write_bytes(b"index page")
+    (tree / "404.html").write_bytes(b"ordinary missing page")
     validator.validate(write_yaml(tmp_path, {
         "reality_self_steal_public_site_dir": str(site), "reality_target_network": "different_asn",
         "tls_identity_exception": "measured 2026-11-01: path keeps both listeners"}))

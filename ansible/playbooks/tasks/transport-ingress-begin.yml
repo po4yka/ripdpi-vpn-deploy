@@ -16,7 +16,7 @@
 
 - name: Read the operator-owned public site layout before declaring its paths
   ansible.builtin.find:
-    paths: ['{{ nginx_xhttp_public_site_dir }}']
+    paths: ['{{ nginx_xhttp_public_site_dir }}/site']
     recurse: true
     file_type: file
   register: _transport_ingress_public_site
@@ -50,7 +50,7 @@
                 '/var/www/public-site/feed.xml', '/var/www/public-site/robots.txt',
                 '/var/www/public-site/sitemap.xml', '/var/www/public-site/.well-known/security.txt']
                    + ((_transport_ingress_public_site.files | default([])) | map(attribute='path')
-                      | map('relpath', nginx_xhttp_public_site_dir | default('/'))
+                      | map('relpath', (nginx_xhttp_public_site_dir | default('')) ~ '/site')
                       | map('regex_replace', '^', '/var/www/public-site/') | list)) | unique
                   if ((vpn.enable_nginx_xhttp | default(true) | bool)
                       and not (vpn_subscription_only | default(false) | bool)) else [])

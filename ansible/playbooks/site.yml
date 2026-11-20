@@ -237,6 +237,10 @@
       ansible.builtin.import_tasks: tasks/tls-identity-preflight.yml
       tags: [always]
 
+    - name: Preflight the operator-owned public site bundles
+      ansible.builtin.import_tasks: tasks/public-site-preflight.yml
+      tags: [always]
+
     - name: Admit the provider and runtime public listener contract
       ansible.builtin.import_tasks: tasks/public-listener-preflight.yml
       tags: [always]
@@ -298,6 +302,24 @@
       tags: [baseline, security, updates]
 
   tasks:
+    # A vhost names the served generation by archive digest, so the generation
+    # exists before any vhost is rendered. The role only adds state here; the
+    # removal of a replaced bundle follows the protected commit below.
+    - name: Publish the scheduled generation of each site bundle
+      ansible.builtin.import_role:
+        name: public-site
+        public: true
+      vars:
+        public_site_bundle_dirs: >-
+          {{ (([nginx_xhttp_public_site_dir | default('')]
+               if ((vpn.enable_nginx_xhttp | default(true) | bool) and not (vpn_subscription_only | default(false) | bool))
+               else [])
+              + ([reality_self_steal_public_site_dir | default('')]
+                 if ((vpn.enable_reality_self_steal | default(false) | bool)
+                     and not (vpn_subscription_only | default(false) | bool)) else []))
+             | select | unique | list }}
+      tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
+
     - name: Install inert managed public TLS prerequisites before ingress capture
       ansible.builtin.import_role:
         name: nginx-xhttp
@@ -413,6 +435,20 @@
           tags: [always]
         - name: Commit the ready protected ingress and egress composition
           ansible.builtin.import_tasks: tasks/transport-ingress-commit.yml
+          tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
+        - name: Remove replaced site bundles after the protected commit
+          ansible.builtin.import_role:
+            name: public-site
+            tasks_from: retire
+            public: true
+          when: _public_site_remove_after_commit | default('') == 'retire'
+          tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
+        - name: Retire the site publisher after the protected commit
+          ansible.builtin.import_role:
+            name: public-site
+            tasks_from: absent
+            public: true
+          when: _public_site_remove_after_commit | default('') == 'absent'
           tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
         - name: Retire the model news page after the protected commit
           ansible.builtin.import_role:

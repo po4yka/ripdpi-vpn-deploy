@@ -47,7 +47,7 @@
     - name: Read the delivered archive mode
       ansible.builtin.find:
         paths: /etc/public-site
-        patterns: backlog.tar
+        patterns: backlog.tar.gz
         recurse: true
       register: archives
 

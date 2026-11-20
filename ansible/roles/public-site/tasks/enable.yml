@@ -26,6 +26,7 @@
     - {path: /etc/public-site, owner: root, group: public-site, mode: "0750"}
     # Setgid, so files the publisher writes inherit nginx's group.
     - {path: /var/lib/public-site, owner: public-site, group: www-data, mode: "2750"}
+  register: _public_site_directories
 
 - name: Create one bundle directory for each archive digest
   ansible.builtin.file:
@@ -37,6 +38,14 @@
   loop: "{{ public_site_published.values() | unique }}"
   loop_control:
     label: "{{ item[:12] }}"
+  register: _public_site_bundle_directories
+
+# A check-mode run cannot copy into a directory that it only predicted.
+- name: Record whether check mode predicted a missing directory
+  ansible.builtin.set_fact:
+    _public_site_can_deliver: >-
+      {{ not ansible_check_mode
+         or not (_public_site_directories is changed or _public_site_bundle_directories is changed) }}
 
 - name: Install the public site publisher
   ansible.builtin.copy:
@@ -45,6 +54,7 @@
     owner: root
     group: root
     mode: "0755"
+  when: _public_site_can_deliver
 
 # Future generations are unpublished content: only the publisher's group reads them.
 - name: Deliver each bundle archive and schedule
@@ -57,9 +67,10 @@
   # Keyed by digest: two bundle directories with one archive are delivered once.
   loop: >-
     {{ dict(public_site_published.values() | zip(public_site_published.keys())) | dict2items
-       | product(['backlog.tar', 'schedule.json']) | list }}
+       | product(['backlog.tar.gz', 'schedule.json']) | list }}
   loop_control:
     label: "{{ item.0.key[:12] }}/{{ item.1 }}"
+  when: _public_site_can_deliver
 
 - name: Install the public site publisher units
   ansible.builtin.template:
@@ -80,12 +91,15 @@
 
 # The run happens inside the unit's sandbox. Its result is a function of the
 # bundle and the clock, not of this deploy, so it is not reported as a change.
-# The unit fails when any delivered bundle is refused, and that stops the deploy.
+# The unit also fails for a refused bundle that only waits for removal, which
+# must not stop the deploy that removes it; the next two tasks judge the
+# bundles that this deploy serves.
 - name: Publish the scheduled generation before a vhost names it
   ansible.builtin.systemd_service:
     name: public-site-publish.service
     state: started
   changed_when: false
+  failed_when: false
   when: not ansible_check_mode
 
 - name: Inspect the served generation of each bundle

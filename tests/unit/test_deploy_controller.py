@@ -836,8 +836,9 @@ print('{{"summary": {{"validation": "valid"}}, "plan": {{}}}}')
 def test_owned_site_is_snapshotted_for_publication_and_removed_afterward(workspace, target, key):
     root = workspace["root"]
     site = root.parent / "owned-site"
-    write(site / "404.html", "missing page")
-    write(site / "assets/style.css", "body { color: black; }")
+    write(site / "site/404.html", "missing page")
+    write(site / "site/index.html", "index page")
+    write(site / "site/assets/style.css", "body { color: black; }")
     override = write(root.parent / "site.yml", yaml.safe_dump({key: str(site)}))
     record = root.parent / "published-site.json"
     binary = Path(workspace["env"]["PATH"].split(os.pathsep)[0])
@@ -848,10 +849,10 @@ files = play[0]['vars']['deployment_input_files']['node-one']
 override = next(pathlib.Path(p) for p in files if p.endswith('-overrides.yml'))
 site = pathlib.Path(yaml.safe_load(override.read_text())[{key!r}])
 pathlib.Path({str(record)!r}).write_text(json.dumps({{
-    'path': str(site), 'page': (site / '404.html').read_text(),
-    'css': (site / 'assets/style.css').read_text(),
+    'path': str(site), 'page': (site / 'site/404.html').read_text(),
+    'css': (site / 'site/assets/style.css').read_text(),
     'directory_mode': stat.S_IMODE(site.stat().st_mode),
-    'file_mode': stat.S_IMODE((site / '404.html').stat().st_mode)}}))
+    'file_mode': stat.S_IMODE((site / 'site/404.html').stat().st_mode)}}))
 """, 0o700)
     result = invoke(workspace, target=target, limit="node-one",
                     ANSIBLE_EXTRA_VARS_FILE=str(override))
@@ -862,21 +863,23 @@ pathlib.Path({str(record)!r}).write_text(json.dumps({{
     assert published["directory_mode"] == 0o700 and published["file_mode"] == 0o600
     assert Path(published["path"]) != site
     assert not Path(published["path"]).exists()
-    assert (site / "404.html").read_text() == "missing page"
+    assert (site / "site/404.html").read_text() == "missing page"
 
 
 @pytest.mark.parametrize('changed', ['none', 'inventory', 'overrides', 'overrides-alias', 'site'])
 def test_approved_inputs_bind_actual_controller_reads_before_transport(workspace, changed):
     root = workspace['root']
     site = root.parent / 'approved-site'
-    write(site / '404.html', 'approved page')
+    write(site / 'site/404.html', 'approved page')
+    write(site / 'site/index.html', 'approved index')
     overrides = write(root.parent / 'approved-overrides.yml', yaml.safe_dump({
         'nginx_xhttp_public_site_dir': str(site), 'ansible_port': 2222}))
     paths = [workspace['inventory'], overrides]
     approved = write(root.parent / 'approved-inputs.json', json.dumps({
         'files': {str(path): {'private': True, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
                   for path in paths},
-        'trees': {str(site): {'.': None, '404.html': hashlib.sha256(b'approved page').hexdigest()}}}))
+        'trees': {str(site): {'.': None, 'site': None, 'site/404.html': hashlib.sha256(b'approved page').hexdigest(),
+                              'site/index.html': hashlib.sha256(b'approved index').hexdigest()}}}))
     workspace['env']['DEPLOY_APPROVED_INPUTS_FILE'] = str(approved)
     if changed == 'overrides-alias':
         value = json.loads(approved.read_bytes())
@@ -889,7 +892,7 @@ def test_approved_inputs_bind_actual_controller_reads_before_transport(workspace
             'inventory': (workspace['inventory'], workspace['inventory'].read_text().replace('2222', '2223')),
             'overrides': (overrides, yaml.safe_dump({'nginx_xhttp_public_site_dir': str(site), 'ansible_port': 2223})),
             'overrides-alias': (overrides, yaml.safe_dump({'nginx_xhttp_public_site_dir': str(site), 'ansible_port': 2223})),
-            'site': (site / '404.html', 'unapproved replacement'),
+            'site': (site / 'site/404.html', 'unapproved replacement'),
         }[changed]
         replacement = write(path.with_name(path.name + '.next'), content)
         os.replace(replacement, path)
@@ -907,12 +910,13 @@ def test_approved_inputs_bind_actual_controller_reads_before_transport(workspace
 def test_owned_site_change_after_precheck_refuses_before_host_contact(workspace):
     root = workspace["root"]
     site = root.parent / "owned-site"
-    write(site / "404.html", "missing page")
+    write(site / "site/404.html", "missing page")
+    write(site / "site/index.html", "index page")
     override = write(root.parent / "site.yml", yaml.safe_dump({
         "nginx_xhttp_public_site_dir": str(site)}))
     write(root / "scripts/check-certs.sh", f"""#!{sys.executable}
 from pathlib import Path
-Path({str(site / '404.html')!r}).write_text('replaced page')
+Path({str(site / 'site/404.html')!r}).write_text('replaced page')
 """, 0o700)
     result = invoke(workspace, target="dry-run", limit="node-one",
                     ANSIBLE_EXTRA_VARS_FILE=str(override))

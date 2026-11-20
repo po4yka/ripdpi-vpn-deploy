@@ -3,6 +3,6 @@
 public_site_role_enabled: true
 
 # Controller-local bundle directories from `make public-site-build`. A bundle
-# without backlog.tar is a static site and needs no publisher. An empty list
+# without backlog.tar.gz is a static site and needs no publisher. An empty list
 # removes the publisher, its state and its user.
 public_site_bundle_dirs: []

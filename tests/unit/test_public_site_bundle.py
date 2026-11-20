@@ -74,7 +74,7 @@ def test_new_refuses_an_unsafe_origin_without_writing(tmp_path: Path, origin: st
 def test_build_is_reproducible(tmp_path: Path, bundle: Path) -> None:
     public_site.build(FIXTURE, tmp_path / "again")
     assert digests(bundle) == digests(tmp_path / "again")
-    assert {"site/index.html", "site/404.html", "backlog.tar", "schedule.json"} <= set(digests(bundle))
+    assert {"site/index.html", "site/404.html", "backlog.tar.gz", "schedule.json"} <= set(digests(bundle))
 
 
 def test_build_refuses_a_link_in_its_inputs_and_writes_nothing(tmp_path: Path) -> None:
@@ -121,14 +121,14 @@ def test_each_generation_adds_one_article_with_a_later_date() -> None:
 
 def test_archive_holds_each_generation_as_a_delta_dated_by_the_schedule(bundle: Path) -> None:
     plan = {entry["n"]: entry["not_before"] for entry in json.loads((bundle / "schedule.json").read_text())["generations"]}
-    with tarfile.open(bundle / "backlog.tar") as archive:
+    with tarfile.open(bundle / "backlog.tar.gz") as archive:
         members = archive.getmembers()
     assert all(member.isreg() and member.mtime == plan[int(member.name.split("/")[1])] for member in members)
     names = [member.name for member in members]
     assert "generations/1/assets/main.css" not in names
     expected, _ = public_site.render_generations(FIXTURE)
     overlay: dict[str, bytes] = {}
-    with tarfile.open(bundle / "backlog.tar") as archive:
+    with tarfile.open(bundle / "backlog.tar.gz") as archive:
         for number, tree in enumerate(expected):
             for member in archive.getmembers():
                 if member.name.startswith(f"generations/{number}/"):
@@ -282,7 +282,7 @@ def test_a_peer_bundle_with_the_same_content_is_refused(tmp_path: Path, bundle: 
     shutil.copytree(bundle, peer)
     findings = public_site.check(bundle, ORIGIN, [peer])
     assert f"bench/cleaning-type-slugs.html: byte-identical to a file of {peer}" in findings
-    (peer / "backlog.tar").unlink()
+    (peer / "backlog.tar.gz").unlink()
     for page in (peer / "site/bench").glob("*.html"):
         page.write_text(page.read_text().replace("<h1>", "<h1>Again: "))
     assert any(line.startswith("bench/freeing-a-stuck-carriage.html: ") and f"also in {peer}" in line
@@ -294,7 +294,7 @@ def test_status_counts_unpublished_generations_and_days_left(bundle: Path) -> No
     assert public_site.status(bundle, last - 12 * 86400 - 60) == (2, 12)
     assert public_site.status(bundle, last + 1) == (0, 0)
     (bundle / "schedule.json").unlink()
-    (bundle / "backlog.tar").unlink()
+    (bundle / "backlog.tar.gz").unlink()
     assert public_site.status(bundle, 0) == (0, 0)
     assert public_site.check(bundle, ORIGIN, []) == []
     with pytest.raises(public_site.SiteError, match="not a site bundle"):

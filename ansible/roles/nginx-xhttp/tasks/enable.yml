@@ -109,12 +109,12 @@
         or 'prod' not in [env | default(''), vpn_build_environment | default('')]
     fail_msg: >-
       Production hosts refuse the repository-bundled decoy site: set
-      nginx_xhttp_public_site_dir to a controller-local directory holding the
-      operator-owned static site (at least 404.html).
+      nginx_xhttp_public_site_dir to a controller-local site bundle whose site/
+      directory holds the operator-owned static site (make public-site-build).
 
 - name: Enumerate the operator-owned public site tree on the controller
   ansible.builtin.find:
-    paths: ['{{ nginx_xhttp_public_site_dir }}']
+    paths: ['{{ nginx_xhttp_public_site_dir }}/site']
     recurse: true
     file_type: file
     hidden: true
@@ -127,7 +127,7 @@
 
 - name: Enumerate the operator-owned public site directories on the controller
   ansible.builtin.find:
-    paths: ['{{ nginx_xhttp_public_site_dir }}']
+    paths: ['{{ nginx_xhttp_public_site_dir }}/site']
     recurse: true
     file_type: directory
     hidden: true
@@ -144,16 +144,19 @@
   ansible.builtin.set_fact:
     _nginx_operator_site_paths: >-
       {{ (_nginx_operator_site_tree.files | default([]))
-         | map(attribute='path') | map('relpath', nginx_xhttp_public_site_dir | default('/'))
+         | map(attribute='path') | map('relpath', (nginx_xhttp_public_site_dir | default('')) ~ '/site')
          | reject('search', '(^|/)\.(?!well-known(/|$))') | list
          if (nginx_xhttp_public_site_dir | default('') | length > 0) else [] }}
 
 - name: Require the operator-owned tree to carry the ordinary error page
   ansible.builtin.assert:
     that:
+      - "'index.html' in _nginx_operator_site_paths"
       - "'404.html' in _nginx_operator_site_paths"
       - _nginx_operator_site_paths | select('search', '(^|/)\.\.(/|$)') | list | length == 0
-    fail_msg: nginx_xhttp_public_site_dir must contain 404.html and only paths below itself.
+    fail_msg: >-
+      nginx_xhttp_public_site_dir must name a site bundle: its site/ directory must contain index.html and 404.html
+      and only paths below itself.
   when: nginx_xhttp_public_site_dir | default('') | length > 0
 
 - name: Refuse repository-bundled bytes in the operator-owned tree
@@ -161,7 +164,7 @@
   vars:
     decoy_site_files: >-
       {{ _nginx_operator_site_tree.files | selectattr('path', 'in', _nginx_operator_site_paths
-         | map('regex_replace', '^', (nginx_xhttp_public_site_dir | regex_replace('/+$', '')) ~ '/')) }}
+         | map('regex_replace', '^', (nginx_xhttp_public_site_dir | regex_replace('/+$', '')) ~ '/site/')) }}
     decoy_site_variable: nginx_xhttp_public_site_dir
   when: nginx_xhttp_public_site_dir | default('') | length > 0
 
@@ -169,7 +172,7 @@
   ansible.builtin.set_fact:
     _nginx_public_site_parents: >-
       {{ ((_nginx_operator_site_dirs.files | default([])) | map(attribute='path')
-          | map('relpath', nginx_xhttp_public_site_dir | default('/'))
+          | map('relpath', (nginx_xhttp_public_site_dir | default('')) ~ '/site')
           | reject('search', '(^|/)\.(?!well-known(/|$))')
           | map('regex_replace', '^', '/var/www/public-site/') | list)
          if (_nginx_operator_site_paths | length > 0) else ['/var/www/public-site/assets', '/var/www/public-site/notes'] }}
@@ -297,7 +300,7 @@
     nginx_transaction_files: >-
       {{ nginx_transaction_files + [{'path': '/var/www/public-site/' ~ item,
           'kind': 'file', 'content_b64': lookup('ansible.builtin.pipe',
-            'base64 < ' ~ ((nginx_xhttp_public_site_dir ~ '/' ~ item) | quote) ~ ' | tr -d "\n"'),
+            'base64 < ' ~ ((nginx_xhttp_public_site_dir ~ '/site/' ~ item) | quote) ~ ' | tr -d "\n"'),
           'mode': '0644', 'uid': 0, 'gid': 0}] }}
   loop: '{{ _nginx_operator_site_paths }}'
   when: _nginx_operator_site_paths | length > 0

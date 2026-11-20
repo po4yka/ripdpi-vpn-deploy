@@ -278,7 +278,8 @@ def test_model_news_changes_inside_a_protected_ingress_wait_for_the_commit(
         for task in block.get("block", [block])
     ]
     commit = names.index("Commit the ready protected ingress and egress composition")
-    assert commit < names.index(post_commit_task) <= commit + 2
+    # The two public site removal tasks also follow the commit and precede these.
+    assert commit < names.index(post_commit_task) <= commit + 4
 
 
 def test_standalone_convergence_follows_the_accepted_nginx_transaction() -> None:
