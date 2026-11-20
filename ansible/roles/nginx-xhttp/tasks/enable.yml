@@ -117,6 +117,9 @@
     paths: ['{{ nginx_xhttp_public_site_dir }}']
     recurse: true
     file_type: file
+    hidden: true
+    get_checksum: true
+    checksum_algorithm: sha256
   register: _nginx_operator_site_tree
   delegate_to: localhost
   become: false
@@ -127,6 +130,7 @@
     paths: ['{{ nginx_xhttp_public_site_dir }}']
     recurse: true
     file_type: directory
+    hidden: true
   register: _nginx_operator_site_dirs
   delegate_to: localhost
   become: false
@@ -135,11 +139,13 @@
 - name: Load the bundled public site layout
   ansible.builtin.include_vars: '{{ role_path }}/vars/public-site.yml'
 
+# The tree is often a checkout: `.git` and other dot paths are never published.
 - name: Resolve the published public site layout
   ansible.builtin.set_fact:
     _nginx_operator_site_paths: >-
       {{ (_nginx_operator_site_tree.files | default([]))
-         | map(attribute='path') | map('relpath', nginx_xhttp_public_site_dir | default('/')) | list
+         | map(attribute='path') | map('relpath', nginx_xhttp_public_site_dir | default('/'))
+         | reject('search', '(^|/)\.(?!well-known(/|$))') | list
          if (nginx_xhttp_public_site_dir | default('') | length > 0) else [] }}
 
 - name: Require the operator-owned tree to carry the ordinary error page
@@ -150,11 +156,21 @@
     fail_msg: nginx_xhttp_public_site_dir must contain 404.html and only paths below itself.
   when: nginx_xhttp_public_site_dir | default('') | length > 0
 
+- name: Refuse repository-bundled bytes in the operator-owned tree
+  ansible.builtin.include_tasks: '{{ role_path }}/../reality-self-steal/tasks/decoy-content.yml'
+  vars:
+    decoy_site_files: >-
+      {{ _nginx_operator_site_tree.files | selectattr('path', 'in', _nginx_operator_site_paths
+         | map('regex_replace', '^', (nginx_xhttp_public_site_dir | regex_replace('/+$', '')) ~ '/')) }}
+    decoy_site_variable: nginx_xhttp_public_site_dir
+  when: nginx_xhttp_public_site_dir | default('') | length > 0
+
 - name: Resolve the public asset parent directories to prepare
   ansible.builtin.set_fact:
     _nginx_public_site_parents: >-
       {{ ((_nginx_operator_site_dirs.files | default([])) | map(attribute='path')
           | map('relpath', nginx_xhttp_public_site_dir | default('/'))
+          | reject('search', '(^|/)\.(?!well-known(/|$))')
           | map('regex_replace', '^', '/var/www/public-site/') | list)
          if (_nginx_operator_site_paths | length > 0) else ['/var/www/public-site/assets', '/var/www/public-site/notes'] }}
 
@@ -279,10 +295,11 @@
 - name: Stage the operator-owned public site in the same compensated publication
   ansible.builtin.set_fact:
     nginx_transaction_files: >-
-      {{ nginx_transaction_files + [{'path': '/var/www/public-site/' ~ (item.path | relpath(nginx_xhttp_public_site_dir)),
-          'kind': 'file', 'content_b64': lookup('ansible.builtin.pipe', 'base64 < ' ~ (item.path | quote) ~ ' | tr -d "\n"'),
+      {{ nginx_transaction_files + [{'path': '/var/www/public-site/' ~ item,
+          'kind': 'file', 'content_b64': lookup('ansible.builtin.pipe',
+            'base64 < ' ~ ((nginx_xhttp_public_site_dir ~ '/' ~ item) | quote) ~ ' | tr -d "\n"'),
           'mode': '0644', 'uid': 0, 'gid': 0}] }}
-  loop: '{{ _nginx_operator_site_tree.files | default([]) }}'
+  loop: '{{ _nginx_operator_site_paths }}'
   when: _nginx_operator_site_paths | length > 0
   no_log: true
   diff: false

@@ -4,6 +4,7 @@ import base64
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 
@@ -46,11 +47,35 @@ def test_self_steal_tls_site_is_loopback_only() -> None:
 
     assert "listen 127.0.0.1:8443 ssl http2;" in rendered
     assert "server_name edge.example.test;" in rendered
-    assert "ssl_protocols TLSv1.3;" in rendered
+    # An ordinary site accepts TLS 1.2 and the common groups; REALITY needs TLS 1.3 and X25519.
+    assert "ssl_protocols TLSv1.2 TLSv1.3;" in rendered
+    assert "ssl_ecdh_curve X25519:prime256v1:secp384r1;" in rendered
+    assert re.search(r"ssl_ciphers ECDHE-[A-Z0-9:-]+;", rendered)
     assert "root /var/www/reality-self-steal;" in rendered
     assert "listen 80" not in rendered
     assert "0.0.0.0" not in rendered
     assert "[::]" not in rendered
+
+
+@pytest.mark.parametrize("xhttp,expected", [
+    (None, {"edge.example.test": "301", "_": "404"}),
+    ("other.example.test", {"edge.example.test": "301"}),
+    ("EDGE.example.test", {}),
+], ids=["alone", "beside-another-name", "shared-name"])
+def test_opt_in_port_80_redirects_the_owned_name_and_leaves_one_default_server(xhttp, expected) -> None:
+    rendered = renderer.render_template(NGINX_TEMPLATE, {
+        "reality_self_steal_listen_address": "127.0.0.1", "reality_self_steal_port": 8443,
+        "reality_self_steal": {"server_name": "edge.example.test"}, "reality_self_steal_http_redirect": True,
+        "vpn": {"enable_nginx_xhttp": xhttp is not None}, "nginx_xhttp": {"server_name": xhttp or ""},
+    })
+    servers = {}
+    for block in rendered.split("\nserver {")[1:]:
+        if re.search(r"^\s*listen 80\b", block, re.M):
+            (name,) = re.findall(r"server_name (\S+);", block)
+            assert "access_log off;" in block and "listen [::]:80" in block
+            servers[name] = "301" if "return 301 https://$host$request_uri;" in block else "404"
+            assert ("default_server" in block) == (name == "_")
+    assert servers == expected
 
 
 def test_self_steal_unknown_paths_use_the_ordinary_site_404() -> None:
@@ -460,6 +485,7 @@ SITE_STAGING_TASKS = (
     ("operator-site.yml", "Enumerate the operator-owned self-steal site on the controller"),
     ("operator-site.yml", "Resolve the published self-steal site layout"),
     ("configure.yml", "Require the operator-owned tree to carry the index and the ordinary error page"),
+    ("configure.yml", "Refuse repository-bundled bytes in the operator-owned tree"),
     ("configure.yml", "Inspect owned candidate roots without following links"),
     ("configure.yml", "Add the bundled landing assets to the same publication"),
     ("configure.yml", "Add the operator-owned site to the same publication"),
@@ -538,3 +564,54 @@ def test_operator_tree_without_a_required_page_refuses(tmp_path: Path, missing: 
     assert result.returncode != 0
     assert staged is None
     assert "must contain index.html and 404.html" in result.stdout.replace("\n", " ").replace("  ", " ")
+
+
+@pytest.mark.parametrize("env", ["prod", "staging"])
+def test_operator_tree_that_repeats_a_bundled_page_refuses_under_any_label(tmp_path: Path, env: str) -> None:
+    site = tmp_path / "site"
+    site.mkdir()
+    (site / "index.html").write_text("<h1>owned</h1>")
+    bundled = ANSIBLE / "roles" / "nginx-xhttp" / "files" / "public-site" / "404.html"
+    (site / "404.html").write_bytes(bundled.read_bytes())
+    result, staged = _stage_self_steal_site(tmp_path, {"env": env, "reality_self_steal_public_site_dir": str(site)})
+    assert result.returncode != 0
+    assert staged is None
+    assert "404.html" in result.stdout and "reality_self_steal_public_site_dir" in result.stdout
+
+
+def test_operator_tree_publishes_no_dot_path_except_well_known(tmp_path: Path) -> None:
+    site = tmp_path / "site"
+    for directory in (".git", ".well-known"):
+        (site / directory).mkdir(parents=True)
+    for name in ("index.html", "404.html", ".git/config", ".well-known/security.txt", ".htpasswd"):
+        (site / name).write_text(name)
+    # Unpublished paths are outside the content and file-type checks.
+    (site / ".git" / "packed").write_bytes((ANSIBLE / "roles" / "nginx-xhttp" / "files" / "public-site" / "404.html").read_bytes())
+    (site / ".git" / "link").symlink_to("config")
+    result, staged = _stage_self_steal_site(tmp_path, {"env": "prod", "reality_self_steal_public_site_dir": str(site)})
+    assert result.returncode == 0, result.stdout + result.stderr
+    published = {row["path"] for row in staged["files"] if row["kind"] == "file"}
+    assert published == {"/srv/site/index.html", "/srv/site/404.html", "/srv/site/.well-known/security.txt"}
+    assert {"path": "/srv/site/.well-known", "mode": "0755"} in staged["roots"]
+    assert not any(".git" in root["path"] for root in staged["roots"])
+
+
+@pytest.mark.parametrize("days,accepted", [(20, False), (45, True)])
+def test_certificate_needs_thirty_days_of_remaining_lifetime(tmp_path: Path, days: int, accepted: bool) -> None:
+    certificate = tmp_path / "cert.pem"
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes",
+                    "-subj", "/CN=edge.example.test", "-days", str(days), "-keyout", str(tmp_path / "key.pem"),
+                    "-out", str(certificate)], check=True, capture_output=True)
+    tasks = yaml.safe_load((SELF_STEAL_TASKS / "configure.yml").read_text())
+    (floor,) = [task for task in tasks if task["name"] == "Require the minimum remaining certificate lifetime"]
+    play = tmp_path / "lifetime.yml"
+    play.write_text(yaml.safe_dump([{
+        "hosts": "localhost", "connection": "local", "gather_facts": False, "become": False,
+        "vars": {**yaml.safe_load((SELF_STEAL_TASKS.parent / "defaults" / "main.yml").read_text()),
+                 "reality_self_steal": {"cert_pem": certificate.read_text()}},
+        "tasks": [floor],
+    }]))
+    result = subprocess.run(["ansible-playbook", "-i", "localhost,", str(play)],
+                            env={**os.environ, "ANSIBLE_RETRY_FILES_ENABLED": "0"}, cwd=tmp_path,
+                            capture_output=True, text=True, timeout=60)
+    assert (result.returncode == 0) is accepted, result.stdout + result.stderr

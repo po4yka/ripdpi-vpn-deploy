@@ -39,6 +39,29 @@
         executable: /bin/bash
       changed_when: false
 
+    - name: The target negotiates TLS 1.2 and TLS 1.3 like an ordinary site
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          for option in -tls1_2 -tls1_3 '-groups X25519' '-groups prime256v1'; do
+            openssl s_client -connect 127.0.0.1:8443 -servername edge.example.test $option </dev/null 2>&1 |
+              grep -q 'BEGIN CERTIFICATE'
+          done
+        executable: /bin/bash
+      changed_when: false
+
+    - name: The running nginx carries the raised connection limits
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          nginx -T 2>/dev/null | grep -q '^worker_rlimit_nofile 16384;'
+          test "$(nginx -T 2>/dev/null | grep -c 'worker_connections')" = 1
+          nginx -T 2>/dev/null | grep -q 'worker_connections 8192;'
+          worker="$(pgrep -f 'nginx: worker' | head -n1)"
+          grep -q '^Max open files  *16384 ' "/proc/${worker}/limits"
+        executable: /bin/bash
+      changed_when: false
+
     - name: Loopback listener exists and must not expose a wildcard listener
       ansible.builtin.shell:
         cmd: |

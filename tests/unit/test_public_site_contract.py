@@ -142,9 +142,12 @@ def test_subscription_routes_inherit_the_complete_no_store_header_baseline() -> 
 
 def test_primary_and_fallback_vhosts_share_the_hardened_tls_http_identity() -> None:
     rendered = _render(fallback=True)
-    assert "TLSv1.2" not in rendered
-    assert rendered.count("ssl_protocols       TLSv1.3;") == 2
-    assert rendered.count("ssl_ecdh_curve      X25519;") == 2
+    # Two named servers and one default server for each of the two TLS ports. nginx
+    # negotiates the protocol from the default server, so all four carry one policy.
+    assert rendered.count("ssl_protocols       TLSv1.2 TLSv1.3;") == 4
+    assert rendered.count("ssl_ecdh_curve      X25519:prime256v1:secp384r1;") == 4
+    assert len(re.findall(r"ssl_ciphers +ECDHE-[A-Z0-9:-]+;", rendered)) == 4
+    assert rendered.count("ssl_session_tickets off;") == 4
     for header in (
         "Content-Security-Policy \"default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'\"",
         'Permissions-Policy "camera=(), microphone=(), geolocation=()"',
@@ -188,7 +191,7 @@ def test_hsts_requires_same_hostname_public_https_443(
     )
     assert [int(age) for age in ages] == expected
     # Every TLS response, including error pages, clears or refreshes the policy.
-    assert len(ages) == rendered.count("ssl_protocols       TLSv1.3;")
+    assert len(ages) == rendered.count("ssl_certificate_key ")
 
 
 def test_primary_and_fallback_vhosts_serve_the_atom_media_type() -> None:
@@ -741,7 +744,10 @@ def test_molecule_exercises_live_http_semantics() -> None:
         "application/atom+xml",
         "LLM Model Notes updates",
         "article:published_time",
-        "TLSv1.3",
+        "-tls1_2",
+        "-noservername",
+        "unrecognized name",
+        "Host: 192.0.2.1",
     ):
         assert behavior in verify
 
@@ -907,8 +913,42 @@ def test_xhttp_locations_answer_upstream_errors_with_the_site_404() -> None:
     assert len(locations) == 2
     for body in locations:
         assert "proxy_intercept_errors on;" in body
-        assert "error_page 400 403 404 405 500 502 503 504 =404 /404.html;" in body
+        (statuses,) = re.findall(r"error_page ([\d ]+) =404 /404\.html;", body)
+        assert {"400", "401", "403", "404", "405", "408", "409", "413", "429", "500", "501", "502", "503",
+                "504"} <= set(statuses.split())
         assert "add_header" not in body
+        # An idle stream-up upload or downlink outlives nginx's 60 s and the former 300 s limits.
+        for directive in ("client_body_timeout", "proxy_read_timeout", "proxy_send_timeout"):
+            (seconds,) = re.findall(rf"{directive} (\d+)s;", body)
+            assert int(seconds) >= 3600
+
+
+def _tls_default_servers(rendered: str) -> dict[str, str]:
+    return {re.search(r"listen (\d+) ssl", block).group(1): block
+            for block in rendered.split("\nserver {")[1:]
+            if re.search(r"listen \d+ ssl http2 default_server;", block)}
+
+
+@pytest.mark.parametrize("fallback,ports", [(False, {"8443"}), (True, {"8443", "2083"})])
+def test_each_tls_port_has_a_default_server_that_hides_the_certificate_and_the_tunnel(fallback, ports) -> None:
+    variables = renderer.merge_render_vars()
+    rendered = _render(fallback=fallback)
+    defaults = _tls_default_servers(rendered)
+    assert set(defaults) == ports
+    for port, block in defaults.items():
+        assert f"listen [::]:{port} ssl http2 default_server;" in block
+        assert "server_name _;" in block
+        # No SNI or a foreign SNI: no certificate leaves the node.
+        assert "ssl_reject_handshake on;" in block
+        assert "ssl_certificate" not in block
+        # The right SNI with another Host: the site 404, never the upstream or the site tree.
+        assert re.search(r"location / \{\s*return 404;", block)
+        assert "error_page 404 /404.html;" in block and "root /var/www/public-site;" in block
+        assert "proxy_pass" not in block and variables["xray"]["xhttp_path"] not in block
+        assert "try_files" not in block
+        assert "access_log off;" in block
+    # A named server never claims the default role, or the certificate would answer an address scan.
+    assert rendered.count("ssl http2 default_server;") == 2 * len(ports)
 
 
 def test_xhttp_path_without_trailing_slash_is_an_ordinary_404() -> None:
@@ -933,6 +973,7 @@ SITE_TASK_NAMES = (
     "Load the bundled public site layout",
     "Resolve the published public site layout",
     "Require the operator-owned tree to carry the ordinary error page",
+    "Refuse repository-bundled bytes in the operator-owned tree",
     "Resolve the public asset parent directories to prepare",
     "Stage exact public assets in the same compensated nginx publication",
     "Stage hostname-bound public pages in the same compensated publication",
@@ -1001,6 +1042,59 @@ def test_operator_tree_without_the_error_page_refuses(tmp_path: Path) -> None:
     assert result.returncode != 0
     assert staged is None
     assert "must contain 404.html" in result.stdout
+
+
+@pytest.mark.parametrize("env", ["prod", "staging"])
+@pytest.mark.parametrize("bundled", ["nginx-xhttp/files/public-site/404.html",
+                                     "nginx-xhttp/files/public-site/assets/site.css",
+                                     "reality-self-steal/files/public-site/index.html"])
+def test_operator_tree_that_repeats_a_bundled_file_refuses_under_any_label(tmp_path: Path, env, bundled) -> None:
+    site = tmp_path / "site"
+    site.mkdir()
+    (site / "404.html").write_text("missing")
+    (site / "copied.bin").write_bytes((REPO_ROOT / "ansible/roles" / bundled).read_bytes())
+    result, staged = _run_site_staging(tmp_path, {"env": env, "nginx_xhttp_public_site_dir": str(site)})
+    assert result.returncode != 0
+    assert staged is None
+    assert "copied.bin" in result.stdout and "nginx_xhttp_public_site_dir" in result.stdout
+
+
+def test_operator_tree_publishes_no_dot_path_except_well_known(tmp_path: Path) -> None:
+    site = tmp_path / "site"
+    for directory in (".git", ".well-known", "img/.cache"):
+        (site / directory).mkdir(parents=True)
+    for name in ("404.html", ".git/config", ".well-known/security.txt", ".htpasswd", "img/.cache/x", "img/a.png"):
+        (site / name).write_text(name)
+    # Unpublished paths are outside the content and file-type checks.
+    (site / ".git" / "packed").write_bytes((REPO_ROOT / "ansible/roles/nginx-xhttp/files/public-site/404.html").read_bytes())
+    (site / ".git" / "link").symlink_to("config")
+    result, staged = _run_site_staging(tmp_path, {"env": "prod", "nginx_xhttp_public_site_dir": str(site)})
+    assert result.returncode == 0, result.stdout + result.stderr
+    published = {row["path"].removeprefix("/var/www/public-site/") for row in staged["files"] if row["kind"] == "file"}
+    assert published == {"404.html", ".well-known/security.txt", "img/a.png"}
+    assert set(staged["parents"]) == {"/var/www/public-site/.well-known", "/var/www/public-site/img"}
+
+
+@pytest.mark.parametrize("port,origin", [(443, "https://vpn.example.com"), (8443, "https://vpn.example.com:8443")])
+def test_routing_list_base_url_omits_the_default_https_port(tmp_path: Path, port: int, origin: str) -> None:
+    tasks = yaml.safe_load((ENABLE_TASKS.parent / "routing-lists.yml").read_text())
+    (policy,) = [task for task in tasks if task["name"] == "Publish routing list refresher policy"]
+    out = tmp_path / "policy.json"
+    play = tmp_path / "policy.yml"
+    play.write_text(yaml.safe_dump([{
+        "hosts": "localhost", "connection": "local", "gather_facts": False, "become": False,
+        "vars": {"nginx_xhttp": {"server_name": "vpn.example.com"}, "nginx_xhttp_public_port": port,
+                 "vpn": {}, "ansible_python_interpreter": sys.executable,
+                 "nginx_xhttp_routing_lists": {"token": "t" * 16, "geosite_url": "", "geoip_url": "",
+                                               "profile": {}, "policy": {}}},
+        "tasks": [{"name": "Render", "ansible.builtin.copy": {
+            "content": policy["ansible.builtin.copy"]["content"], "dest": str(out), "mode": "0600"}}],
+    }]))
+    result = subprocess.run(["ansible-playbook", "-i", "localhost,", str(play)],
+                            env={**os.environ, "ANSIBLE_RETRY_FILES_ENABLED": "0"}, cwd=tmp_path,
+                            capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(out.read_text())["base_url"] == f"{origin}/routing/{'t' * 16}"
 
 
 @pytest.mark.parametrize("fallback", [False, True])

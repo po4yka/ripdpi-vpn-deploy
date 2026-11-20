@@ -44,7 +44,8 @@
     content: >-
       {{ {'root': '/var/lib/vpn-routing-lists',
           'token': nginx_xhttp_routing_lists.token,
-          'base_url': 'https://' ~ nginx_xhttp.server_name ~ ':' ~ nginx_xhttp_public_port
+          'base_url': 'https://' ~ nginx_xhttp.server_name
+                      ~ ('' if (nginx_xhttp_public_port | int) == 443 else ':' ~ nginx_xhttp_public_port)
                       ~ '/routing/' ~ nginx_xhttp_routing_lists.token,
           'geosite_url': nginx_xhttp_routing_lists.geosite_url,
           'geoip_url': nginx_xhttp_routing_lists.geoip_url,

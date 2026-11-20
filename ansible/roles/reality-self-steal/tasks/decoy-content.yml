@@ -1,0 +1,32 @@
+---
+# Shared with nginx-xhttp. Inputs: decoy_site_files (controller `find` results
+# with sha256 checksums) and decoy_site_variable (the variable to name).
+- name: Enumerate the repository-bundled decoy files on the controller
+  ansible.builtin.find:
+    paths:
+      - '{{ role_path }}/../reality-self-steal/files/public-site'
+      - '{{ role_path }}/../nginx-xhttp/files/public-site'
+    recurse: true
+    file_type: file
+    hidden: true
+    get_checksum: true
+    checksum_algorithm: sha256
+  register: _decoy_bundled_files
+  delegate_to: localhost
+  become: false
+
+# Every checkout of this repository holds these bytes, so a tree that repeats one
+# of them is found on every node by a content-hash search. No environment label
+# switches this off.
+- name: Refuse an operator-owned site that repeats repository-bundled bytes
+  vars:
+    _decoy_repeated: >-
+      {{ decoy_site_files | selectattr('checksum', 'defined')
+         | selectattr('checksum', 'in', _decoy_bundled_files.files | map(attribute='checksum') | list)
+         | map(attribute='path') | map('basename') | sort }}
+  ansible.builtin.assert:
+    that: _decoy_repeated | length == 0
+    fail_msg: >-
+      {{ decoy_site_variable }} repeats files that this repository bundles
+      ({{ _decoy_repeated | join(', ') }}). Replace them with content written for
+      this node: identical bytes on two nodes link the nodes.

@@ -11,7 +11,10 @@
       - "(reality_self_steal_port | int) not in [\n  xray_port | int,\n  xray_fallback_port | int,\n  nginx_xhttp_port\
         \ | int\n]"
       - (reality_self_steal_port | int) not in reality_self_steal_public_tcp_ports
-    fail_msg: reality_self_steal_port must be a private, non-conflicting TCP port.
+      - not (reality_self_steal_http_redirect | bool) or 80 in reality_self_steal_public_tcp_ports
+    fail_msg: >-
+      reality_self_steal_port must be a private, non-conflicting TCP port, and
+      reality_self_steal_http_redirect requires TCP/80 in the public listener contract.
 - name: Read the operator-owned self-steal site layout
   ansible.builtin.include_tasks: operator-site.yml
 - name: Require the operator-owned tree to carry the index and the ordinary error page
@@ -19,10 +22,21 @@
     that:
       - "'index.html' in _self_steal_operator_files"
       - "'404.html' in _self_steal_operator_files"
-      - (_self_steal_operator_site.files | rejectattr('isreg') | rejectattr('isdir') | list | length) == 0
+      - >-
+        (_self_steal_operator_site.files | rejectattr('isreg') | rejectattr('isdir') | map(attribute='path')
+         | map('relpath', reality_self_steal_public_site_dir)
+         | reject('search', '(^|/)\.(?!well-known(/|$))') | list | length) == 0
     fail_msg: >-
       reality_self_steal_public_site_dir must contain index.html and 404.html and only
       regular files and directories.
+  when: reality_self_steal_public_site_dir | length > 0
+- name: Refuse repository-bundled bytes in the operator-owned tree
+  ansible.builtin.include_tasks: '{{ role_path }}/tasks/decoy-content.yml'
+  vars:
+    decoy_site_files: >-
+      {{ _self_steal_operator_site.files | selectattr('path', 'in', _self_steal_operator_files
+         | map('regex_replace', '^', (reality_self_steal_public_site_dir | regex_replace('/+$', '')) ~ '/')) }}
+    decoy_site_variable: reality_self_steal_public_site_dir
   when: reality_self_steal_public_site_dir | length > 0
 - name: Install the self-steal TLS runtime without premature default activation
   ansible.builtin.apt:
@@ -60,6 +74,20 @@
   check_mode: false
   no_log: true
   diff: false
+  when: not ansible_check_mode or (_self_steal_tls_validator.stat.executable | default(false))
+# The shared validator accepts a policy of seven days at most, so the role's own
+# floor is a second check. The certificate is public; the output names no key.
+- name: Require the minimum remaining certificate lifetime
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - x509
+      - -noout
+      - -checkend
+      - '{{ (reality_self_steal_min_cert_lifetime_days | int) * 86400 }}'
+    stdin: '{{ reality_self_steal.cert_pem }}'
+  changed_when: false
+  check_mode: false
   when: not ansible_check_mode or (_self_steal_tls_validator.stat.executable | default(false))
 - name: Inspect owned candidate roots without following links
   ansible.builtin.stat:
@@ -175,3 +203,28 @@
     nginx_transaction_unit: nginx.service
     nginx_transaction_activation: reload
     nginx_transaction_desired_enabled: true
+# `worker_connections` is valid only in the packaged file's `events` block, so no
+# drop-in can raise it. The file is shared with every nginx publisher and is not a
+# transaction path: an owner without a receipt would refuse a file that exists.
+- name: Inspect the packaged nginx main configuration
+  ansible.builtin.stat:
+    path: /etc/nginx/nginx.conf
+  register: _self_steal_nginx_main
+- name: Raise the worker connection limit in the main configuration
+  ansible.builtin.replace:
+    path: /etc/nginx/nginx.conf
+    regexp: '^([ \t]*)worker_connections[ \t]+\d+;'
+    replace: '\1worker_connections {{ reality_self_steal_worker_connections | int }};'
+    validate: /usr/sbin/nginx -t -c %s
+  notify: Reload self-steal nginx
+  when: _self_steal_nginx_main.stat.exists
+# One client socket and one file for each connection.
+- name: Raise the worker file limit in the main configuration
+  ansible.builtin.lineinfile:
+    path: /etc/nginx/nginx.conf
+    regexp: '^[ \t]*worker_rlimit_nofile[ \t]'
+    line: 'worker_rlimit_nofile {{ (reality_self_steal_worker_connections | int) * 2 }};'
+    insertbefore: BOF
+    validate: /usr/sbin/nginx -t -c %s
+  notify: Reload self-steal nginx
+  when: _self_steal_nginx_main.stat.exists

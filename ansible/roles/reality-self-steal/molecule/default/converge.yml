@@ -26,7 +26,7 @@
           -out /tmp/reality-self-steal.crt
           -subj /CN=edge.example.test
           -addext subjectAltName=DNS:edge.example.test
-          -days 30
+          -days 60
         creates: /tmp/reality-self-steal.crt
 
     - name: Read the generated certificate
@@ -54,7 +54,7 @@
           -out /tmp/reality-self-steal-wrong.crt
           -subj /CN=wrong.example.test
           -addext subjectAltName=DNS:wrong.example.test
-          -days 30
+          -days 60
         creates: /tmp/reality-self-steal-wrong.crt
 
     - name: Read the wrong-SAN certificate
