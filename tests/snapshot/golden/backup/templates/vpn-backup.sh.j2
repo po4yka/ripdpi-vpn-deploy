@@ -258,8 +258,9 @@ local_succeeded_at="$(timestamp)"
 active_stage=""
 publish_outcome
 
-# Fail the backup run if repository integrity is damaged or no recent
-# vpn-stack snapshot is available for restore.
+# Fail the backup run if repository integrity is damaged or the snapshot just
+# written is not listed after retention. Missed runs are visible in the stage
+# marker times, not here: this check always follows a new snapshot.
 integrity_attempted_at="$(timestamp)"
 active_stage="integrity"
 publish_outcome

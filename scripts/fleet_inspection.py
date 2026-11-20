@@ -24,6 +24,9 @@ SAFE_NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,252}\Z")
 AWG_UNIT = re.compile(r"awg-quick@[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,14}\.service\Z")
 MANIFEST = "/var/lib/ripdpi-vpn-deploy/manifest.json"
 RESTORE = "/var/lib/vpn-backup/restore-drill-last-success.json"
+# The drill runs weekly: two slots plus timer delay, so one failed run is not yet stale.
+RESTORE_MAX_AGE = dt.timedelta(days=15)
+SNAPSHOT_MAX_AGE = dt.timedelta(hours=36)
 BACKUP_STATUS = "/var/lib/vpn-backup/backup-stage-status.json"
 
 
@@ -219,7 +222,7 @@ def latest_backup_evidence(raw, now):
                     raise InspectionError("invalid-time")
                 stages[name]["succeeded_at"] = timestamp(succeeded)
         fresh = all(stage["result"] == "success" and "succeeded_at" in stage
-                    and now - parse_time(stage["succeeded_at"]) <= dt.timedelta(hours=36)
+                    and now - parse_time(stage["succeeded_at"]) <= SNAPSHOT_MAX_AGE
                     for stage in stages.values())
         return {"status": "observed" if fresh else "stale", "version": 1, **stages}
     except InspectionError:
@@ -235,10 +238,11 @@ def restore_evidence(raw, now):
         verified = parse_time(raw.get("verified_at"))
         if max(snapshot, verified) > now or snapshot > verified:
             raise InspectionError("invalid-time")
-        return {"status": "stale" if now - verified > dt.timedelta(days=35) else "observed",
+        return {"status": "stale" if now - verified > RESTORE_MAX_AGE else "observed",
                 "version": 1, "repository_source": raw["repository_source"],
                 "snapshot_time": timestamp(snapshot), "verified_at": timestamp(verified),
-                "snapshot_freshness": "stale" if now - snapshot > dt.timedelta(hours=36) else "observed"}
+                # The drill restores a snapshot at most 36 hours old, so its age is bounded by both windows.
+                "snapshot_freshness": "stale" if now - snapshot > RESTORE_MAX_AGE + SNAPSHOT_MAX_AGE else "observed"}
     except InspectionError:
         return {"status": "unknown"}
 
@@ -351,6 +355,8 @@ def collect():
         result["backup"]["latest_snapshot"] = latest_backup_evidence(read_host_json(BACKUP_STATUS), now)
     except InspectionError:
         result["backup"]["latest_snapshot"] = {"status": "unknown"}
+    # Set by a package that needs a restart; automatic reboots are off, so the operator must see it.
+    result["reboot_required"] = os.path.lexists("/run/reboot-required")
     return result
 
 
@@ -574,7 +580,9 @@ def _keys(value, keys):
 def validate_report(raw, now):
     """Validate every remote field before it crosses the controller's output boundary."""
     try:
-        _keys(raw, ("schema_version", "observed_at", "services", "manifest", "listeners", "backup"))
+        _keys(raw, ("schema_version", "observed_at", "services", "manifest", "listeners", "backup", "reboot_required"))
+        if type(raw["reboot_required"]) is not bool:
+            raise InspectionError("malformed-report")
         if type(raw["schema_version"]) is not int or raw["schema_version"] != 1:
             raise InspectionError("unsupported-report")
         observed = parse_time(raw["observed_at"])

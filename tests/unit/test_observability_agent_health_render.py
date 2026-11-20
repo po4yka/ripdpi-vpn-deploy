@@ -73,7 +73,7 @@ def test_defaults_pin_private_paths_and_retention_aware_freshness() -> None:
         defaults["observability_agent_restore_drill_path"]
         == "/var/lib/vpn-backup/restore-drill-last-success.json"
     )
-    assert defaults["observability_agent_restore_drill_max_age_seconds"] == 3024000
+    assert defaults["observability_agent_restore_drill_max_age_seconds"] == 1296000
 
 
 def test_metric_manifest_declares_every_health_adapter_family() -> None:

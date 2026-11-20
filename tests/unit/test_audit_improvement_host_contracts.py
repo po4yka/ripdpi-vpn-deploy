@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import socket
+import subprocess
 import sys
 from pathlib import Path
 
@@ -100,6 +101,25 @@ def test_fresh_completed_machine_report_accepts_actual_warning_record():
         )
         == 1
     )
+
+
+def test_collection_runs_the_scanner_without_its_online_version_check(tmp_path, monkeypatch):
+    root = tmp_path / "report"
+    root.mkdir(mode=0o700)
+    profiles = []
+
+    def scanner(argv, **_kwargs):
+        profiles.append(Path(argv[argv.index("--profile") + 1]).read_text())
+        report = Path(argv[argv.index("--report-file") + 1])
+        report.write_text(REPORT)
+        report.chmod(0o600)
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(audit.subprocess, "run", scanner)
+    monkeypatch.setattr(audit.time, "time", lambda: START + 1)
+
+    assert audit.collect(str(root))["category"] == "clean"
+    assert profiles == ["skip-upgrade-test=yes\n"]
 
 
 @pytest.mark.parametrize(

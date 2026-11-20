@@ -19,6 +19,8 @@ patching mechanism.
 security-only. `playbooks/os-maintenance.yml` owns full upgrades and any
 required operator-controlled reboot, one host at a time.
 
+**The upgrade window is staggered per host** — a drop-in for `apt-daily-upgrade.timer` sets `RandomizedDelaySec=12h` with `FixedRandomDelay=true`, so each host keeps one slot between 06:00 and 18:00 that systemd derives from its machine ID. The calendar time stays the distribution's: a changed `OnCalendar` can be due at once and start an upgrade during the deploy. A pending reboot stays an operator decision; `make inspect` reports it as `reboot_required`.
+
 **Both policy states are rendered** — disabling the internal enabled flag still publishes explicit APT periodic zeros; package installation and native dry-run validation remain enabled-only. Repeated disable does not leave stale enabled policy.
 
 **Origin policy replaces inherited lists** — both Origins-Pattern and the

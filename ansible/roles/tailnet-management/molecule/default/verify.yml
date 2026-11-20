@@ -121,3 +121,8 @@
         that:
           - (_tailnet_repeat.stdout | from_json).status == 'configured'
           - not ((_tailnet_repeat.stdout | from_json).changed | bool)
+
+    - name: tailscaled log upload is disabled by the managed drop-in
+      ansible.builtin.command:
+        cmd: grep -Fx 'Environment=TS_NO_LOGS_NO_SUPPORT=true' /etc/systemd/system/tailscaled.service.d/ripdpi-no-logs.conf
+      changed_when: false

@@ -6,6 +6,8 @@ After=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/vpn-backup-restore-drill.sh
+# Bound a hung restic or rclone call so the next scheduled drill can start.
+TimeoutStartSec=1h
 RuntimeDirectory=vpn-backup-restore-drill
 RuntimeDirectoryMode=0700
 StateDirectory=vpn-backup

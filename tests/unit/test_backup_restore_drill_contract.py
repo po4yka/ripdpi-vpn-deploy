@@ -118,7 +118,7 @@ def test_drill_cleans_restored_secrets_before_atomically_publishing_success() ->
         assert f'"{field}"' in script
 
 
-def test_restore_drill_systemd_units_isolate_runtime_and_run_monthly() -> None:
+def test_restore_drill_systemd_units_isolate_runtime_and_run_weekly() -> None:
     variables = renderer.merge_render_vars()
     service = renderer.render_template(SERVICE_TEMPLATE, variables)
     timer = renderer.render_template(TIMER_TEMPLATE, variables)
@@ -142,7 +142,8 @@ def test_restore_drill_systemd_units_isolate_runtime_and_run_monthly() -> None:
         assert directive in service.splitlines()
     # restic locks the repository it reads; the drill gets the repository paths and nothing else.
     assert f"ReadWritePaths={variables['restic_repo_dir']} /var/backups" in service.splitlines()
-    assert "OnCalendar=monthly" in timer
+    assert "OnCalendar=weekly" in timer
+    assert "TimeoutStartSec=1h" in service.splitlines()
     assert "RandomizedDelaySec=2h" in timer
     assert "Persistent=true" in timer
 

@@ -15,9 +15,11 @@ backup:
     rclone_config: ""
 
 # A successful backup command is not proof that the selected snapshot can be
-# restored. Keep the restore drill enabled by default and run it monthly.
+# restored. Keep the restore drill enabled by default and run it weekly: a
+# failed run is repeated at the next slot, inside the 15-day freshness window
+# of `make inspect` and the health adapter.
 backup_restore_drill_enabled: true
-backup_restore_drill_on_calendar: monthly
+backup_restore_drill_on_calendar: weekly
 backup_restore_drill_randomized_delay: 2h
 backup_snapshot_max_age_hours: 36
 

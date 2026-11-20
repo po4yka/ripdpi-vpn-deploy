@@ -33,3 +33,6 @@
   ansible.builtin.file:
     path: /etc/apt/preferences.d/tailscale
     state: absent
+
+- name: Keep tailscaled logs on the node
+  ansible.builtin.import_tasks: no-logs.yml

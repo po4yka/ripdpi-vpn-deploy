@@ -30,7 +30,7 @@ Family profiles are listed in `ansible/role-tiers.yml` under `family_profiles`. 
 
 `vpn-p1-web.yml` disables subscription delivery. Its public surface contains only TCP/80 and TCP/443; device delivery does not open another port on this host.
 
-The separate `vpn-p0-minimal`, `vpn-p1-web` and `vpn-p2-udp` profiles keep monitoring and backup enabled but disable the standalone notification watchdog. Private panel monitoring and provider notifications do not use ntfy or Pushover.
+The separate `vpn-p0-minimal`, `vpn-p1-web` and `vpn-p2-udp` profiles keep monitoring and backup enabled. `vpn-p1-web` and `vpn-p2-udp` also run the local watchdog, which probes and recovers their transports and, with the default `watchdog.provider: none`, sends nothing off the node; `vpn-p0-minimal` disables it. The watchdog needs an operator-owned HTTPS canary in `watchdog_secrets.reality_probe_url` and a dedicated probe identity named `watchdog`: an `xray.clients` entry on `vpn-p1-web` and a `hysteria.clients` entry on `vpn-p2-udp`. Private panel monitoring and provider notifications do not use ntfy or Pushover.
 
 Every fleet profile inherits security-only unattended updates from `all.yml`. Automatic reboot remains disabled; use `make os-maintenance` for a serial full upgrade, conditional reboot, and both verification gates.
 
