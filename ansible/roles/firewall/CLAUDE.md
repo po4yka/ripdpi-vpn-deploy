@@ -157,7 +157,7 @@ labs whose public stand-in is ULA override only the IPv6 list.
 
 **Forwarded AWG TCP is clamped to the instance MTU** — before the established accept, SYN packets from an AWG interface get an MSS of the instance MTU minus the IPv4 or IPv6 header sizes, and SYN packets to it get the route MTU. The kernel never raises an MSS. A device that keeps a larger configured MTU than the server instance therefore still completes TCP in both directions. The MTU fallback equals the amneziawg role default (unit-tested), because that role's defaults are not visible here.
 
-**The DHCPv4 reply accept is scoped** — UDP 67 to 68 over IPv4 is accepted only on the observed IPv4 default-route interface, before conntrack. A rebinding client broadcasts, so its reply matches no conntrack entry. The live listener verifier admits this exact rule shape at most once and never on `lo` or `tailscale0`; it does not know the uplink name.
+**The DHCPv4 reply accept is scoped** — UDP 67 to 68 over IPv4 is accepted only on `firewall_dhcpv4_uplink_interface`, or when that is empty on the observed IPv4 default-route interface, before conntrack. A rebinding client broadcasts, so its reply matches no conntrack entry. The live listener verifier admits this exact rule shape at most once and never on `lo` or `tailscale0`; it does not know the uplink name.
 
 **No per-source limit and no family split on public listeners** — one REALITY device opens a TCP connection per proxied flow and one carrier-NAT address carries many devices, so a limit low enough to stop abuse refuses ordinary use; `policy-ratelimit` is the opt-in control. Listener accepts stay family-agnostic because the contract entry has no address family: restricting only this ruleset would disagree with the provider firewall and the verifier. A family field must start in Terraform `public_listeners`.
 
@@ -210,8 +210,8 @@ and active CDN origin sets retain the prefix refresher's current authority.
   the forward chain. A substring match can add a second comment to a scoped
   DHCPv6 deny. Keep both DHCPv6 comments and the timed-set expiry checks intact.
 
-- The Molecule fixture pins DHCPv6 to its Docker uplink because AWG preparation
-  adds an isolated IPv6 default route after the first fact gather. Keep this test
+- The Molecule fixture pins DHCPv6 and DHCPv4 to its Docker uplink because AWG preparation
+  adds isolated default routes after the first fact gather. Keep this test
   authority explicit so the second gather cannot change the rendered candidate.
 
 - **`ufw` is not installed by us, but VPS images may pre-install it** — if

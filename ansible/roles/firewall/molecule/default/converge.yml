@@ -24,6 +24,7 @@
     # The fixture adds a synthetic IPv6 default after the first fact gather.
     # DHCPv6 remains on the Docker uplink on both idempotence passes.
     firewall_dhcpv6_uplink_interface: eth0
+    firewall_dhcpv4_uplink_interface: eth0
     firewall_tailnet_collector_ingress:
       address: 100.64.0.2
       sources: [100.64.0.3, 100.64.0.4]

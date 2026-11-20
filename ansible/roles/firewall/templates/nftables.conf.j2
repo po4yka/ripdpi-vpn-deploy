@@ -55,7 +55,7 @@ destroy table inet nat
 {% set split_hop_guard_uids = [probe_matrix_runtime_users.xray_uid, probe_matrix_runtime_users.mtg_uid] + ((firewall_split_hop_family_uids | default([])) if split_hop_family else []) %}
 {% set dhcpv6_uplink = firewall_dhcpv6_uplink_interface | default('') or ansible_facts.get('default_ipv6', {}).get('interface', '') or ansible_facts.get('default_ipv4', {}).get('interface', '') %}
 {% set dhcpv6_servers = firewall_dhcpv6_server_addresses | default([]) %}
-{% set dhcpv4_uplink = ansible_facts.get('default_ipv4', {}).get('interface', '') %}
+{% set dhcpv4_uplink = firewall_dhcpv4_uplink_interface | default('', true) or ansible_facts.get('default_ipv4', {}).get('interface', '') %}
 {# Equal to the amneziawg role default and transport_semantics.AWG_MTU_DEFAULT (unit-tested). #}
 {% set awg_default_mtu = (amneziawg_cohort | default({})).mtu | default((amneziawg | default({})).mtu | default(1280)) %}
 {% set egress_policy = firewall_egress_policy | default('permissive') -%}

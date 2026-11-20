@@ -113,9 +113,11 @@ def test_default_mtu_has_one_value_across_role_admission_and_firewall():
 @pytest.mark.parametrize(("facts", "expected"), [
     ({"default_ipv4": {"interface": "ens2"}}, 'iifname "ens2" meta nfproto ipv4 udp sport 67 udp dport 68 counter accept'),
     ({}, None),
-])
+    ({"default_ipv4": {"interface": "awg-test-up"}, "pinned": "eth0"},
+     'iifname "eth0" meta nfproto ipv4 udp sport 67 udp dport 68 counter accept'),
+], ids=["observed", "no-ipv4-uplink", "explicit-wins"])
 def test_dhcpv4_reply_is_scoped_to_the_ipv4_uplink_before_conntrack(facts, expected):
-    chain = firewall(ansible_facts=facts).split("chain input {")[1].split("chain forward {")[0]
+    chain = firewall(ansible_facts=facts, firewall_dhcpv4_uplink_interface=facts.pop("pinned", "")).split("chain input {")[1].split("chain forward {")[0]
     if expected is None:
         assert "dport 68" not in chain
     else:
