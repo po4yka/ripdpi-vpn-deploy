@@ -289,6 +289,71 @@ def test_a_peer_bundle_with_the_same_content_is_refused(tmp_path: Path, bundle: 
                for line in public_site.check(bundle, ORIGIN, [peer]))
 
 
+def test_build_carries_the_live_page_declaration_with_its_own_sources_and_markup(bundle: Path) -> None:
+    live = json.loads((bundle / "live.json").read_text())
+    assert live["page"] == "sightings.html"
+    assert [source["url"] for source in live["sources"]] == ["https://feeds.example.org/typosphere.xml"]
+    assert live["markup"]["item"] == '<li>{date}: <a href="{link}">{title}</a> ({source})</li>'
+    assert b"<!-- model-news:items -->" in (bundle / "site/sightings.html").read_bytes()
+    assert public_site.check(bundle, ORIGIN, []) == []
+
+
+def live_identity(tmp_path: Path, change) -> Path:
+    source = tmp_path / "identity"
+    shutil.copytree(FIXTURE, source)
+    identity = yaml.safe_load((source / "identity.yml").read_text())
+    change(identity["live"], source)
+    (source / "identity.yml").write_text(yaml.safe_dump(identity))
+    return source
+
+
+@pytest.mark.parametrize(("change", "message"), [
+    (lambda live, source: live.update(page="notes/sightings.html"), "top-level"),
+    (lambda live, source: live["sources"][0].update(url="http://feeds.example.org/a.xml"), "https url"),
+    (lambda live, source: live["sources"].clear(), "non-empty list"),
+    (lambda live, source: live["sources"][0].update(kind="scrape"), "kind hub or feed"),
+    (lambda live, source: live["markup"].update(item="<li>{title.__class__}</li>"), "markup item may use only"),
+    (lambda live, source: live["markup"].update(item="<li>{title:{link.__class__}}</li>"), "markup item may use only"),
+    (lambda live, source: live["markup"].update(item="<li>{title:>999999999}</li>"), "markup item may use only"),
+    (lambda live, source: live["markup"].update(item="<li>{title!r}</li>"), "markup item may use only"),
+    (lambda live, source: live.update(page="404.html"), "other than 404.html"),
+    (lambda live, source: live["markup"].update(section="<ul></ul>"), "markup section may use only"),
+    (lambda live, source: live["markup"].pop("updated"), "section, item and updated"),
+    (lambda live, source: (source / "theme/sightings.html.j2").write_text("<p>no markers</p>"), "must hold both markers"),
+    (lambda live, source: live.update(page="index.html"), "must hold both markers"),
+], ids=["nested-page", "http-feed", "no-source", "unknown-kind", "attribute-field", "nested-field", "wide-field",
+        "conversion", "error-page", "no-items-field", "missing-markup",
+        "shell-without-markers", "page-without-markers"])
+def test_build_refuses_an_unsafe_live_page_declaration(tmp_path: Path, change, message: str) -> None:
+    with pytest.raises(public_site.SiteError, match=message):
+        public_site.build(live_identity(tmp_path, change), tmp_path / "bundle")
+    assert not (tmp_path / "bundle").exists()
+
+
+def test_check_refuses_the_bundled_live_sources_and_markup_and_a_peer_with_the_same_markup(tmp_path: Path, bundle: Path) -> None:
+    defaults = yaml.safe_load((REPO_ROOT / "ansible/roles/nginx-xhttp/defaults/main.yml").read_text())
+    live = json.loads((bundle / "live.json").read_text())
+    peer = tmp_path / "peer"
+    (peer / "site").mkdir(parents=True)
+    for name in ("index.html", "404.html"):
+        (peer / "site" / name).write_text("<p>other</p>\n")
+    (peer / "live.json").write_text(json.dumps(live))
+    assert f"live.json: the markup is the same as in {peer}" in public_site.check(bundle, ORIGIN, [peer])
+    (bundle / "live.json").write_text(json.dumps({**live, "sources": defaults["nginx_xhttp_model_news_sources"]}))
+    assert "live.json: the sources are the bundled default list" in public_site.check(bundle, ORIGIN, [])
+    (bundle / "live.json").write_text(json.dumps({**live, "page": "index.html"}))
+    assert "live.json: index.html is not a page of site/ with both markers" in public_site.check(bundle, ORIGIN, [])
+    renamed = [{**live["sources"][0], "section": "Free ＶＰＮ lists"}]
+    (bundle / "live.json").write_text(json.dumps({**live, "sources": renamed}))
+    assert "live.json: contains the forbidden term 'vpn'" in public_site.check(bundle, ORIGIN, [])
+    (bundle / "live.json").write_text("{not json")
+    with pytest.raises(public_site.SiteError, match="not valid JSON"):
+        public_site.check(bundle, ORIGIN, [])
+    news_item = '<li><a href="{link}">{title}</a><span class="meta">{source} · <time datetime="{date}">{date_text}</time></span></li>'
+    (bundle / "live.json").write_text(json.dumps({**live, "markup": {**live["markup"], "item": news_item}}))
+    assert "live.json: the markup is the bundled markup" in public_site.check(bundle, ORIGIN, [])
+
+
 def test_status_counts_unpublished_generations_and_days_left(bundle: Path) -> None:
     last = json.loads((bundle / "schedule.json").read_text())["generations"][-1]["not_before"]
     assert public_site.status(bundle, last - 12 * 86400 - 60) == (2, 12)

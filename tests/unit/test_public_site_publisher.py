@@ -195,3 +195,20 @@ def test_publisher_unit_has_no_network_or_privilege_and_writes_only_its_state() 
     assert not [line for line in unit if line.startswith(("Environment", "LoadCredential", "After=network"))]
     timer = (REPO_ROOT / "ansible/roles/public-site/templates/public-site-publish.timer.j2").read_text().splitlines()
     assert "Persistent=true" in timer and any(line.startswith("RandomizedDelaySec=") for line in timer)
+
+
+def test_live_refresh_unit_has_the_network_but_cannot_write_the_publisher_state() -> None:
+    templates = REPO_ROOT / "ansible/roles/public-site/templates"
+    unit = (templates / "public-site-live@.service.j2").read_text().splitlines()
+    # One instance for each bundle, named by its digest; the declaration names the page.
+    assert [line for line in unit if line.startswith("ExecStart=")] == [
+        ("ExecStart=/usr/bin/python3 /usr/local/libexec/public-site-live-refresh /etc/public-site/%i/live.json "
+         "/var/lib/public-site/%i/current /var/lib/public-site-live/%i")]
+    for line in ("User=public-site", "CapabilityBoundingSet=", "NoNewPrivileges=true", "ProtectSystem=strict",
+                 "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6", "UMask=0027"):
+        assert line in unit
+    assert [line for line in unit if line.startswith("ReadWritePaths=")] == ["ReadWritePaths=/var/lib/public-site-live"]
+    assert "PrivateNetwork=true" not in unit
+    assert "Unit=public-site-live@%i.service" in (templates / "public-site-live@.timer.j2").read_text().splitlines()
+    # No unit text comes from a bundle: a page name cannot add a directive.
+    assert "{{" not in "\n".join(unit) and "{%" not in "\n".join(unit)

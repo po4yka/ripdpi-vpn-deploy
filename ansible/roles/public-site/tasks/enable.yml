@@ -117,6 +117,10 @@
     fail_msg: The publisher left a bundle without a served generation; read the public-site-publish.service journal.
   when: not ansible_check_mode
 
+- name: Converge the live page refresh
+  ansible.builtin.include_tasks: live.yml
+  when: public_site_live | length > 0
+
 - name: Enable the public site publisher timer
   ansible.builtin.systemd_service:
     name: public-site-publish.timer

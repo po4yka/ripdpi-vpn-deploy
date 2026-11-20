@@ -1081,6 +1081,28 @@ def test_every_server_of_a_published_bundle_reads_its_served_generation() -> Non
     assert _site_roots(renderer.render_template(self_steal, variables)) == ["/var/www/reality-self-steal"]
 
 
+def test_a_declared_live_page_is_served_from_its_own_directory_with_the_generation_as_fallback() -> None:
+    digest = "ab" * 32
+    variables = renderer.merge_render_vars()
+    variables["nginx_xhttp"] = {**variables["nginx_xhttp"], "fallback_enabled": True}
+    variables["nginx_xhttp_public_port"] = 8443
+    variables.update(nginx_xhttp_public_site_dir="/srv/bundle", reality_self_steal_public_site_dir="/srv/bundle",
+                     public_site_published={"/srv/bundle": digest})
+    block = (f"    location = /radar.html {{\n        root /var/lib/public-site-live/{digest};\n"
+             "        try_files $uri @public_site_live_shell;\n    }\n"
+             f"    location @public_site_live_shell {{\n        root /var/lib/public-site/{digest}/current;\n    }}\n")
+    self_steal = REPO_ROOT / "ansible/roles/reality-self-steal/templates/site.conf.j2"
+    for template in (TEMPLATE, self_steal):
+        assert "public-site-live" not in renderer.render_template(template, variables)
+    variables["public_site_live"] = {"/srv/bundle": {"digest": digest, "page": "radar.html"}}
+    conf = renderer.render_template(TEMPLATE, variables)
+    # Both HTTPS servers and the TCP/80 server that serves the site itself.
+    assert conf.count(block) == 3
+    assert renderer.render_template(self_steal, variables).count(block) == 1
+    variables["public_site_live"] = {"/srv/other": {"digest": digest, "page": "radar.html"}}
+    assert "public-site-live" not in renderer.render_template(TEMPLATE, variables)
+
+
 PREFLIGHT = REPO_ROOT / "ansible/playbooks/tasks/public-site-preflight.yml"
 BUNDLE_FIXTURE = REPO_ROOT / "tests/fixtures/public-site-identity"
 

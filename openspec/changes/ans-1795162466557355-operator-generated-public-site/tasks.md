@@ -13,7 +13,7 @@ An operator creates a private site identity, builds a bundle from content that o
 - [x] ANS-1795162712291937 Add scripts/public_site.py (new, build, check, status) with Make targets and calibrated similarity tests; remove public-site-render #feature @item:ANS-1795162466557355
 - [x] ANS-1795162729645051 Add the public-site role: archive delivery, digest-keyed publisher, hardened units, retirement and Molecule scenario #feature @item:ANS-1795162466557355
 - [x] ANS-1795162748588038 Move both vhost roles to the bundle layout with generation-first locations, production check preflight and runway warning #feature @item:ANS-1795162466557355
-- [ ] ANS-1795162761685232 Move the live-data refresher into public-site with per-bundle shell and sources #feature @item:ANS-1795162466557355
+- [x] ANS-1795162761685232 Move the live-data refresher into public-site with per-bundle shell and sources #feature @item:ANS-1795162466557355
 - [ ] ANS-1795162774451454 Add the public-site-content skill, operator how-to, folder notes and refreshed snapshots; pass make check #feature @item:ANS-1795162466557355
 - [ ] ANS-1795162792314476 Record dry-run and staging evidence for publication, rollback and node recreation #feature @item:ANS-1795162466557355
 

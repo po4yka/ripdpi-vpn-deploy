@@ -16,11 +16,6 @@
       register: timer_enabled
       changed_when: false
 
-    - name: Run the installed publisher inside its sandbox
-      ansible.builtin.command:
-        cmd: systemctl start public-site-publish.service
-      changed_when: false
-
     - name: Find the served generations
       ansible.builtin.find:
         paths: /var/lib/public-site
@@ -29,6 +24,35 @@
         recurse: true
         depth: 2
       register: served
+
+    - name: Name the published bundle
+      ansible.builtin.set_fact:
+        bundle_digest: "{{ served.files[0].path | dirname | basename }}"
+
+    # The live page refresh needs the network, so the scenario checks its installation and never starts it.
+    - name: Verify the live page refresh units of the bundle
+      ansible.builtin.command:
+        cmd: systemd-analyze verify public-site-live@{{ bundle_digest }}.service public-site-live@{{ bundle_digest }}.timer
+      changed_when: false
+
+    - name: Read the live page timer state
+      ansible.builtin.command:
+        cmd: systemctl is-enabled public-site-live@{{ bundle_digest }}.timer
+      register: live_timer_enabled
+      changed_when: false
+
+    - name: Read the delivered live page declaration and its directory
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/public-site/{{ bundle_digest }}/live.json
+        - /var/lib/public-site-live/{{ bundle_digest }}
+      register: live_state
+
+    - name: Run the installed publisher inside its sandbox
+      ansible.builtin.command:
+        cmd: systemctl start public-site-publish.service
+      changed_when: false
 
     - name: Read the newest article and its neighbours
       ansible.builtin.stat:
@@ -55,6 +79,12 @@
       ansible.builtin.assert:
         that:
           - timer_enabled.stdout == 'enabled'
+          - live_timer_enabled.stdout == 'enabled'
+          - live_state.results[0].stat.gr_name == 'public-site'
+          - live_state.results[0].stat.mode == '0640'
+          # Setgid for nginx's group, like the publisher state.
+          - live_state.results[1].stat.gr_name == 'www-data'
+          - live_state.results[1].stat.mode == '2750'
           - served.files | length == 1
           - pages.results | map(attribute='stat.exists') | list == [true, true]
           # Only nginx's group reads the published pages.
@@ -99,7 +129,8 @@
         name: public-site
         tasks_from: retire.yml
       vars:
-        public_site_published: {served: "{{ served.files[0].path | dirname | basename }}"}
+        public_site_published: {served: "{{ bundle_digest }}"}
+        public_site_live: {served: {digest: "{{ bundle_digest }}", page: sightings.html}}
 
     - name: Read the stale and served bundle directories
       ansible.builtin.stat:
@@ -122,6 +153,16 @@
           - after_retire.results | map(attribute='stat.exists') | list == [false, false, true]
           - timer_after_retire.stdout == 'active'
 
+    - name: Read the live page timer after the removal of replaced bundles
+      ansible.builtin.command:
+        cmd: systemctl is-enabled public-site-live@{{ bundle_digest }}.timer
+      register: live_timer_after_retire
+      changed_when: false
+
+    - name: Assert that the declared live page keeps its timer
+      ansible.builtin.assert:
+        that: live_timer_after_retire.stdout == 'enabled'
+
     - name: Retire the publisher as a vhost role does when no bundle has an archive
       ansible.builtin.include_role:
         name: public-site
@@ -134,6 +175,11 @@
         - /etc/public-site
         - /var/lib/public-site
         - /usr/local/libexec/public-site-publish
+        - /usr/local/libexec/public-site-live-refresh
+        - /var/lib/public-site-live
+        - /etc/systemd/system/public-site-live@.service
+        - /etc/systemd/system/public-site-live@.timer
+        - /etc/systemd/system/timers.target.wants/public-site-live@{{ bundle_digest }}.timer
         - /etc/systemd/system/public-site-publish.service
         - /etc/systemd/system/public-site-publish.timer
       register: after_absent

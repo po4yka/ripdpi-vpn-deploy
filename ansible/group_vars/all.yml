@@ -173,6 +173,8 @@ reality_self_steal_public_site_dir: ""
 # Set by the public-site role: bundle directory to the digest of its published
 # archive. A vhost of a published bundle reads /var/lib/public-site/<digest>/current.
 public_site_published: {}
+# Set by the same role: bundle directory to the digest and page of its live page.
+public_site_live: {}
 # Result of `NODE_ADDRESS=<node address> make validate-target` for a borrowed
 # REALITY target: same_asn, different_asn or unknown. Production refuses
 # different_asn unless tls_identity_exception holds a reason.

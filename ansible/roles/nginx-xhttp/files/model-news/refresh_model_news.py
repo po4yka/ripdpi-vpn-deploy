@@ -3,8 +3,11 @@
 
 Usage: refresh_model_news.py SOURCES_JSON SHELL_HTML OUTPUT_HTML
 
-Each source is fetched over HTTPS with a size and time limit. Only titles,
-dates, source names and links are kept; upstream text is never republished.
+SOURCES_JSON is a list of sources, or an object with "page", "sources" and
+"markup" for a site that brings its own page; SHELL_HTML and OUTPUT_HTML are
+then the directories that hold that page. Each source is fetched over HTTPS with a
+size and time limit. Only titles, dates, source names and links are kept;
+upstream text is never republished.
 A failed source is skipped. When no source yields an entry, the previous page
 stays in place and the exit status is non-zero so the unit shows the failure.
 """
@@ -17,6 +20,7 @@ import http.client
 import ipaddress
 import json
 import os
+import re
 import signal
 import socket
 import sys
@@ -37,6 +41,13 @@ ATOM = "{http://www.w3.org/2005/Atom}"
 # do not tie nodes to the site.
 USER_AGENT = "model-news-refresh/1"
 HUB_LISTING = "https://huggingface.co/api/models?author={org}&sort=createdAt&direction=-1&limit=10"
+# The bundled page's markup. A site bundle supplies its own, so two sites do not share one structure.
+DEFAULT_MARKUP = {
+    "section": '<section class="news-section">\n<h2>{name}</h2>\n<ol class="news-list">\n{items}\n</ol>\n</section>',
+    "item": '<li><a href="{link}">{title}</a><span class="meta">{source} · '
+            '<time datetime="{date}">{date_text}</time></span></li>',
+    "updated": 'Last refreshed <time datetime="{date}T{time}Z">{date_text}, {time} UTC</time>.',
+}
 # The public site carries no transport vocabulary; drop any upstream entry that does.
 FORBIDDEN = ("vpn", "proxy", "xray", "hysteria", "amnezia", "/admin", "/metrics", "/health")
 
@@ -200,19 +211,20 @@ def collect(sources: list[dict]) -> dict[str, list[dict]]:
     return {name: entries for name, entries in sections.items() if entries}
 
 
-def render(shell: str, sections: dict[str, list[dict]], now: datetime) -> str:
+def render(shell: str, sections: dict[str, list[dict]], now: datetime, markup: dict[str, str]) -> str:
+    """Fill the two markers. Every upstream value is escaped; the markup comes from the site owner."""
     parts = []
     for name, entries in sections.items():
-        parts.append(f'<section class="news-section">\n<h2>{html.escape(name)}</h2>\n<ol class="news-list">')
-        for entry in entries:
-            day = entry["date"]
-            parts.append(
-                f'<li><a href="{html.escape(entry["link"])}">{html.escape(entry["title"])}</a>'
-                f'<span class="meta">{html.escape(entry["source"])} · '
-                f'<time datetime="{day:%Y-%m-%d}">{day.day} {day:%B %Y}</time></span></li>'
+        items = [
+            markup["item"].format(
+                link=html.escape(entry["link"]), title=html.escape(entry["title"]),
+                source=html.escape(entry["source"]), date=f"{entry['date']:%Y-%m-%d}",
+                date_text=f"{entry['date'].day} {entry['date']:%B %Y}",
             )
-        parts.append("</ol>\n</section>")
-    updated = f'Last refreshed <time datetime="{now:%Y-%m-%dT%H:%MZ}">{now.day} {now:%B %Y, %H:%M} UTC</time>.'
+            for entry in entries
+        ]
+        parts.append(markup["section"].format(name=html.escape(name), items="\n".join(items)))
+    updated = markup["updated"].format(date=f"{now:%Y-%m-%d}", time=f"{now:%H:%M}", date_text=f"{now.day} {now:%B %Y}")
     return shell.replace(ITEMS_MARKER, "\n".join(parts)).replace(UPDATED_MARKER, updated)
 
 
@@ -239,8 +251,16 @@ def main(argv: list[str]) -> int:
         print(__doc__.splitlines()[2], file=sys.stderr)
         return 2
     with open(argv[1], encoding="utf-8") as handle:
-        sources = json.load(handle)
-    with open(argv[2], encoding="utf-8") as handle:
+        document = json.load(handle)
+    sources, markup, shell_path, output_path = document, DEFAULT_MARKUP, argv[2], argv[3]
+    if isinstance(document, dict):
+        page = document.get("page")
+        if not isinstance(page, str) or not re.fullmatch(r"[a-z0-9-]+\.html", page):
+            print("the page must be a file name in the site root", file=sys.stderr)
+            return 2
+        sources, markup = document["sources"], document["markup"]
+        shell_path, output_path = os.path.join(argv[2], page), os.path.join(argv[3], page)
+    with open(shell_path, encoding="utf-8") as handle:
         shell = handle.read()
     if ITEMS_MARKER not in shell or UPDATED_MARKER not in shell:
         print("shell page lacks the news markers", file=sys.stderr)
@@ -249,7 +269,12 @@ def main(argv: list[str]) -> int:
     if not sections:
         print("no source returned an entry; keeping the previous page", file=sys.stderr)
         return 1
-    write_atomic(argv[3], render(shell, sections, datetime.now(timezone.utc)))
+    try:
+        page_text = render(shell, sections, datetime.now(timezone.utc), markup)
+    except (ValueError, KeyError, IndexError, AttributeError, TypeError) as error:
+        print(f"the markup cannot be rendered; keeping the previous page: {error}", file=sys.stderr)
+        return 2
+    write_atomic(output_path, page_text)
     return 0
 
 

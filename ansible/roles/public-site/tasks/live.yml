@@ -1,0 +1,71 @@
+---
+# A bundle may declare one page that the node fills from the bundle's own
+# public sources. The refresh has network access, so it is a second unit: it
+# reads the page shell from the served generation and writes only its own
+# directory, never the publisher's. Each bundle has its own unit instance, so
+# an outage of one bundle's sources does not stop another bundle's page.
+# Nothing is removed here: retire.yml does that after the vhost activation.
+- name: Create the live page state directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: public-site
+    group: www-data
+    # Setgid, so the refreshed page inherits nginx's group.
+    mode: "2750"
+  loop: >-
+    {{ ['/var/lib/public-site-live']
+       + (public_site_live.values() | map(attribute='digest') | unique
+          | map('regex_replace', '^', '/var/lib/public-site-live/') | list) }}
+
+# Keyed by digest: two bundle directories with one archive are delivered once.
+- name: Deliver each live page declaration
+  ansible.builtin.copy:
+    src: "{{ item.value }}/live.json"
+    dest: /etc/public-site/{{ item.key }}/live.json
+    owner: root
+    group: public-site
+    mode: "0640"
+  loop: >-
+    {{ dict(public_site_live.values() | map(attribute='digest')
+            | zip(public_site_live.keys())) | dict2items }}
+  loop_control:
+    label: "{{ item.key[:12] }}"
+  when: _public_site_can_deliver
+
+# One script serves the bundled news page and the bundle pages.
+- name: Install the live page refresh script
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../nginx-xhttp/files/model-news/refresh_model_news.py"
+    dest: /usr/local/libexec/public-site-live-refresh
+    owner: root
+    group: root
+    mode: "0755"
+  when: _public_site_can_deliver
+
+- name: Install the live page refresh unit templates
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: /etc/systemd/system/{{ item }}
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - public-site-live@.service
+    - public-site-live@.timer
+  register: _public_site_live_units
+
+- name: Reload systemd after live page unit changes
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: _public_site_live_units is changed and not ansible_check_mode
+
+- name: Enable one live page refresh timer for each bundle
+  ansible.builtin.systemd_service:
+    name: public-site-live@{{ item }}.timer
+    enabled: true
+    state: "{{ 'restarted' if _public_site_live_units is changed else 'started' }}"
+  loop: "{{ public_site_live.values() | map(attribute='digest') | unique }}"
+  loop_control:
+    label: "{{ item[:12] }}"
+  when: not ansible_check_mode or _public_site_live_units is not changed

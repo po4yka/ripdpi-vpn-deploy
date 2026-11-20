@@ -1,0 +1,61 @@
+---
+# Run after the vhost activation, with the live pages of this deploy in
+# public_site_live. absent.yml runs it when no bundle is published, and then
+# the fact is empty.
+- name: List the enabled live page refresh timers
+  ansible.builtin.find:
+    paths: /etc/systemd/system/timers.target.wants
+    file_type: any
+    patterns: ['public-site-live@*.timer']
+  register: _public_site_live_enabled
+
+- name: Select live page refresh timers that no bundle declares
+  ansible.builtin.set_fact:
+    _public_site_live_stale: >-
+      {{ _public_site_live_enabled.files | map(attribute='path') | map('basename')
+         | map('regex_replace', '^public-site-live@', '') | map('regex_replace', '[.]timer$', '')
+         | difference((public_site_live | default({})).values() | map(attribute='digest') | list) | sort }}
+
+- name: Stop and disable stale live page refresh timers
+  ansible.builtin.systemd_service:
+    name: public-site-live@{{ item }}.timer
+    enabled: false
+    state: stopped
+  loop: "{{ _public_site_live_stale }}"
+  loop_control:
+    label: "{{ item[:12] }}"
+
+- name: Stop stale live page refresh runs
+  ansible.builtin.systemd_service:
+    name: public-site-live@{{ item }}.service
+    state: stopped
+  loop: "{{ _public_site_live_stale }}"
+  loop_control:
+    label: "{{ item[:12] }}"
+
+- name: Remove stale live pages and declarations
+  ansible.builtin.file:
+    path: "{{ item.0 }}/{{ item.1 }}{{ item.2 }}"
+    state: absent
+  loop: >-
+    {{ (['/var/lib/public-site-live'] | product(_public_site_live_stale, ['']) | list)
+       + (['/etc/public-site'] | product(_public_site_live_stale, ['/live.json']) | list) }}
+  loop_control:
+    label: "{{ item.1[:12] }}{{ item.2 }}"
+
+- name: Remove the live page refresh units, script and directory when no bundle declares a page
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/public-site-live@.timer
+    - /etc/systemd/system/public-site-live@.service
+    - /usr/local/libexec/public-site-live-refresh
+    - /var/lib/public-site-live
+  register: _public_site_live_removed
+  when: public_site_live | default({}) | length == 0
+
+- name: Reload systemd after live page unit removal
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: _public_site_live_removed is changed and not ansible_check_mode

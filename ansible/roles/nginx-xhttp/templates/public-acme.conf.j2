@@ -21,6 +21,13 @@ server {
 {% else %}
     # Port 80 never redirects to a port other than 443; it serves the site itself.
     index index.html;
+{% if (nginx_xhttp_public_site_dir | default('')) in (public_site_live | default({})) %}
+    location = /{{ public_site_live[nginx_xhttp_public_site_dir].page }} {
+        root /var/lib/public-site-live/{{ public_site_live[nginx_xhttp_public_site_dir].digest }};
+        try_files $uri @public_site_live_shell;
+    }
+    location @public_site_live_shell { root /var/lib/public-site/{{ public_site_live[nginx_xhttp_public_site_dir].digest }}/current; }
+{% endif %}
     location / { try_files $uri $uri/ =404; }
 {% endif %}
 }

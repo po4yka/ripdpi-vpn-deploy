@@ -1,4 +1,7 @@
 ---
+- name: Retire the live page refresh before its user
+  ansible.builtin.include_tasks: live-retire.yml
+
 - name: Inspect the public site publisher timer before retirement
   ansible.builtin.stat:
     path: /etc/systemd/system/public-site-publish.timer

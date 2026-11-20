@@ -1,0 +1,39 @@
+[Unit]
+Description=Refresh the live page of public site bundle %i
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=public-site
+Group=public-site
+# The state directory is public-site:www-data 2750 and owned by Ansible: new
+# files inherit nginx's group, and this umask makes them 0640.
+UMask=0027
+# The instance is the archive digest. The declaration names the page; its
+# shell comes from the served generation.
+ExecStart=/usr/bin/python3 /usr/local/libexec/public-site-live-refresh /etc/public-site/%i/live.json /var/lib/public-site/%i/current /var/lib/public-site-live/%i
+TimeoutStartSec=600
+# Network reads only: no capabilities, read-only system, writes confined to
+# the live page directory. The publisher's state stays read-only here.
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/public-site-live
