@@ -746,7 +746,7 @@ def _hint_assert_holds(**changes) -> bool:
                                     {"ttl_seconds": 86401}, {"dataset_version": "latest"},
                                     {"dataset_version": "20261101T093850Z\n"}, {"dataset_sha256": ""},
                                     {"dataset_sha256": "A" * 64}, {"nginx_rate": "30r/m\n"}],
-                         ids=lambda change: repr(change))
+                         ids=repr)
 def test_hint_settings_assert_refuses_unbounded_or_unpinned_values(change):
     assert _hint_assert_holds()
     assert not _hint_assert_holds(**change)

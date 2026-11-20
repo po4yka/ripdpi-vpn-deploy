@@ -73,7 +73,7 @@ def _rendered() -> dict[tuple[str, str], str]:
     journal = ConfigParser()
     journal.optionxform = str
     journal.read_string(
-        Environment(undefined=StrictUndefined)
+        Environment(undefined=StrictUndefined, autoescape=True)
         .from_string(dropin["ansible.builtin.copy"]["content"])
         .render(defaults)
     )
