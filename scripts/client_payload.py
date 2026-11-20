@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import datetime as dt
 import json
 import os
 from pathlib import Path
@@ -15,7 +16,9 @@ import yaml
 from awg_client import export as awg_export, host_context
 from awg_device_binding import resolve_binding
 from encrypted_client_document import MAX_BYTES, private_file, identity
-from transport_semantics import hysteria_client_bandwidth, hysteria_port_hopping, transport_errors, xhttp_endpoints, xhttp_tuning
+from transport_semantics import (
+    hysteria_client_bandwidth, hysteria_port_hopping, transport_errors, xhttp_bundle_tag, xhttp_endpoints, xhttp_tuning,
+)
 from fleet_inspection import bounded_command, InspectionError
 from payload_failover_policy import validate_policy
 import bundle_health
@@ -163,7 +166,8 @@ def native_delivery(document, resolved, client, host, endpoint):
     return result, bindings
 
 
-def _materialize(client, o, *, documents=None, source_paths=None, private_only=False, per_app_bypass='', per_app_via_tun='', extended=False, xhttp_only=False, endpoints=None, health=None):
+def _materialize(client, o, *, documents=None, source_paths=None, private_only=False, per_app_bypass='',
+                 per_app_via_tun='', extended=False, xhttp_only=False, endpoints=None, include_health=True):
     validate_options(o)
     if o['format'] == 'xray' and (per_app_bypass or per_app_via_tun or o['expires']):
         raise ValueError('unsupported-native-xhttp-options')
@@ -173,6 +177,8 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
         raise ValueError('--xhttp-only requires --profile-format ripdpi')
     if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', client):
         raise ValueError('invalid-client')
+    health_file = os.environ.get('BUNDLE_HEALTH_FILE') if extended and include_health else None
+    health = bundle_health.load_config(health_file) if health_file else None
     sources = source_paths if source_paths is not None else paths(o['hosts'])
     if not isinstance(sources, list) or len(sources) != len(o['hosts']) or any(not isinstance(p, str) or not p for p in sources):
         raise ValueError('invalid-private-input-selection')
@@ -270,7 +276,8 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
             for endpoint in xhttp_endpoints(d, c):
                 server_name = endpoint['host']
                 suffix = ':alternate' if endpoint['name'] == 'alternate' else ''
-                out.append(dict(type='vless', tag='p1-xhttp-' + tag + suffix, server=ip,
+                endpoint_tag = 'p1-xhttp-' + tag + suffix
+                out.append(dict(type='vless', tag=xhttp_bundle_tag(endpoint_tag) if extended else endpoint_tag, server=ip,
                                 server_port=endpoint['port'], uuid=credential['uuid'],
                                 tls=dict(enabled=True, server_name=server_name, utls=dict(enabled=True, fingerprint=fp)),
                                 transport=dict(type='xhttp', host=server_name, path=x['xhttp_path'], mode=mode,
@@ -393,13 +400,13 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
         if field_reports[0] is not None:
             payload['ripdpi']['field_report'] = field_reports[0]
         if health is not None:
-            # Health is published only when the operator supplies its inputs, so delivery and drift stay deterministic.
+            # Every publication path can attach the operator's current health snapshot.
             served = {}
             for (out_start, awg_start, host), (out_end, awg_end, _) in zip(owners, owners[1:]):
                 served.update({v['tag']: (host, bundle_health.profile_for(v['tag'], False)) for v in out[out_start:out_end]})
                 served.update({v['tag']: (host, bundle_health.profile_for(v['tag'], True)) for v in awg[awg_start:awg_end]})
             payload['ripdpi']['endpoints'] = bundle_health.endpoint_health(
-                served, health, __import__('datetime').datetime.now(__import__('datetime').timezone.utc))
+                served, health, dt.datetime.now(dt.timezone.utc))
         if policy is not None:
             payload['ripdpi']['payload_failover'] = policy
         if o['expires']:
@@ -534,8 +541,7 @@ def main():
             raise ValueError('INCY links take no other output option')
         selected_format = 'ripdpi' if args.bundle or incy else {'sing-box': 'singbox', 'ripdpi': 'ripdpi', 'xray': 'xray'}[args.profile_format]
         o = options(selected_format, expires=os.environ.get('BUNDLE_EXPIRES', ''))
-        health = bundle_health.load_config(os.environ['BUNDLE_HEALTH_FILE']) if args.bundle and os.environ.get('BUNDLE_HEALTH_FILE') else None
-        payload, _ = materialize(args.client, o, per_app_bypass=args.per_app_bypass, per_app_via_tun=args.per_app_via_tun, extended=args.bundle, xhttp_only=args.xhttp_only, health=health)
+        payload, _ = materialize(args.client, o, per_app_bypass=args.per_app_bypass, per_app_via_tun=args.per_app_via_tun, extended=args.bundle, xhttp_only=args.xhttp_only)
         if incy:
             print(write_incy_links(args.incy_links, incy_links(payload)))
         else:

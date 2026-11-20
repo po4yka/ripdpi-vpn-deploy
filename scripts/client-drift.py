@@ -35,7 +35,9 @@ def _verdict(client):
         validate_options(o)
         # Mutable registry expiry/selection is part of the current consumed contract.
         o = dict(o, expires=entry['token_expires'], hosts=entry['hosts'], cohorts=entry['cohorts'], awg_host=entry['awg_delivery_host'])
-        payload, bindings = materialize(client, o, private_only=True, documents={str(path.absolute()): doc}, source_paths=entry['delivery_sources'], extended=o['format'] == 'ripdpi')
+        payload, bindings = materialize(client, o, private_only=True, documents={str(path.absolute()): doc},
+                                        source_paths=entry['delivery_sources'], extended=o['format'] == 'ripdpi',
+                                        include_health=False)
         if 'migration_delivery' in entry:
             payload = wrap_payload(payload, entry['migration_delivery'])
         current = digest(client, o, payload, bindings, auth)

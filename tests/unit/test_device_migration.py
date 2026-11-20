@@ -8,6 +8,7 @@ import hmac
 import importlib.util
 import json
 import subprocess
+import time
 from pathlib import Path
 
 import jsonschema
@@ -128,11 +129,19 @@ def signed_receipt(instance, token, state='path-tested'):
     return encoded(receipt)
 
 
-def test_full_migration_preserves_url_exact_expiry_keys_and_requires_new_path(migration):
+def test_full_migration_preserves_url_exact_expiry_keys_and_requires_new_path(migration, tmp_path, monkeypatch):
     instance, token, get = migration
     original_source = instance.io.read(instance.source_path)
     original_target = instance.io.read(instance.target_path)
     old_http = get()
+    evidence = tmp_path / "evidence.json"
+    evidence.write_text(json.dumps({"evidence": [
+        {"sentinel": "fixture-a", "policy": "fixture-policy", "observed_at": int(time.time()) - 60,
+         "profiles": {"p2-amneziawg": "ok"}},
+    ]}))
+    settings = tmp_path / "health.json"
+    settings.write_text(json.dumps({"liveness": str(evidence), "policies": {"upcloud:green": "fixture-policy"}}))
+    monkeypatch.setenv("BUNDLE_HEALTH_FILE", str(settings))
     prepare(migration)
     assert get() == old_http
     target = instance.io.read(instance.target_path)
@@ -145,8 +154,13 @@ def test_full_migration_preserves_url_exact_expiry_keys_and_requires_new_path(mi
     payload = json.loads(raw)
     assert status == 200 and raw != old_http[1]
     assert all(outbound['server'] == '192.0.2.20' for outbound in payload['outbounds'] if 'server' in outbound)
-    assert payload['ripdpi']['amneziawg'][0]['tag'].startswith('migration-awg-')
-    assert 'phone' not in payload['ripdpi']['migration']['target_tags']
+    ripdpi = payload['ripdpi']
+    awg_tag = ripdpi['amneziawg'][0]['tag']
+    assert awg_tag.startswith('migration-awg-')
+    outbound_tags = {outbound['tag'] for outbound in payload['outbounds'] if 'server' in outbound}
+    assert set(ripdpi['endpoints']) == outbound_tags | {awg_tag}
+    assert ripdpi['endpoints'][awg_tag]['health']['status'] == 'healthy'
+    assert 'phone' not in ripdpi['migration']['target_tags']
     with pytest.raises(ValueError, match='evidence-incomplete'):
         instance.ready()
     received = instance.evidence(signed_receipt(instance, token, 'received'))

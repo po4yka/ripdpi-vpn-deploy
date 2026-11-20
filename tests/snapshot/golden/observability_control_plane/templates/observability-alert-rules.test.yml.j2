@@ -431,6 +431,8 @@ tests:
     input_series:
       - series: 'vpn_protocol_probe_success{environment="staging",node="vpn-path",protocol="xhttp",vantage="sentinel-a"}'
         values: '1x120'
+      - series: 'vpn_protocol_probe_complete_until_seconds{environment="staging",node="protocol-liveness",protocol="xhttp"}'
+        values: '180+60x120'
       # 70 percent of 6000 attempts per hour fail: 50 per minute in TLS, 20 per minute by reset.
       - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-sub",protocol="xhttp",network="as64500",country="ZZ"}'
         values: '0+100x120'
@@ -464,6 +466,8 @@ tests:
     input_series:
       - series: 'vpn_protocol_probe_success{environment="staging",node="vpn-path",protocol="xhttp",vantage="sentinel-a"}'
         values: '0x120'
+      - series: 'vpn_protocol_probe_complete_until_seconds{environment="staging",node="protocol-liveness",protocol="xhttp"}'
+        values: '0x120'
       # 70 percent of 6000 attempts per hour fail: 50 per minute in TLS, 20 per minute by reset.
       - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-sub",protocol="xhttp",network="as64500",country="ZZ"}'
         values: '0+100x120'
@@ -492,11 +496,15 @@ tests:
     input_series:
       - series: 'vpn_protocol_probe_success{environment="staging",node="vpn-path",protocol="xhttp",vantage="sentinel-a"}'
         values: '1x120'
-      # 100 percent failures, but 60 attempts per hour stay under the floor of 100.
+      - series: 'vpn_protocol_probe_complete_until_seconds{environment="staging",node="protocol-liveness",protocol="xhttp"}'
+        values: '180x120'
+      # 70 percent of 6000 attempts per hour fail: 50 per minute in TLS, 20 per minute by reset.
       - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-sub",protocol="xhttp",network="as64500",country="ZZ"}'
-        values: '0+1x120'
+        values: '0+100x120'
+      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tls_handshake",network="as64500"}'
+        values: '0+50x120'
       - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tcp_reset",network="as64500"}'
-        values: '0+1x120'
+        values: '0+20x120'
       # One report each minute, except one large report that carries every attempt. In untrusted-origin
       # an enrolled node that is no configured subscription host sends the whole divergence.
       - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",network="as64500"}'
@@ -522,6 +530,52 @@ tests:
       # One report each minute, except one large report that carries every attempt. In untrusted-origin
       # an enrolled node that is no configured subscription host sends the whole divergence.
       - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",network="as64500"}'
+        values: '0+1x120'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: FieldReportNetworkBlocked
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: FieldReportNetworkBlocked
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'vpn_protocol_probe_success{environment="staging",node="vpn-path",protocol="xhttp",vantage="sentinel-a"}'
+        values: '1x120'
+      - series: 'vpn_protocol_probe_complete_until_seconds{environment="staging",node="protocol-liveness",protocol="xhttp"}'
+        values: '180+60x120'
+      # 100 percent failures, but 60 attempts per hour stay under the floor of 100.
+      - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-sub",protocol="xhttp",network="as64500",country="ZZ"}'
+        values: '0+1x120'
+      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tcp_reset",network="as64500"}'
+        values: '0+1x120'
+      # One report each minute, except one large report that carries every attempt. In untrusted-origin
+      # an enrolled node that is no configured subscription host sends the whole divergence.
+      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",network="as64500"}'
+        values: '0+1x120'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: FieldReportNetworkBlocked
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: FieldReportNetworkBlocked
+        exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'vpn_protocol_probe_success{environment="staging",node="vpn-path",protocol="xhttp",vantage="sentinel-a"}'
+        values: '1x120'
+      - series: 'vpn_protocol_probe_complete_until_seconds{environment="staging",node="protocol-liveness",protocol="xhttp"}'
+        values: '180+60x120'
+      # 70 percent of 6000 attempts per hour fail: 50 per minute in TLS, 20 per minute by reset.
+      - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-sub",protocol="xhttp",network="as64500",country="ZZ"}'
+        values: '0+100x120'
+      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tls_handshake",network="as64500"}'
+        values: '0+50x120'
+      - series: 'vpn_field_report_failures_total{environment="staging",node="vpn-sub",protocol="xhttp",failure_stage="tcp_reset",network="as64500"}'
+        values: '0+20x120'
+      # One report each minute, except one large report that carries every attempt. In untrusted-origin
+      # an enrolled node that is no configured subscription host sends the whole divergence.
+      - series: 'vpn_field_report_network_reports_total{environment="staging",node="vpn-sub",protocol="xhttp",network="as64500"}'
         values: '0 1x120'
     alert_rule_test:
       - eval_time: 10m
@@ -537,6 +591,8 @@ tests:
     input_series:
       - series: 'vpn_protocol_probe_success{environment="staging",node="vpn-path",protocol="xhttp",vantage="sentinel-a"}'
         values: '1x120'
+      - series: 'vpn_protocol_probe_complete_until_seconds{environment="staging",node="protocol-liveness",protocol="xhttp"}'
+        values: '180+60x120'
       # 70 percent of 6000 attempts per hour fail: 50 per minute in TLS, 20 per minute by reset.
       - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-p0",protocol="xhttp",network="as64500",country="ZZ"}'
         values: '0+100x120'
@@ -562,6 +618,8 @@ tests:
     input_series:
       - series: 'vpn_protocol_probe_success{environment="staging",node="vpn-path",protocol="xhttp",vantage="sentinel-a"}'
         values: '1x120'
+      - series: 'vpn_protocol_probe_complete_until_seconds{environment="staging",node="protocol-liveness",protocol="xhttp"}'
+        values: '180+60x120'
       # 70 percent of 6000 attempts per hour fail: 50 per minute in TLS, 20 per minute by reset.
       - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-sub",protocol="xhttp",network="other",country="ZZ"}'
         values: '0+100x120'
@@ -590,6 +648,8 @@ tests:
     input_series:
       - series: 'vpn_protocol_probe_success{environment="staging",node="vpn-path",protocol="xhttp",vantage="sentinel-a"}'
         values: '1x120'
+      - series: 'vpn_protocol_probe_complete_until_seconds{environment="staging",node="protocol-liveness",protocol="xhttp"}'
+        values: '180+60x120'
       # 70 percent of 6000 attempts per hour fail: 50 per minute in TLS, 20 per minute by reset.
       - series: 'vpn_field_report_attempts_total{environment="staging",node="vpn-sub",protocol="xhttp",network="unknown",country="ZZ"}'
         values: '0+100x120'

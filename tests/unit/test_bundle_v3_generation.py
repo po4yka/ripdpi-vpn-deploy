@@ -35,8 +35,10 @@ def _liveness(tmp_path: Path, evidence: list[dict]) -> str:
 
 
 def _evidence(sentinel: str, observed_at: int, **profiles: str) -> dict:
-    return {"sentinel": sentinel, "policy": "vpn-p0", "observed_at": observed_at,
-            "profiles": {name.replace("_", "-"): verdict for name, verdict in profiles.items()}}
+    verdicts = {name.replace("_", "-"): verdict for name, verdict in profiles.items()}
+    return {"sentinel": sentinel, "policy": "vpn-p0", "observed_at": observed_at, "profiles": verdicts,
+            "endpoint_variants": {name: [{"variant": 1, "server_ref": name + "-upcloud-prod", "verdict": verdict}]
+                                  for name, verdict in verdicts.items() if name != "p2-amneziawg"}}
 
 
 ENDPOINTS = {
@@ -70,7 +72,10 @@ def test_health_follows_the_liveness_quorum_and_marks_missing_input_unknown(tmp_
                       "policies": {"upcloud:prod": "vpn-p0"}},
     lambda tmp_path: {"liveness": str(tmp_path / "absent.json"), "policies": {"upcloud:prod": "vpn-p0"}},
     lambda tmp_path: {"liveness": _liveness(tmp_path, [_evidence("sentinel-a", FRESH, p0_reality="ok")])},
-], ids=["stale", "absent-file", "no-policy-for-host"])
+    lambda tmp_path: {"liveness": _liveness(tmp_path, [{"sentinel": "sentinel-a", "policy": "vpn-p0",
+                                                       "observed_at": FRESH, "profiles": {"p0-reality": "ok"}}]),
+                      "policies": {"upcloud:prod": "vpn-p0"}},
+], ids=["stale", "absent-file", "no-policy-for-host", "no-endpoint-observation"])
 def test_stale_absent_or_unmapped_input_is_unknown(tmp_path, config):
     health = bundle_health.endpoint_health({"p0-reality-upcloud-prod": ("upcloud:prod", "p0-reality")}, config(tmp_path), NOW)
     assert health["p0-reality-upcloud-prod"]["health"]["status"] == "unknown"

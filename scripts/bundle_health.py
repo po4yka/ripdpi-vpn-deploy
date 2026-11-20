@@ -23,6 +23,7 @@ DEFAULT_MAX_AGE = 1800
 PROFILES = (("p0-reality-", "p0-reality"), ("p1-xhttp-", "p1-xhttp"), ("p2-hysteria2-", "p2-hysteria2"))
 ALIVE = {"ok"}
 DEGRADED = {"throttled"}
+VERDICTS = ALIVE | DEGRADED | {"blocked", "unknown", "error"}
 TOKEN = re.compile(r"^[A-Za-z0-9_-]{22,64}$")
 
 
@@ -81,17 +82,29 @@ def _leg_healthy(path: str | None, now: dt.datetime) -> bool | None:
     return True
 
 
-def profile_status(evidence: list, policy: str, profile: str, quorum: int, now: dt.datetime, max_age: int):
-    """Status and newest observation time for one profile of one liveness policy."""
+def profile_status(evidence: list, policy: str, profile: str, tag: str, quorum: int, now: dt.datetime, max_age: int):
+    """Status and newest observation time for the exact endpoint in the liveness policy."""
     verdicts, newest = [], None
     for item in evidence if isinstance(evidence, list) else []:
         if not isinstance(item, dict) or item.get("policy") != policy:
             continue
         observed = item.get("observed_at")
-        verdict = (item.get("profiles") or {}).get(profile)
-        if type(observed) is not int or verdict is None:
+        if profile == "p2-amneziawg":
+            profiles = item.get("profiles")
+            verdict = profiles.get(profile) if isinstance(profiles, dict) else None
+        else:
+            variants = item.get("endpoint_variants")
+            rows = variants.get(profile) if isinstance(variants, dict) else None
+            if not isinstance(rows, list):
+                continue
+            verdict = next((row.get("verdict") for row in rows
+                            if isinstance(row, dict) and row.get("server_ref") == tag), None)
+        if type(observed) is not int or not isinstance(verdict, str) or verdict not in VERDICTS:
             continue
-        observed_at = dt.datetime.fromtimestamp(observed, dt.timezone.utc)
+        try:
+            observed_at = dt.datetime.fromtimestamp(observed, dt.timezone.utc)
+        except (ValueError, OverflowError, OSError):
+            continue
         if observed_at > now or (now - observed_at).total_seconds() > max_age:
             continue
         verdicts.append(verdict)
@@ -130,7 +143,7 @@ def endpoint_health(endpoints: dict[str, tuple[str, str | None]], config: dict |
         policy = config.get("policies", {}).get(host)
         status, observed = ("unknown", None)
         if profile is not None and policy is not None:
-            status, observed = profile_status(evidence, policy, profile, config.get("min_failed_vantages", 2), now,
+            status, observed = profile_status(evidence, policy, profile, tag, config.get("min_failed_vantages", 2), now,
                                               config.get("max_age_seconds", DEFAULT_MAX_AGE))
         if legs[host] is False and status != "down":
             # A cascade leg that is not proven healthy cannot certify the endpoint behind it.

@@ -179,10 +179,12 @@ def _validate(
             if not isinstance(rows, list) or len(rows) > MAX_VARIANTS:
                 raise AdapterError("invalid evidence")
             seen_variants: set[int] = set()
+            seen_refs: set[str] = set()
             for row in rows:
                 if (
                     not isinstance(row, dict)
-                    or set(row) != {"variant", "verdict"}
+                    or set(row) - {"variant", "verdict", "server_ref"}
+                    or not {"variant", "verdict"} <= row.keys()
                     or not _integer(row["variant"], maximum=MAX_VARIANTS)
                     or row["variant"] < 1
                     or row["variant"] in seen_variants
@@ -191,6 +193,12 @@ def _validate(
                 ):
                     raise AdapterError("invalid evidence")
                 seen_variants.add(row["variant"])
+                if "server_ref" in row:
+                    ref = row["server_ref"]
+                    if (not isinstance(ref, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,64}", ref) is None
+                            or not ref.startswith(profile + "-") or ref in seen_refs):
+                        raise AdapterError("invalid probe variant reference")
+                    seen_refs.add(ref)
         durations = item.get("profile_durations_ms", {})
         if (
             not isinstance(durations, dict)
@@ -287,6 +295,54 @@ def _probe_lines(
         *observed,
         "# TYPE vpn_protocol_probe_duration_seconds histogram",
         *durations,
+    ]
+
+
+def _probe_completeness(
+    expected: Any,
+    evidence: list[dict[str, Any]],
+    now: int,
+    stale_after: int,
+) -> list[str]:
+    """Expire positive evidence at the oldest configured probe's deadline."""
+    if not isinstance(expected, dict) or not 1 <= len(expected) <= MAX_EVIDENCE:
+        raise AdapterError("invalid expected probes")
+    by_sentinel = {item["sentinel"]: item for item in evidence}
+    complete_until: dict[str, int] = {}
+    for sentinel, configuration in expected.items():
+        if (
+            not _alias(sentinel)
+            or not isinstance(configuration, dict)
+            or set(configuration) != {"policy", "profiles"}
+        ):
+            raise AdapterError("invalid expected probes")
+        policy, profiles = configuration["policy"], configuration["profiles"]
+        if (
+            not _alias(policy)
+            or not isinstance(profiles, list)
+            or not 1 <= len(profiles) <= len(PROTOCOLS)
+            or any(not isinstance(profile, str) or profile not in PROTOCOLS for profile in profiles)
+            or len(set(profiles)) != len(profiles)
+        ):
+            raise AdapterError("invalid expected probes")
+        item = by_sentinel.get(sentinel)
+        for profile in profiles:
+            until = 0
+            if (
+                item is not None
+                and item["policy"] == policy
+                and 0 <= now - item["observed_at"] < stale_after
+                and SUCCESS.get(item["profiles"].get(profile)) == 1
+            ):
+                until = item["observed_at"] + stale_after
+            protocol = PROTOCOLS[profile]
+            complete_until[protocol] = min(complete_until.get(protocol, until), until)
+    return [
+        "# TYPE vpn_protocol_probe_complete_until_seconds gauge",
+        *[
+            f'vpn_protocol_probe_complete_until_seconds{{node="protocol-liveness",protocol="{protocol}"}} {until}'
+            for protocol, until in sorted(complete_until.items())
+        ],
     ]
 
 
@@ -411,6 +467,9 @@ def render(
             histogram={} if histogram is None else histogram,
         )
     )
+    # Old evaluator output has no roster and cannot prove complete coverage.
+    if "expected_probes" in document:
+        lines.extend(_probe_completeness(document["expected_probes"], evidence, now, stale_after))
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 

@@ -2,7 +2,7 @@
 
 > **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-02
 
-The primary endpoint retains its existing tag. Enabling `nginx_xhttp.fallback_enabled` in the host profile also exports a separately selectable `:alternate` endpoint using `nginx_xhttp_fallback_port`. Its TLS SNI and HTTP host come from `fallback_server_name`, or the primary hostname when omitted. A distinct hostname requires its own admitted certificate/key pair. Nginx and provider/firewall listener ownership remain unchanged.
+The primary endpoint retains its existing tag. Enabling `nginx_xhttp.fallback_enabled` in the host profile also exports a separately selectable alternate endpoint using `nginx_xhttp_fallback_port`. Its TLS SNI and HTTP host come from `fallback_server_name`, or the primary hostname when omitted. A distinct hostname requires its own admitted certificate/key pair. Nginx and provider/firewall listener ownership remain unchanged.
 
 | Output | XHTTP modes | Tuning | Selection |
 |---|---|---|---|

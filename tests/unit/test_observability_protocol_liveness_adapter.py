@@ -632,6 +632,40 @@ def test_unknown_verdict_publishes_no_success_value(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("second_probe", "expected_deadline"),
+    [
+        ("ok", "1800000110"),
+        ("blocked", "0"),
+        ("missing", "0"),
+        ("stale", "0"),
+        ("unknown", "0"),
+    ],
+)
+def test_probe_completeness_requires_every_configured_probe(
+    tmp_path: Path, second_probe: str, expected_deadline: str,
+) -> None:
+    document = _probe_evidence()
+    document["expected_probes"] = {
+        "sentinel-a": {"policy": "vpn-path", "profiles": ["p1-xhttp"]},
+        "sentinel-b": {"policy": "vpn-path", "profiles": ["p1-xhttp"]},
+    }
+    if second_probe != "missing":
+        document["evidence"].append({
+            "sentinel": "sentinel-b",
+            "policy": "vpn-path",
+            "control": "ok",
+            "profiles": {"p1-xhttp": "ok" if second_probe == "stale" else second_probe},
+            "observed_at": 1_799_999_800 if second_probe == "stale" else 1_799_999_990,
+        })
+
+    assert _run(tmp_path, document).returncode == 0
+    metrics = (tmp_path / "protocol-liveness.prom").read_text(encoding="utf-8")
+    assert _samples(metrics, "vpn_protocol_probe_complete_until_seconds") == {
+        'vpn_protocol_probe_complete_until_seconds{node="protocol-liveness",protocol="xhttp"}': expected_deadline,
+    }
+
+
 def test_latency_histogram_is_cumulative_and_counts_each_observation_once(tmp_path: Path) -> None:
     state = tmp_path / "state.json"
     labels = 'node="vpn-path",protocol="xhttp",vantage="sentinel-a"'
@@ -686,7 +720,11 @@ def test_invalid_probe_duration_replaces_metrics_with_malformed_state(tmp_path: 
 
 
 def test_probe_metric_families_are_declared_in_canonical_manifest(tmp_path: Path) -> None:
-    assert _run(tmp_path, _probe_evidence(), state=tmp_path / "state.json").returncode == 0
+    document = _probe_evidence()
+    document["expected_probes"] = {
+        "sentinel-a": {"policy": "vpn-path", "profiles": ["p1-xhttp"]},
+    }
+    assert _run(tmp_path, document, state=tmp_path / "state.json").returncode == 0
     manifest = json.loads(
         (ROOT / "contract/observability-metric-manifest.example.json").read_text(encoding="utf-8")
     )

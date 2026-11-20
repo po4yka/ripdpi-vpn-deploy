@@ -16,7 +16,10 @@ import re
 import uuid
 
 from awg_device_binding import BindingError, resolve_binding
-from transport_semantics import awg_dns_valid, cohort_errors, hysteria_client_bandwidth, hysteria_errors, key_valid, parameter_errors, xhttp_path_valid, xhttp_tuning
+from transport_semantics import (
+    awg_dns_valid, cohort_errors, hysteria_client_bandwidth, hysteria_errors, key_valid, parameter_errors,
+    xhttp_bundle_tag, xhttp_path_valid, xhttp_tuning,
+)
 
 PROFILES = {"p0-reality", "p1-xhttp", "p2-hysteria2", "p2-amneziawg"}
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}\Z")
@@ -230,12 +233,14 @@ def build_profiles(standard_doc, ripdpi_doc, secrets_doc, client, required_profi
     standard = {"log": {"level": "warn"}, "inbounds": [], "outbounds": [], "route": {"rules": []}}
     xray = {"log": {"loglevel": "warning"}, "inbounds": [], "outbounds": [], "routing": {"rules": []}}
     maps = {"sing_box": {}, "xray": {}}
+    endpoint_refs = {"sing_box": {}, "xray": {}}
     for profile in ("p0-reality", "p2-hysteria2", "p1-xhttp"):
         if profile not in needed:
             continue
         selected = _outbounds(ripdpi_doc if profile == "p1-xhttp" else standard_doc, profile)
         engine = "sing_box" if profile == "p2-hysteria2" else "xray"
         maps[engine][profile] = []
+        endpoint_refs[engine][profile] = []
         for index, original in enumerate(selected, 1):
             outbound = copy.deepcopy(original)
             allowed = {"type", "tag", "server", "server_port", "tls"}
@@ -334,11 +339,13 @@ def build_profiles(standard_doc, ripdpi_doc, secrets_doc, client, required_profi
                 xray["routing"]["rules"].append({"type": "field", "inboundTag": [inbound_tag], "outboundTag": outbound["tag"]})
                 metadata["path"] = transport["path"]
             maps[engine][profile].append(proxy_port)
+            tag = outbound["tag"]
+            endpoint_refs[engine][profile].append(xhttp_bundle_tag(tag) if profile == "p1-xhttp" else tag)
             public.append(metadata)
     for engine, filename, document in (("sing_box", "sing-box.json", standard), ("xray", "xray.json", xray)):
         if maps[engine]:
             files[filename] = document
-            runtime[engine] = {"config": str(root / filename), "profiles": maps[engine]}
+            runtime[engine] = {"config": str(root / filename), "profiles": maps[engine], "endpoint_refs": endpoint_refs[engine]}
     if "p2-amneziawg" in needed:
         dns_servers = awg_defaults.get("dns_servers") if isinstance(awg_defaults, dict) else None
         if not awg_dns_valid(dns_servers):

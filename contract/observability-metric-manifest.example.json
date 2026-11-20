@@ -628,6 +628,20 @@
       "alert_use": true
     },
     {
+      "name": "vpn_protocol_probe_complete_until_seconds",
+      "owner": "observability_control_plane",
+      "type": "gauge",
+      "unit": "seconds",
+      "labels": [
+        "node",
+        "protocol"
+      ],
+      "max_series": 4,
+      "cadence_seconds": 120,
+      "stale_after_seconds": 360,
+      "alert_use": true
+    },
+    {
       "name": "vpn_protocol_probe_duration_seconds",
       "owner": "observability_control_plane",
       "type": "histogram",
