@@ -133,7 +133,7 @@ def filled():
             "reality_public_key": "BBBBBBBBBBBBBBBBBBBBBBBB",
             "target": "mirror.example.com:443",
             "server_names": ["mirror.example.com"],
-            "xhttp_path": "/sync",
+            "xhttp_path": "/5f3a9c0e1b7d4a26",
             "clients": [
                 {
                     "name": "phone",
@@ -1196,3 +1196,15 @@ def test_every_document_requires_explicit_awg_shape_values(filled, tmp_path, key
     result = _validate_cli(filled, tmp_path)
     assert result.returncode == 1
     assert "amneziawg_secrets.instances.0: failed required constraint" in result.stderr
+
+
+def test_xhttp_path_needs_a_slash_and_sixteen_more_characters(filled, tmp_path):
+    def errors():
+        return [e for e in _validator().iter_errors(filled) if list(e.absolute_path) == ["xray", "xhttp_path"]]
+
+    for short in ("/api", "/app-sync", "/5f3a9c0e1b7d4a2"):
+        filled["xray"]["xhttp_path"] = short
+        assert errors(), short
+    assert _validate_cli(filled, tmp_path).returncode != 0
+    filled["xray"]["xhttp_path"] = "/5f3a9c0e1b7d4a26"
+    assert not errors()

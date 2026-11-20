@@ -36,13 +36,13 @@ Fence and lock initialization is limited to a genuinely fresh payload root and a
 | Scoped payload (per-device profile only) | required | per-device with shared server params | ✓ partial |
 | HTTPS endpoint with no access log of paths | required | nginx logs only URI-free categories (`status`, `upstream_status`, `limit`) to `vpn-sub.categorical.log`; `error_log` goes to `/dev/null` | ✓ shipped |
 | Revocation list | implemented in v1.2 | `subscription.revoked_tokens`; the same run removes the token's `/share/` bundle and refuses to upload one for it | ✓ shipped |
-| Rate-limit | implemented in v1.2 | `subscription.rate_limit` + burst | ✓ shipped |
+| Rate-limit | implemented in v1.2 | `subscription.rate_limit` + burst, counted per IPv4 address or IPv6 /64; a refused request gets the same 404 as an unmatched path | ✓ shipped |
 | Token expiry per device | required | Atomic `<sha256>.document` for new `/sub/` delivery; legacy payload/`.meta` remains readable. vpn-bootstrap returns 410 at expiry for both routes. | ✓ shipped |
 | RIPDPI client expiry warning | required | `make issue-sub-token FORMAT=ripdpi EXPIRES=…` normalizes one UTC instant into both the atomic document and `ripdpi.expires`; Android warns before the enforcement point. | ✓ shipped |
 | Delivery host separate from VPN node | required | `vpn_subscription_only` inventory var skips every transport role; pairs with multi-operator SOPS split | ✓ shipped (see `docs/how-to/subscription-host-separation.md`) |
 | QR bootstrap flow | required | `issue-bootstrap.sh --qr` + `issue-sub-token.sh --qr` writes a PNG | ✓ shipped |
 | Payload delivery over pinned SSH | required | `issue-sub-token.sh` and `issue-bootstrap.sh` ignore `~/.ssh/config`, accept only a host key in `INSPECT_KNOWN_HOSTS` (default `~/.ssh/known_hosts`), use the provider's `ssh_port` and forward nothing; `ANSIBLE_SSH_PRIVATE_KEY_FILE` selects the key and `SUBSCRIPTION_SSH_HOST` a management name such as a tailnet address | ✓ shipped |
-| Audit log of token reads | recommended | `/var/log/vpn-subscription/reads.log` JSONL; one record per read (consumed/unknown/revoked/expired) with hash prefix + src_ip + bytes; pull via `make sub-reads` | ✓ shipped |
+| Audit log of token reads | recommended | `/var/log/vpn-subscription/reads.log` JSONL; one record per read (consumed/unknown/revoked/expired) with hash prefix + `src_hash` (keyed hash of the source address; the key lives only in the service process) + bytes; pull via `make sub-reads` | ✓ shipped |
 | Hashed token storage | recommended | disk paths use `<route>/<sha256(token)>`; plaintext token never on disk | ✓ shipped |
 | No `Referer` / no `cache` | required | explicit `Cache-Control: no-store` + `Referrer-Policy: no-referrer` on both `/sub/` and `/bootstrap/` | ✓ shipped |
 
@@ -67,7 +67,7 @@ Feed URLs, rules and canaries are private inputs in `nginx_xhttp.routing_lists`.
 The eight items previously on the "ship next" list are now landed — the gap matrix above is at parity with the documented contract. Remaining work is operational rather than architectural:
 
 1. **Periodic rotation of `/sub/` tokens** — even with expiry, long-lived /sub/ URLs accumulate trust over time. A scheduled re-issue cadence (e.g. quarterly) trims the leak window. `./scripts/issue-sub-token.sh <client> --refresh-token <existing-token>` performs the manual operation; the original format/hosts/cohorts are resolved from the encrypted `client_registry`, so a refresh can no longer silently fall back to default single-host sing-box options. Detect devices whose delivered payload no longer matches current inputs with `make client-drift CLIENT=<device>` (`current` / `stale` / `unknown`).
-2. **`make sub-reads` aggregation** — the read-audit log is JSONL and grep-friendly today; a small summary script (top-pulling tokens, geographic clustering of src_ip, rate spikes) would help forensics. Compose from `jq` + existing tooling for v1.
+2. **`make sub-reads` aggregation** — the read-audit log is JSONL and grep-friendly today; a small summary script (top-pulling tokens, sources per token by `src_hash` within one service run, rate spikes) would help forensics. Compose from `jq` + existing tooling for v1.
 3. **Multi-region delivery host** — `vpn_subscription_only` covers the single-host separation case. A multi-region delivery fleet (different ASN, geo-distributed) is the next step; the existing `fleet-rotate` orchestrator can drive it once the inventory pattern is documented.
 
 ## What is NOT a gap

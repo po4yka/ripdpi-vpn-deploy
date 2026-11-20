@@ -226,7 +226,7 @@ ${xray_source_fields}
   reality_public_key:  "${reality_pub}"
   target: "${REALITY_TARGET}"
   server_names: ["${REALITY_SERVER_NAME}"]
-  xhttp_path: "/$(openssl rand -hex 4)"
+  xhttp_path: "/$(openssl rand -hex 16)"
   clients:
     - name: ${CLIENT_NAME}
       uuid: "${uuid}"

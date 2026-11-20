@@ -1,5 +1,11 @@
-# Per-IP delivery rate limit and bounded categorical diagnostics.
-limit_req_zone $binary_remote_addr zone=vpn_sub_per_ip:10m rate=5r/m;
+# Per-source delivery rate limit and bounded categorical diagnostics.
+# An IPv6 host can use any address inside its /64, so the first 8 bytes are
+# the key; IPv4 keeps the whole address.
+map $binary_remote_addr $vpn_sub_limit_key {
+    default $binary_remote_addr;
+    "~(?s)^(?<vpn_sub_v6_net>.{8}).{8}$" $vpn_sub_v6_net;
+}
+limit_req_zone $vpn_sub_limit_key zone=vpn_sub_per_ip:10m rate=5r/m;
 
 # Never include URI, headers, addresses, or token-bearing fields here.
 log_format vpn_sub_category 'status=$status upstream_status=$upstream_status limit=$limit_req_status';

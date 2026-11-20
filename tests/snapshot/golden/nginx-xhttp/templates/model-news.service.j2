@@ -29,6 +29,9 @@ ProtectClock=true
 ProtectHostname=true
 RestrictNamespaces=true
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# A feed redirect cannot reach private services; the DNS stub stays on
+# loopback, so the fetcher itself refuses loopback redirect targets.
+IPAddressDeny=link-local 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 fc00::/7
 LockPersonality=true
 MemoryDenyWriteExecute=true
 RestrictRealtime=true

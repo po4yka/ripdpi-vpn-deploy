@@ -156,7 +156,15 @@ def test_redirect_away_from_https_is_refused() -> None:
     request = news.urllib.request.Request("https://news.example/feed")
     with pytest.raises(ValueError, match="leaves https"):
         handler.redirect_request(request, None, 302, "Found", {}, "http://news.example/feed")
-    assert handler.redirect_request(request, None, 302, "Found", {}, "https://mirror.example/feed")
+    assert handler.redirect_request(request, None, 302, "Found", {}, "https://93.184.216.34/feed")
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "[::1]", "10.0.0.5", "192.168.1.1", "100.64.0.9", "169.254.169.254", "[fd00::1]"])
+def test_redirect_to_a_non_public_address_is_refused(host: str) -> None:
+    handler = news.HttpsOnlyRedirects()
+    request = news.urllib.request.Request("https://news.example/feed")
+    with pytest.raises(ValueError, match="leaves the public internet"):
+        handler.redirect_request(request, None, 302, "Found", {}, f"https://{host}/feed")
 
 
 def test_malformed_entry_link_drops_only_that_entry(

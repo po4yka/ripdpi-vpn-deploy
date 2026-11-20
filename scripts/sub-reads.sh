@@ -6,7 +6,7 @@
 #   route       sub | bootstrap
 #   token_prefix  first 8 chars of the sha256 hash (correlation key)
 #   outcome     consumed | unknown | revoked | expired
-#   src_ip      visitor IP (X-Real-IP if nginx forwarded it)
+#   src_hash    keyed hash of the visitor address; comparable within one service run
 #   bytes       payload size served (0 on rejection)
 #
 # Operator workflow:

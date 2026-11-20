@@ -92,6 +92,7 @@ def nginx_server(*, routes_enabled=True, upstream=None, rate="5r/m", burst=1):
             "enable_bootstrap": routes_enabled,
         },
         "subscription_port": port,
+        "subscription_field_report": {"enabled": False},
         "nginx_xhttp": {"server_name": "unused.example.test"},
         "vpn": {"share_bundles": [{"token": "synthetic"}] if routes_enabled else []},
     }
@@ -106,14 +107,18 @@ def nginx_server(*, routes_enabled=True, upstream=None, rate="5r/m", burst=1):
         .replace("/etc/nginx/tls/subscription-host/server.key", str(key))
         .replace("/var/log/nginx/", str(base) + "/")
         .replace("/var/www/subscription-host/share/", str(base) + "/share/")
+        .replace("/var/www/public-site", str(base) + "/site")
     )
+    (base / "site").mkdir(mode=0o755)
+    (base / "site/404.html").write_text("synthetic-site-not-found")
+    (base / "site/404.html").chmod(0o644)
     zone = render_template(
         ROOT / "ansible/roles/subscription-host/templates/rate-limit.conf.j2",
         dict(**context),
     )
     config = base / "nginx.conf"
     config.write_text(
-        f"pid {base}/nginx.pid; error_log {base}/global.error.log warn; events {{}} http {{ access_log {base}/global.access.log; {zone} {site} }}"
+        f"pid {base}/nginx.pid; error_log {base}/global.error.log warn; events {{}} http {{ access_log {base}/global.access.log; set_real_ip_from 127.0.0.1; real_ip_header X-Test-Peer; {zone} {site} }}"
     )
     process = subprocess.Popen(
         ["/usr/sbin/nginx", "-c", str(config), "-g", "daemon off;"],
@@ -149,7 +154,19 @@ def test_bearer_rate_and_upstream_failures_keep_only_categorical_diagnostics(rou
                 with pytest.raises(urllib.error.HTTPError) as failed:
                     urllib.request.urlopen(f"{origin}/{prefix}/{token}", context=tls, timeout=2)
                 statuses.append(failed.value.code)
-        assert 502 in statuses and 429 in statuses
+        # A limited request must not mark the route: it is the same answer as
+        # an unmatched path, in status, headers and body.
+        assert set(statuses) == {502, 404}
+        with pytest.raises(urllib.error.HTTPError) as limited:
+            urllib.request.urlopen(f"{origin}/sub/{token}", context=tls, timeout=2)
+        with pytest.raises(urllib.error.HTTPError) as absent:
+            urllib.request.urlopen(f"{origin}/unknown/{token}", context=tls, timeout=2)
+        answers = [
+            (error.value.code, error.value.read(), sorted((k, v) for k, v in error.value.headers.items() if k != "Date"))
+            for error in (limited, absent)
+        ]
+        assert answers[0] == answers[1]
+        assert answers[0][:2] == (404, b"synthetic-site-not-found")
         unmatched = [
             f"/sub/{token}.json", f"/sub/{token}%2Ejson", f"/sub/{token}/extra",
             f"/unknown/{token}", f"/share/{token}",
@@ -165,9 +182,30 @@ def test_bearer_rate_and_upstream_failures_keep_only_categorical_diagnostics(rou
         time.sleep(0.1)
         logs = "\n".join(path.read_text() for path in base.glob("*.log"))
         assert token not in logs, "nginx failure diagnostics exposed synthetic bearer URI"
-        assert all("status=" + str(code) in logs for code in (404, 502, 429)), (
+        assert all(marker in logs for marker in ("status=404", "status=502", "limit=REJECTED")), (
             "categorical diagnostics must retain rejected, upstream and rate-limit outcomes"
         )
+
+
+def test_rate_limit_counts_an_ipv6_network_and_a_whole_ipv4_address():
+    token = "SyntheticBearerBoundary00000002"
+    with nginx_server(rate="1r/m", burst=1) as (origin, base):
+        tls = ssl._create_unverified_context()
+
+        def status(peer):
+            request = urllib.request.Request(f"{origin}/sub/{token}", headers={"X-Test-Peer": peer})
+            with pytest.raises(urllib.error.HTTPError) as failed:
+                urllib.request.urlopen(request, context=tls, timeout=2)
+            return failed.value.code
+
+        # 502 is the closed upstream, so the request passed the limit; 404 is a refusal.
+        # One request and one burst request pass for each key.
+        assert [status("2001:db8:1:2::1"), status("2001:db8:1:2:ffff:a:b:c")] == [502, 502]
+        assert status("2001:db8:1:2:1::9") == 404, "addresses in one /64 must share the limit"
+        assert status("2001:db8:1:3::1") == 502
+        assert [status("198.51.100.10"), status("198.51.100.10")] == [502, 502]
+        assert status("198.51.100.11") == 502, "IPv4 neighbours must not share a limit"
+        assert status("198.51.100.10") == 404
 
 
 def test_share_bundle_files_are_served_only_from_their_own_token_directory():

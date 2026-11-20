@@ -39,6 +39,8 @@ public logs so failed requests cannot disclose the bearer endpoint or session.
 
 - **Candidate HTTP temp paths stay private** — every standalone Nginx validation HTTP temp directory is beneath the refresh workspace. Omitting them lets Nginx’s default worker identity chown shared distro temp directories under the strict sandbox. Full deployed-config validation remains required; the unit floor and writable paths are unchanged.
 
+- **No `return 444`, and no shared 404 body** — other paths answer nginx's own 404. A silent close after the handshake marks the origin for an active probe; the public site's page would link this name to the direct site.
+- **The XHTTP location must not buffer the request** — keep `client_max_body_size 0` and `proxy_request_buffering off`; without them stream-up fails and packet-up is buffered.
 - **Do not enable this for the filtered-path baseline** — re-read the ADR. Use it only
   when the failure shape is "TLS handshake never completes from this network,
   completes from elsewhere" and a CDN PoP outside the filtered path is reachable.

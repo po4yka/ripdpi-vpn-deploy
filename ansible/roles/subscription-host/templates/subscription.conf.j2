@@ -26,7 +26,16 @@ server {
     ssl_certificate     /etc/nginx/tls/subscription-host/server.fullchain.pem;
     ssl_certificate_key /etc/nginx/tls/subscription-host/server.key;
 
+    # Same TLS answer as the public site on this hostname (nginx-xhttp
+    # site.conf.j2): a different stack on a second port marks the host.
     ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ecdh_curve      X25519:prime256v1:secp384r1;
+    ssl_ciphers         ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache   shared:vpn:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
     # Keep the complete header set at server scope: every child location
     # inherits the same no-store policy and security headers. A child
     # add_header would discard this entire set on supported nginx versions.
@@ -48,6 +57,14 @@ server {
     proxy_hide_header Referrer-Policy;
     proxy_hide_header X-Robots-Tag;
 
+    # Not-found answers use the public site's page when that site is on this
+    # host; without it nginx falls back to its built-in page, with status 404.
+    error_page 404 /404.html;
+    location = /404.html {
+        root /var/www/public-site;
+        internal;
+    }
+
     # Long-lived /sub/<token>. Proxied to the local vpn-bootstrap
     # service, which:
     #   * hashes the URL token with sha256
@@ -57,8 +74,11 @@ server {
     #   * writes a read-audit JSONL record
     # nginx fronts only TLS + rate-limit.
     location ~ "^/sub/(?<vpn_sub_token>[A-Za-z0-9_-]{16,64})$" {
-        limit_req zone=vpn_sub_per_ip burst={{ subscription.rate_burst | default(3) }} nodelay;
-        limit_req_status 429;
+        # A limited request answers exactly as an unmatched path does, so the
+        # limit does not mark the route. 404 and not 410: a limited read must
+        # never pass as proof of revocation.
+        limit_req zone=vpn_sub_per_ip burst={{ subscription.rate_burst | default(20) }} nodelay;
+        limit_req_status 404;
 
         proxy_pass http://{{ subscription.bootstrap_listen_addr | default('127.0.0.1') }}:{{ subscription.bootstrap_listen_port | default(8445) }};
         proxy_http_version 1.1;
@@ -66,9 +86,9 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
 
         # The backend's own error page names its software. nginx answers with
-        # its built-in page for the same status, so the 410 contract is kept.
+        # its own page for the same status, so the 410 contract is kept.
         proxy_intercept_errors on;
-        error_page 404 = @vpn_sub_not_found;
+        error_page 404 /404.html;
         error_page 410 = @vpn_sub_gone;
         error_page 503 = @vpn_sub_unavailable;
 
@@ -84,8 +104,11 @@ server {
     # service which atomically deletes the payload after first
     # successful read. Rate-limited via the same zone as /sub/.
     location ~ "^/bootstrap/(?<vpn_boot_token>[A-Za-z0-9_-]{16,64})$" {
-        limit_req zone=vpn_sub_per_ip burst={{ subscription.rate_burst | default(3) }} nodelay;
-        limit_req_status 429;
+        # A limited request answers exactly as an unmatched path does, so the
+        # limit does not mark the route. 404 and not 410: a limited read must
+        # never pass as proof of revocation.
+        limit_req zone=vpn_sub_per_ip burst={{ subscription.rate_burst | default(20) }} nodelay;
+        limit_req_status 404;
 
         proxy_pass http://{{ subscription.bootstrap_listen_addr | default('127.0.0.1') }}:{{ subscription.bootstrap_listen_port | default(8445) }};
         proxy_http_version 1.1;
@@ -93,9 +116,9 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
 
         # The backend's own error page names its software. nginx answers with
-        # its built-in page for the same status, so the 410 contract is kept.
+        # its own page for the same status, so the 410 contract is kept.
         proxy_intercept_errors on;
-        error_page 404 = @vpn_sub_not_found;
+        error_page 404 /404.html;
         error_page 410 = @vpn_sub_gone;
         error_page 503 = @vpn_sub_unavailable;
 

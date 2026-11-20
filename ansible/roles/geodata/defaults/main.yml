@@ -5,7 +5,6 @@
 # Example source families operators may pin to specific releases:
 #   - https://github.com/v2fly/domain-list-community/releases
 #   - https://github.com/v2fly/geoip/releases
-#   - https://github.com/runetfreedom/russia-v2ray-rules-dat/releases
 
 geodata:
   geosite_url: ""

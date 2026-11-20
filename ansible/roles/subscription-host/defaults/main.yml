@@ -2,8 +2,8 @@
 
 subscription:
   port: "{{ subscription_port }}"
-  rate_limit: "5r/m"   # per-IP request rate (nginx limit_req)
-  rate_burst: 3        # burst allowance before queuing/rejecting
+  rate_limit: "5r/m"   # request rate per IPv4 address or IPv6 /64 (nginx limit_req)
+  rate_burst: 20       # burst before refusal; many clients can share one NAT address
   revoked_tokens: []   # list of sha256 hex hashes; populated from secrets when revocation happens
   # server_name defaults to nginx_xhttp.server_name when not set
 
@@ -28,9 +28,9 @@ subscription:
   bootstrap_listen_port: 8445
   # Server-side audit log for token reads. JSONL, one record per
   # successful or rejected fetch. Carries only the first 8 chars of
-  # the SHA256 hash (not the plaintext token), source IP, route, and
-  # bytes served — enough to detect mass-pull patterns without
-  # leaking secrets to disk.
+  # the SHA256 hash (not the plaintext token), a keyed source hash,
+  # route, and bytes served — enough to detect mass-pull patterns
+  # without leaking secrets or client addresses to disk.
   reads_log: /var/log/vpn-subscription/reads.log
   # Revocation: one sha256 hash per line. Reloaded on every request,
   # so updates to the file take effect on next read without needing
