@@ -191,10 +191,17 @@ table inet filter {
     iifname "tailscale0" ip daddr {{ firewall_tailnet_collector_ingress.address }} ip saddr { {{ firewall_tailnet_collector_ingress.sources | join(', ') }} } tcp dport 9443 accept comment "private-collector-ingress"
 {% endif %}{% for listener in public_listener_contract | default([]) %}
 {% set listener_target = listener.port if listener.port is not none else listener.port_range %}
-    # Public listener contract: {{ listener.name }} ({{ listener.protocol }}/{{ listener_target }})
+{% set listener_family = listener.family | default('dual', true) %}
+    # Public listener contract: {{ listener.name }} ({{ listener.protocol }}/{{ listener_target }}{{ ', ' ~ listener_family if listener_family != 'dual' else '' }})
 {% if listener.name == 'cdn-front' and (cdn_front.origin_firewall | default(true)) %}
+{% if listener_family != 'ipv6' %}
     tcp dport {{ listener_target }} ip saddr @cdn_front_origins accept
+{% endif %}
+{% if listener_family != 'ipv4' %}
     tcp dport {{ listener_target }} ip6 saddr @cdn_front_origins_v6 accept
+{% endif %}
+{% elif listener_family != 'dual' %}
+    meta nfproto {{ listener_family }} {{ listener.protocol }} dport {{ listener_target }} accept
 {% else %}
     {{ listener.protocol }} dport {{ listener_target }} accept
 {% endif %}
@@ -358,13 +365,15 @@ table inet filter {
 }
 
 {% set hysteria_hopping = (vpn.enable_hysteria | default(false)) and (hysteria_port_range | default('') | length > 0) %}
+{# A single-family hopping range must not reach the listener port on the closed family. #}
+{% set hopping_family = public_listener_contract | default([]) | selectattr('protocol', 'equalto', 'udp') | selectattr('port_range', 'equalto', hysteria_port_range | default('')) | map(attribute='family', default=none) | first | default(none) %}
 {% if (vpn.enable_amneziawg | default(false)) or hysteria_hopping %}
 table inet nat {
 {% if hysteria_hopping %}
   chain prerouting {
     type nat hook prerouting priority dstnat;
 {% set public_ifaces = [ansible_facts.get('default_ipv4', {}).get('interface', 'eth0'), ansible_facts.get('default_ipv6', {}).get('interface', ansible_facts.get('default_ipv4', {}).get('interface', 'eth0'))] | unique | list %}
-    iifname { {% for iface in public_ifaces %}"{{ iface }}"{{ ', ' if not loop.last else '' }}{% endfor %} } fib daddr type local udp dport {{ hysteria_port_range }} counter redirect to :{{ hysteria_port }} comment "hysteria-port-hopping"
+    iifname { {% for iface in public_ifaces %}"{{ iface }}"{{ ', ' if not loop.last else '' }}{% endfor %} } fib daddr type local {{ 'meta nfproto ' ~ hopping_family ~ ' ' if hopping_family in ['ipv4', 'ipv6'] else '' }}udp dport {{ hysteria_port_range }} counter redirect to :{{ hysteria_port }} comment "hysteria-port-hopping"
   }
 {% endif %}
 {% if vpn.enable_amneziawg | default(false) %}

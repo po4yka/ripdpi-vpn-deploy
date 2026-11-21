@@ -2,7 +2,7 @@
 id: TFR-1795259722029222
 title: Add an address family to the public listener contract
 kind: feature
-status: backlog
+status: doing
 area: terraform
 priority: medium
 risk: high

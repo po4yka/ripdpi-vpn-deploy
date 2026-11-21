@@ -116,9 +116,10 @@ variable "public_listeners" {
     protocol   = string
     port       = optional(number)
     port_range = optional(string)
+    family     = optional(string)
   }))
   default     = []
-  description = "Public TCP/UDP listeners allowed at the provider edge. Specify exactly one of port or port_range for each entry."
+  description = "Public TCP/UDP listeners allowed at the provider edge. Specify exactly one of port or port_range for each entry. Optional family (ipv4, ipv6 or dual; absent means dual) limits the entry to one address family at every layer."
 
   validation {
     condition = alltrue([
@@ -138,6 +139,14 @@ variable "public_listeners" {
       "${listener.protocol}-${coalesce(try(tostring(listener.port), null), try(listener.port_range, null))}" => true
     })
     error_message = "public_listeners entries must not repeat the same protocol and port or port_range."
+  }
+
+  validation {
+    condition = alltrue([
+      for listener in var.public_listeners :
+      listener.family == null ? true : contains(["ipv4", "ipv6", "dual"], listener.family)
+    ])
+    error_message = "public_listeners family must be ipv4, ipv6 or dual; an absent family means dual."
   }
 }
 

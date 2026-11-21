@@ -1,5 +1,10 @@
 locals {
   public_source_ips = ["0.0.0.0/0", "::/0"]
+  public_family_sources = {
+    ipv4 = ["0.0.0.0/0"]
+    ipv6 = ["::/0"]
+    dual = local.public_source_ips
+  }
 }
 
 # hcloud_firewall is an allowlist-only model: any inbound traffic that does
@@ -34,7 +39,7 @@ resource "hcloud_firewall" "vpn" {
       direction   = "in"
       protocol    = rule.value.protocol
       port        = coalesce(try(tostring(rule.value.port), null), try(rule.value.port_range, null))
-      source_ips  = local.public_source_ips
+      source_ips  = local.public_family_sources[coalesce(rule.value.family, "dual")]
       description = rule.value.name == "xray" && rule.value.protocol == "tcp" && rule.value.port == 443 ? "TCP/443 VLESS+REALITY" : rule.value.name == "hysteria" && rule.value.protocol == "udp" && rule.value.port == 443 ? "UDP/443 Hysteria2" : "${upper(rule.value.protocol)}/${coalesce(try(tostring(rule.value.port), null), rule.value.port_range)} ${rule.value.name}"
     }
   }

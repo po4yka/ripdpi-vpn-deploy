@@ -627,7 +627,12 @@ def validate_provider_return_path(state_value, host):
                 start, end = map(int, match.groups())
             if not 1 <= start <= end <= 65535:
                 raise ValueError
+            stated = listener.get("family") or "dual"
+            if stated not in {"ipv4", "ipv6", "dual"}:
+                raise ValueError
             for family in ("IPv4", "IPv6"):
+                if stated not in {"dual", family.lower()}:
+                    continue
                 matching = [
                     index
                     for index, rule in enumerate(rules)

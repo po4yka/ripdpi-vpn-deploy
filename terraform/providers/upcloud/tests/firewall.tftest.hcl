@@ -480,3 +480,44 @@ run "listener_contract_names_the_amneziawg_instance_port" {
     error_message = "The listener contract must carry exactly the declared AmneziaWG UDP port"
   }
 }
+
+run "firewall_opens_only_the_stated_listener_family" {
+  command = plan
+
+  variables {
+    public_listeners = [
+      { name = "xray", protocol = "tcp", port = 443, family = "ipv4" },
+      { name = "hysteria", protocol = "udp", port = 443, family = "ipv6" },
+      { name = "nginx-xhttp", protocol = "tcp", port = 8443, family = "dual" },
+    ]
+  }
+
+  assert {
+    condition = (
+      [for rule in upcloud_firewall_rules.vpn.firewall_rule : rule.family if startswith(rule.comment, "TCP/443 VLESS+REALITY")] == ["IPv4"]
+      && [for rule in upcloud_firewall_rules.vpn.firewall_rule : rule.family if rule.comment == "UDP/443 Hysteria2"] == ["IPv6"]
+      && length([for rule in upcloud_firewall_rules.vpn.firewall_rule : rule if rule.comment == "TCP/8443 nginx-xhttp"]) == 2
+    )
+    error_message = "A single-family listener must open only its family; dual opens both"
+  }
+}
+
+run "listener_family_rejects_unknown_value" {
+  command = plan
+
+  variables {
+    public_listeners = [{ name = "xray", protocol = "tcp", port = 443, family = "ipv5" }]
+  }
+
+  expect_failures = [var.public_listeners]
+}
+
+run "single_family_listener_must_avoid_the_return_range" {
+  command = plan
+
+  variables {
+    public_listeners = [{ name = "hysteria", protocol = "udp", port_range = "40000-40100", family = "ipv4" }]
+  }
+
+  expect_failures = [var.public_listeners]
+}

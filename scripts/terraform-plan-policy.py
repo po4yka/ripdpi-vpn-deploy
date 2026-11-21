@@ -13,7 +13,7 @@ POLICY = Path(__file__).resolve().parents[1] / "terraform/policy"
 REQUIRED = {
     "terraform.policy.admin_port", "terraform.policy.ssh_cidrs",
     "terraform.policy.secondary_ip", "terraform.policy.server_metadata",
-    "terraform.policy.no_secrets_in_user_data",
+    "terraform.policy.no_secrets_in_user_data", "terraform.policy.listener_family",
 }
 
 

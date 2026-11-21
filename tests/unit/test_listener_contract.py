@@ -144,6 +144,49 @@ def test_default_runtime_manifest_matches_default_provider_contract() -> None:
     assert contract.check({"expected": expected, "actual": actual}) == []
 
 
+@pytest.mark.parametrize(
+    ("contract_family", "runtime_family", "differs"),
+    [
+        (None, None, False),
+        (None, "dual", False),
+        ("dual", None, False),
+        ("ipv4", "ipv4", False),
+        ("ipv4", None, True),
+        (None, "ipv6", True),
+        ("ipv4", "ipv6", True),
+    ],
+)
+def test_listener_family_must_agree_with_absent_meaning_dual(
+    contract_family, runtime_family, differs
+) -> None:
+    expected = _expected("hysteria", "udp", 443) | {"family": contract_family}
+    actual = _actual("hysteria", "udp", 443)
+    if runtime_family is not None:
+        actual["family"] = runtime_family
+    findings = contract.check({"expected": [expected], "actual": [actual]})
+    assert bool(findings) is differs
+    if differs:
+        assert findings == [
+            "listener ('hysteria', 'udp', 443) family differs: contract "
+            f"{contract_family or 'dual'}, runtime {runtime_family or 'dual'}"
+        ]
+
+
+def test_listener_family_rejects_unknown_value() -> None:
+    expected = _expected("xray", "tcp", 443) | {"family": "ipv5"}
+    with pytest.raises(ValueError, match="invalid family"):
+        contract.check({"expected": [expected], "actual": [_actual("xray", "tcp", 443)]})
+
+
+def test_runtime_manifest_carries_only_stated_families() -> None:
+    variables = renderer.merge_render_vars()
+    variables["public_listener_families"] = {"xray": "ipv4"}
+    actual = json.loads(renderer.render_template(MANIFEST_TEMPLATE, variables))
+    families = {item["role"]: item.get("family") for item in actual}
+    assert families["xray"] == "ipv4"
+    assert families["nginx-xhttp"] is None
+
+
 def test_listener_ports_have_one_runtime_default_and_keep_the_provider_edge_boundary() -> (
     None
 ):

@@ -193,6 +193,10 @@ awg_wireguard_shaped_measurement: ""
 # Explicit public listener collision exceptions. Keep empty for normal hosts.
 # Each item is either "tcp/8443" or a mapping like {protocol: udp, range: "20000-40000", reason: "..."}.
 listener_collision_allowlist: []
+# Runtime address family per listener role (ipv4, ipv6 or dual; an absent role is dual).
+# It must equal the family of the matching Terraform public_listeners entry;
+# site.yml refuses a deploy when they differ. Example: {hysteria: ipv4}.
+public_listener_families: {}
 
 # P0's two accepted REALITY client shapes are declared once here. This lives
 # outside `vpn` because cohort profiles deliberately replace their complete
