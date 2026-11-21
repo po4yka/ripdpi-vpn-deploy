@@ -84,7 +84,11 @@ jobs:
           done < <(find contract -type f -print0)
 
           while IFS= read -r -d '' rel; do
-            case "$rel" in README.md|*/README.md|vendored-deploy-contracts.sha256) continue ;; esac
+            case "$rel" in
+              README.md|*/README.md|vendored-deploy-contracts.sha256) continue ;;
+              # The client owns this import test fixture.
+              client-import-bundle.golden.json) continue ;;
+            esac
             if [ ! -f "contract/${rel}" ]; then
               echo "::error title=orphan vendored file::client vendors ${rel} but it no longer exists in contract/; remove it."
               fail=1
