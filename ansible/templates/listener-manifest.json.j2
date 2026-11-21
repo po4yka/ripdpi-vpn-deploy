@@ -200,4 +200,9 @@
   "enabled": (vpn.enable_split_hop_ingress | default(false)) and not subscription_only,
   "reason": "split-hop responder listener"
 }) %}
-{{ ns.listeners | to_json }}
+{% set _families = public_listener_families | default({}) %}
+{% set ns.stated = [] %}
+{% for listener in ns.listeners %}
+{% set _ = ns.stated.append(listener | combine({"family": _families[listener.role]}) if listener.role in _families else listener) %}
+{% endfor %}
+{{ ns.stated | to_json }}

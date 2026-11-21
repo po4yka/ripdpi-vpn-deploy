@@ -311,3 +311,34 @@ run "listener_contract_names_the_amneziawg_instance_port" {
     error_message = "The listener contract must carry exactly the declared AmneziaWG UDP port"
   }
 }
+
+run "firewall_opens_only_the_stated_listener_family" {
+  command = plan
+
+  variables {
+    public_listeners = [
+      { name = "xray", protocol = "tcp", port = 443, family = "ipv4" },
+      { name = "hysteria", protocol = "udp", port = 443, family = "ipv6" },
+      { name = "nginx-xhttp", protocol = "tcp", port = 8443, family = "dual" },
+    ]
+  }
+
+  assert {
+    condition = (
+      [for rule in hcloud_firewall.vpn.rule : rule.source_ips if rule.protocol == "tcp" && rule.port == "443"] == [toset(["0.0.0.0/0"])]
+      && [for rule in hcloud_firewall.vpn.rule : rule.source_ips if rule.protocol == "udp" && rule.port == "443"] == [toset(["::/0"])]
+      && [for rule in hcloud_firewall.vpn.rule : rule.source_ips if rule.protocol == "tcp" && rule.port == "8443"] == [toset(["0.0.0.0/0", "::/0"])]
+    )
+    error_message = "A single-family listener must open only its family; dual opens both"
+  }
+}
+
+run "listener_family_rejects_unknown_value" {
+  command = plan
+
+  variables {
+    public_listeners = [{ name = "xray", protocol = "tcp", port = 443, family = "ipv5" }]
+  }
+
+  expect_failures = [var.public_listeners]
+}

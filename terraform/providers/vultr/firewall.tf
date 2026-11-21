@@ -26,7 +26,7 @@ locals {
       protocol = item[1].protocol
       port     = coalesce(try(tostring(item[1].port), null), try(item[1].port_range, null))
       name     = item[1].name
-    })
+    }) if contains(["dual", "ip${item[0]}"], coalesce(item[1].family, "dual"))
   }
 }
 

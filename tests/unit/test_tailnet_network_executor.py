@@ -1315,6 +1315,26 @@ def test_forward_guard_validates_effective_provider_return_path(fault):
         c.validate_provider_return_path(state, host)
 
 
+@pytest.mark.parametrize(("family", "valid"), [("ipv4", True), ("ipv6", False), (None, False)])
+def test_forward_guard_requires_only_the_stated_listener_family(family, valid):
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller_listener_family", controller_path
+    )
+    c = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(c)
+    state = _provider_return_path_state()
+    rules = state["resources"][1]["instances"][0]["attributes"]["firewall_rule"]
+    rules.pop(2)  # the IPv6 listener accept
+    state["outputs"]["public_listeners"]["value"][0]["family"] = family
+    if valid:
+        assert c.validate_provider_return_path(state, {"port": 2222}) is False
+    else:
+        with pytest.raises(c.p.PromotionError, match="provider-return-path-invalid"):
+            c.validate_provider_return_path(state, {"port": 2222})
+
+
 def test_spawn_timeout_reaps_owned_process_before_controller_returns(
     monkeypatch, tmp_path
 ):

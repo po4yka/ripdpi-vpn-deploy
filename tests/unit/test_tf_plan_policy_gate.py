@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CHECK = ROOT / "scripts/check-tf-plan.sh"
 NAMESPACES = (
     "admin_port", "ssh_cidrs", "secondary_ip", "server_metadata",
-    "no_secrets_in_user_data",
+    "no_secrets_in_user_data", "listener_family",
 )
 
 
@@ -46,7 +46,7 @@ def successful_reports():
 def test_success_evaluates_all_namespaces_and_the_exact_json_path(tmp_path):
     result, argv, plan = run_gate(tmp_path, successful_reports())
     assert result.returncode == 0, result.stderr
-    assert "5 evaluations passed across 5 namespaces" in result.stdout
+    assert "6 evaluations passed across 6 namespaces" in result.stdout
     assert argv == [
         "test", "--rego-version", "v0", "--all-namespaces", "--output", "json",
         "-p", str(ROOT / "terraform/policy"), str(plan),

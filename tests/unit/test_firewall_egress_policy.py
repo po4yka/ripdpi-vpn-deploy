@@ -194,6 +194,36 @@ def test_public_listener_contract_drives_nftables_rules():
     assert "udp dport 20000-40000 accept" in rendered
 
 
+def test_single_family_listener_is_accepted_only_on_its_family():
+    vars_ = ctr.merge_render_vars()
+    vars_["public_listener_contract"] = [
+        {"name": "xray", "protocol": "tcp", "port": 443, "port_range": None, "family": "ipv4"},
+        {"name": "hysteria", "protocol": "udp", "port": None, "port_range": "20000-40000", "family": "ipv6"},
+        {"name": "nginx-xhttp", "protocol": "tcp", "port": 8443, "port_range": None, "family": None},
+        {"name": "cdn-front", "protocol": "tcp", "port": 2083, "port_range": None, "family": "ipv4"},
+    ]
+    rendered = ctr.render_template(TEMPLATE, vars_)
+    assert "\n    meta nfproto ipv4 tcp dport 443 accept\n" in rendered
+    assert "\n    tcp dport 443 accept\n" not in rendered
+    assert "\n    meta nfproto ipv6 udp dport 20000-40000 accept\n" in rendered
+    assert "\n    tcp dport 8443 accept\n" in rendered
+    assert "tcp dport 2083 ip saddr @cdn_front_origins accept" in rendered
+    assert "tcp dport 2083 ip6 saddr" not in rendered
+
+
+@pytest.mark.parametrize(("family", "predicate"), [("ipv4", "meta nfproto ipv4 "), (None, "")])
+def test_hopping_redirect_follows_the_range_family(family, predicate):
+    vars_ = ctr.merge_render_vars()
+    vars_["vpn"] = {**vars_["vpn"], "enable_hysteria": True}
+    vars_["hysteria_port_range"] = "20000-40000"
+    vars_["public_listener_contract"] = [
+        {"name": "hysteria", "protocol": "udp", "port": 443, "port_range": None, "family": None},
+        {"name": "hysteria-hop", "protocol": "udp", "port": None, "port_range": "20000-40000", "family": family},
+    ]
+    rendered = ctr.render_template(TEMPLATE, vars_)
+    assert f"fib daddr type local {predicate}udp dport 20000-40000 counter redirect to :" in rendered
+
+
 def test_firewall_replaces_only_its_owned_tables():
     rendered = _render()
 
