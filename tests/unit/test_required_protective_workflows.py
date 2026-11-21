@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 
 import pytest
@@ -17,6 +18,43 @@ PROTECTIVE = ("tf-policy", "image-scan", "contract-sync", "reproducible-build")
 
 def _workflow(name):
     return yaml.safe_load((WORKFLOWS / f"{name}.yml").read_text())
+
+
+@pytest.mark.parametrize(
+    ("drift", "error"),
+    [(None, None), ("changed", "contract drift"), ("orphan", "orphan vendored file")],
+)
+def test_contract_sync_distinguishes_client_fixture_from_drift(tmp_path, drift, error):
+    deploy_contract = tmp_path / "contract"
+    shutil.copytree(ROOT / "contract", deploy_contract)
+    step = _workflow("contract-sync")["jobs"]["drift"]["steps"][-1]
+    client = tmp_path / "client"
+    client_contract = client / step["env"]["CLIENT_CONTRACT_DIR"]
+    shutil.copytree(deploy_contract, client_contract)
+    (client_contract / "client-import-bundle.golden.json").write_text("{}\n")
+    if drift == "changed":
+        (client_contract / "ripdpi-bundle.schema.json").write_text("{}\n")
+    if drift == "orphan":
+        (client_contract / "removed.schema.json").write_text("{}\n")
+
+    subprocess.run(["git", "init", "--quiet", "-b", "main", str(client)], check=True)
+    subprocess.run(["git", "-C", str(client), "add", "."], check=True)
+    subprocess.run(
+        ["git", "-C", str(client), "-c", "user.name=Test", "-c", "user.email=test@example.com",
+         "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "Add client contracts"],
+        check=True,
+    )
+    result = subprocess.run(
+        ["bash", "-c", step["run"]], cwd=tmp_path,
+        env={**os.environ, **step["env"], "CLIENT_REF": "refs/heads/main", "TMPDIR": str(tmp_path),
+             "GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": f"url.{client.as_uri()}.insteadOf",
+             "GIT_CONFIG_VALUE_0": "https://github.com/po4yka/RIPDPI.git"},
+        capture_output=True, text=True, timeout=10,
+    )
+    assert "orphan vendored file::client vendors client-import-bundle.golden.json" not in result.stdout
+    assert result.returncode == (1 if error else 0), result.stdout + result.stderr
+    if error:
+        assert f"::error title={error}::" in result.stdout
 
 
 @pytest.mark.parametrize("workflow", PROTECTIVE)
