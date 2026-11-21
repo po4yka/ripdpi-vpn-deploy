@@ -22,7 +22,7 @@ HARNESS = REPO_ROOT / "scripts" / "cloud-init-restart-acceptance.py"
 BASE_IMAGES = {
     "debian13.Dockerfile": (
         "ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-debian13",
-        "02d15910a73d42dd68ad1e7830ddcdb2dfc0ce3701081ea6fb96cd76da4fe4a4",
+        "f3ca174e84d53f68cd87abdcc1f585d295e7f76b855546e17c2c6ec9aeffec4f",
     ),
     "ubuntu2404.Dockerfile": (
         "ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-ubuntu2404",
