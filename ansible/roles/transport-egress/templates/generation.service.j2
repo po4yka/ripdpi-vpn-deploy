@@ -6,6 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_KILL
 AmbientCapabilities=CAP_SETUID
 LoadCredential=config:{{ transport_egress_config_dir }}/generation.json
 LoadCredential=normalizer:{{ transport_egress_config_dir }}/normalizer.json

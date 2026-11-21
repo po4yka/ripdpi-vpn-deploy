@@ -6,6 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_KILL
 AmbientCapabilities=CAP_SETUID
 LoadCredential=config:/etc/ripdpi/transport-egress/generation.json
 LoadCredential=normalizer:/etc/ripdpi/transport-egress/normalizer.json
