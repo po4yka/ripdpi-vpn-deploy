@@ -10,9 +10,9 @@ Each entry of the public listener contract states whether it is reachable over I
 
 ## Execution
 
-- [ ] TFR-1795259793636372 Add the optional family field with validation and a dual default to every provider root, with mock-provider tests and Conftest policies #feature @item:TFR-1795259722029222
-- [ ] TFR-1795259837898750 Carry the family in the listener manifest and refuse a disagreement in the listener contract check #feature @item:TFR-1795259722029222
-- [ ] TFR-1795259877267081 Accept a single-family listener only on its family in the node ruleset and report other-family accepts in the live verifier #feature @item:TFR-1795259722029222
+- [x] TFR-1795259793636372 Add the optional family field with validation and a dual default to every provider root, with mock-provider tests and Conftest policies #feature @item:TFR-1795259722029222
+- [x] TFR-1795259837898750 Carry the family in the listener manifest and refuse a disagreement in the listener contract check #feature @item:TFR-1795259722029222
+- [x] TFR-1795259877267081 Accept a single-family listener only on its family in the node ruleset and report other-family accepts in the live verifier #feature @item:TFR-1795259722029222
 - [ ] TFR-1795259924993740 Run staging acceptance of an IPv4-only listener closed on IPv6 at the provider and the node #feature @item:TFR-1795259722029222
 
 ## Verification

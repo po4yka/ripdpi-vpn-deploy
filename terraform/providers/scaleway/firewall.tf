@@ -11,7 +11,7 @@ locals {
       port       = try(item[1].port, null)
       port_range = try(item[1].port_range, null)
       ip_range   = local.public_networks[item[0]]
-    }
+    } if contains(["dual", "ip${item[0]}"], coalesce(item[1].family, "dual"))
   }
 }
 

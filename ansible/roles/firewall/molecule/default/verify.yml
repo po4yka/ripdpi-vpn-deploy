@@ -103,6 +103,7 @@
           grep -q 'tcp dport 443' /etc/nftables.conf
           grep -q 'tcp dport 22'  /etc/nftables.conf
           grep -q 'udp dport 443' /etc/nftables.conf
+          nft list chain inet filter input | grep -Fq 'meta nfproto ipv4 tcp dport 2053 accept'
         executable: /bin/bash
       changed_when: false
 

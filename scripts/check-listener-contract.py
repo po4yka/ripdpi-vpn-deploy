@@ -6,6 +6,8 @@ import json
 import sys
 from typing import Any
 
+FAMILIES = {"ipv4", "ipv6", "dual"}
+
 
 def _key(item: dict[str, Any], *, runtime: bool) -> tuple[str, str, int | str]:
     name = str(item.get("role" if runtime else "name", ""))
@@ -28,20 +30,36 @@ def _key(item: dict[str, Any], *, runtime: bool) -> tuple[str, str, int | str]:
     return name, protocol, port_range
 
 
+def _family(item: dict[str, Any]) -> str:
+    family = item.get("family") or "dual"
+    if not isinstance(family, str) or family not in FAMILIES:
+        raise ValueError(f"{item.get('name') or item.get('role')}: invalid family {family!r}")
+    return family
+
+
 def check(payload: dict[str, Any]) -> list[str]:
-    expected = {_key(item, runtime=False) for item in payload["expected"]}
+    expected = {_key(item, runtime=False): _family(item) for item in payload["expected"]}
     actual = {
-        _key(item, runtime=True)
+        _key(item, runtime=True): _family(item)
         for item in payload["actual"]
         if item.get("enabled", False)
     }
-    missing = sorted(expected - actual)
-    unexpected = sorted(actual - expected)
+    missing = sorted(expected.keys() - actual.keys())
+    unexpected = sorted(actual.keys() - expected.keys())
+    differing = sorted(
+        (key, expected[key], actual[key])
+        for key in expected.keys() & actual.keys()
+        if expected[key] != actual[key]
+    )
     findings = []
     if missing:
         findings.append(f"provider contract lacks runtime listener(s): {missing}")
     if unexpected:
         findings.append(f"runtime manifest lacks provider contract listener(s): {unexpected}")
+    for key, contract_family, runtime_family in differing:
+        findings.append(
+            f"listener {key} family differs: contract {contract_family}, runtime {runtime_family}"
+        )
     return findings
 
 

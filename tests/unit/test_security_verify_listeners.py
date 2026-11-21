@@ -412,6 +412,96 @@ def test_missing_firewall_exposure_fails_for_listening_socket(tmp_path: Path) ->
     assert result.stdout == "missing firewall tcp 443\n"
 
 
+def _family_rule(protocol: str, port: int, family: str) -> dict:
+    rule = _nft_rule(protocol, port)
+    rule["rule"]["expr"].insert(0, {"match": {
+        "op": "==", "left": {"meta": {"key": "nfproto"}}, "right": family}})
+    return rule
+
+
+@pytest.mark.parametrize(
+    ("contract_family", "rule_family", "stdout"),
+    [
+        ("ipv4", "ipv4", ""),
+        (None, None, ""),
+        ("dual", None, ""),
+        ("ipv4", None, "firewall tcp 443 accepts ipv6 outside its contract family\nmissing firewall tcp 443\n"),
+        ("ipv4", "ipv6", "firewall tcp 443 accepts ipv6 outside its contract family\nmissing firewall tcp 443\n"),
+        (None, "ipv4", "firewall tcp 443 omits contract family ipv6\nmissing firewall tcp 443\n"),
+    ],
+)
+def test_listener_accept_must_match_its_contract_family(
+    tmp_path: Path, contract_family, rule_family, stdout
+) -> None:
+    listener = _listener("xray", "tcp", port=443) | {"family": contract_family}
+    rule = _nft_rule("tcp", 443) if rule_family is None else _family_rule("tcp", 443, rule_family)
+    result = _verify_listeners(
+        tmp_path, [listener], _ss_line("tcp", "0.0.0.0:443"), nft_output=_nft_document(rule),
+    )
+
+    assert result.returncode == (1 if stdout else 0), result.stdout + result.stderr
+    assert result.stdout == stdout
+
+
+def test_single_family_cdn_front_needs_only_its_origin_rule(tmp_path: Path) -> None:
+    listener = _listener("cdn-front", "tcp", port=2083) | {"family": "ipv4"}
+    result = _verify_listeners(
+        tmp_path, [listener], _ss_line("tcp", "0.0.0.0:2083"),
+        nft_output=_nft_document(_nft_rule("tcp", 2083, source_address="198.51.100.0")),
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_dual_cdn_front_needs_an_origin_rule_in_each_family(tmp_path: Path) -> None:
+    listener = _listener("cdn-front", "tcp", port=2083)
+    origin = _nft_rule("tcp", 2083, source_address="198.51.100.0")
+    result = _verify_listeners(
+        tmp_path, [listener], _ss_line("tcp", "0.0.0.0:2083"),
+        nft_output=_nft_document(origin, origin),
+    )
+
+    assert result.returncode == 1
+    assert result.stdout == "firewall tcp 2083 omits contract family ipv6\n"
+
+
+def test_family_restricted_tailnet_ssh_drop_is_not_the_required_drop(tmp_path: Path) -> None:
+    drop = _family_rule("tcp", 22, "ipv4")
+    drop["rule"]["expr"][-1] = {"drop": None}
+    drop["rule"]["expr"].insert(-1, {"match": {
+        "op": "==", "left": {"meta": {"key": "iifname"}}, "right": "tailscale0"}})
+    result = _verify_listeners(
+        tmp_path, [_listener("xray", "tcp", port=443)], _ss_line("tcp", "0.0.0.0:443"),
+        include_tailnet_drop=False,
+        nft_output=_nft_document(drop, _nft_rule("tcp", 443)),
+    )
+
+    assert result.returncode == 1
+    assert "invalid Tailnet SSH drop ordering" in result.stdout
+
+
+def test_family_restricted_public_ssh_accept_is_rejected(tmp_path: Path) -> None:
+    ssh = _nft_rule("tcp", 22, source_address="203.0.113.7")
+    ssh["rule"]["expr"].insert(0, {"match": {
+        "op": "==", "left": {"meta": {"key": "nfproto"}}, "right": "ipv4"}})
+    result = _verify_listeners(
+        tmp_path, [_listener("xray", "tcp", port=443)], _ss_line("tcp", "0.0.0.0:443"),
+        nft_output=_nft_document(ssh, _nft_rule("tcp", 443)),
+    )
+
+    assert result.returncode == 1
+    assert "unsupported family-restricted firewall tcp 22" in result.stdout
+
+
+@pytest.mark.parametrize("family", ["ipv5", ["ipv4"]])
+def test_unknown_contract_family_is_invalid_input(tmp_path: Path, family) -> None:
+    listener = _listener("xray", "tcp", port=443) | {"family": family}
+    result = _verify_listeners(tmp_path, [listener], _ss_line("tcp", "0.0.0.0:443"))
+
+    assert result.returncode == 2
+    assert "invalid listener family" in result.stderr
+
+
 def test_partial_udp_range_does_not_satisfy_public_listener_contract(
     tmp_path: Path,
 ) -> None:

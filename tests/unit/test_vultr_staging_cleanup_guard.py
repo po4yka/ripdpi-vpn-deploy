@@ -479,32 +479,6 @@ def test_manifest_requires_every_firewall_rule_class(
         )
 
 
-def test_manifest_requires_matching_public_listener_families(tmp_path: Path) -> None:
-    state = _state()
-    rules = next(
-        item
-        for item in state["resources"]
-        if item["type"] == "vultr_firewall_rule" and item["name"] == "tcp_public"
-    )
-    rules["instances"][1]["index_key"] = "v6-udp-51820"
-    rules["instances"][1]["attributes"]["protocol"] = "udp"
-    rules["instances"][1]["attributes"]["port"] = "51820"
-    private = tmp_path / "private"
-    state_path = _private(private / "state.json", guard.canonical_json(state))
-
-    with pytest.raises(guard.GuardError, match="firewall rule class"):
-        guard.create_manifest(
-            output_path=private / "manifest.json",
-            provider="vultr",
-            environment=ENV,
-            workspace=ENV,
-            state_path=state_path,
-            hostname=HOST,
-            request_json=_request,
-            now=NOW,
-        )
-
-
 def test_manifest_refuses_duplicate_normalized_public_listeners(tmp_path: Path) -> None:
     state = _state()
     rules = next(
@@ -537,6 +511,35 @@ def test_manifest_refuses_duplicate_normalized_public_listeners(tmp_path: Path) 
             request_json=_request,
             now=NOW,
         )
+
+
+@pytest.mark.parametrize("dropped", [None, 0, 1])
+def test_manifest_binds_single_family_listener_rules(tmp_path: Path, dropped) -> None:
+    state = _state()
+    rules = next(
+        item
+        for item in state["resources"]
+        if item["type"] == "vultr_firewall_rule" and item["name"] == "tcp_public"
+    )
+    if dropped is not None:
+        rules["instances"].pop(dropped)
+    private = tmp_path / "private"
+    state_path = _private(private / "state.json", guard.canonical_json(state))
+
+    def create() -> None:
+        guard.create_manifest(
+            output_path=private / "manifest.json",
+            provider="vultr",
+            environment=ENV,
+            workspace=ENV,
+            state_path=state_path,
+            hostname=HOST,
+            request_json=_request,
+            now=NOW,
+        )
+
+    create()
+    assert (private / "manifest.json").exists()
 
 
 def test_manifest_refuses_duplicate_provider_firewall_rule_ids(tmp_path: Path) -> None:
