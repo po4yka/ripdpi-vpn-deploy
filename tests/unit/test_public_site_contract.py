@@ -1131,10 +1131,16 @@ def _bundled_copy(tmp_path: Path) -> Path:
     return site.parent
 
 
+@pytest.mark.parametrize(("key", "vpn"), [
+    ("nginx_xhttp_public_site_dir", {"enable_nginx_xhttp": True}),
+    # A UDP node serves the bundle only through the Hysteria masquerade.
+    ("hysteria_public_site_dir", {"enable_nginx_xhttp": False, "enable_hysteria": True}),
+])
 @pytest.mark.parametrize("check", [False, True], ids=["deploy", "dry-run"])
-def test_production_preflight_refuses_a_bundle_that_copies_the_bundled_site(tmp_path: Path, check: bool) -> None:
+def test_production_preflight_refuses_a_bundle_that_copies_the_bundled_site(
+        tmp_path: Path, check: bool, key: str, vpn: dict) -> None:
     result = _run_preflight(tmp_path, {
-        "env": "prod", "nginx_xhttp_public_site_dir": str(_bundled_copy(tmp_path)),
+        "env": "prod", key: str(_bundled_copy(tmp_path)), "vpn": vpn,
         "public_site_canonical_url": "https://notes.example.org"}, check=check)
     assert result.returncode != 0
     assert "byte-identical to a file of the bundled site" in result.stdout

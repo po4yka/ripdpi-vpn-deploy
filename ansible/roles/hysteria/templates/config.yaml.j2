@@ -50,11 +50,18 @@ bandwidth:
   down: {{ hysteria.bandwidth_down | default("200 mbps") | to_json }}
 
 masquerade:
+{% if hysteria_masquerade_dir %}
+  # The node serves its own published site bundle.
+  type: file
+  file:
+    dir: {{ hysteria_masquerade_dir | to_json }}
+{% else %}
   type: {{ hysteria.masquerade_type | default('proxy') | to_json }}
 {% if (hysteria.masquerade_type | default('proxy')) == 'proxy' %}
   proxy:
     url: {{ hysteria.masquerade_url | to_json }}
     rewriteHost: true
+{% endif %}
 {% endif %}
 {% if hysteria_masquerade_tcp | bool %}
   # The same site answers over TCP, as a real HTTP/3 origin does.

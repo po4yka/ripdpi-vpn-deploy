@@ -26,6 +26,12 @@ provisioner:
     host_vars:
       vpn-hysteria-debian13:
         ansible_user: root
+        # The node-local masquerade origin of vpn-p2-udp: prepare.yml publishes the
+        # tree as the public-site publisher would; the TCP listeners serve it.
+        hysteria_masquerade_tcp: true
+        hysteria_public_site_dir: /srv/molecule-site-bundle
+        public_site_published:
+          /srv/molecule-site-bundle: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 
 verifier:
   name: ansible

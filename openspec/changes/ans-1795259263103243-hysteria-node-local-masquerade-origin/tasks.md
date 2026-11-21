@@ -11,8 +11,8 @@ A `vpn-p2-udp` node without a web frontend serves its Hysteria masquerade site f
 ## Execution
 
 - [ ] ANS-1795259522975988 Admit a file masquerade origin and refuse a missing, empty or foreign-writable published tree #feature @item:ANS-1795259263103243
-- [ ] ANS-1795259540409372 Select the node-local origin from the site bundle on vpn-p2-udp and keep the proxy origin without one #feature @item:ANS-1795259263103243
-- [ ] ANS-1795259558601403 Update the Hysteria role note, snapshots and unit tests #feature @item:ANS-1795259263103243
+- [x] ANS-1795259540409372 Select the node-local origin from the site bundle on vpn-p2-udp and keep the proxy origin without one #feature @item:ANS-1795259263103243
+- [x] ANS-1795259558601403 Update the Hysteria role note, snapshots and unit tests #feature @item:ANS-1795259263103243
 - [ ] ANS-1795259578931298 Run staging acceptance of HTTP/3, HTTPS and HTTP answers from the node-local site #feature @item:ANS-1795259263103243
 
 ## Verification

@@ -405,6 +405,7 @@ def test_accepts_the_self_steal_site_and_the_tls_identity_record(tmp_path: Path)
 
 @pytest.mark.parametrize("document,message", [
     ({"reality_self_steal_public_site_dir": "relative/site"}, "public site"),
+    ({"hysteria_public_site_dir": "relative/site"}, "public site"),
     ({"reality_target_network": "AS64500"}, "reality_target_network"),
     ({"tls_identity_exception": ["reason"]}, "tls_identity_exception"),
     ({"tls_identity_exception": "line one\nline two"}, "tls_identity_exception"),

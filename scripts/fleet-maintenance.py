@@ -88,7 +88,7 @@ def known_dependencies(node, inputs, trees):
     values = yaml.load(read_bytes(node['extra_vars']), Loader=UniqueLoader)
     if not isinstance(values, dict):
         raise MaintenanceError('invalid-extra-vars')
-    for key in ('nginx_xhttp_public_site_dir', 'reality_self_steal_public_site_dir'):
+    for key in ('nginx_xhttp_public_site_dir', 'reality_self_steal_public_site_dir', 'hysteria_public_site_dir'):
         site = values.get(key)
         if site:
             trees[absolute(site)] = site_manifest(site)
