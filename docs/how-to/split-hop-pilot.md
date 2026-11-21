@@ -131,6 +131,8 @@ ip rule show
 ip route show table 200
 ```
 
+Table 200 must hold `default dev shop0` and the fallback `unreachable default metric 4294967295`; the fwmark rule and the fallback stay while the tunnel is stopped.
+
 Without family scope, the nftables rule must mark only new original-direction sockets owned by the dedicated probe runtime UIDs. Do not broaden it by hand; use [family egress scope](#6-family-egress-scope).
 
 Generate permission-checked target profiles and run the authenticated matrix as described in `docs/how-to/probe-matrix.md`. A public-IP lookup alone is not sufficient evidence: preserve the redacted matrix verdict, handshake age, per-node flow classification, and direct-control result.
@@ -172,7 +174,7 @@ Behaviour to accept before any family use:
 
 - The recipient sees Node B's address for P0, P1, Hysteria2 and AmneziaWG traffic, while clients keep connecting to Node A.
 - Recipient IPv6 is refused; dual-stack names resolve to IPv4 through the direct gateway.
-- With the tunnel stopped, every family transport stops carrying traffic and no recipient flow leaves Node A's uplink. The firewall keeps this boundary even if the split-hop table is removed, once the transport users exist.
+- With the tunnel stopped, every family transport stops carrying traffic and no recipient flow leaves Node A's uplink. Failure is immediate: Node A resets new TCP connects of the guarded users, and devices receive ICMP host unreachable (rate-limited by the kernel). The firewall keeps this boundary even if the split-hop table is removed, once the transport users exist.
 - Deploys, the transport canary and watchdog probes traverse the tunnel, so a Node B outage fails Node A's deploy and raises transport alerts.
 
 Rollback: return Node A to a cohort with `split_hop_family_egress: false` and converge it; AmneziaWG forwarding and NAT return to the uplink.

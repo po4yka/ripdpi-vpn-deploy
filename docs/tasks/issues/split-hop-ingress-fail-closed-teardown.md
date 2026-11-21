@@ -2,7 +2,7 @@
 id: ANS-1795260057878312
 title: Make split-hop ingress flows fail fast after the tunnel stops
 kind: feature
-status: backlog
+status: doing
 area: ansible
 priority: medium
 risk: high
