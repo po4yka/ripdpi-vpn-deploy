@@ -52,7 +52,7 @@ def test_ingress_policy_loader_is_required_before_tunnel_activation():
     assert unit.index("ExecStart=/usr/sbin/nft -c -f ") < unit.index("ExecStart=/usr/sbin/nft -f ")
 
 
-def test_tunnel_postdown_preserves_the_final_interface_guard():
+def test_tunnel_stop_preserves_the_final_interface_guard():
     values = merge_render_vars()
     policy = render_template(INGRESS / "templates/policy.nft.j2", values)
     guard = policy.split("  chain egress_guard {", 1)[1].split("\n  }", 1)[0]
@@ -61,10 +61,16 @@ def test_tunnel_postdown_preserves_the_final_interface_guard():
     route_output = output_chain(policy)
     assert "meta nfproto ipv6" in route_output and "admin-prohibited" in route_output
     assert f'oifname != {{ "lo", "{values["split_hop_ingress"]["wg_interface"]}" }} drop' in guard
+    # Fail-closed state follows systemd units, not a wg-quick stop hook (tests/unit/test_split_hop_native.py runs it).
     config = render_template(INGRESS / "templates/split-hop-ingress.conf.j2", values)
-    post_down = next(line for line in config.splitlines() if line.startswith("PostDown = "))
-    assert "ip rule del fwmark" in post_down and "ip route flush table" in post_down
-    assert "nft" not in post_down
+    assert "PostDown" not in config
+    named = {task["name"]: task for task in ingress_enable_tasks()}
+    drop_in = named["Require the recipient boundary before starting WireGuard"]["ansible.builtin.copy"]["content"]
+    assert "ExecStartPost=/usr/sbin/nft flush chain inet split_hop_ingress tunnel_down" in drop_in
+    assert "ExecStopPost=/usr/sbin/nft -f /etc/wireguard/split-hop-ingress.nft" in drop_in
+    unit = render_template(INGRESS / "templates/split-hop-ingress-policy.service.j2", values)
+    table = values["split_hop_ingress"]["routing_table"]
+    assert f"ExecStartPost=/usr/sbin/ip route replace unreachable default table {table} metric 4294967295" in unit
 
 
 @pytest.mark.parametrize("address", ["203.0.113.40", "2001:db8::40"])
@@ -171,7 +177,7 @@ def test_first_policy_unit_check_mode_predicts_files_without_systemd(tmp_path):
     loader["register"] = "policy_loader_result"
     play = [{"hosts": "all", "gather_facts": False, "vars": {
         "ansible_python_interpreter": sys.executable,
-        "split_hop_ingress": {"manage_service": True, "wg_interface": "shop0"},
+        "split_hop_ingress": {"manage_service": True, "wg_interface": "shop0", "fwmark": 1, "routing_table": 200},
         "_split_hop_ingress_policy": {"changed": True},
     }, "tasks": [template, loader, {"name": "Check-mode boundary was observed",
         "ansible.builtin.assert": {"that": [
