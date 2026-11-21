@@ -148,18 +148,7 @@ def test_topology_rejects_identity_placement_and_public_surface(
     assert result.stderr == f"observability-contract: {expected} rejected\n"
 
 
-def test_topology_carries_a_stated_listener_family(trusted_root: Path) -> None:
-    document = _topology()
-    document["nodes"][0]["public_listeners"][0]["family"] = "ipv4"
-
-    result = _validate(document, trusted_root)
-
-    assert result.returncode == 0, result.stderr
-    node = next(n for n in json.loads(result.stdout)["nodes"] if n["node_id"] == document["nodes"][0]["node_id"])
-    assert node["public_listeners"][0]["family"] == "ipv4"
-
-
-@pytest.mark.parametrize("fault", ["no-vpn", "unknown-capability", "unknown-observer", "eleven-nodes", "unknown-family"])
+@pytest.mark.parametrize("fault", ["no-vpn", "unknown-capability", "unknown-observer", "eleven-nodes"])
 def test_topology_rejects_schema_faults(trusted_root: Path, fault: str) -> None:
     document = _topology()
     if fault == "no-vpn":
@@ -168,8 +157,6 @@ def test_topology_rejects_schema_faults(trusted_root: Path, fault: str) -> None:
         document["nodes"][0]["capabilities"].append("deadman")
     elif fault == "unknown-observer":
         document["observer"]["kind"] = "healthchecks"
-    elif fault == "unknown-family":
-        document["nodes"][0]["public_listeners"][0]["family"] = "ipv5"
     else:
         document["nodes"] *= 4
     result = _validate(document, trusted_root)
@@ -323,7 +310,7 @@ case "$key" in
         else
           printf '[{"name":"xray","protocol":"tcp","port":443,"port_range":null}]'
         fi ;;
-      vultr) printf '[{"name":"xray","protocol":"tcp","port":443,"port_range":null}]' ;;
+      vultr) printf '[{"name":"xray","protocol":"tcp","port":443,"port_range":null,"family":"ipv4"}]' ;;
     esac ;;
 esac
 '''
@@ -407,6 +394,8 @@ def test_render_inventory_publishes_validated_deterministic_topology(tmp_path: P
     assert topology["observer"]["kind"] == "uptime-kuma"
     assert topology["source_revision"] == "1" * 40
     assert "198.51.100.10" not in json.dumps(topology)
+    # The vendored topology schema has no family; the firewall contract keeps it.
+    assert topology["nodes"][2]["public_listeners"] == [{"name": "xray", "protocol": "tcp", "port": 443}]
     parsed = subprocess.run(
         [
             "ansible-inventory",

@@ -49,7 +49,6 @@
       "properties": {
         "name": {"$ref": "#/$defs/alias"},
         "protocol": {"enum": ["tcp", "udp"]},
-        "family": {"enum": ["ipv4", "ipv6", "dual"]},
         "port": {"type": "integer", "minimum": 1, "maximum": 65535},
         "port_range": {
           "type": "string",
