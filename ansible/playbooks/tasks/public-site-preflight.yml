@@ -12,7 +12,9 @@
               'origin': 'https://' ~ ((reality_self_steal | default({})).server_name | default('') | lower)
                         ~ ('' if (xray_port | default(443) | int) == 443 else ':' ~ (xray_port | int))}]
             if ((vpn.enable_reality_self_steal | default(false) | bool)
-                and not (vpn_subscription_only | default(false) | bool)) else []) }}
+                and not (vpn_subscription_only | default(false) | bool)) else [])
+         + ([{'dir': hysteria_public_site_dir | default(''), 'origin': public_site_canonical_url | default('')}]
+            if ((vpn.enable_hysteria | default(true) | bool) and not (vpn_subscription_only | default(false) | bool)) else []) }}
 
 - name: Refuse a production site bundle that shares content with another site
   ansible.builtin.command:

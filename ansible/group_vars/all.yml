@@ -170,6 +170,10 @@ nginx_xhttp_public_site_dir: ""
 # The same contract for the REALITY self-steal site; production hosts refuse
 # the bundled self-steal pages. One hostname on both roles names one bundle.
 reality_self_steal_public_site_dir: ""
+# The same contract for the Hysteria masquerade site. When set, Hysteria serves
+# the published tree of this bundle (`file` masquerade) instead of proxying to
+# hysteria.masquerade_url; empty keeps the proxy origin.
+hysteria_public_site_dir: ""
 # Set by the public-site role: bundle directory to the digest of its published
 # archive. A vhost of a published bundle reads /var/lib/public-site/<digest>/current.
 public_site_published: {}

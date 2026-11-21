@@ -4,7 +4,7 @@
 
 ## Purpose and scope
 
-A production node serves a site that only its operator has. This page shows how to create the site identity, write its content, build and check the bundle, deploy it, and add articles later. It covers the REALITY self-steal site and the nginx-xhttp site.
+A production node serves a site that only its operator has. This page shows how to create the site identity, write its content, build and check the bundle, deploy it, and add articles later. It covers the REALITY self-steal site, the nginx-xhttp site and the Hysteria masquerade site.
 
 The repository supplies the tools and the node-side publisher, and no production text, theme or asset. The bundled pages under `ansible/roles/` are a fixture for non-production hosts: they are public, so a copy of them under another hostname links a node to every other copy, and a production deploy refuses it.
 
@@ -96,6 +96,8 @@ nginx_xhttp_public_site_dir: "/absolute/path/to/secrets/local/sites/<site>/bundl
 ```
 
 One hostname on both roles names one bundle. Two hostnames need two bundles, and the deploy compares them as peers.
+
+A `vpn-p2-udp` node has no web frontend. Set `hysteria_public_site_dir` there instead: Hysteria then serves the published tree of that bundle as its masquerade site on UDP and on its TCP listeners. The `live.json` page refresh needs nginx, so it does not apply to this site. Without the variable, Hysteria keeps proxying to `public_site_canonical_url`.
 
 Then follow [the deploy runbook](deploy.md): dry run first, deploy after review. Both use cloud credentials and SSH, so they need the authorization that the runbook describes. On a production host the dry run and the deploy run the same check before any task changes the host, and the dry run warns when fewer than 30 days of unpublished articles remain.
 

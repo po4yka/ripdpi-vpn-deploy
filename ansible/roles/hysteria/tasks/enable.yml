@@ -62,6 +62,63 @@
       - hysteria.masquerade_url == public_site_canonical_url
     fail_msg: Set hysteria.masquerade_url to public_site_canonical_url so probes see the owned public site.
 
+# The public-site role published this bundle earlier in the play; this role only reads its tree.
+- name: Pre-flight — a node-local masquerade site must be a published bundle
+  ansible.builtin.assert:
+    that: hysteria_public_site_dir in (public_site_published | default({}))
+    fail_msg: hysteria_public_site_dir must name a site bundle with backlog.tar.gz that the public-site role published.
+  when: hysteria_public_site_dir | default('') | length > 0
+
+- name: Select the masquerade origin
+  ansible.builtin.set_fact:
+    hysteria_masquerade_dir: >-
+      {{ '/var/lib/public-site/' ~ public_site_published[hysteria_public_site_dir] ~ '/current'
+         if hysteria_public_site_dir | default('') | length > 0 else '' }}
+
+# Hysteria follows every link below the tree and serves what the hysteria user can read, so only
+# the publisher may write the tree and the directories that name it.
+# The last path ends in '.', so it names the served generation behind the current link.
+- name: Inspect the directories that hold the published masquerade tree
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+  loop:
+    - /var/lib/public-site
+    - "{{ hysteria_masquerade_dir | dirname }}"
+    - "{{ hysteria_masquerade_dir }}/."
+  register: _hysteria_site_dirs
+  when: hysteria_masquerade_dir | length > 0
+
+- name: Inspect the published masquerade tree
+  ansible.builtin.find:
+    paths: "{{ hysteria_masquerade_dir }}"
+    file_type: any
+    recurse: true
+    hidden: true
+    follow: false
+  register: _hysteria_site_tree
+  when: hysteria_masquerade_dir | length > 0 and (_hysteria_site_dirs.results | last).stat.isdir | default(false)
+
+- name: Refuse a missing, empty or foreign-writable masquerade tree before Hysteria restarts
+  vars:
+    _files: "{{ _hysteria_site_tree.files | default([]) }}"
+  ansible.builtin.assert:
+    that:
+      - _hysteria_site_dirs.results | rejectattr('stat.isdir', 'defined') | list | length == 0
+      - _hysteria_site_dirs.results | rejectattr('stat.isdir') | list | length == 0
+      - _hysteria_site_dirs.results | map(attribute='stat.pw_name') | unique | list == ['public-site']
+      - _hysteria_site_dirs.results | selectattr('stat.wgrp') | list | length == 0
+      - _hysteria_site_dirs.results | selectattr('stat.woth') | list | length == 0
+      - _files | selectattr('path', 'equalto', hysteria_masquerade_dir ~ '/index.html') | selectattr('isreg') | list | length == 1
+      - _files | rejectattr('pw_name', 'equalto', 'public-site') | list | length == 0
+      - _files | selectattr('wgrp') | list | length == 0
+      - _files | selectattr('woth') | list | length == 0
+      - _files | rejectattr('isreg') | rejectattr('isdir') | list | length == 0
+    fail_msg: >-
+      The published masquerade tree {{ hysteria_masquerade_dir }} must exist, hold index.html and contain only
+      regular files and directories that only the public-site user can write; read the public-site-publish.service journal.
+  when: hysteria_masquerade_dir | length > 0 and not ansible_check_mode
+
 # The TCP listeners serve the same proxy handler, so an origin on this listener requests itself.
 - name: Pre-flight — the TCP masquerade listener must not proxy to its own name
   ansible.builtin.assert:
@@ -70,7 +127,7 @@
         (hysteria.masquerade_url | urlsplit('hostname')) not in
         ([hysteria.server_name | default('')] + (hysteria.acme.domains | default([]) if hysteria.acme is defined else []))
     fail_msg: With hysteria_masquerade_tcp the masquerade origin must be an owned site that another listener serves.
-  when: hysteria_masquerade_tcp | bool
+  when: hysteria_masquerade_tcp | bool and hysteria_masquerade_dir | length == 0
 
 - name: Install Hysteria configuration validation dependency
   ansible.builtin.apt:

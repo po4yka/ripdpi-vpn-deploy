@@ -3,6 +3,7 @@ import importlib.util
 import json
 from pathlib import Path
 import re
+import subprocess
 import sys
 
 import pytest
@@ -43,13 +44,16 @@ def test_native_acme_keeps_tcp_80_for_its_challenge():
     assert "listenHTTP" not in masquerade and "forceHTTPS" not in masquerade
 
 
+def load_runtime_module(name):
+    spec = importlib.util.spec_from_file_location(name, ROLES / f"runtime-release/files/{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 @pytest.mark.parametrize("acme", [False, True])
 def test_installed_validator_admits_the_tcp_masquerade_configuration(acme):
-    spec = importlib.util.spec_from_file_location(
-        "hysteria_yaml_validator", ROLES / "runtime-release/files/validate_yaml_mapping.py")
-    validator = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(validator)
-    validator._validate_hysteria(hysteria_config(
+    load_runtime_module("validate_yaml_mapping")._validate_hysteria(hysteria_config(
         acme=acme, hysteria_masquerade_tcp=True, hysteria_resource_profile_default="bbr-conservative"))
 
 
@@ -156,3 +160,53 @@ def test_split_hop_egress_refuses_private_destinations_before_its_forward_accept
     deny = forward.index('iifname "shop0" ip daddr { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16,')
     assert "counter drop" in forward[deny:forward.index("\n", deny)]
     assert deny < forward.index('ct state new iifname "shop0"')
+
+
+SITE = "/var/lib/public-site/" + "0f" * 32 + "/current"
+
+
+def test_published_site_bundle_replaces_the_proxy_origin_on_every_listener():
+    masquerade = hysteria_config(hysteria_masquerade_tcp=True, hysteria_masquerade_dir=SITE)["masquerade"]
+    assert masquerade == {"type": "file", "file": {"dir": SITE},
+                          "listenHTTP": ":80", "listenHTTPS": ":443", "forceHTTPS": True}
+
+
+def test_only_the_node_local_site_gives_hysteria_the_publisher_group():
+    def unit(**overrides):
+        return render_template(ROLES / "hysteria/templates/hysteria-server.service.j2", {**merge_render_vars(), **overrides})
+    assert "\nSupplementaryGroups=www-data\n" in unit(hysteria_masquerade_dir=SITE)
+    assert "SupplementaryGroups" not in unit()
+
+
+@pytest.mark.parametrize("change", [
+    None,
+    {"dir": "/srv/site"},
+    {"dir": "/var/lib/public-site/../hysteria/current"},
+    {"dir": SITE, "listing": True},
+    "proxy",
+])
+def test_installed_validator_admits_only_the_published_site_tree(change):
+    document = hysteria_config(hysteria_masquerade_tcp=True, hysteria_masquerade_dir=SITE)
+    if change == "proxy":
+        document["masquerade"]["proxy"] = {"url": "https://vpn.example.com", "rewriteHost": True}
+    elif change:
+        document["masquerade"]["file"] = change
+    validate = load_runtime_module("validate_yaml_mapping")._validate_hysteria
+    if change is None:
+        validate(document)
+    else:
+        with pytest.raises(ValueError, match="masquerade site"):
+            validate(document)
+
+
+def test_supplied_tls_probe_names_the_certificate_when_the_masquerade_names_no_host(tmp_path):
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1",
+                    "-nodes", "-days", "1", "-subj", "/CN=unrelated.example.test",
+                    "-addext", "subjectAltName=DNS:*.example.test,DNS:site.example.test",
+                    "-keyout", str(tmp_path / "key.pem"), "-out", str(tmp_path / "cert.pem")],
+                   check=True, capture_output=True)
+    document = hysteria_config(hysteria_masquerade_dir=SITE)
+    document["tls"] = {"cert": str(tmp_path / "cert.pem"), "key": str(tmp_path / "key.pem")}
+    probe = load_runtime_module("transport_runtime_probe")
+    client = probe.hysteria_client(document, 1080, document["tls"]["cert"], "device")
+    assert client["tls"]["sni"] == "site.example.test"

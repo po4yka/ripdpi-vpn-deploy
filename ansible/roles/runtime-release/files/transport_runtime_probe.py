@@ -192,6 +192,15 @@ def xray_clients(document, port, client_name, timeout=30):
     return candidates
 
 
+def certificate_name(path):
+    """First exact DNS name of a supplied certificate; a file masquerade names no origin host."""
+    text = run(['/usr/bin/openssl', 'x509', '-in', path, '-noout', '-text'], 10).decode()
+    names = [item[4:] for item in text.replace(',', ' ').split() if item.startswith('DNS:') and '*' not in item]
+    if not names:
+        raise ProbeRefused('frontend-tls-name-missing')
+    return names[0]
+
+
 def hysteria_client(document, port, ca, client_name, *, tls_server_name=None):
     if document['auth']['type'] != 'userpass' or not document['auth']['userpass']:
         raise ProbeRefused('frontend-credentials-empty')
@@ -201,8 +210,14 @@ def hysteria_client(document, port, ca, client_name, *, tls_server_name=None):
     listen = document['listen']
     host, server_port = listen.rsplit(':', 1)
     host = '127.0.0.1' if host in ('', '0.0.0.0', '[::]') else host
-    sni = tls_server_name or (document['acme']['domains'][0] if 'acme' in document
-                             else urlsplit(document['masquerade']['proxy']['url']).hostname)
+    if tls_server_name:
+        sni = tls_server_name
+    elif 'acme' in document:
+        sni = document['acme']['domains'][0]
+    elif document['masquerade'].get('type') == 'file':
+        sni = certificate_name(document['tls']['cert'])
+    else:
+        sni = urlsplit(document['masquerade']['proxy']['url']).hostname
     # ACME startup can outlast the client's first dial. Keep SOCKS alive while
     # request() checks real TLS, authentication and traffic under one deadline.
     client = {'server': host + ':' + server_port, 'auth': name + ':' + password, 'lazy': True,

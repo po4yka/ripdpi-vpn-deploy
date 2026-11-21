@@ -24,6 +24,7 @@ ALLOWED_KEYS = {
     "public_site_canonical_url",
     "nginx_xhttp_public_site_dir",
     "reality_self_steal_public_site_dir",
+    "hysteria_public_site_dir",
     "reality_target_network",
     "tls_identity_exception",
     "network_exposure_gate",
@@ -167,7 +168,7 @@ def validate(path: Path) -> None:
         if not origin_valid(url):
             raise ValueError("public_site_canonical_url must be a canonical HTTPS origin")
 
-    for name in ("nginx_xhttp_public_site_dir", "reality_self_steal_public_site_dir"):
+    for name in ("nginx_xhttp_public_site_dir", "reality_self_steal_public_site_dir", "hysteria_public_site_dir"):
         if name in document:
             read_site(document[name])
 

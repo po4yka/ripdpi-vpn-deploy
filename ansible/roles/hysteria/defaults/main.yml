@@ -43,3 +43,7 @@ hysteria_resource_profile_default: bandwidth-capped
 # TCP and UDP probes of the address agree. Enable only where no other role
 # owns TCP/443; the provider listener contract must carry `hysteria-masquerade`.
 hysteria_masquerade_tcp: false
+
+# Derived by tasks/enable.yml from hysteria_public_site_dir: the published tree
+# that the `file` masquerade serves; empty keeps the proxy origin.
+hysteria_masquerade_dir: ""
