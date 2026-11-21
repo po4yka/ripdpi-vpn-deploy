@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-21
+goal: SEC-1795260338347014 Bound the capabilities of the transport generation
+  controller
