@@ -1,3 +1,46 @@
 ---
 - name: Prepare genuine isolated credential delivery
   ansible.builtin.import_playbook: ../../../../molecule/prepare-transport-credentials.yml
+
+- name: Publish a site generation as the public-site role leaves it
+  hosts: all
+  become: true
+  vars:
+    site_state: /var/lib/public-site/{{ public_site_published[hysteria_public_site_dir] }}
+  tasks:
+    - name: Create the publisher account
+      ansible.builtin.user:
+        name: public-site
+        system: true
+        shell: /usr/sbin/nologin
+        create_home: false
+
+    - name: Create the publisher state and generation directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: public-site
+        group: www-data
+        mode: "2750"
+      loop:
+        - /var/lib/public-site
+        - "{{ site_state }}"
+        - "{{ site_state }}/generations"
+        - "{{ site_state }}/generations/0"
+
+    - name: Write the served page
+      ansible.builtin.copy:
+        dest: "{{ site_state }}/generations/0/index.html"
+        content: "<html><body>molecule node-local masquerade site</body></html>\n"
+        owner: public-site
+        group: www-data
+        mode: "0640"
+
+    - name: Point current at the served generation
+      ansible.builtin.file:
+        src: generations/0
+        dest: "{{ site_state }}/current"
+        state: link
+        owner: public-site
+        group: www-data
+        follow: false

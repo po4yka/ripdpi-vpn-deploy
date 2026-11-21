@@ -831,7 +831,8 @@ print('{{"summary": {{"validation": "valid"}}, "plan": {{}}}}')
                    for entry in calls(workspace))
 
 
-@pytest.mark.parametrize("key", ["nginx_xhttp_public_site_dir", "reality_self_steal_public_site_dir"])
+@pytest.mark.parametrize("key", ["nginx_xhttp_public_site_dir", "reality_self_steal_public_site_dir",
+                                 "hysteria_public_site_dir"])
 @pytest.mark.parametrize("target", ["dry-run", "deploy"])
 def test_owned_site_is_snapshotted_for_publication_and_removed_afterward(workspace, target, key):
     root = workspace["root"]

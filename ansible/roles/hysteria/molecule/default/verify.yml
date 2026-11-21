@@ -53,6 +53,27 @@
         path: /etc/systemd/system/hysteria-server.service
       register: unit
       failed_when: not unit.stat.exists
+    - name: Read the masquerade origin of the accepted config
+      ansible.builtin.slurp:
+        src: /etc/hysteria/config.yaml
+      register: accepted_config
+      no_log: true
+    - name: Assert the node-local site replaces the proxy origin
+      ansible.builtin.assert:
+        that:
+          - masquerade.type == 'file'
+          - masquerade.file.dir == '/var/lib/public-site/' ~ public_site_published[hysteria_public_site_dir] ~ '/current'
+          - "'proxy' not in masquerade"
+      vars:
+        masquerade: '{{ (accepted_config.content | b64decode | from_yaml).masquerade }}'
+    - name: The TCP masquerade listener serves the published page as the hysteria user
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          curl --silent --show-error --fail --insecure --resolve vpn.example.com:443:127.0.0.1 \
+            https://vpn.example.com/ | grep -q 'molecule node-local masquerade site'
+        executable: /bin/bash
+      changed_when: false
     - name: Inspect runtime-release current/public/previous links and receipt
       ansible.builtin.stat:
         path: '{{ item }}'
@@ -78,6 +99,42 @@
       ansible.builtin.assert:
         that:
           - not (runtime_release_changed | bool)
+    - name: Refuse a group-writable masquerade tree before Hysteria restarts
+      vars:
+        served_page: /var/lib/public-site/{{ public_site_published[hysteria_public_site_dir] }}/current/index.html
+      block:
+        - name: Read the accepted config before the refused convergence
+          ansible.builtin.stat:
+            path: /etc/hysteria/config.yaml
+            checksum_algorithm: sha256
+          register: config_before
+        - name: Let another member of the publisher group write the served page
+          ansible.builtin.file:
+            path: '{{ served_page }}'
+            mode: '0660'
+        - name: Converge with a foreign-writable tree
+          ansible.builtin.include_role:
+            name: hysteria
+        - name: The convergence must not succeed
+          ansible.builtin.fail:
+            msg: The hysteria role accepted a group-writable masquerade tree.
+      rescue:
+        - name: Assert the tree admission refused it
+          ansible.builtin.assert:
+            that: ansible_failed_result.msg is search('published masquerade tree')
+        - name: Read the config after the refused convergence
+          ansible.builtin.stat:
+            path: /etc/hysteria/config.yaml
+            checksum_algorithm: sha256
+          register: config_after
+        - name: Assert the refusal left the accepted config in place
+          ansible.builtin.assert:
+            that: config_after.stat.checksum == config_before.stat.checksum
+      always:
+        - name: Restore the publisher-only page mode
+          ansible.builtin.file:
+            path: '{{ served_page }}'
+            mode: '0640'
     - name: Upgrade Hysteria through runtime-release
       ansible.builtin.include_role:
         name: hysteria

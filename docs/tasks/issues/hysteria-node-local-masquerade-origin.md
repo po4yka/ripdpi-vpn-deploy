@@ -2,7 +2,7 @@
 id: ANS-1795259263103243
 title: Serve the Hysteria masquerade site from a node-local origin
 kind: feature
-status: backlog
+status: doing
 area: ansible
 priority: medium
 risk: standard
