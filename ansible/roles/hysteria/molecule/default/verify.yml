@@ -119,9 +119,11 @@
           ansible.builtin.fail:
             msg: The hysteria role accepted a group-writable masquerade tree.
       rescue:
-        - name: Assert the tree admission refused it
+        # The role's rescue reports every frontend refusal with one message; the page mode is
+        # the only input changed here, and the upgrade below converges once it is restored.
+        - name: Assert the role refused the frontend candidate
           ansible.builtin.assert:
-            that: ansible_failed_result.msg is search('published masquerade tree')
+            that: ansible_failed_result.msg is search('Protected frontend candidate was refused')
         - name: Read the config after the refused convergence
           ansible.builtin.stat:
             path: /etc/hysteria/config.yaml
