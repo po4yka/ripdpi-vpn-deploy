@@ -1,12 +1,8 @@
 """Monitoring must give each nginx log to exactly one logrotate policy."""
 
 from pathlib import Path
-import subprocess
 
-import pytest
-from jinja2 import FileSystemLoader
-
-from scripts.template_render import merge_render_vars, render_fragment, render_template, template_environment
+from scripts.template_render import merge_render_vars, render_fragment, render_template
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ROLE = REPO_ROOT / "ansible" / "roles" / "monitoring"
