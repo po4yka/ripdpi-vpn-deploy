@@ -1169,8 +1169,9 @@ def test_operator_tree_that_repeats_a_bundled_file_refuses_under_any_label(tmp_p
     site = tmp_path / "site"
     site.mkdir()
     (site / "404.html").write_text("missing")
+    (site / "index.html").write_text("<h1>owned</h1>")
     (site / "copied.bin").write_bytes((REPO_ROOT / "ansible/roles" / bundled).read_bytes())
-    result, staged = _run_site_staging(tmp_path, {"env": env, "nginx_xhttp_public_site_dir": str(site)})
+    result, staged = _run_site_staging(tmp_path, {"env": env, "nginx_xhttp_public_site_dir": str(site.parent)})
     assert result.returncode != 0
     assert staged is None
     assert "copied.bin" in result.stdout and "nginx_xhttp_public_site_dir" in result.stdout
@@ -1180,15 +1181,15 @@ def test_operator_tree_publishes_no_dot_path_except_well_known(tmp_path: Path) -
     site = tmp_path / "site"
     for directory in (".git", ".well-known", "img/.cache"):
         (site / directory).mkdir(parents=True)
-    for name in ("404.html", ".git/config", ".well-known/security.txt", ".htpasswd", "img/.cache/x", "img/a.png"):
+    for name in ("index.html", "404.html", ".git/config", ".well-known/security.txt", ".htpasswd", "img/.cache/x", "img/a.png"):
         (site / name).write_text(name)
     # Unpublished paths are outside the content and file-type checks.
     (site / ".git" / "packed").write_bytes((REPO_ROOT / "ansible/roles/nginx-xhttp/files/public-site/404.html").read_bytes())
     (site / ".git" / "link").symlink_to("config")
-    result, staged = _run_site_staging(tmp_path, {"env": "prod", "nginx_xhttp_public_site_dir": str(site)})
+    result, staged = _run_site_staging(tmp_path, {"env": "prod", "nginx_xhttp_public_site_dir": str(site.parent)})
     assert result.returncode == 0, result.stdout + result.stderr
     published = {row["path"].removeprefix("/var/www/public-site/") for row in staged["files"] if row["kind"] == "file"}
-    assert published == {"404.html", ".well-known/security.txt", "img/a.png"}
+    assert published == {"index.html", "404.html", ".well-known/security.txt", "img/a.png"}
     assert set(staged["parents"]) == {"/var/www/public-site/.well-known", "/var/www/public-site/img"}
 
 

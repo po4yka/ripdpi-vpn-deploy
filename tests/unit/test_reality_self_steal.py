@@ -584,7 +584,7 @@ def test_operator_tree_that_repeats_a_bundled_page_refuses_under_any_label(tmp_p
     (site / "index.html").write_text("<h1>owned</h1>")
     bundled = ANSIBLE / "roles" / "nginx-xhttp" / "files" / "public-site" / "404.html"
     (site / "404.html").write_bytes(bundled.read_bytes())
-    result, staged = _stage_self_steal_site(tmp_path, {"env": env, "reality_self_steal_public_site_dir": str(site)})
+    result, staged = _stage_self_steal_site(tmp_path, {"env": env, "reality_self_steal_public_site_dir": str(site.parent)})
     assert result.returncode != 0
     assert staged is None
     assert "404.html" in result.stdout and "reality_self_steal_public_site_dir" in result.stdout
@@ -599,7 +599,7 @@ def test_operator_tree_publishes_no_dot_path_except_well_known(tmp_path: Path) -
     # Unpublished paths are outside the content and file-type checks.
     (site / ".git" / "packed").write_bytes((ANSIBLE / "roles" / "nginx-xhttp" / "files" / "public-site" / "404.html").read_bytes())
     (site / ".git" / "link").symlink_to("config")
-    result, staged = _stage_self_steal_site(tmp_path, {"env": "prod", "reality_self_steal_public_site_dir": str(site)})
+    result, staged = _stage_self_steal_site(tmp_path, {"env": "prod", "reality_self_steal_public_site_dir": str(site.parent)})
     assert result.returncode == 0, result.stdout + result.stderr
     published = {row["path"] for row in staged["files"] if row["kind"] == "file"}
     assert published == {"/srv/site/index.html", "/srv/site/404.html", "/srv/site/.well-known/security.txt"}
