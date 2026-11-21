@@ -315,7 +315,7 @@ server {
     server_tokens off;
     access_log off;
     error_log /dev/null crit;
-    root /var/www/public-site;
+    root {{ nginx_site_root }};
     error_page 404 /404.html;
     location = /404.html {
         internal;
