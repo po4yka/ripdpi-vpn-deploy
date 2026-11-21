@@ -463,7 +463,8 @@ for i in "${!host_pairs[@]}"; do
     node_id="${prov}-${env}"
     capabilities="$(jq -nc --arg value "$capability" '$value | split("+") | sort')"
     vpn_line+=" observability_node_id=${node_id} observability_capabilities='${capabilities}' observability_failure_domain=${failure_domain}"
-    normalized_listeners="$(jq -c '[.[] | with_entries(select(.value != null))]' <<< "$public_listeners")"
+    # The topology names listeners only; the address family stays in the firewall contract.
+    normalized_listeners="$(jq -c '[.[] | del(.family) | with_entries(select(.value != null))]' <<< "$public_listeners")"
     observability_nodes+=("$(jq -nc \
       --arg node_id "$node_id" --arg provider "$prov" --arg environment "$env" \
       --argjson capabilities "$capabilities" --arg failure_domain "$failure_domain" \
