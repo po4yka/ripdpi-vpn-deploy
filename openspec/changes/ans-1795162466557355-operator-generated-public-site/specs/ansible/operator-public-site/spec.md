@@ -48,7 +48,7 @@ The schedule MUST be a function of the identity seed, start date and cadence onl
 
 ### Requirement: REQ-SITE-UNIQUE — Admission refuses shared content
 
-`make public-site-check` MUST refuse a bundle when a page shares more than the configured part of its word sequences with the bundled site or with another bundle that the operator names, when a file is byte-identical to a bundled asset or error page, when a page references a resource on another host, when the text contains a term that the public site contract forbids, or when its live-data sources equal the bundled default list. A deploy to a production host MUST run the same check on the controller and refuse before it changes the host.
+`make public-site-check` MUST refuse a bundle when a page shares more than the configured part of its word sequences with the bundled site or with another bundle that the operator names, when a file is byte-identical to one of their files, or when its live-data sources or markup equal the bundled ones.
 
 #### Scenario: Bundled pages under another hostname
 
@@ -64,6 +64,24 @@ The schedule MUST be a function of the identity seed, start date and cadence onl
 
 - **WHEN** the bundle contains the bundled `site.css` unchanged
 - **THEN** the check exits non-zero and names the file.
+
+### Requirement: REQ-SITE-CONTAINED — Admission refuses outside resources and forbidden terms
+
+`make public-site-check` MUST refuse a bundle when a page loads a resource from another host or redirects its loads, or when any served file or path contains a term that the public site contract forbids.
+
+#### Scenario: Script from another host
+
+- **WHEN** a page loads a script from a host other than the site origin
+- **THEN** the check exits non-zero and names the page and the URL.
+
+#### Scenario: Forbidden term in another script form
+
+- **WHEN** a page contains a forbidden term in full-width characters
+- **THEN** the check exits non-zero and names the page and the term.
+
+### Requirement: REQ-SITE-PREFLIGHT — Production deploys run the admission first
+
+A deploy and a dry run to a production host MUST run the same check on the controller for every site bundle that an enabled vhost role serves, and MUST refuse before any task changes the host.
 
 #### Scenario: Production deploy with a refused bundle
 
