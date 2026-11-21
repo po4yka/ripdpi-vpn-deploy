@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-21
+goal: ANS-1795260057878312 Make split-hop ingress flows fail fast after the tunnel
+  stops

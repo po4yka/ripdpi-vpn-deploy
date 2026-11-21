@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-21
+goal: ANS-1795259263103243 Serve the Hysteria masquerade site from a node-local
+  origin
