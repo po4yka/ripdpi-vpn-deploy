@@ -10,8 +10,8 @@
 
 ## Execution
 
-- [ ] SEC-1795260399016884 List each controller operation and the capability it needs, with a failing native test as evidence for each #feature @item:SEC-1795260338347014
-- [ ] SEC-1795260429892810 Set the CapabilityBoundingSet on the generation unit and record the reason for each capability in the role note #feature @item:SEC-1795260338347014
+- [x] SEC-1795260399016884 List each controller operation and the capability it needs, with a failing native test as evidence for each #feature @item:SEC-1795260338347014
+- [x] SEC-1795260429892810 Set the CapabilityBoundingSet on the generation unit and record the reason for each capability in the role note #feature @item:SEC-1795260338347014
 - [ ] SEC-1795260460933493 Run every controller operation under the bound in the native transport lanes and full-stack Molecule #feature @item:SEC-1795260338347014
 - [ ] SEC-1795260492741288 Run staging acceptance with a reboot and a WARP namespace refresh under the bounded unit #feature @item:SEC-1795260338347014
 

@@ -2,7 +2,7 @@
 id: SEC-1795260338347014
 title: Bound the capabilities of the transport generation controller
 kind: feature
-status: backlog
+status: doing
 area: security
 priority: medium
 risk: high

@@ -677,8 +677,8 @@ def test_generation_controller_retains_uid_drop_without_changing_recipient_capab
     configuration = configparser.ConfigParser(interpolation=None, strict=False)
     configuration.read_string(unit)
     assert configuration['Install']['WantedBy'].split() == ['multi-user.target']
-    assert [line for line in unit.splitlines() if line.startswith('AmbientCapabilities=')] == [
-        'AmbientCapabilities=CAP_SETUID']
+    assert [line for line in unit.splitlines() if line.startswith(('CapabilityBoundingSet=', 'AmbientCapabilities='))] == [
+        'CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_KILL', 'AmbientCapabilities=CAP_SETUID']
     for value in ['User=root', 'NoNewPrivileges=true', 'ProtectSystem=strict',
                   'RestrictNamespaces=true', 'RestrictSUIDSGID=true', 'SystemCallArchitectures=native']:
         assert value in unit.splitlines()
