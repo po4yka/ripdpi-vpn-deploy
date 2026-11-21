@@ -103,7 +103,12 @@
     - name: Require exact provider listener contract for host class
       ansible.builtin.assert:
         that:
-          - public_listener_contract == [observability_expected_listener]
+          - public_listener_contract | length == 1
+          # An absent or null family is the dual default; state written before the family field lacks the key.
+          - public_listener_contract[0].family | default(none) is none
+          - >-
+            (public_listener_contract[0] | dict2items | rejectattr('key', 'equalto', 'family') | items2dict)
+            == observability_expected_listener
         fail_msg: Provider listener contract does not match the exact host class.
         quiet: true
       tags: [always]

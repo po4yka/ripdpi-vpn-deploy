@@ -14,6 +14,12 @@ import sys
 from dataclasses import dataclass
 
 
+BOTH_FAMILIES = frozenset({"ipv4", "ipv6"})
+CONTRACT_FAMILIES = {
+    "ipv4": frozenset({"ipv4"}), "ipv6": frozenset({"ipv6"}), "dual": BOTH_FAMILIES,
+}
+
+
 @dataclass(frozen=True, order=True)
 class PortSelector:
     protocol: str
@@ -45,6 +51,8 @@ class FirewallAcceptRule:
     dhcpv6_kind: str | None
     dhcpv4_reply: bool
     collector_ingress: bool
+    families: frozenset[str] = frozenset(BOTH_FAMILIES)
+    nfproto_restricted: bool = False
 
 
 @dataclass(frozen=True)
@@ -84,7 +92,9 @@ def _port(value: str) -> int:
     return port
 
 
-def _decode_contract(encoded: str) -> dict[PortSelector, str]:
+def _decode_contract(
+    encoded: str,
+) -> tuple[dict[PortSelector, str], dict[PortSelector, frozenset[str]]]:
     try:
         raw = base64.b64decode(encoded, validate=True)
         doc = json.loads(raw)
@@ -93,6 +103,7 @@ def _decode_contract(encoded: str) -> dict[PortSelector, str]:
     if not isinstance(doc, list):
         raise ValueError("listener contract must be a JSON array")
     selectors: dict[PortSelector, str] = {}
+    families: dict[PortSelector, frozenset[str]] = {}
     for index, listener in enumerate(doc):
         if not isinstance(listener, dict):
             raise ValueError(f"listener contract entry {index} must be an object")
@@ -104,8 +115,12 @@ def _decode_contract(encoded: str) -> dict[PortSelector, str]:
         name = str(listener.get("name") or "")
         if name == "hysteria-acme" and selector != PortSelector("tcp", 80, 80):
             raise ValueError("native ACME challenge allowance requires exactly TCP/80")
+        family = listener.get("family") or "dual"
+        if not isinstance(family, str) or family not in CONTRACT_FAMILIES:
+            raise ValueError(f"invalid listener family {family!r} for {selector.label}")
         selectors[selector] = name
-    return selectors
+        families[selector] = CONTRACT_FAMILIES[family]
+    return selectors, families
 
 
 def _decode_tailnet_sources(encoded: str) -> frozenset[str]:
@@ -403,6 +418,8 @@ def _firewall_rules(
         icmp_type_restricted = False
         source_addresses: set[str] = set()
         input_interfaces: set[str] = set()
+        families: frozenset[str] = BOTH_FAMILIES
+        nfproto_restricted = False
         unknown_predicate = False
 
         for expression in expressions:
@@ -436,6 +453,7 @@ def _firewall_rules(
                     selector_value = right
                 elif payload_protocol in {"ip", "ip6"} and field == "saddr":
                     source_restricted = True
+                    families &= {"ip": {"ipv4"}, "ip6": {"ipv6"}}[payload_protocol]
                     values = _right_values(right)
                     if isinstance(right, str) and right.startswith("@"):
                         name = right[1:]
@@ -457,6 +475,13 @@ def _firewall_rules(
                     protocols.add("icmp" if payload_protocol == "icmp" else "ipv6-icmp")
                 elif payload_protocol == "ip6" and field == "hoplimit" and right == 255:
                     pass
+                else:
+                    unknown_predicate = True
+            elif isinstance(meta, dict) and meta.get("key") == "nfproto":
+                values = _right_values(right)
+                if values and values <= BOTH_FAMILIES:
+                    families &= values
+                    nfproto_restricted = True
                 else:
                     unknown_predicate = True
             elif isinstance(meta, dict) and meta.get("key") == "l4proto":
@@ -497,6 +522,9 @@ def _firewall_rules(
                 dhcpv6_kind=_dhcpv6_rule_kind(expressions, dhcpv6_uplink, dhcpv6_servers),
                 dhcpv4_reply=_dhcpv4_reply_rule(expressions),
                 collector_ingress=_collector_rule(expressions, collector),
+                families=families,
+                # Only a public listener accept may carry a family predicate.
+                nfproto_restricted=nfproto_restricted,
             )
         )
     return accepted
@@ -562,9 +590,12 @@ def _violations(
     dhcpv6_servers: frozenset[str],
     collector: CollectorIngress | None,
     native_acme: bool = False,
+    families: dict[PortSelector, frozenset[str]] | None = None,
 ) -> list[str]:
+    families = families or {}
     violations: list[str] = []
     conforming: dict[PortSelector, int] = {selector: 0 for selector in expected}
+    covered: dict[PortSelector, set[str]] = {selector: set() for selector in expected}
     ssh = PortSelector("tcp", ssh_port, ssh_port)
     tailnet_seen = {source: 0 for source in tailnet_sources}
     tailnet_accept_positions: list[int] = []
@@ -587,6 +618,7 @@ def _violations(
                 and rule.input_restricted
                 and rule.input_interfaces == frozenset({"tailscale0"})
                 and not rule.unknown_predicate
+                and not rule.nfproto_restricted
             ):
                 tailnet_drop_positions.append(rule.position)
             continue
@@ -608,9 +640,13 @@ def _violations(
                 and rule.protocols <= {"icmp", "ipv6-icmp"}
                 and rule.icmp_type_restricted
                 and not rule.unknown_predicate
+                and not rule.nfproto_restricted
             ):
                 continue
             violations.append("unexpected broad firewall accept")
+            continue
+        if selector == ssh and rule.nfproto_restricted:
+            violations.append(f"unsupported family-restricted firewall {ssh.label}")
             continue
         if selector == ssh:
             tailnet_rule = (
@@ -646,7 +682,22 @@ def _violations(
         if not scope_matches or rule.unknown_predicate:
             violations.append(f"restricted or unsupported firewall {selector.label}")
             continue
+        contract_families = families.get(selector, BOTH_FAMILIES)
+        outside = rule.families - contract_families
+        if outside:
+            violations.append(
+                f"firewall {selector.label} accepts {'/'.join(sorted(outside))} "
+                "outside its contract family"
+            )
+            continue
+        if not is_cdn_front and rule.families != contract_families:
+            violations.append(
+                f"firewall {selector.label} omits contract family "
+                f"{'/'.join(sorted(contract_families - rule.families))}"
+            )
+            continue
         conforming[selector] += 1
+        covered[selector] |= rule.families
 
     if collector is not None:
         if collector_seen != 1:
@@ -667,8 +718,17 @@ def _violations(
                 or any(position <= deny for position in established_positions)):
             violations.append('invalid DHCPv6 reply rule ordering')
     for selector, count in sorted(conforming.items()):
-        expected_count = 2 if expected[selector] == "cdn-front" else 1
-        if count < expected_count:
+        expected_count = (
+            len(families.get(selector, BOTH_FAMILIES))
+            if expected[selector] == "cdn-front" else 1
+        )
+        contract_families = families.get(selector, BOTH_FAMILIES)
+        if count and expected[selector] == "cdn-front" and covered[selector] != contract_families:
+            violations.append(
+                f"firewall {selector.label} omits contract family "
+                f"{'/'.join(sorted(contract_families - covered[selector]))}"
+            )
+        elif count < expected_count:
             violations.append(f"missing firewall {selector.label}")
         elif count > expected_count:
             violations.append(f"duplicate firewall {selector.label}")
@@ -714,7 +774,7 @@ def main() -> int:
     parser.add_argument("--native-acme", action="store_true")
     args = parser.parse_args()
     try:
-        expected = _decode_contract(args.contract_b64)
+        expected, families = _decode_contract(args.contract_b64)
         tailnet_sources = _decode_tailnet_sources(args.tailnet_sources_b64)
         collector = _decode_collector_ingress(args.collector_ingress_b64)
         if collector is not None and (args.ssh_port == 9443 or any(
@@ -734,7 +794,7 @@ def main() -> int:
 
     violations = _violations(
         expected, firewall, sockets, args.ssh_port, tailnet_sources, dhcpv6_servers, collector,
-        args.native_acme,
+        args.native_acme, families,
     )
     if violations:
         print("\n".join(violations))

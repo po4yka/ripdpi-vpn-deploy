@@ -35,14 +35,15 @@ resource "upcloud_firewall_rules" "vpn" {
   }
 
   # Typed listener contract: every public runtime listener is opened here for
-  # both address families. The same resolved contract is exported to Ansible.
+  # its stated address family (both when absent). The same resolved contract
+  # is exported to Ansible.
   dynamic "firewall_rule" {
     for_each = {
       for pair in setproduct(["IPv4", "IPv6"], values(local.public_listener_rules)) :
       "${pair[0]}-${pair[1].protocol}-${coalesce(try(tostring(pair[1].port), null), try(pair[1].port_range, null))}" => {
         family   = pair[0]
         listener = pair[1]
-      }
+      } if contains(["dual", lower(pair[0])], coalesce(pair[1].family, "dual"))
     }
     content {
       action                 = "accept"

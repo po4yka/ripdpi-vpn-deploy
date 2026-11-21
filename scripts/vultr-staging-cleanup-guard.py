@@ -928,8 +928,8 @@ def _extract_identity(state: dict[str, Any], hostname: str) -> dict[str, Any]:
         raise GuardError("state must bind exact ICMP v4 and v6 rules")
     if (
         ssh_rules == 0
-        or not public_listeners["v4"]
-        or public_listeners["v4"] != public_listeners["v6"]
+        # A single-family public listener binds a rule in one family only.
+        or not (public_listeners["v4"] or public_listeners["v6"])
     ):
         raise GuardError("state must bind every firewall rule class")
     terraform_data_id = indexed["terraform_data.ssh_port"].get("id")

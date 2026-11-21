@@ -164,9 +164,10 @@ variable "public_listeners" {
     protocol   = string
     port       = optional(number)
     port_range = optional(string)
+    family     = optional(string)
   }))
   default     = []
-  description = "Public TCP/UDP listeners allowed at the provider edge. Specify exactly one of port or port_range for each entry."
+  description = "Public TCP/UDP listeners allowed at the provider edge. Specify exactly one of port or port_range for each entry. Optional family (ipv4, ipv6 or dual; absent means dual) limits the entry to one address family at every layer."
 
   validation {
     condition = alltrue([
@@ -186,6 +187,28 @@ variable "public_listeners" {
       "${listener.protocol}-${coalesce(try(tostring(listener.port), null), try(listener.port_range, null))}" => true
     })
     error_message = "public_listeners entries must not repeat the same protocol and port or port_range."
+  }
+
+  validation {
+    condition = alltrue([
+      for listener in var.public_listeners :
+      listener.family == null ? true : contains(["ipv4", "ipv6", "dual"], listener.family)
+    ])
+    error_message = "public_listeners family must be ipv4, ipv6 or dual; an absent family means dual."
+  }
+
+  # Stateless return rules admit provider_return_ephemeral_ports on both
+  # families, so a single-family listener there would stay open on the other.
+  validation {
+    condition = alltrue([
+      for listener in var.public_listeners :
+      coalesce(listener.family, "dual") == "dual" ? true : (
+        try(listener.port, null) != null
+        ? (listener.port < var.provider_return_ephemeral_ports.start || listener.port > var.provider_return_ephemeral_ports.end)
+        : (tonumber(split("-", listener.port_range)[1]) < var.provider_return_ephemeral_ports.start || tonumber(split("-", listener.port_range)[0]) > var.provider_return_ephemeral_ports.end)
+      )
+    ])
+    error_message = "A single-family public listener must stay outside provider_return_ephemeral_ports, which the stateless provider firewall opens on both families."
   }
 }
 
