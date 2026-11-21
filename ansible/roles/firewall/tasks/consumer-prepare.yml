@@ -94,7 +94,7 @@
       {%- for inst in _firewall_accepted_awg.stdout | from_json -%}
       {%- set _claimed = public_listener_contract | selectattr('name', 'equalto', 'amneziawg')
           | selectattr('port', 'equalto', inst.listen_port) | list -%}
-      {%- set _family = (_claimed | map(attribute='family', default=none) | first) if _claimed else none -%}
+      {%- set _family = (_claimed | first).family | default(none) if _claimed else none -%}
       {%- set ns.values = ns.values + [{'name': 'amneziawg', 'protocol': 'udp', 'port': inst.listen_port,
                                         'port_range': none, 'family': _family}] -%}
       {%- endfor -%}

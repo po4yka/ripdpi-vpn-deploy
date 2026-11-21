@@ -6,6 +6,7 @@ import ast
 import base64
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -564,3 +565,28 @@ def test_awg_separate_ipv6_uplink_keeps_the_provider_nat_port_range_per_family()
                 f'masquerade to :32768-60999 comment "awg-nat-{suffix}awg0"') in nat
         assert (f'iifname "awg0" meta nfproto {family} oifname "{uplink}" meta l4proto != {{ tcp, udp }} counter '
                 f'masquerade comment "awg-nat-other-{suffix}awg0"') in nat
+
+
+@pytest.mark.parametrize("claim", [
+    {"name": "amneziawg", "protocol": "udp", "port": 51820, "port_range": None},
+    {"name": "amneziawg", "protocol": "udp", "port": 51820, "port_range": None, "family": "ipv4"},
+])
+def test_retained_awg_listener_keeps_a_contract_written_before_families(tmp_path, claim):
+    tasks = yaml.safe_load((REPO_ROOT / "ansible/roles/firewall/tasks/consumer-prepare.yml").read_text())
+    task = next(t for t in tasks if t.get("name") == "Retain accepted AWG policy during initial tagged convergence")
+    task = {**task, "no_log": False}
+    play = [{"hosts": "localhost", "gather_facts": False, "become": False, "vars": {
+        "firewall_site_transaction": True,
+        "vpn": {},
+        "public_listener_contract": [{"name": "xray", "protocol": "tcp", "port": 443, "port_range": None}, claim],
+        "_firewall_accepted_awg": {"stdout": json.dumps([{"listen_port": 51820}])},
+    }, "tasks": [task, {"ansible.builtin.copy": {
+        "content": "{{ _firewall_render_listeners | to_json }}", "dest": str(tmp_path / "listeners.json")}}]}]
+    (tmp_path / "play.yml").write_text(yaml.safe_dump(play))
+    result = subprocess.run(["ansible-playbook", "-i", "localhost,", "-c", "local", str(tmp_path / "play.yml")],
+        text=True, capture_output=True, timeout=60,
+        env={**os.environ, "ANSIBLE_CONFIG": str(REPO_ROOT / "ansible/ansible.cfg"), "ANSIBLE_NOCOLOR": "1"})
+    assert result.returncode == 0, result.stdout + result.stderr
+    listeners = json.loads((tmp_path / "listeners.json").read_text())
+    assert listeners[-1] == {"name": "amneziawg", "protocol": "udp", "port": 51820, "port_range": None,
+                             "family": claim.get("family")}
