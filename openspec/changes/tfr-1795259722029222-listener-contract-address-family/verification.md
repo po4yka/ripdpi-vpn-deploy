@@ -1,11 +1,11 @@
 ---
 task_id: TFR-1795259722029222
 change: tfr-1795259722029222-listener-contract-address-family
-commit_sha: null
+commit_sha: e2ac65e33e
 local: required
 local_evidence: "make tf-test (upcloud 91, hetzner 61, vultr 80, scaleway 55 passed), make tf-policy-verify (92 passed), make snapshot-check (200 match, unchanged), affected pytest files passed; make -k -j 4 check: every target passed except load-sensitive tests that passed serially and three defects fixed and rerun with make task-check validate ci-fast-scripts. make molecule-test ROLE=firewall could not start locally: the amd64 Molecule image is unreachable under the arm64 Colima VM, so CI provides that run."
-remote_ci: required
-remote_ci_evidence: null
+remote_ci: passed
+remote_ci_evidence: "PR 670 (head 3416229839): the pytest shards were cancelled by a superseding run, so the PR rollup did not complete; the merged tree is covered by main CI. Main CI run 44923464687 on 696cab2c64, which contains all four follow-up changes and the refreshed debian13 Molecule image (PR 674): 84 of 84 jobs passed on 2026-11-21, including the four pytest groups, native runtime integration, native transport runtime acceptance and native four-transport acceptance lanes, every Molecule group and the Trivy scans of the refreshed images. The firewall Molecule group passed."
 dry_run: required
 dry_run_evidence: "pending: make plan and make dry-run for a node with a single-family listener need operator authorization"
 staging: required
