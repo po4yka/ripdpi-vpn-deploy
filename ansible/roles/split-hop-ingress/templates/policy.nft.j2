@@ -11,6 +11,13 @@ table inet split_hop_ingress {
     # Replies and ICMP errors A sends for marked flows keep the ordinary route.
     ct direction original ct mark {{ split_hop_ingress.fwmark }} meta mark set ct mark
   }
+  chain tunnel_down {
+    # Loaded in the tunnel-down state; the tunnel unit flushes it once up. A rerouted local connect
+    # ignores the unreachable route error and retries until timeout, so refuse it here.
+    type filter hook output priority mangle - 1; policy accept;
+    meta nfproto ipv4 ct state new ct direction original meta skuid { {{ _uids | join(', ') }} } fib daddr type != local meta l4proto tcp reject with tcp reset
+    meta nfproto ipv4 ct state new ct direction original meta skuid { {{ _uids | join(', ') }} } fib daddr type != local reject with icmp type admin-prohibited
+  }
 {% if _forwarded %}
   chain prerouting {
     # Forwarded device originals take the tunnel route; their replies keep conntrack state.

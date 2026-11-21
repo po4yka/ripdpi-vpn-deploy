@@ -85,6 +85,10 @@
       Requires=split-hop-ingress-policy.service
       After=split-hop-ingress-policy.service
 
+      [Service]
+      ExecStartPost=/usr/sbin/nft flush chain inet split_hop_ingress tunnel_down
+      ExecStopPost=/usr/sbin/nft -f /etc/wireguard/split-hop-ingress.nft
+
 - name: Load and retain the ingress boundary before tunnel activation
   ansible.builtin.systemd_service:
     name: split-hop-ingress-policy.service

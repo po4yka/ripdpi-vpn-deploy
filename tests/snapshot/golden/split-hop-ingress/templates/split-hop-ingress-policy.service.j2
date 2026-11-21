@@ -10,6 +10,10 @@ Type=oneshot
 RemainAfterExit=yes
 ExecStart=/usr/sbin/nft -c -f /etc/wireguard/split-hop-ingress.nft
 ExecStart=/usr/sbin/nft -f /etc/wireguard/split-hop-ingress.nft
+# Marked flows keep an error route whenever the tunnel route is absent: the tunnel's
+# own default shadows this one and disappears with the device. An existing rule refuses.
+ExecStartPost=-/usr/sbin/ip rule add fwmark 1 table 200
+ExecStartPost=/usr/sbin/ip route replace unreachable default table 200 metric 4294967295
 CapabilityBoundingSet=CAP_NET_ADMIN
 NoNewPrivileges=yes
 ProtectHome=yes

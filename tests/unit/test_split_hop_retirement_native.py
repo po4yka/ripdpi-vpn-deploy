@@ -41,8 +41,10 @@ def test_inactive_split_hop_retires_only_its_tables_and_route_authority(tmp_path
         cmd("ip", "netns", "add", namespace)
         ns("ip", "link", "add", "p2dummy", "type", "dummy")
         ns("ip", "link", "set", "p2dummy", "up")
+        # The ingress policy loader leaves its rule and a fallback unreachable route.
+        ns("ip", "route", "add", "unreachable", "default", "table", "200", "metric", "4294967295")
+        ns("ip", "route", "add", "default", "dev", "p2dummy", "table", "201")
         for table, mark in ((200, 1), (201, 2)):
-            ns("ip", "route", "add", "default", "dev", "p2dummy", "table", str(table))
             ns("ip", "rule", "add", "fwmark", str(mark), "table", str(table))
         ns(
             "nft",
