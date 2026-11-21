@@ -6,8 +6,15 @@ The IPv4 filter guard runs in POSTROUTING. OUTPUT retains its original interface
 after route marking, so a later OUTPUT guard can reject valid tunnel traffic.
 The final-interface check admits protected IPv4 originals only on loopback or
 the tunnel. Protected IPv6 originals are refused in OUTPUT.
-The boot policy loader is a required WireGuard dependency. Tunnel PostDown
-removes routes only; policy remains active across stop and restart. Explicit
+The boot policy loader is a required WireGuard dependency. It also installs the
+mark rule and a maximum-metric `unreachable` default: the tunnel route shadows
+it and disappears with the device, so forwarded marked flows get ICMP at once
+however the tunnel stopped (no PostDown). The loaded policy holds the
+tunnel-down state: its `tunnel_down` output chain resets new owned IPv4
+connects, because a rerouted local connect ignores a route error and times
+out. The `wg-quick@` drop-in flushes that chain after start and reloads the
+policy after stop, so a restart under an older tunnel config stays correct.
+`Requires=` propagates a loader restart to the tunnel. Explicit
 role retirement first requires the canonical firewall to remove its shared
 ingress guard, then stops the loader and removes the owned policy. Direct
 retirement refuses while that shared guard remains. Check mode skips the live

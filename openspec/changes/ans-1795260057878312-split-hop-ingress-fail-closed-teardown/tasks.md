@@ -10,9 +10,9 @@ When the split-hop WireGuard tunnel on Node A stops, forwarded device flows and 
 
 ## Execution
 
-- [ ] ANS-1795260140617842 Keep the split-hop rule and an unreachable default route in the policy table while the tunnel is down #feature @item:ANS-1795260057878312
-- [ ] ANS-1795260176389101 Reject new marked frontend UID connections in the output hook while the tunnel interface is absent #feature @item:ANS-1795260057878312
-- [ ] ANS-1795260207966094 Remove the rule, the kept route and the reject rule on retirement, with snapshot and unit tests #feature @item:ANS-1795260057878312
+- [x] ANS-1795260140617842 Keep the split-hop rule and an unreachable default route in the policy table while the tunnel is down #feature @item:ANS-1795260057878312
+- [x] ANS-1795260176389101 Reject new marked frontend UID connections in the output hook while the tunnel interface is absent #feature @item:ANS-1795260057878312
+- [x] ANS-1795260207966094 Remove the rule, the kept route and the reject rule on retirement, with snapshot and unit tests #feature @item:ANS-1795260057878312
 - [ ] ANS-1795260239530010 Run staging acceptance on a disposable pair: immediate errors with the tunnel down, no direct-uplink packets, clean retirement #feature @item:ANS-1795260057878312
 
 ## Verification

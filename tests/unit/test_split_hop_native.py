@@ -13,6 +13,7 @@ import time
 import uuid
 
 import pytest
+import yaml
 
 from template_render import merge_render_vars, render_template
 
@@ -24,6 +25,31 @@ def command(*argv, data=None):
     return subprocess.run(
         argv, input=data, text=True, capture_output=True, check=True, timeout=15
     ).stdout
+
+
+def ingress_lifecycle(values, policy):
+    """Shell commands that the loader start, the tunnel start and the tunnel stop run on Node A."""
+    ingress = ROOT / "ansible/roles/split-hop-ingress"
+
+    def commands(text, key):
+        # systemd ignores the failure of a command prefixed with "-".
+        return [value[1:] + " || true" if value.startswith("-") else value
+                for line in text.splitlines() if line.startswith(key + "=")
+                for value in [line.split("=", 1)[1].replace(
+                    "/etc/wireguard/split-hop-ingress.nft", str(policy))]]
+
+    loader = render_template(ingress / "templates/split-hop-ingress-policy.service.j2", values)
+    tunnel = render_template(ingress / "templates/split-hop-ingress.conf.j2", values)
+    drop_in = next(task["ansible.builtin.copy"]["content"]
+                   for task in yaml.safe_load((ingress / "tasks/boundary.yml").read_text())
+                   if str(task.get("ansible.builtin.copy", {}).get("dest", "")).endswith("split-hop-policy.conf"))
+    post_up = [line.split(" = ", 1)[1].replace("/etc/wireguard/split-hop-ingress.nft", str(policy))
+               for line in tunnel.splitlines() if line.startswith("PostUp = ")]
+    return {
+        "boot": [f"nft -f {policy}", *commands(loader, "ExecStartPost")],
+        "up": [*post_up, *commands(drop_in, "ExecStartPost")],
+        "down": commands(drop_in, "ExecStopPost"),
+    }
 
 
 def test_ipv4_exits_b_replies_a_and_owned_ipv6_cannot_leak(tmp_path):
@@ -316,6 +342,17 @@ s.sendall(b'after');assert s.recv(32)==b'after'
         assert snat_addresses == ["10.200.0.9"], "changed policy must replace the previous owned SNAT address"
         ns("a", "nft", "-f", "-", data=ingress)
         assert ingress_rules() == accepted_rules
+        policy = tmp_path / "split-hop-ingress.nft"
+        policy.write_text(ingress)
+        lifecycle = ingress_lifecycle(values, policy)
+
+        def run(*phases):
+            for phase in phases:
+                for step in lifecycle[phase]:
+                    ns("a", "sh", "-c", step)
+
+        # The loaded policy holds the tunnel-down reject until the tunnel unit starts.
+        run("boot", "up")
         ns("b", "nft", "-f", "-", data=egress)
         client.communicate("x", timeout=4)
         assert client.returncode != 0, "established owned IPv6 original must be fenced"
@@ -346,21 +383,27 @@ s.sendall(b'after');assert s.recv(32)==b'after'
         assert allowed.returncode == 0 and allowed.stdout == "fd00:2::1", allowed.stderr
         received = int(ns("b", "wg", "show", "shop0", "transfer").split()[1])
         assert received > 0, "real encrypted WG transport must carry the request"
-        configuration = render_template(
-            ROOT / "ansible/roles/split-hop-ingress/templates/split-hop-ingress.conf.j2",
-            values,
-        )
-        post_down = next(line.split(" = ", 1)[1] for line in configuration.splitlines()
-                         if line.startswith("PostDown = "))
-        ns("a", "sh", "-c", post_down)
+        # The tunnel route goes with the device; no wg-quick hook restores routing.
         ns("a", "ip", "link", "set", "shop0", "down")
+        run("down")
         assert "egress_guard" in ns("a", "nft", "list", "table", "inet", "split_hop_ingress")
+        assert "fwmark 0x1 lookup 200" in ns("a", "ip", "rule", "show")
+        assert ns("a", "ip", "route", "show", "table", "200").split()[:2] == ["unreachable", "default"]
         direct_before = {path: path.read_bytes() if path.exists() else b""
                          for path in (ipv4_log, ipv6_log)}
         for uid in (65532, 65533):
             for url in ("http://198.51.100.2:18084/", "http://[fd00:2::2]:18081/"):
                 denied = request("a", url, uid)
                 assert denied.returncode != 0, "stopped tunnel must not expose owned direct egress"
+            for url in ("http://198.51.100.2:18084/", "http://203.0.113.2:18080/"):
+                started = time.monotonic()
+                refused = request("a", url, uid)
+                elapsed = time.monotonic() - started
+                # curl exit 7: connect failed at once instead of timing out (exit 28).
+                assert refused.returncode == 7 and elapsed < 1, (refused.stderr, elapsed)
+        # Owned users still reach A's own listeners while the tunnel is down.
+        local = request("a", "http://198.51.100.1:18080/", 65533)
+        assert local.returncode == 0 and local.stdout == "198.51.100.1", local.stderr
         assert all((path.read_bytes() if path.exists() else b"") == before
                    for path, before in direct_before.items()), "owned originals reached a direct listener"
         for url, address in (("http://198.51.100.2:18084/", "198.51.100.1"),
@@ -372,8 +415,12 @@ s.sendall(b'after');assert s.recv(32)==b'after'
             reply = request("c", url)
             assert reply.returncode == 0 and reply.stdout == address, reply.stderr
         ns("a", "ip", "link", "set", "shop0", "up")
-        ns("a", "ip", "route", "add", "default", "dev", "shop0", "table", "200")
-        ns("a", "ip", "rule", "add", "fwmark", "1", "table", "200")
+        run("up")
+        # Requires= turns a loader restart into tunnel stop, loader start, tunnel start.
+        ns("a", "ip", "link", "set", "shop0", "down")
+        run("down", "boot")
+        ns("a", "ip", "link", "set", "shop0", "up")
+        run("up")
         for uid in (65532, 65533):
             recovered = request("a", "http://203.0.113.2:18080/", uid)
             assert recovered.returncode == 0 and recovered.stdout == "203.0.113.1", recovered.stderr
@@ -495,13 +542,13 @@ s=http.server.HTTPServer((address,int(port)),H);open(ready,'w').close();s.serve_
         }
         configuration = render_template(
             ROOT / "ansible/roles/split-hop-ingress/templates/split-hop-ingress.conf.j2", values)
-        hooks = {key: line.split(" = ", 1)[1] for line in configuration.splitlines()
-                 for key in ("PostUp", "PostDown") if line.startswith(key + " = ")}
+        assert "PostDown" not in configuration, "routing must not depend on a stop hook"
         policy = tmp_path / "split-hop-ingress.nft"
         policy.write_text(render_template(
             ROOT / "ansible/roles/split-hop-ingress/templates/policy.nft.j2", values))
-        ns("a", "nft", "-f", str(policy))
-        ns("a", "sh", "-c", hooks["PostUp"].replace("/etc/wireguard/split-hop-ingress.nft", str(policy)))
+        lifecycle = ingress_lifecycle(values, policy)
+        for step in lifecycle["boot"] + lifecycle["up"]:
+            ns("a", "sh", "-c", step)
         ns("b", "nft", "-f", "-", data=render_template(
             ROOT / "ansible/roles/split-hop-egress/templates/split-hop-egress.nft.j2",
             dict(split_hop_egress={"wg_interface": "shop0", "forward_iface": "toe"})))
@@ -531,12 +578,17 @@ s=http.server.HTTPServer((address,int(port)),H);open(ready,'w').close();s.serve_
         mss = [int(value) for value in (tmp_path / "e-18090.log.mss").read_text().split()]
         assert len(mss) == 3 and all(0 < value <= tunnel_mss for value in mss), (mss, tunnel_mss)
 
-        ns("a", "sh", "-c", hooks["PostDown"])
+        # A failed start or a deleted device runs no wg-quick hook; only the unit stop path.
         ns("a", "ip", "link", "set", "shop0", "down")
+        for step in lifecycle["down"]:
+            ns("a", "sh", "-c", step)
         leaked_before = leak.read_text()
-        for uid in (gateway_uid, normalizer_uid):
-            assert request("a", "http://203.0.113.2:18090/", uid).returncode != 0
-        assert request("d", "http://203.0.113.2:18090/").returncode != 0
+        # Gateway connects get a reset; the device gets ICMP unreachable from the kept route.
+        for node, uid in (("a", gateway_uid), ("a", normalizer_uid), ("d", None)):
+            started = time.monotonic()
+            refused = request(node, "http://203.0.113.2:18090/", uid)
+            elapsed = time.monotonic() - started
+            assert refused.returncode == 7 and elapsed < 1, (node, uid, refused.returncode, elapsed)
         assert leak.read_text() == leaked_before, "family egress reached A's direct uplink"
     finally:
         for proc in children:

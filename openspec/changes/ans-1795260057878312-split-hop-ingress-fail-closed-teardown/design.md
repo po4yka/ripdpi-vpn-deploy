@@ -10,8 +10,8 @@ Non-goals: automatic failover to the direct uplink, changes to Node B, changes t
 
 ## Decisions
 
-- Keep the `ip rule` and replace the table content with `unreachable default` in `PostDown`, so marked traffic finds an error route instead of the main table.
-- Add an output-hook reject for marked frontend UID connections while the WireGuard interface is absent, because postrouting cannot reject and a local `connect` ignores the reroute error.
+- The boot policy loader installs the `ip rule` and an `unreachable default` with the maximum metric. The tunnel's own default route shadows it and disappears with the device, so marked traffic finds an error route however the tunnel stopped (stop, failed start, deleted device). `PostDown` is removed: a hook that only runs on a clean stop cannot hold this state.
+- Add an output-hook reject chain (`tunnel_down`, priority `mangle - 1`) for new IPv4 originals of the marked frontend UIDs to non-local destinations, because postrouting cannot reject and a local `connect` ignores the reroute error. The policy file loads it; the role-owned `wg-quick@` drop-in flushes it after start (`ExecStartPost`) and reloads the policy after stop (`ExecStopPost`). The drop-in, not `PostUp`, owns this, because a loader restart propagates to the tunnel through `Requires=` and can start it under the previous tunnel configuration.
 - Keep both existing guards unchanged as the last boundary.
 
 ## Contracts and ownership
@@ -22,6 +22,8 @@ The split-hop ingress role owns the rule, the table and the policy ruleset. The 
 
 - A kept rule with an unreachable route also blocks marked traffic after an operator stops the tunnel on purpose; that is the intended fail-closed behaviour, and retirement is the way to remove it.
 - The output reject must follow the interface state; a stale state can reject while the tunnel is up, so the acceptance must test both directions.
+- The kernel rate-limits ICMP errors from the error route, so a device opening many flows at once can see some of them wait for a SYN retransmit.
+- Only TCP connects fail at once locally; unconnected UDP sockets ignore the ICMP error, and established flows are not covered.
 
 ## Migration Plan
 
