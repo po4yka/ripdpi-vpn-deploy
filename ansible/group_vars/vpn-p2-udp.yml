@@ -36,5 +36,7 @@ hysteria_resource_profile_default: bbr-conservative
 
 # Neutral placeholder. The real decoy origin is operator-supplied per deploy
 # via ANSIBLE_EXTRA_VARS_FILE (see docs/reference/deploy-profiles.md); the hysteria role
-# asserts masquerade_url equals this value.
+# asserts masquerade_url equals this value. Supply hysteria_public_site_dir in
+# the same file to serve the node's own site bundle instead of proxying to
+# that origin; without it the proxy origin and its self-origin refusal stay.
 public_site_canonical_url: "https://vpn.example.com"

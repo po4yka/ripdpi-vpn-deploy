@@ -316,6 +316,9 @@
                else [])
               + ([reality_self_steal_public_site_dir | default('')]
                  if ((vpn.enable_reality_self_steal | default(false) | bool)
+                     and not (vpn_subscription_only | default(false) | bool)) else [])
+              + ([hysteria_public_site_dir | default('')]
+                 if ((vpn.enable_hysteria | default(true) | bool)
                      and not (vpn_subscription_only | default(false) | bool)) else []))
              | select | unique | list }}
       tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]

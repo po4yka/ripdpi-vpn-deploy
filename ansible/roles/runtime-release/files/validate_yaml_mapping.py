@@ -119,10 +119,17 @@ def _validate_hysteria(document: dict) -> None:
         module.hysteria_native_acme(document['acme'])
         if 'ech' in document:
             raise ValueError('Hysteria native ACME does not admit ECH')
-    proxy = _mapping(masquerade, "proxy")
-    if module.hysteria_errors({"masquerade_type": masquerade.get("type"),
-                               "masquerade_url": proxy.get("url")}):
-        raise ValueError("Hysteria masquerade is invalid")
+    if masquerade.get("type") == "file":
+        # Only the tree that the public-site publisher owns may be served.
+        site = _mapping(masquerade, "file")
+        if ("proxy" in masquerade or set(site) != {"dir"} or not isinstance(site["dir"], str)
+                or not re.fullmatch(r"/var/lib/public-site/[0-9a-f]{64}/current", site["dir"])):
+            raise ValueError("Hysteria masquerade site is invalid")
+    else:
+        proxy = _mapping(masquerade, "proxy")
+        if module.hysteria_errors({"masquerade_type": masquerade.get("type"),
+                                   "masquerade_url": proxy.get("url")}):
+            raise ValueError("Hysteria masquerade is invalid")
     outbounds = document.get("outbounds")
     if not isinstance(outbounds, list) or len(outbounds) != 1:
         raise ValueError("Hysteria requires one guarded outbound")

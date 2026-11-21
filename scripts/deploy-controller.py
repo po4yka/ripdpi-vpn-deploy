@@ -864,7 +864,8 @@ def controller(mode):
                 root, directory, override_values, hosts, environment)
             input_fences = [override_fence, *exposure_fences]
             for key, snapshot_name in (("nginx_xhttp_public_site_dir", "public-site"),
-                                       ("reality_self_steal_public_site_dir", "self-steal-site")):
+                                       ("reality_self_steal_public_site_dir", "self-steal-site"),
+                                       ("hysteria_public_site_dir", "hysteria-site")):
                 if key not in override_values:
                     continue
                 original_site = override_values[key]
