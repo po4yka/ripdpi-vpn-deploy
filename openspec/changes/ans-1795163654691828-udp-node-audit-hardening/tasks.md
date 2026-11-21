@@ -15,7 +15,7 @@ A UDP transport node and a split-hop egress node converge to the properties in `
 - [x] ANS-1795165069064981 Clamp forwarded AmneziaWG TCP, lower the MTU default to 1280 and accept scoped DHCPv4 replies with render and verifier tests #bug !high @item:ANS-1795163654691828
 - [x] ANS-1795165219611950 Resolve split-hop egress uplink and peer port, add its destination boundary and sandbox its policy loader with render tests #bug !high @item:ANS-1795163654691828
 - [x] ANS-1795165353614351 Sandbox awg-quick, refuse the partial published AmneziaWG shape and complete the cohort fingerprint input check with unit tests #bug !high @item:ANS-1795163654691828
-- [ ] ANS-1795165481080593 Run the narrow checks, Molecule where available and make check, then record evidence in verification.md #bug !high @item:ANS-1795163654691828
+- [x] ANS-1795165481080593 Run the narrow checks, Molecule where available and make check, then record evidence in verification.md #bug !high @item:ANS-1795163654691828
 
 ## Verification
 
