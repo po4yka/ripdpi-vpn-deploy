@@ -5,6 +5,160 @@ Do not edit by hand — write [Conventional Commits](https://www.conventionalcom
 on `main` and the next merge of the auto-generated release PR will populate
 this file.
 
+## [5.0.0](https://github.com/po4yka/ripdpi-vpn-deploy/compare/vpnd-v4.0.0...vpnd-v5.0.0) (2026-11-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* **ansible:** both site directory variables must name a bundle directory with site/index.html and site/404.html; a tree with its pages at the top level is refused.
+* **scripts:** make public-site-render and playbooks/render-public-site.yml are removed. Build an operator tree with make public-site-build and use its site/ directory.
+* **security:** secrets/schema.json requires xray.xhttp_path to have at least 17 characters (a slash and 16 more). A deployment with a shorter path fails validation until the operator rotates the path, and every device configuration that uses XHTTP changes with it. The audit record field src_ip is replaced by src_hash.
+* **ansible:** a site tree made by `make public-site-render` is refused until its bundled static files are replaced, and a self-steal certificate with fewer than 30 days left is refused.
+* **ansible:** vpn-p1-web needs a watchdog entry in xray.clients, vpn-p2-udp needs one in hysteria.clients, and both need watchdog_secrets.reality_probe_url before their next deploy. The inspection report has a new required field reboot_required.
+* **subscription-host:** the public field-report and network-hint routes answer 404 instead of 401 for an unknown cohort token.
+* **subscription-host:** subscription_field_report.listen_port is removed; the ingest has no TCP port. Clients see no change: the public vhost routes are the same.
+* **subscription-host:** vpn_field_report_* series carry network instead of asn; field-analytics-evidence.py alert takes --network instead of --asn.
+* **contract:** every client-field-report v1 document needs network.source; RIPDPI must vendor the changed schema, goldens and negatives.
+* **bundle:** freshly exported bundles carry schema_version 3, which a client that supports only version 2 refuses. Do not export fresh bundles until the paired RIPDPI release vendors the v3 contract.
+* **contract:** bundle schema_version 2 is rejected with no compatibility shim. The RIPDPI client must vendor this contract before fresh v3 bundles are exported.
+* **scripts:** TAG_ON_SUCCESS is removed. vpnd deploy --tag-on-success runs make tag-known-good after verify and smoke-test.
+
+### Features
+
+* **ansible:** add the public-site role with a scheduled publisher ([7969558](https://github.com/po4yka/ripdpi-vpn-deploy/commit/7969558218f31116688a140165a9265c02a7023b))
+* **ansible:** present one TLS identity on the live split-hop Node A ([95dce88](https://github.com/po4yka/ripdpi-vpn-deploy/commit/95dce88b7c31bc79af2a6344e44b384de3d1975e))
+* **ansible:** refresh a live page of an operator site bundle ([a7a71d5](https://github.com/po4yka/ripdpi-vpn-deploy/commit/a7a71d5771f45754343a27601f34569c6cb47a1b))
+* **ansible:** serve operator site bundles and their scheduled generations ([81f1018](https://github.com/po4yka/ripdpi-vpn-deploy/commit/81f10188a9b45e202134ea171d9bec26d9aec6cd))
+* **bundle:** emit ripdpi schema_version 3 ([d971bda](https://github.com/po4yka/ripdpi-vpn-deploy/commit/d971bda99b1c1c7bc43303fd30d859ea88adc30a))
+* **bundle:** publish endpoint health and field-report config in v3 ([16f5457](https://github.com/po4yka/ripdpi-vpn-deploy/commit/16f54572adff68f176f90ddd3168840c9b11fdb5))
+* **contract:** add field report v1 and move ripdpi bundle to v3 ([c97e86c](https://github.com/po4yka/ripdpi-vpn-deploy/commit/c97e86c0eef6b01859a1817fec85e5354d7cdfb9))
+* **contract:** name the field-report network source and add the network hint ([3f6d10d](https://github.com/po4yka/ripdpi-vpn-deploy/commit/3f6d10dde5aefd5998902c7c311c6c70bc7ac09a))
+* **deploy:** tolerate a slow operator channel ([9146f67](https://github.com/po4yka/ripdpi-vpn-deploy/commit/9146f67930d14811adced04859555e0388233236))
+* **observability:** add aggregate AmneziaWG and Hysteria2 exporters ([80e8410](https://github.com/po4yka/ripdpi-vpn-deploy/commit/80e8410881d42d1606a5b595da20c10735699d3e))
+* **observability:** alert on network blocks from probe divergence ([d900255](https://github.com/po4yka/ripdpi-vpn-deploy/commit/d900255f37b32ee536ce3617dbb97cafe370563e))
+* **observability:** document and test one retention contract ([b9349e4](https://github.com/po4yka/ripdpi-vpn-deploy/commit/b9349e43ccfe70829fd2e03b38f711fbae5c0b2c))
+* **observability:** export continuous per-protocol probe metrics ([f137790](https://github.com/po4yka/ripdpi-vpn-deploy/commit/f137790ef55c4cb5f36422950ead14b440fbf9b1))
+* **observability:** record a Telegram delivery receipt from the drill ([b456f04](https://github.com/po4yka/ripdpi-vpn-deploy/commit/b456f044c032b7925c7944569da8e55609aa92d4))
+* **observability:** silence node coverage alert during transport deploys ([5cc0184](https://github.com/po4yka/ripdpi-vpn-deploy/commit/5cc0184d69a44998b8659ec7f45e198e91174c41))
+* **scripts:** add a repeatable field analytics staging acceptance harness ([9fe5f75](https://github.com/po4yka/ripdpi-vpn-deploy/commit/9fe5f7536c82f223af22ea46e1bc1e0889389e66))
+* **scripts:** build and admit operator-owned public site bundles ([2a84aa1](https://github.com/po4yka/ripdpi-vpn-deploy/commit/2a84aa1a7ee916f2a31bde0b0e1f0a91731f6004))
+* **subscription-host:** ingest anonymous client field reports ([dd287bc](https://github.com/po4yka/ripdpi-vpn-deploy/commit/dd287bcb56246245c71a76999e28c3a93aaf86bf))
+* **subscription-host:** label field reports by SIM operator or hint ASN ([ac67731](https://github.com/po4yka/ripdpi-vpn-deploy/commit/ac677313806c68a408b7bf9fcd0ca99693be7cc7))
+* **subscription-host:** serve a network hint from a pinned IP-to-ASN dataset ([ddfdd9b](https://github.com/po4yka/ripdpi-vpn-deploy/commit/ddfdd9bd33bfcb4ef5e46638467e25f57763c9d2))
+
+
+### Bug Fixes
+
+* **analytics:** publish endpoint health and require complete probes ([7adbe02](https://github.com/po4yka/ripdpi-vpn-deploy/commit/7adbe02e13721e824121ead302e03fc3fba0ad0c))
+* **ansible:** close operations-role gaps from the fleet audit ([30e138b](https://github.com/po4yka/ripdpi-vpn-deploy/commit/30e138b9e95ba040200baa29ba4c3659777fb5be))
+* **ansible:** close UDP node, firewall and split-hop audit gaps ([7c72ba9](https://github.com/po4yka/ripdpi-vpn-deploy/commit/7c72ba9afd77ad4cabc26576ab2784276ca5a9e8))
+* **ansible:** disable core dumps for the new exporter and ingest units ([7356d40](https://github.com/po4yka/ripdpi-vpn-deploy/commit/7356d40fd66e0f097e4b8a72b6c28aaa49f4d884))
+* **ansible:** harden the decoy sites against clustering and address probes ([f31ee16](https://github.com/po4yka/ripdpi-vpn-deploy/commit/f31ee166a7ef34dcbac3daa7728013a6390d8b7a))
+* **ansible:** keep main's decoy hardening working with site bundles ([39a3bd9](https://github.com/po4yka/ripdpi-vpn-deploy/commit/39a3bd9c15d51f04d80cc89fe46dfee6593cfa98))
+* **baseline:** close hardening gaps found by the live fleet audit ([540504e](https://github.com/po4yka/ripdpi-vpn-deploy/commit/540504e71f487daa615bc89604afe216a2eb428c))
+* **deploy:** report fixed onboarding refusal categories in baseline receipts ([248f21e](https://github.com/po4yka/ripdpi-vpn-deploy/commit/248f21e4e3328635d3af2ac1d19c5d84a61fb47a))
+* **field-report:** address code scanning findings ([8f66dc9](https://github.com/po4yka/ripdpi-vpn-deploy/commit/8f66dc9c51b03c5ff8d2215f11646551fc0b3669))
+* **firewall:** pin the DHCPv4 reply interface in the Molecule fixture ([f79d033](https://github.com/po4yka/ripdpi-vpn-deploy/commit/f79d0331958fb99f92c1e4506db0f4d0a8ebfc19))
+* **hysteria:** run the traffic exporter unprivileged with a syscall filter ([5a17a46](https://github.com/po4yka/ripdpi-vpn-deploy/commit/5a17a46373feb738ecdf12ee7cf3ca9c906bec3a))
+* **monitoring:** flush the journal to persistent storage ([26b05ed](https://github.com/po4yka/ripdpi-vpn-deploy/commit/26b05ed7ae0de64c59cf8c2177eb560b09f1b8ce))
+* **nginx-xhttp:** declare the operator site in the protected site write set ([9d7adf8](https://github.com/po4yka/ripdpi-vpn-deploy/commit/9d7adf8e7d9ce4e64dc96407333f0de4262a5ce1))
+* **observability:** accept duplicate canary notifications in the relay ([7c6d2ef](https://github.com/po4yka/ripdpi-vpn-deploy/commit/7c6d2ef5cd48b128f4afcac12364fceb559cc455))
+* **observability:** accept probe and field-report series only from their owner ([1c26b76](https://github.com/po4yka/ripdpi-vpn-deploy/commit/1c26b76ec34e3e28d6294c1913a4ff83603dacab))
+* **observability:** carry the ingress identity in a label no sender can supply ([f8d7bd4](https://github.com/po4yka/ripdpi-vpn-deploy/commit/f8d7bd456758a45f87aa1bf724bb036aa19a70e0))
+* **observability:** expect the operator checkout as the node candidate ([bca2336](https://github.com/po4yka/ripdpi-vpn-deploy/commit/bca2336ff7f1a17617681736d1e13d4fd561c5c9))
+* **observability:** give the field-report alert a node label ([9149ac8](https://github.com/po4yka/ripdpi-vpn-deploy/commit/9149ac827734ba88457d92b923a0966e345f22a5))
+* **observability:** keep folded networks out of the block alert ([a0a378b](https://github.com/po4yka/ripdpi-vpn-deploy/commit/a0a378b2033b320decdeb9d3cf7de2d619403b1c))
+* **observability:** keep the relay receipt lock off Telegram calls ([9c416aa](https://github.com/po4yka/ripdpi-vpn-deploy/commit/9c416aa78d0c1f90ba9ddcea3e97a718acf4f5db))
+* **observability:** limit owner alert posts to the synthetic drill ([a9bf09f](https://github.com/po4yka/ripdpi-vpn-deploy/commit/a9bf09fd0f426ffc1ecf4a985de1d6c65f56442e))
+* **observability:** log the relay delivery-failure category ([2d0cab7](https://github.com/po4yka/ripdpi-vpn-deploy/commit/2d0cab7d40d49564e8f819571bc0227e55ad2c19))
+* **observability:** rebuild Kuma healthcheck with patched Go ([e7c2c99](https://github.com/po4yka/ripdpi-vpn-deploy/commit/e7c2c994355f6b64e6d85a0337e976468f049b35))
+* **package-updates:** match Ubuntu security pocket by archive ([11b5008](https://github.com/po4yka/ripdpi-vpn-deploy/commit/11b50083edc8b77e05db0173be73807aa28cc8aa))
+* **policy-ratelimit:** default the SSH allowlist before its type test ([42a5ab8](https://github.com/po4yka/ripdpi-vpn-deploy/commit/42a5ab8b2de217c3f6847d7bbc2a26b9b65bc163))
+* **policy-ratelimit:** never ban SSH allowlist sources ([9933b01](https://github.com/po4yka/ripdpi-vpn-deploy/commit/9933b01a92654e4ea24161d1c3554f639ae09ea6))
+* **reality-self-steal:** declare the operator site in the protected site write set ([00daf90](https://github.com/po4yka/ripdpi-vpn-deploy/commit/00daf904c21970604d7219b21dd10e7bff7a7837))
+* refuse private recipients on Snell, Naive and probe egress ([bc00f54](https://github.com/po4yka/ripdpi-vpn-deploy/commit/bc00f545e99bab016247032567fccfe9f06ea21d))
+* **scripts:** admit only JSON integers in contract integer fields ([31e023d](https://github.com/po4yka/ripdpi-vpn-deploy/commit/31e023d59b365903dddbcf0e2b329cb7b4ce76db))
+* **scripts:** allow only non-secret keys through hostvars in templates ([cee94b9](https://github.com/po4yka/ripdpi-vpn-deploy/commit/cee94b9e5771e586219a69ae59f1d50046254718))
+* **scripts:** anchor bundle schema patterns at end of input ([aa32a06](https://github.com/po4yka/ripdpi-vpn-deploy/commit/aa32a062bfc4cc2751d7b0bc63c3cec72372e96a))
+* **scripts:** close the destroy override, inventory and audit gaps ([0dc1105](https://github.com/po4yka/ripdpi-vpn-deploy/commit/0dc11056a7ede3169a1cefe3750b302348f6c1dd))
+* **scripts:** cut the known-good tag from per-node verification ([566baae](https://github.com/po4yka/ripdpi-vpn-deploy/commit/566baae52cb51b2634c1e308c6fedc656a7f9a6d))
+* **scripts:** never replace a pinned IP-to-ASN dataset copy ([b454b02](https://github.com/po4yka/ripdpi-vpn-deploy/commit/b454b02bbb86d091516725b9c7d163e913ecb675))
+* **scripts:** refuse a cohort token rotation inside an open overlap ([010a240](https://github.com/po4yka/ripdpi-vpn-deploy/commit/010a240617da15fa08774435241aaa7481ee5502))
+* **scripts:** refuse malformed block-hint exports without a traceback ([b14d427](https://github.com/po4yka/ripdpi-vpn-deploy/commit/b14d4273132756a677fd99e4b23ab4f19905612e))
+* **secrets:** keep the XHTTP path minimum off device operation records ([c0bacce](https://github.com/po4yka/ripdpi-vpn-deploy/commit/c0bacceb59ab418cae1fc522e890f51957eddfb6))
+* **security:** apply the production gates to named permanent workspaces ([25847e9](https://github.com/po4yka/ripdpi-vpn-deploy/commit/25847e91cde2262bceacbebafb4b6d8cf07fbfcf))
+* **security:** build the Kuma healthcheck with Go 1.27.4 ([4eb0d54](https://github.com/po4yka/ripdpi-vpn-deploy/commit/4eb0d5445514b4ae57a7c6e4cfc6ab5c738e3467))
+* **security:** harden subscription, CDN front and feed job surfaces ([089c7e2](https://github.com/po4yka/ripdpi-vpn-deploy/commit/089c7e23415b9927bc42300c021839c73d2b89d6))
+* **security:** pin the kernel-header-fixed molecule-ubuntu2404 digest ([9672ba8](https://github.com/po4yka/ripdpi-vpn-deploy/commit/9672ba885dcaa8f584b9f393d3971090b46b17c1))
+* **subscription-host:** anchor field-report setting asserts at end of input ([62090d6](https://github.com/po4yka/ripdpi-vpn-deploy/commit/62090d641b031673ed8197625416f59d72e96c6b))
+* **subscription-host:** answer a refused method with the uniform 404 ([bf020a5](https://github.com/po4yka/ripdpi-vpn-deploy/commit/bf020a5eb67b2dfb1e1847bdf05465c068edfc95))
+* **subscription-host:** answer an unknown cohort token with the uniform 404 ([778682f](https://github.com/po4yka/ripdpi-vpn-deploy/commit/778682f162246ff0e5a485970223ec83c6b5e175))
+* **subscription-host:** authenticate field reports before any intake work ([1371114](https://github.com/po4yka/ripdpi-vpn-deploy/commit/1371114c442a697baeb4fbabce088435a1370dfe))
+* **subscription-host:** bound each field-report connection by a deadline ([7e6c2c0](https://github.com/po4yka/ripdpi-vpn-deploy/commit/7e6c2c0602366c28f43cc1c446d88ad491f6479a))
+* **subscription-host:** bound the network-hint dataset read ([64b171a](https://github.com/po4yka/ripdpi-vpn-deploy/commit/64b171ac45d01a1296b96d4645148159e2c182ac))
+* **subscription-host:** bound what one field report can add to the aggregate ([685e896](https://github.com/po4yka/ripdpi-vpn-deploy/commit/685e8968c1293ded53e5e4325cbbe7b6af2ec174))
+* **subscription-host:** give no hint for a request from a fleet node ([c03dd2b](https://github.com/po4yka/ripdpi-vpn-deploy/commit/c03dd2b7b447fa4bf35e37794400d12a7bc040a9))
+* **subscription-host:** keep report intake when the hint dataset fails ([510eedd](https://github.com/po4yka/ripdpi-vpn-deploy/commit/510eedd95da72e2e334683db57ec8d9732269242))
+* **subscription-host:** keep the field-report ingest out of the textfile group ([165454c](https://github.com/po4yka/ripdpi-vpn-deploy/commit/165454c8535c1a6fbc6b2b0a6c52badce82b22ff))
+* **subscription-host:** match a fleet node's whole IPv6 /64 for the hint ([925a79f](https://github.com/po4yka/ripdpi-vpn-deploy/commit/925a79f5eaeb764187ad67b028c7110cb181874f))
+* **subscription-host:** never create an AF_INET socket in the ingest ([75c7fb5](https://github.com/po4yka/ripdpi-vpn-deploy/commit/75c7fb52d78efeef8ead20d990f50079cf805f8b))
+* **subscription-host:** pin the contract validator package per release ([31a2c9c](https://github.com/po4yka/ripdpi-vpn-deploy/commit/31a2c9c5d249f13f05124c837764121fc897ac09))
+* **subscription-host:** serve the field-report ingest on an nginx-only socket ([1931528](https://github.com/po4yka/ripdpi-vpn-deploy/commit/193152802dbb4c798f93a8ed479acfbb8a096bed))
+* **subscription-host:** validate field reports before counting them ([4898130](https://github.com/po4yka/ripdpi-vpn-deploy/commit/4898130098f80700fbb77d696303fe03811b4141))
+* **tailnet:** stop holding Tailscale at the first-install version ([e4d5df3](https://github.com/po4yka/ripdpi-vpn-deploy/commit/e4d5df3ad5e8bd1556f682838df0dd4f9e5bfead))
+* **xray:** stop the daily rotation restart and tighten runtime settings ([102a550](https://github.com/po4yka/ripdpi-vpn-deploy/commit/102a5500c3f610a33c415003e05a2e2c9bd7f0ef))
+
+
+### Tests
+
+* **contract:** validate field reports and bundle v3 semantics ([1064df5](https://github.com/po4yka/ripdpi-vpn-deploy/commit/1064df586845972455871aaf2cd1359c07a2c3f8))
+* drop duplicate json import in subscription mirror test ([938a475](https://github.com/po4yka/ripdpi-vpn-deploy/commit/938a47518e0119a39157b6ba8f37405910322e9f))
+* **field-report:** use non-global addresses in the ASN dataset rows ([8277d5a](https://github.com/po4yka/ripdpi-vpn-deploy/commit/8277d5ac905b58481ffad3add127557b608ba228))
+* follow the AmneziaWG MTU default and refusal message ([7c25679](https://github.com/po4yka/ripdpi-vpn-deploy/commit/7c25679874ae924e9d89968d579442fbd39d2db4))
+* **known-good:** give the fixture repository its own git identity ([64d27e2](https://github.com/po4yka/ripdpi-vpn-deploy/commit/64d27e2a3bfa82d1b37d9761091f939b043bb49f))
+* **monitoring:** remove unused logrotate test imports ([b1d5bd9](https://github.com/po4yka/ripdpi-vpn-deploy/commit/b1d5bd9bb88bc769f1fe9443ae49283b081c8c7a))
+* **nginx-xhttp:** split the 404 response at the text-mode separator ([0210117](https://github.com/po4yka/ripdpi-vpn-deploy/commit/021011751293dd28990296345a13879de5a399e0))
+* **observability:** raise the interrupt from a helper so the test reads as reachable ([592fe8d](https://github.com/po4yka/ripdpi-vpn-deploy/commit/592fe8da1b1f8aa380d0f29df8056c392d40b454))
+* **reality-self-steal:** give the native rotation fixture a 90-day certificate ([5c339c0](https://github.com/po4yka/ripdpi-vpn-deploy/commit/5c339c0846be870dee4763dd25f34f1d9963a5c4))
+* **scripts:** add reboot_required to the maintenance inspection fixture ([87ac89d](https://github.com/po4yka/ripdpi-vpn-deploy/commit/87ac89dea6a55ed870224704733f5627ebb1c81c))
+* **snell:** keep route removal outside the assert ([8084a9f](https://github.com/po4yka/ripdpi-vpn-deploy/commit/8084a9f1437353a3ecf596e55c2ff0ee8e357206))
+* **subscription-host:** check the ingest listener inside its netns ([b9c48e0](https://github.com/po4yka/ripdpi-vpn-deploy/commit/b9c48e07133ee0a0da5894e179fb7a62bd088445))
+* **subscription-host:** let Molecule deliver credentials and omit the hint ([b6755a7](https://github.com/po4yka/ripdpi-vpn-deploy/commit/b6755a7056f61b7392b0ed91716632d9e4cdf022))
+
+
+### Documentation
+
+* **bundle:** document bundle v3 and the client field report ([cafdb83](https://github.com/po4yka/ripdpi-vpn-deploy/commit/cafdb8374cf970cd6e3393d42d9b8a373eb223d7))
+* **how-to:** set deploy silence pins through INSPECT_KNOWN_HOSTS ([cbf8a34](https://github.com/po4yka/ripdpi-vpn-deploy/commit/cbf8a34d5d8eef392d9c28f2b8885222988ffa6b))
+* **skills:** add the public-site-content skill and the operator how-to ([8d5f2c9](https://github.com/po4yka/ripdpi-vpn-deploy/commit/8d5f2c96f930451deff41c0ed3bc375f6ebded6f))
+* **tasks:** check off the D7 acceptance harness step ([9f19d0e](https://github.com/po4yka/ripdpi-vpn-deploy/commit/9f19d0e5e0d142011326454037c114ca47a49bfe))
+* **tasks:** file four follow-ups declined by the UDP node audit ([502ccc5](https://github.com/po4yka/ripdpi-vpn-deploy/commit/502ccc5407a67a45bfbca7ae23974e3520b13b58))
+* **tasks:** move bundle v3 generation D4 to review ([a8519fa](https://github.com/po4yka/ripdpi-vpn-deploy/commit/a8519fa0bb93aecec13908f8d09c010176becc21))
+* **tasks:** move continuous protocol probes D3 to review ([b3a90f6](https://github.com/po4yka/ripdpi-vpn-deploy/commit/b3a90f6be75a28116d65da05584eae2b37b94a27))
+* **tasks:** move field contracts D1 to review ([fafebdf](https://github.com/po4yka/ripdpi-vpn-deploy/commit/fafebdfecc10141dea029b8dd347e9c52f9bb7da))
+* **tasks:** move field-report ingest D2 to review ([19e86c9](https://github.com/po4yka/ripdpi-vpn-deploy/commit/19e86c9e2ea6783bc6feb7d56c7be49a8fb1e7a4))
+* **tasks:** move network-block detection D5 to review ([712a17e](https://github.com/po4yka/ripdpi-vpn-deploy/commit/712a17eb02183dd160838106225aea8d6cc17701))
+* **tasks:** move observability retention and delivery D6 to review ([ab946f2](https://github.com/po4yka/ripdpi-vpn-deploy/commit/ab946f22e8538a7651da59d131519945d5b6f98f))
+* **tasks:** plan field analytics program ([16548d8](https://github.com/po4yka/ripdpi-vpn-deploy/commit/16548d85e183a9d56024986941b3585acdc51422))
+* **tasks:** propose a generated self-updating public site per operator ([2273ee3](https://github.com/po4yka/ripdpi-vpn-deploy/commit/2273ee36767de5e78cf54c4e21bbd37588f5dc38))
+* **tasks:** record CI evidence for the UDP node audit change ([1de02fd](https://github.com/po4yka/ripdpi-vpn-deploy/commit/1de02fd8055e74640fcc1b0ed951096720d56ffd))
+* **tasks:** record dry-run and live evidence for the operator site ([56909f0](https://github.com/po4yka/ripdpi-vpn-deploy/commit/56909f0c6e4316a675c27904e02fc859be8972d9))
+* **tasks:** record the D2 alert label fix in its verification ([a710f36](https://github.com/po4yka/ripdpi-vpn-deploy/commit/a710f36e469f1407c945c6580e6dc54da010a670))
+* **tasks:** record the network-hint review fixes and return D1, D2, D5 to review ([dfbc573](https://github.com/po4yka/ripdpi-vpn-deploy/commit/dfbc57324da6d663011f7db1b450b962bf2c7aad))
+* **tasks:** record the network-hint security review and return D1, D2 to review ([3c4c6c9](https://github.com/po4yka/ripdpi-vpn-deploy/commit/3c4c6c95970849155a9512ac3bd70d3358b08186))
+* **tasks:** record the re-review fixes and return D2 to review ([01b1d57](https://github.com/po4yka/ripdpi-vpn-deploy/commit/01b1d57933dd94113d0103c4346e4555eb1559e1))
+* **tasks:** record the second security review D1 contract fixes ([e1b8ba9](https://github.com/po4yka/ripdpi-vpn-deploy/commit/e1b8ba99c48d035e6399b3c15554e90b7b7febcb))
+* **tasks:** record the second security review D2 ingest fixes ([b992825](https://github.com/po4yka/ripdpi-vpn-deploy/commit/b99282565a4619a0762d9219e4b09756f4d2a607))
+* **tasks:** record the second security review D3 relay and exporter fixes ([867484c](https://github.com/po4yka/ripdpi-vpn-deploy/commit/867484cdcfd9edeed910e4cf6eeda287d4eed3da))
+* **tasks:** record the second security review D4 rotation fix ([fd39dd8](https://github.com/po4yka/ripdpi-vpn-deploy/commit/fd39dd856a8b207a7e54305be74cb87487677477))
+* **tasks:** record the second security review D5 alert and hint fixes ([e3f6f37](https://github.com/po4yka/ripdpi-vpn-deploy/commit/e3f6f37db8eefb80ff91f76f08de9d811291b8b2))
+* **tasks:** regenerate the task board after the rebase ([dfcb4d9](https://github.com/po4yka/ripdpi-vpn-deploy/commit/dfcb4d94578fe70f20924ebb2e840ffd0f0073ff))
+* **tasks:** regenerate the task board after the rebase ([94beeef](https://github.com/po4yka/ripdpi-vpn-deploy/commit/94beeeffd386313046641edbe4f68c31fc3078d8))
+* **tasks:** reopen D1, D2 and D5 for the network-hint review findings ([a699cd7](https://github.com/po4yka/ripdpi-vpn-deploy/commit/a699cd768274577e18943d9e482f0946790b0ff0))
+* **tasks:** reopen field contracts D1 and ingest D2 for network source ([b301b1a](https://github.com/po4yka/ripdpi-vpn-deploy/commit/b301b1a9811a089dc4f4ee16a6a84e826568cda5))
+* **tasks:** split the site admission requirement for strict validation ([0257d95](https://github.com/po4yka/ripdpi-vpn-deploy/commit/0257d957495cce69f9a2ee502f252986877e2746))
+* **tasks:** start the field analytics acceptance D7 ([660bc36](https://github.com/po4yka/ripdpi-vpn-deploy/commit/660bc36353cd3017013407a9d567dafdd8282cbc))
+
 ## [4.0.0](https://github.com/po4yka/ripdpi-vpn-deploy/compare/vpnd-v3.0.0...vpnd-v4.0.0) (2026-11-15)
 
 
