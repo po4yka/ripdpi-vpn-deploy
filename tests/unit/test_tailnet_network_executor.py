@@ -8,6 +8,11 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 SCRIPT = ROOT / "scripts/tailnet-network-executor.py"
+BACKEND_ENV = {
+    "AWS_ACCESS_KEY_ID": "id-fixture",
+    "AWS_SECRET_ACCESS_KEY": "secret-fixture",
+    "TF_VAR_state_passphrase": "phrase-fixture",
+}
 
 
 def _short_temp_root(private_tmp: Path = Path("/private/tmp")) -> Path:
@@ -1500,6 +1505,8 @@ def test_controller_freezes_one_inventory_host_for_guest_provider_and_proof(
     monkeypatch.setattr(controller.p, "ProviderTarget", Target)
     monkeypatch.setattr(controller.p, "TrustedTerraform", Trusted)
     monkeypatch.setattr(controller.p, "TerraformAdapter", Adapter)
+    for key, value in BACKEND_ENV.items():
+        monkeypatch.setenv(key, value)
     observed = {}
 
     def execute(request, adapter, *, guest, selected_host=None, **_kwargs):
@@ -1518,7 +1525,6 @@ def test_controller_freezes_one_inventory_host_for_guest_provider_and_proof(
     files = {}
     for name, content, mode in (
         ("target", b"target", 0o600),
-        ("state", b"state", 0o600),
         ("terraform", b"#!/bin/sh\n", 0o700),
         ("candidate", b"define set vpn_tailnet_ssh_v4 = { 100.64.0.1 }\n", 0o600),
     ):
@@ -1531,8 +1537,7 @@ def test_controller_freezes_one_inventory_host_for_guest_provider_and_proof(
             "inventory_path": str(tmp_path / "inventory"),
             "inventory_name": "node-a",
             "provider_target_path": str(files["target"]),
-            "provider_state_path": str(files["state"]),
-            "terraform_path": str(files["terraform"]),
+                        "terraform_path": str(files["terraform"]),
             "terraform_sha256": "d" * 64,
             "candidate_fragment_path": str(files["candidate"]),
             "executor_dir": str(tmp_path / "executor"),
@@ -1577,6 +1582,8 @@ def test_controller_reaps_unarmed_executor_when_reconcile_is_interrupted(
     )
     monkeypatch.setattr(controller, "private_directory", lambda _path: None)
     monkeypatch.setenv("UPCLOUD_TOKEN", "fixture-token")
+    for key, value in BACKEND_ENV.items():
+        monkeypatch.setenv(key, value)
 
     class Snapshot:
         digest = "e" * 64
@@ -1631,7 +1638,13 @@ def test_controller_reaps_unarmed_executor_when_reconcile_is_interrupted(
     monkeypatch.setattr(controller.p, "ProviderTarget", Target)
     monkeypatch.setattr(controller.p, "TrustedTerraform", Trusted)
     monkeypatch.setattr(controller.p, "TerraformAdapter", Adapter)
-    monkeypatch.setattr(controller.subprocess, "Popen", lambda *_a, **_k: process)
+    spawned = {}
+
+    def popen(command, **kwargs):
+        spawned.update(command=command, env=kwargs["env"])
+        return process
+
+    monkeypatch.setattr(controller.subprocess, "Popen", popen)
     monkeypatch.setattr(controller, "_wait_or_reap_spawned_executor", lambda *_: None)
     monkeypatch.setattr(controller, "strict_guest", lambda *_: lambda *_call: {})
     monkeypatch.setattr(
@@ -1650,7 +1663,6 @@ def test_controller_reaps_unarmed_executor_when_reconcile_is_interrupted(
     files = {}
     for name, content, mode in (
         ("target", b"target", 0o600),
-        ("state", b"state", 0o600),
         ("terraform", b"#!/bin/sh\n", 0o700),
         ("candidate", b"define set vpn_tailnet_ssh_v4 = { 100.64.0.1 }\n", 0o600),
     ):
@@ -1664,8 +1676,7 @@ def test_controller_reaps_unarmed_executor_when_reconcile_is_interrupted(
                 "inventory_path": str(tmp_path / "inventory"),
                 "inventory_name": "node-a",
                 "provider_target_path": str(files["target"]),
-                "provider_state_path": str(files["state"]),
-                "terraform_path": str(files["terraform"]),
+                                "terraform_path": str(files["terraform"]),
                 "terraform_sha256": "d" * 64,
                 "candidate_fragment_path": str(files["candidate"]),
                 "executor_dir": str(tmp_path / "executor"),
@@ -1676,6 +1687,46 @@ def test_controller_reaps_unarmed_executor_when_reconcile_is_interrupted(
             }
         )
     assert reaped == [process]
+    assert "--state" not in spawned["command"]
+    assert spawned["env"] == {
+        "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+        "LANG": "C",
+        "LC_ALL": "C",
+        "TZ": "UTC",
+        "UPCLOUD_TOKEN": "fixture-token",
+        **BACKEND_ENV,
+    }
+
+
+def test_controller_refuses_old_config_and_missing_backend_identity(tmp_path):
+    controller_path = ROOT / "scripts/tailnet-network-controller.py"
+    spec = importlib.util.spec_from_file_location(
+        "tailnet_network_controller_old_config", controller_path
+    )
+    controller = importlib.util.module_from_spec(spec)
+    assert spec.loader
+    spec.loader.exec_module(controller)
+    config = {
+        key: "x"
+        for key in (
+            "inventory_path",
+            "inventory_name",
+            "promotion_config_path",
+            "provider_target_path",
+            "provider_state_path",
+            "terraform_path",
+            "terraform_sha256",
+            "known_hosts_path",
+            "executor_dir",
+            "candidate_fragment_path",
+        )
+    }
+    config.update(contexts=[], mode="dry-run")
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config))
+    path.chmod(0o600)
+    with pytest.raises(controller.ControllerError, match="config-refused"):
+        controller.load_config(path)
 
 
 def test_daemon_partial_client_is_bounded_and_remains_reachable(tmp_path, monkeypatch):
@@ -1707,18 +1758,12 @@ def test_daemon_partial_client_is_bounded_and_remains_reachable(tmp_path, monkey
         "deployable_digest": "a" * 64,
         "state_sha256": __import__("hashlib").sha256(state_raw).hexdigest(),
     }
-    target_path, state_path, binary = (
-        tmp_path / "target",
-        tmp_path / "state",
-        tmp_path / "terraform",
-    )
+    target_path, binary = tmp_path / "target", tmp_path / "terraform"
     target_path.write_bytes(
         (json.dumps(target, sort_keys=True, separators=(",", ":")) + "\n").encode()
     )
-    state_path.write_bytes(state_raw)
     binary.write_bytes(b"#!/bin/sh\nexit 0\n")
-    for path in (target_path, state_path):
-        path.chmod(0o600)
+    target_path.chmod(0o600)
     binary.chmod(0o700)
     runtime = Path(tempfile.mkdtemp(prefix="tnexec-", dir=_short_temp_root()))
     sock, root = runtime / "executor.sock", runtime / "state-root"
@@ -1734,7 +1779,6 @@ def test_daemon_partial_client_is_bounded_and_remains_reachable(tmp_path, monkey
         provider / ".terraform.lock.hcl": b"# lock\n",
         provider / "environments/prod.tfvars": b"enable_provider_firewall=false\n",
         provider / ".terraform-env/default/environment": b"default",
-        provider / "terraform.tfstate": state_raw,
         source / "terraform/shared/bootstrap-sshd-ownership.py": b"# cloud-init helper\n",
         source / "terraform/shared/bootstrap-ssh-seed.py": b"# public seed installer\n",
         source / "terraform/shared/cloud-init.yaml.tftpl": b"#cloud-config\n",
@@ -1746,15 +1790,13 @@ def test_daemon_partial_client_is_bounded_and_remains_reachable(tmp_path, monkey
     snapshot = executor_module.p.TerraformConfigSnapshot.create(
         source, runtime / "terraform-snapshot", "prod"
     )
-    env = {**os.environ, "UPCLOUD_TOKEN": "test-token"}
+    env = {**os.environ, "UPCLOUD_TOKEN": "test-token", **BACKEND_ENV}
     command = [
         sys.executable,
         str(SCRIPT),
         "serve",
         "--target",
         str(target_path),
-        "--state",
-        str(state_path),
         "--terraform",
         str(binary),
         "--terraform-sha256",

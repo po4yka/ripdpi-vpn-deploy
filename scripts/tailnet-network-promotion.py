@@ -110,6 +110,18 @@ def _env(environment: str) -> dict[str, str]:
     }
 
 
+BACKEND_ENV = ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "TF_VAR_state_passphrase")
+
+
+def backend_environment(source=None) -> dict[str, str]:
+    """Exactly the encrypted-backend identity tofu needs; no profile or config files."""
+    source = os.environ if source is None else source
+    value = {key: source.get(key) for key in BACKEND_ENV}
+    if not all(isinstance(item, str) and item for item in value.values()):
+        raise PromotionError("provider-credentials-unavailable")
+    return value
+
+
 def _bounded(
     command,
     environment,
@@ -327,7 +339,7 @@ class TrustedTerraform:
 
 
 class TerraformConfigSnapshot:
-    """Private immutable Terraform inputs plus one explicit mutable state path."""
+    """Private immutable Terraform inputs; state lives in the encrypted backend."""
 
     MANIFEST = "manifest.json"
 
@@ -343,7 +355,6 @@ class TerraformConfigSnapshot:
         self.var_file = payload["var_file"]
         self.provider_root = self.root / "terraform/providers/upcloud"
         self.data_dir = self.root / "terraform-data"
-        self.state_path = Path(payload["state_path"])
         self.verify()
 
     @staticmethod
@@ -388,11 +399,6 @@ class TerraformConfigSnapshot:
             return snapshot
         provider = source_root / "terraform/providers/upcloud"
         workspace = "default" if environment == "prod" else environment
-        state_path = (
-            provider / "terraform.tfstate"
-            if workspace == "default"
-            else provider / "terraform.tfstate.d" / workspace / "terraform.tfstate"
-        )
         sources = [
             (source_root / "scripts/terraform-env.sh", "scripts/terraform-env.sh")
         ]
@@ -422,14 +428,6 @@ class TerraformConfigSnapshot:
         )
         if not any(relative.endswith(".tf") for _, relative in sources):
             raise PromotionError("terraform-snapshot-invalid")
-        # The selected local state remains the one mutable transaction output;
-        # its absolute path is bound in the manifest while every executable and
-        # configuration input is copied and digest-bound.
-        state_fd, state_info = cls._safe_source_file(state_path)
-        if stat.S_IMODE(state_info.st_mode) != 0o600:
-            os.close(state_fd)
-            raise PromotionError("terraform-snapshot-invalid")
-        os.close(state_fd)
         destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         stage = Path(
             tempfile.mkdtemp(prefix=".terraform-snapshot-", dir=destination.parent)
@@ -462,12 +460,6 @@ class TerraformConfigSnapshot:
                 manifest_files.append(
                     {"path": relative, "sha256": digest.hexdigest(), "mode": mode}
                 )
-            if workspace != "default":
-                # Terraform creates the selected workspace directory on first
-                # use, otherwise with permissions outside our private floor.
-                (stage / "terraform/providers/upcloud/terraform.tfstate.d" / workspace).mkdir(
-                    mode=0o700, parents=True, exist_ok=True
-                )
             # mkdir(parents=True) applies its requested mode only to the leaf;
             # normalize every private snapshot directory before publication.
             for directory, _names, _files in os.walk(stage, followlinks=False):
@@ -477,7 +469,6 @@ class TerraformConfigSnapshot:
                 "provider": "upcloud",
                 "environment": environment,
                 "workspace": workspace,
-                "state_path": str(state_path.resolve()),
                 "var_file": f"environments/{environment}.tfvars",
                 "files": manifest_files,
             }
@@ -535,7 +526,6 @@ class TerraformConfigSnapshot:
                     "provider",
                     "environment",
                     "workspace",
-                    "state_path",
                     "var_file",
                     "files",
                 }
@@ -622,11 +612,6 @@ class TerraformConfigSnapshot:
             actual.update(str((base / name).relative_to(self.root)) for name in files)
         if actual != expected:
             raise PromotionError("terraform-snapshot-invalid")
-        state_fd, state_info = self._safe_source_file(self.state_path)
-        if stat.S_IMODE(state_info.st_mode) != 0o600:
-            os.close(state_fd)
-            raise PromotionError("terraform-snapshot-invalid")
-        os.close(state_fd)
 
     def invocation(self, arguments):
         self.verify()
@@ -634,30 +619,17 @@ class TerraformConfigSnapshot:
             "TF_DATA_DIR": str(self.data_dir)
         }
 
-    def state_bytes(self):
-        self.verify()
-        fd, info = self._safe_source_file(self.state_path)
-        try:
-            if not 0 < info.st_size <= MAX_OUTPUT:
-                raise PromotionError("provider-state-drift")
-            raw = os.read(fd, MAX_OUTPUT + 1)
-        finally:
-            os.close(fd)
-        if len(raw) > MAX_OUTPUT:
-            raise PromotionError("provider-state-drift")
-        return raw
-
     def remove(self):
         self.verify()
         shutil.rmtree(self.root)
 
 
 class ProviderTarget:
-    """Private state-backed binding between one inventory node and provider state."""
+    """Private binding between one inventory node and one pulled provider state."""
 
-    __slots__ = ("fd", "state_fd", "raw", "state_raw", "digest", "value", "_closed")
+    __slots__ = ("fd", "raw", "digest", "value", "_closed")
 
-    def __init__(self, fd: int, state_fd: int):
+    def __init__(self, fd: int):
         info = os.fstat(fd)
         if (
             not stat.S_ISREG(info.st_mode)
@@ -704,17 +676,18 @@ class ProviderTarget:
                 raise ValueError
         except (KeyError, TypeError, ValueError, UnicodeError, json.JSONDecodeError):
             raise PromotionError("provider-target-invalid") from None
-        state_info = os.fstat(state_fd)
-        if (
-            not stat.S_ISREG(state_info.st_mode)
-            or state_info.st_uid != os.geteuid()
-            or stat.S_IMODE(state_info.st_mode) != 0o600
-            or state_info.st_nlink != 1
-            or not 0 < state_info.st_size <= MAX_OUTPUT
-        ):
-            raise PromotionError("provider-target-invalid")
-        os.lseek(state_fd, 0, os.SEEK_SET)
-        state_raw = os.read(state_fd, MAX_OUTPUT + 1)
+        self.fd, self.raw, self.digest, self.value, self._closed = (
+            fd,
+            raw,
+            hashlib.sha256(raw).hexdigest(),
+            value,
+            False,
+        )
+
+    def check_state(self, state_raw: bytes):
+        """Bind pulled state bytes to this target; drift is refused before plan."""
+        if hashlib.sha256(state_raw).hexdigest() != self.value["state_sha256"]:
+            raise PromotionError("provider-state-drift")
         try:
             state = json.loads(state_raw)
             matches = [
@@ -730,10 +703,9 @@ class ProviderTarget:
                 len(matches) != 1
                 or len(instances) != 1
                 or not isinstance(address, str)
-                or instances[0]["attributes"].get("id") != value["server_uuid"]
+                or instances[0]["attributes"].get("id") != self.value["server_uuid"]
                 or hashlib.sha256(address.encode()).hexdigest()
-                != value["public_service_address_sha256"]
-                or hashlib.sha256(state_raw).hexdigest() != value["state_sha256"]
+                != self.value["public_service_address_sha256"]
             ):
                 raise ValueError
         except (
@@ -745,31 +717,12 @@ class ProviderTarget:
             json.JSONDecodeError,
         ):
             raise PromotionError("provider-target-invalid") from None
-        (
-            self.fd,
-            self.state_fd,
-            self.raw,
-            self.state_raw,
-            self.digest,
-            self.value,
-            self._closed,
-        ) = (
-            fd,
-            state_fd,
-            raw,
-            state_raw,
-            hashlib.sha256(raw).hexdigest(),
-            value,
-            False,
-        )
 
     def verify(self):
         if self._closed:
             raise PromotionError("provider-target-invalid")
         info = os.fstat(self.fd)
-        state_info = os.fstat(self.state_fd)
         os.lseek(self.fd, 0, os.SEEK_SET)
-        os.lseek(self.state_fd, 0, os.SEEK_SET)
         if (
             not stat.S_ISREG(info.st_mode)
             or info.st_uid != os.geteuid()
@@ -777,19 +730,12 @@ class ProviderTarget:
             or info.st_nlink != 1
             or info.st_size != len(self.raw)
             or os.read(self.fd, len(self.raw) + 1) != self.raw
-            or not stat.S_ISREG(state_info.st_mode)
-            or state_info.st_uid != os.geteuid()
-            or stat.S_IMODE(state_info.st_mode) != 0o600
-            or state_info.st_nlink != 1
-            or state_info.st_size != len(self.state_raw)
-            or os.read(self.state_fd, len(self.state_raw) + 1) != self.state_raw
         ):
             raise PromotionError("provider-target-invalid")
 
     def close(self):
         if not self._closed:
             os.close(self.fd)
-            os.close(self.state_fd)
             self._closed = True
 
 
@@ -873,14 +819,15 @@ class TerraformAdapter:
         self.target.verify()
         if not isinstance(self.terraform_snapshot, TerraformConfigSnapshot):
             raise PromotionError("terraform-snapshot-invalid")
-        current = self.terraform_snapshot.state_bytes()
-        if hashlib.sha256(current).hexdigest() != self.target.value["state_sha256"]:
-            raise PromotionError("provider-state-drift")
+        self.target.check_state(self.current_state())
 
     def current_state(self):
-        if not isinstance(self.terraform_snapshot, TerraformConfigSnapshot):
-            raise PromotionError("terraform-snapshot-invalid")
-        return self.terraform_snapshot.state_bytes()
+        """Pull the decrypted backend state in memory; empty output is no state."""
+        self.target.verify()
+        raw = self._command(["state", "pull"])
+        if not raw.strip():
+            raise PromotionError("provider-state-drift")
+        return raw
 
     def _command(self, arguments, *, pass_fds=()):
         if not isinstance(self.trusted_terraform, TrustedTerraform):
@@ -928,7 +875,6 @@ class TerraformAdapter:
                     "plan",
                     "-input=false",
                     "-refresh=true",
-                    f"-state={self.terraform_snapshot.state_path}",
                     "-out",
                     name,
                     f"-var-file={self.terraform_snapshot.var_file}",

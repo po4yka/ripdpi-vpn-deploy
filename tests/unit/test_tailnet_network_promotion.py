@@ -52,7 +52,6 @@ def test_executor_closes_earlier_input_when_a_later_open_fails(tmp_path, monkeyp
         with pytest.raises(module.ExecutorError, match="private-input-refused"):
             module.Executor(
                 tmp_path / "target",
-                tmp_path / "state",
                 tmp_path / "terraform",
                 "a" * 64,
                 tmp_path / "snapshot",
@@ -90,7 +89,6 @@ def test_controller_closes_earlier_input_when_a_later_open_fails(tmp_path, monke
         "inventory_path": str(tmp_path / "inventory"),
         "inventory_name": "node-a",
         "provider_target_path": str(tmp_path / "target"),
-        "provider_state_path": str(tmp_path / "state"),
         "terraform_path": str(tmp_path / "terraform"),
     }
     try:
@@ -148,6 +146,36 @@ def plan(before, after):
     ).encode()
 
 
+def _state(address="198.51.100.1", server_uuid=SERVER):
+    return (
+        json.dumps(
+            {
+                "version": 4,
+                "outputs": {
+                    "server_ipv4": {
+                        "value": address,
+                        "type": "string",
+                        "sensitive": False,
+                    }
+                },
+                "resources": [
+                    {
+                        "mode": "managed",
+                        "type": "upcloud_server",
+                        "name": "vpn",
+                        "instances": [
+                            {"attributes": {"id": server_uuid, "firewall": False}}
+                        ],
+                    }
+                ],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode()
+
+
 def _target(
     m,
     tmp_path,
@@ -160,33 +188,7 @@ def _target(
 ):
     tmp_path.mkdir(parents=True, exist_ok=True)
     if state is None:
-        state = (
-            json.dumps(
-                {
-                    "version": 4,
-                    "outputs": {
-                        "server_ipv4": {
-                            "value": address,
-                            "type": "string",
-                            "sensitive": False,
-                        }
-                    },
-                    "resources": [
-                        {
-                            "mode": "managed",
-                            "type": "upcloud_server",
-                            "name": "vpn",
-                            "instances": [
-                                {"attributes": {"id": server_uuid, "firewall": False}}
-                            ],
-                        }
-                    ],
-                },
-                sort_keys=True,
-                separators=(",", ":"),
-            )
-            + "\n"
-        ).encode()
+        state = _state(address, server_uuid)
     value = {
         "schema_version": 1,
         "provider": "upcloud",
@@ -200,21 +202,7 @@ def _target(
     path = tmp_path / ("provider-target-" + alias + ".json")
     path.write_text(json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n")
     path.chmod(0o600)
-    state_path = tmp_path / ("terraform-state-" + alias + ".json")
-    state_path.write_bytes(state)
-    state_path.chmod(0o600)
-    target_fd = state_fd = -1
-    try:
-        target_fd = os.open(path, os.O_RDONLY)
-        state_fd = os.open(state_path, os.O_RDONLY)
-        target = m.ProviderTarget(target_fd, state_fd)
-        target_fd = state_fd = -1
-        return target
-    finally:
-        if target_fd >= 0:
-            os.close(target_fd)
-        if state_fd >= 0:
-            os.close(state_fd)
+    return m.ProviderTarget(os.open(path, os.O_RDONLY))
 
 
 def _recovery_snapshot(m):
@@ -294,7 +282,6 @@ def _terraform_snapshot_source(tmp_path):
         source / "terraform/shared/cloud-init.yaml.tftpl": b"#cloud-config\n",
         provider / ".terraform-env/default/environment": b"default",
         provider / ".terraform-env/default/providers/plugin": b"plugin",
-        provider / "terraform.tfstate": b'{"version":4,"resources":[]}\n',
     }
     for path, raw in files.items():
         path.write_bytes(raw)
@@ -351,7 +338,7 @@ def test_terraform_snapshot_ignores_shared_instruction_symlink_and_cache(tmp_pat
     assert (destination / "terraform/shared/bootstrap-ssh-seed.py").read_bytes() == b"# public seed installer\n"
 
 
-def test_terraform_snapshot_precreates_private_workspace_directories(tmp_path):
+def test_terraform_snapshot_has_no_local_state_and_refuses_old_manifest(tmp_path):
     m = mod()
     source = _terraform_snapshot_source(tmp_path)
     provider = source / "terraform/providers/upcloud"
@@ -363,25 +350,25 @@ def test_terraform_snapshot_precreates_private_workspace_directories(tmp_path):
     data.mkdir(parents=True)
     (data / "environment").write_text(workspace)
     (data / "environment").chmod(0o600)
-    state = provider / "terraform.tfstate.d" / workspace / "terraform.tfstate"
-    state.parent.mkdir(parents=True)
-    state.write_bytes(b'{"version":4,"resources":[]}\n')
-    state.chmod(0o600)
     destination = tmp_path / "private/terraform-snapshot"
     destination.parent.mkdir(mode=0o700)
 
     snapshot = m.TerraformConfigSnapshot.create(source, destination, workspace)
-    workspace_dir = destination / "terraform/providers/upcloud/terraform.tfstate.d"
-    selected_dir = workspace_dir / workspace
-    assert workspace_dir.stat().st_mode & 0o777 == 0o700
-    assert selected_dir.stat().st_mode & 0o777 == 0o700
 
-    # Terraform's workspace setup must find these directories already private.
-    selected_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
-    snapshot.verify()
-    (selected_dir / "unexpected.tfstate").write_text("unexpected")
+    assert not hasattr(snapshot, "state_path")
+    assert not list(destination.rglob("*.tfstate*"))
+    manifest = json.loads((destination / "manifest.json").read_text())
+    assert "state_path" not in manifest["payload"]
+    # A pre-backend manifest binds a local state path and must be refused.
+    manifest["payload"]["state_path"] = str(tmp_path / "terraform.tfstate")
+    manifest["sha256"] = hashlib.sha256(
+        m.TerraformConfigSnapshot._canonical(manifest["payload"])
+    ).hexdigest()
+    (destination / "manifest.json").write_bytes(
+        m.TerraformConfigSnapshot._canonical(manifest)
+    )
     with pytest.raises(m.PromotionError, match="terraform-snapshot-invalid"):
-        snapshot.verify()
+        m.TerraformConfigSnapshot(destination)
 
 
 @pytest.mark.parametrize("fault", ["missing", "symlink"])
@@ -1453,16 +1440,103 @@ def test_provider_target_rejects_tamper_and_state_drift_before_plan(
 
     target = _target(m, tmp_path / "fresh")
     adapter = m.TerraformAdapter(target)
-    snapshot_type = type(
-        "Snapshot", (), {"state_bytes": lambda _self: b'{"serial":2}\n'}
-    )
+    snapshot_type = type("Snapshot", (), {})
     trusted_type = type("Trusted", (), {})
     adapter.terraform_snapshot = snapshot_type()
     adapter.trusted_terraform = trusted_type()
     monkeypatch.setattr(m, "TerraformConfigSnapshot", snapshot_type)
     monkeypatch.setattr(m, "TrustedTerraform", trusted_type)
+    calls = []
+
+    def command(arguments, **_kwargs):
+        calls.append(arguments[0])
+        if arguments == ["state", "pull"]:
+            return b'{"serial":2}\n'
+        raise AssertionError(arguments)
+
+    monkeypatch.setattr(adapter, "_command", command)
     with pytest.raises(m.PromotionError, match="provider-state-drift"):
         adapter.plan("forward")
+    assert calls == ["state"]
+
+
+def test_current_state_pulls_through_trusted_tofu_and_refuses_empty_output(
+    tmp_path, monkeypatch
+):
+    m = mod()
+    adapter = m.TerraformAdapter(_target(m, tmp_path))
+    pulled = [_state(), _state(), b"", b" \n"]
+    seen = []
+
+    def command(arguments, **_kwargs):
+        seen.append(arguments)
+        return pulled.pop(0)
+
+    snapshot_type = type("Snapshot", (), {})
+    adapter.terraform_snapshot = snapshot_type()
+    monkeypatch.setattr(m, "TerraformConfigSnapshot", snapshot_type)
+    monkeypatch.setattr(adapter, "_command", command)
+    assert adapter.current_state() == _state()
+    adapter._verify_initial_state()
+    for _empty in range(2):
+        with pytest.raises(m.PromotionError, match="provider-state-drift"):
+            adapter.current_state()
+    assert seen == [["state", "pull"]] * 4
+
+
+def test_tofu_receives_backend_identity_and_nothing_else_from_the_environment(
+    tmp_path, monkeypatch
+):
+    m = mod()
+    secrets = {
+        "AWS_ACCESS_KEY_ID": "id-fixture",
+        "AWS_SECRET_ACCESS_KEY": "secret-fixture",
+        "TF_VAR_state_passphrase": "phrase-fixture",
+    }
+    noise = {"AWS_PROFILE": "p", "AWS_CONFIG_FILE": "/x", "HOME": "/h", "OTHER": "1"}
+    source = {**secrets, **noise}
+    assert m.backend_environment(source) == secrets
+    for key in secrets:
+        with pytest.raises(m.PromotionError, match="provider-credentials-unavailable"):
+            m.backend_environment({k: v for k, v in source.items() if k != key})
+        with pytest.raises(m.PromotionError, match="provider-credentials-unavailable"):
+            m.backend_environment({**source, key: ""})
+
+    captured = {}
+
+    class Trusted:
+        def verify(self):
+            pass
+
+        def install(self, directory):
+            (directory / "tofu").write_bytes(b"")
+
+    class Snapshot:
+        def invocation(self, arguments):
+            return ["-chdir=/x", *arguments], {"TF_DATA_DIR": "/d"}
+
+    def bounded(command, environment, **_kwargs):
+        captured["environment"] = environment
+        return b""
+
+    adapter = m.TerraformAdapter(_target(m, tmp_path))
+    adapter.environment_map = {**adapter.environment_map, **secrets}
+    monkeypatch.setattr(m, "TrustedTerraform", Trusted)
+    monkeypatch.setattr(m, "TerraformConfigSnapshot", Snapshot)
+    monkeypatch.setattr(m, "_bounded", bounded)
+    adapter.trusted_terraform, adapter.terraform_snapshot = Trusted(), Snapshot()
+    adapter._command(["state", "pull"])
+    assert set(captured["environment"]) == {
+        "PATH",
+        "LANG",
+        "LC_ALL",
+        "TZ",
+        "PROVIDER",
+        "ENV",
+        "TF_DATA_DIR",
+        *secrets,
+    }
+    assert m._env("staging").keys().isdisjoint(secrets)
 
 
 def test_provider_target_derives_uuid_and_public_address_from_exact_state(tmp_path):
@@ -1486,8 +1560,11 @@ def test_provider_target_derives_uuid_and_public_address_from_exact_state(tmp_pa
         )
         + "\n"
     ).encode()
+    target = _target(m, tmp_path, state=bad_state)
     with pytest.raises(m.PromotionError, match="provider-target-invalid"):
-        _target(m, tmp_path, state=bad_state)
+        target.check_state(bad_state)
+    good = _target(m, tmp_path / "good")
+    good.check_state(_state())
 
 
 def _rollback_capability(target, *, expires_at=2_000):
@@ -1668,7 +1745,7 @@ def test_rollback_plan_and_apply_use_post_forward_readback_not_initial_state_dig
     adapter.terraform_snapshot = type(
         "Snapshot",
         (),
-        {"state_path": tmp_path / "terraform.tfstate", "var_file": "fixture.tfvars"},
+        {"var_file": "fixture.tfvars"},
     )()
     trusted_type = type("Trusted", (), {})
     snapshot_type = type(adapter.terraform_snapshot)
@@ -1936,7 +2013,7 @@ def test_adapter_close_owns_target_and_trusted_executable_fds(tmp_path):
         owned_trusted_fd = trusted_fd
         trusted = m.TrustedTerraform(trusted_fd, hashlib.sha256(b"fixture").hexdigest())
         trusted_fd = -1
-        target_fds = (target.fd, target.state_fd)
+        target_fds = (target.fd,)
         adapter = m.TerraformAdapter(target, trusted_terraform=trusted)
         adapter.close()
         adapter.close()

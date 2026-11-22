@@ -309,21 +309,19 @@ class Executor:
     def __init__(
         self,
         target,
-        state,
         terraform,
         digest,
         terraform_snapshot,
         terraform_snapshot_digest,
         receipt_root,
     ):
-        target_fd = state_fd = tf_fd = -1
+        target_fd = tf_fd = -1
         provider_target = trusted = adapter = None
         try:
             target_fd = private_fd(target)
-            state_fd = private_fd(state)
             tf_fd = private_fd(terraform, executable=True)
-            provider_target = p.ProviderTarget(target_fd, state_fd)
-            target_fd = state_fd = -1
+            provider_target = p.ProviderTarget(target_fd)
+            target_fd = -1
             trusted = p.TrustedTerraform(tf_fd, digest)
             tf_fd = -1
             snapshot = p.TerraformConfigSnapshot(
@@ -350,6 +348,7 @@ class Executor:
             adapter.environment_map = {
                 **adapter.environment_map,
                 "UPCLOUD_TOKEN": token,
+                **p.backend_environment(),
             }
         except (Exception, KeyboardInterrupt, SystemExit):
             if adapter is not None:
@@ -363,8 +362,6 @@ class Executor:
         finally:
             if target_fd >= 0:
                 os.close(target_fd)
-            if state_fd >= 0:
-                os.close(state_fd)
             if tf_fd >= 0:
                 os.close(tf_fd)
         self.target = provider_target
@@ -751,7 +748,6 @@ class Executor:
 def serve(args):
     executor = Executor(
         Path(args.target),
-        Path(args.state),
         Path(args.terraform),
         args.terraform_sha256,
         Path(args.terraform_snapshot),
@@ -870,7 +866,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("serve")
     parser.add_argument("--target", required=True)
-    parser.add_argument("--state", required=True)
     parser.add_argument("--terraform", required=True)
     parser.add_argument("--terraform-sha256", required=True)
     parser.add_argument("--terraform-snapshot", required=True)

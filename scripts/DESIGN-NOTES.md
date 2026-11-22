@@ -364,6 +364,8 @@ Only then may the executor terminalize it. A retry observes an already-disabled
 provider as idempotent and continues guest cleanup instead of replaying the
 Terraform rollback.
 
+**Network promotion reads state only through the trusted tofu invocation** — there is no local state file. The adapter runs `state pull` with the same reviewed binary and private snapshot (`-chdir` plus the copied workspace `TF_DATA_DIR`) as plan, show and apply, keeps the bytes in memory and discards stderr. The provider target JSON still binds `state_sha256`: the adapter compares it with the pulled bytes before every forward plan and apply (`provider-state-drift`) and then checks the server UUID and public address hash against the same bytes. Empty pull output is no state and refuses. The pull shares the 1 MiB `_bounded` cap with plan output, as the old state-file read did; a larger state fails as `provider-output-limit` instead of raising a second limit. The controller reads exactly `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `TF_VAR_state_passphrase` (`backend_environment`) and passes them with `UPCLOUD_TOKEN` to the executor and the adapter's tofu child only; ssh, sftp and proof children keep the canonical `_env` whitelist. The controller config has no `provider_state_path`, the executor has no `--state`, and a snapshot manifest that records `state_path` is refused.
+
 **Staging recovery faults are two fixed deep operations** —
 `staging-tailnet-recovery.py` reuses the bootstrap module's validation,
 installation, durable enrollment and status implementation behind distinct
