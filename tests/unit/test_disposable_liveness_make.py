@@ -13,12 +13,14 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 GOALS = (
     "prepare-disposable-liveness",
+    "provision-disposable-liveness-runtime",
     "install-disposable-liveness-sentinel",
     "protocol-liveness-disposable",
     "deonboard-disposable-liveness",
 )
 GOAL_FIELDS = {
     "prepare-disposable-liveness": {"EXECUTOR_PROFILE", "EXECUTOR_MANIFEST"},
+    "provision-disposable-liveness-runtime": {"EXECUTOR_MANIFEST", "RUNTIME_WORK_DIR", "STAGING_TRUST_ANCHOR"},
     "install-disposable-liveness-sentinel": {
         "LIVENESS_CONFIG",
         "SENTINEL",
@@ -77,6 +79,7 @@ with open(os.environ["DISPOSABLE_MAKE_LOG"], "a", encoding="utf-8") as stream:
         "disposable_liveness_executor.py",
         "install_liveness_sentinel.py",
         "protocol-liveness.py",
+        "provision-disposable-liveness-runtime.py",
     ):
         path = scripts / name
         path.write_text(logger)
@@ -116,6 +119,8 @@ with open(os.environ["DISPOSABLE_MAKE_LOG"], "a", encoding="utf-8") as stream:
         "HOSTS",
         "COHORTS",
         "SOPS_FILES",
+        "RUNTIME_WORK_DIR",
+        "STAGING_TRUST_ANCHOR",
     ):
         env.pop(field, None)
     env.update(
@@ -135,6 +140,8 @@ def _fields(tmp_path: Path) -> dict[str, str]:
     return {
         "EXECUTOR_PROFILE": "vpn-liveness-one-shot",
         "EXECUTOR_MANIFEST": str(private / "executor.json"),
+        "RUNTIME_WORK_DIR": str(private / "work"),
+        "STAGING_TRUST_ANCHOR": str(private / "anchor.pem"),
         "EXECUTOR_BINDING": str(private / "binding.json"),
         "STAGING_CLEANUP_MANIFEST": str(private / "cleanup.json"),
         "STAGING_POST_DESTROY_EVIDENCE": str(private / "absence.json"),
@@ -203,15 +210,20 @@ def test_make_rejects_unowned_command_variable_before_expansion(
     assert not (tmp_path / "git-spy.log").exists()
 
 
-@pytest.mark.parametrize("goal", GOALS)
+@pytest.mark.parametrize(
+    ("goal", "field"),
+    [(goal, "EXECUTOR_MANIFEST") for goal in GOALS]
+    + [("provision-disposable-liveness-runtime", "RUNTIME_WORK_DIR"),
+       ("provision-disposable-liveness-runtime", "STAGING_TRUST_ANCHOR")],
+)
 @pytest.mark.parametrize("value", ["$(shell touch MARKER)", "'quoted", '"quoted'])
 def test_make_rejects_nonliteral_owned_fields_before_any_child(
-    tmp_path: Path, goal: str, value: str
+    tmp_path: Path, goal: str, field: str, value: str
 ) -> None:
     root, env = _workspace(tmp_path)
     marker = tmp_path / "owned-expanded"
     fields = _fields(tmp_path)
-    fields["EXECUTOR_MANIFEST"] = value.replace("MARKER", str(marker))
+    fields[field] = value.replace("MARKER", str(marker))
 
     result = _run(root, env, goal, fields)
 
@@ -269,6 +281,24 @@ def test_prepare_uses_the_machine_gate_and_fixed_six_hour_lease(tmp_path: Path) 
     }
     assert (tmp_path / "gate.log").read_text() == "called\n"
     assert not (tmp_path / "git-spy.log").exists()
+
+
+@pytest.mark.parametrize("anchor", [False, True])
+def test_provision_passes_the_staging_trust_anchor_only_when_given(tmp_path: Path, anchor: bool) -> None:
+    root, env = _workspace(tmp_path)
+    private = tmp_path / "private"
+    fields = [f"EXECUTOR_MANIFEST={private / 'executor.json'}", f"RUNTIME_WORK_DIR={private / 'work'}"]
+    if anchor:
+        fields.append(f"STAGING_TRUST_ANCHOR={private / 'anchor.pem'}")
+
+    result = subprocess.run(["make", "provision-disposable-liveness-runtime", *fields], cwd=root, env=env,
+                            text=True, capture_output=True, timeout=20)
+
+    assert result.returncode == 0, result.stderr
+    assert _record(tmp_path)["argv"] == [
+        "--manifest", str(private / "executor.json"), "--work-dir", str(private / "work"),
+        *(["--trust-anchor", str(private / "anchor.pem")] if anchor else []),
+    ]
 
 
 def test_install_passes_exact_binding_and_private_key_only_on_stdin(

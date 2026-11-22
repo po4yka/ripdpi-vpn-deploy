@@ -10,6 +10,11 @@ executor manifest from ``make prepare-disposable-liveness`` and prints the
 The operator machine downloads and verifies every input; the executor builds
 AWG offline through the canonical ``install-real-vps-awg-client-tools.py``.
 No client credentials, secrets or provider calls are involved.
+
+An optional staging trust anchor (the run's generated self-signed public
+certificate) is validated locally and installed into the executor's system
+trust store, so the liveness profiles keep verified TLS against a disposable
+staging node. The executor is deleted at de-onboarding.
 """
 
 from __future__ import annotations
@@ -62,6 +67,7 @@ GO_PACKAGE = PINS["go_package"]
 GO_BIN = PINS["go_bin"]
 VM_INPUTS = "/var/tmp/ripdpi-liveness-runtime"
 MAX_DOWNLOAD = 128 * 1024 * 1024
+TRUST_ANCHOR_PATH = "/usr/local/share/ca-certificates/ripdpi-staging-anchor.crt"
 
 
 class ProvisionError(Exception):
@@ -170,6 +176,33 @@ def awg_sources(work: Path, commits: dict[str, str]) -> dict[str, object]:
     return result
 
 
+def trust_anchor(path: Path) -> tuple[bytes, str]:
+    """Return the canonical PEM and DER SHA-256 of one valid self-signed certificate with a DNS name."""
+    from cryptography import x509
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives.serialization import Encoding
+
+    with path.open("rb") as stream:
+        text = stream.read(64 * 1024 + 1)
+    if len(text) > 64 * 1024 or text.count(b"-----BEGIN ") != 1 or text.count(b"-----BEGIN CERTIFICATE-----") != 1:
+        raise ProvisionError("trust-anchor: exactly one PEM certificate required")
+    try:
+        cert = x509.load_pem_x509_certificate(text)
+        cert.verify_directly_issued_by(cert)  # issuer equals subject and its own key signed it
+    except (ValueError, TypeError, InvalidSignature) as exc:
+        raise ProvisionError("trust-anchor: not a self-signed certificate") from exc
+    now = time.time()
+    if not cert.not_valid_before_utc.timestamp() <= now <= cert.not_valid_after_utc.timestamp():
+        raise ProvisionError("trust-anchor: outside its validity period")
+    try:
+        names = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+    except x509.ExtensionNotFound:
+        names = None
+    if names is None or not names.get_values_for_type(x509.DNSName):
+        raise ProvisionError("trust-anchor: DNS subject alternative name required")
+    return cert.public_bytes(Encoding.PEM), hashlib.sha256(cert.public_bytes(Encoding.DER)).hexdigest()
+
+
 class Executor:
     """Run fixed root commands inside the exact live Colima profile."""
 
@@ -198,9 +231,12 @@ def version_of(output: str) -> str:
     return match.group(1)
 
 
-def provision(manifest_path: Path, work: Path) -> dict[str, object]:
+def provision(manifest_path: Path, work: Path, anchor_path: Path | None = None) -> dict[str, object]:
     work = private_work_directory(work)
+    anchor = trust_anchor(anchor_path) if anchor_path is not None else None
     packages, commits = role_inputs()
+    if anchor is not None:
+        packages = [*packages, "ca-certificates"]
     manifest = load_live_executor(manifest_path, home=Path.home(), now=int(time.time()), runner=_run_command)
     executor = Executor(manifest["profile"])
     arch = ARCHITECTURES.get(executor.run("uname -m").strip())
@@ -209,6 +245,9 @@ def provision(manifest_path: Path, work: Path) -> dict[str, object]:
     executor.run("sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update -qq && sudo -n env "
                  "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends "
                  + " ".join(shlex.quote(name) for name in packages), timeout=1800)
+    if anchor is not None:
+        executor.install(TRUST_ANCHOR_PATH, anchor[0], "0644")
+        executor.run("sudo -n update-ca-certificates", timeout=300)
     runtime: dict[str, str] = {}
     for name, engine in ENGINES.items():
         archive_name, digest = engine["archives"][arch]
@@ -248,16 +287,20 @@ def provision(manifest_path: Path, work: Path) -> dict[str, object]:
     runtime["awg"] = version_of(
         executor.run(f"sudo -n /opt/ripdpi-real-vps-awg-nat/toolchains/{toolchain}/bin/awg --version"))
     runtime["awg_toolchain"] = toolchain
-    return {"profile": manifest["profile"], "architecture": arch, "expected_runtime": runtime}
+    result: dict[str, object] = {"profile": manifest["profile"], "architecture": arch, "expected_runtime": runtime}
+    if anchor is not None:
+        result["trust_anchor_sha256"] = anchor[1]
+    return result
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Install pinned sentinel runtimes into a disposable executor.")
     parser.add_argument("--manifest", required=True, type=Path)
     parser.add_argument("--work-dir", required=True, type=Path)
+    parser.add_argument("--trust-anchor", type=Path, help="one self-signed staging certificate (PEM) to trust")
     args = parser.parse_args()
     try:
-        print(json.dumps(provision(args.manifest, args.work_dir), sort_keys=True))
+        print(json.dumps(provision(args.manifest, args.work_dir, args.trust_anchor), sort_keys=True))
         return 0
     except (ProvisionError, ExecutorError, OSError, subprocess.SubprocessError, ValueError) as exc:
         print(f"provision-disposable-liveness-runtime: {exc}", file=sys.stderr)

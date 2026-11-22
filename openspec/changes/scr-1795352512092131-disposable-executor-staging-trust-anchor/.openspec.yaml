@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-22
+goal: SCR-1795352512092131 Trust an explicit staging TLS anchor in the
+  disposable liveness executor
