@@ -105,7 +105,8 @@ def _publish(directory, name, value):
                  0o600, dir_fd=directory)
     with os.fdopen(fd, "wb") as stream:
         os.fchmod(stream.fileno(), 0o600)
-        stream.write((json.dumps(value, sort_keys=True) + "\n").encode())
+        # Compact canonical bytes: unbound retirement refuses any other encoding of the intent.
+        stream.write((json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode())
         stream.flush()
         os.fsync(stream.fileno())
 
