@@ -409,6 +409,12 @@ for i in "${!host_pairs[@]}"; do
   public_listeners_b64="$(printf '%s' "$public_listeners" | base64 | tr -d '\r\n')"
   allowed_ssh_cidrs="$(terraform_json_var "$prov" "$env" "$tfvars_path" "var.allowed_ssh_cidrs")"
   build_environment_json="$(terraform_json_var "$prov" "$env" "$tfvars_path" "var.build_env")"
+  # Public keys are not secret; nonsensitive() keeps the sensitive variable printable.
+  admin_ssh_public_keys="$(terraform_json_var "$prov" "$env" "$tfvars_path" "nonsensitive(var.admin_ssh_public_keys)")"
+  if ! jq -e 'type == "array" and length > 0 and all(type == "string" and length > 0 and (contains("'"'"'") | not))' <<< "$admin_ssh_public_keys" >/dev/null; then
+    echo "invalid admin_ssh_public_keys for ${prov}:${env}" >&2
+    exit 1
+  fi
   if ! jq -e 'type == "string" and length > 0 and length <= 128' <<< "$build_environment_json" >/dev/null; then
     echo "invalid canonical build environment for ${prov}:${env}" >&2
     exit 1
@@ -465,6 +471,7 @@ for i in "${!host_pairs[@]}"; do
   # Python literal parsing. Quote the complete JSON value so the inner string
   # quotes survive and Ansible receives a list instead of a malformed string.
   vpn_line+=" allowed_ssh_cidrs='${allowed_ssh_cidrs}'"
+  vpn_line+=" admin_ssh_public_keys='${admin_ssh_public_keys}'"
   vpn_line+=" terraform_public_listeners_b64=${public_listeners_b64}"
   if [[ -n "$nat_source_port_range" ]]; then
     vpn_line+=" terraform_nat_source_port_range=${nat_source_port_range}"

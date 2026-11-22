@@ -14,6 +14,19 @@
     fail_msg: UDP socket ceilings must be integers between 1 MiB and 64 MiB.
   tags: [always]
 
+- name: Require the admin SSH key list before host changes
+  ansible.builtin.assert:
+    that:
+      - admin_ssh_public_keys is defined
+      - admin_ssh_public_keys is sequence
+      - admin_ssh_public_keys is not string
+      - admin_ssh_public_keys | length > 0
+      - admin_ssh_public_keys | map('trim') | unique | list | length == admin_ssh_public_keys | length
+      - admin_ssh_public_keys | map('trim') | select('match', '^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh\.com) [A-Za-z0-9+/]+=*( [^\r\n]*)?$') | list | length == admin_ssh_public_keys | length
+    fail_msg: admin_ssh_public_keys must be a non-empty list of unique single-line OpenSSH public keys; an empty list would lock the operator out.
+    quiet: true
+  tags: [always]
+
 - name: Admit the unused kernel module policy before host changes
   ansible.builtin.import_tasks: module-admission.yml
   tags: [always]
@@ -104,6 +117,15 @@
     state: absent
     remove: true
   loop: "{{ baseline_stock_accounts | difference([ansible_user] + baseline_ssh_extra_allowed_users) }}"
+
+# The list is the whole truth: a key removed from it (for example the CI key) is
+# removed from every node by the next converge. cloud-init writes the same list.
+- name: Write the admin authorized_keys exclusively from admin_ssh_public_keys
+  ansible.posix.authorized_key:
+    user: "{{ ansible_user }}"
+    key: "{{ admin_ssh_public_keys | map('trim') | join('\n') }}"
+    exclusive: true
+    manage_dir: true
 
 # Providers can set a root password at creation; SSH never uses it, the console can.
 - name: Lock the root account password

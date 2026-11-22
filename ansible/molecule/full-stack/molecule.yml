@@ -79,6 +79,9 @@ provisioner:
         hysteria_log_dir: /var/log/hysteria
         amneziawg_config_dir: /etc/amnezia/amneziawg
         restic_repo_dir: /var/backups/vpn-restic
+        # render-inventory.sh injects this from the provider tfvars list.
+        admin_ssh_public_keys:
+          - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIACuqbmHay9Ja1UTyK6Xs0ld57/VDX6uINKx2394i/LI operator@fixture
         # Provider edge contract as render-inventory.sh would inject it
         # (base64 of the compact JSON public_listeners output), matching this
         # scenario's enabled toggle set exactly.
