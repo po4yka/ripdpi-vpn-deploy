@@ -327,6 +327,6 @@ pre-destroy state if you might want to forensically inspect what existed:
 
     PROVIDER=… ENV=… ./scripts/backup-tf-state.sh
 
-(The backup script reads the current state file. After destroy, the state
-shows nothing useful; back up *before* destroy if you need a record.)
+(The backup reads the current remote state. After destroy, it shows nothing
+useful; bucket versions keep the pre-destroy state for the retention period.)
 EOF

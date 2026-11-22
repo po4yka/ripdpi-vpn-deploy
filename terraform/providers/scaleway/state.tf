@@ -1,8 +1,6 @@
 # Remote state lives in the operator's object storage bucket; the per-root
 # backend file comes from TF_BACKEND_ROOT (scripts/terraform-env.sh).
 # State and saved plans are encrypted on the client before they leave it.
-# The unencrypted state fallback only reads existing local state during
-# migration and is removed once every workspace of the root is migrated.
 terraform {
   backend "s3" {}
 
@@ -13,13 +11,10 @@ terraform {
     method "aes_gcm" "state" {
       keys = key_provider.pbkdf2.state
     }
-    method "unencrypted" "migrate" {}
 
     state {
-      method = method.aes_gcm.state
-      fallback {
-        method = method.unencrypted.migrate
-      }
+      method   = method.aes_gcm.state
+      enforced = true
     }
     plan {
       method   = method.aes_gcm.state

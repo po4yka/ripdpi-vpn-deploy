@@ -48,7 +48,7 @@ Repository-local, reversible work needs no confirmation: editing files, running 
 
 The following actions require user authorization because they touch real infrastructure, credentials, or shared history. An explicit deploy, recreation, cleanup or PR request can authorize its necessary steps without naming each command:
 
-- Make targets or scripts that use cloud credentials, inventory, SSH, or decrypted secrets, including `plan`, `apply`, `destroy`, `staging-destroy`, `dry-run`, `deploy*`, `verify`, `security-verify`, `smoke-test`, `fleet-*`, `rotate-*`, `rollback-*`, `promote-spare`, `blue-green`, `decrypt`, `bootstrap-secrets`, `issue-*`, `install-*` (except the local `install-hooks`), `backup-state`, and the `observability-*` lifecycle verbs other than `render`/`validate`.
+- Make targets or scripts that use cloud credentials, inventory, SSH, or decrypted secrets, including `plan`, `apply`, `destroy`, `staging-destroy`, `dry-run`, `deploy*`, `verify`, `security-verify`, `smoke-test`, `fleet-*`, `rotate-*`, `rollback-*`, `promote-spare`, `blue-green`, `decrypt`, `bootstrap-secrets`, `issue-*`, `install-*` (except the local `install-hooks`), `backup-state`, `restore-state`, and the `observability-*` lifecycle verbs other than `render`/`validate`.
 - Direct `terraform`, `ansible-playbook`, `sops --decrypt`, or SSH against real providers or hosts.
 - Pushing, force-pushing, opening or merging PRs, tagging, `git reset --hard`, deleting branches, or discarding changes you did not make.
 

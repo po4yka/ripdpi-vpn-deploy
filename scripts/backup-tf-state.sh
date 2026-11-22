@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
-# age-encrypted snapshot of Terraform state. The state file is the only
-# durable record for blue-green replacement; losing it forces manual
-# `terraform import`. Run this from cron after every successful `make apply`.
+# age-encrypted snapshot of the current OpenTofu state, read from the encrypted
+# remote backend through scripts/terraform-env.sh. Bucket versions keep the
+# state history; this snapshot is the copy that survives losing the bucket or
+# the state passphrase. Run it after every successful apply.
 #
 # Usage:
-#   scripts/backup-tf-state.sh                 # uses default destination
-#   BACKUP_DEST=/path/to/dir scripts/backup-tf-state.sh
+#   PROVIDER=upcloud ENV=prod scripts/backup-tf-state.sh
+#   BACKUP_DEST=/path/to/dir PROVIDER=upcloud ENV=prod scripts/backup-tf-state.sh
 #
-# Requires: age, python3, and AGE_RECIPIENT (or AGE_RECIPIENT_FILE).
+# Requires: age, python3, AGE_RECIPIENT (or AGE_RECIPIENT_FILE), an initialized
+# workspace, and the state identity plus TF_VAR_state_passphrase in the environment.
 set -euo pipefail
 umask 077
 
 PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
 
 case "$PROVIDER" in
   upcloud|hetzner|vultr|scaleway) ;;
@@ -31,22 +32,9 @@ if [[ "$ENV" == "default" ]]; then
   exit 2
 fi
 
-if [[ "$ENV" == "prod" ]]; then
-  # Legacy production deployments intentionally remain in Terraform's default
-  # workspace so adopting environment workspaces does not require a state move.
-  STATE_FILE="${TF_DIR}/terraform.tfstate"
-else
-  STATE_FILE="${TF_DIR}/terraform.tfstate.d/${ENV}/terraform.tfstate"
-fi
-
 BACKUP_DEST="${BACKUP_DEST:-${HOME}/.config/vpn-provision/state-backups}"
 
 command -v age >/dev/null 2>&1 || { echo "missing: age" >&2; exit 1; }
-
-if [[ ! -f "$STATE_FILE" ]]; then
-  echo "no state file at $STATE_FILE — nothing to back up" >&2
-  exit 1
-fi
 
 # Recipient resolution priority: AGE_RECIPIENT env > AGE_RECIPIENT_FILE > age.key
 RECIPIENTS=()
@@ -77,7 +65,30 @@ trap 'exit 143' TERM
 trap 'exit 129' HUP
 trap 'exit 131' QUIT
 pending="$(mktemp "${BACKUP_DEST}/.state-backup.XXXXXXXXXX")"
-age "${RECIPIENTS[@]}" "$STATE_FILE" > "$pending"
+# Plaintext state only passes through this pipe; it is validated before age
+# seals it, so an empty or broken pull never becomes a recovery snapshot.
+PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" state pull \
+  | python3 -c '
+import json
+import sys
+
+data = sys.stdin.buffer.read()
+try:
+    state = json.loads(data)
+    valid = (
+        isinstance(state, dict)
+        and state.get("version") == 4
+        and type(state.get("serial")) is int and state["serial"] >= 0
+        and isinstance(state.get("lineage"), str) and bool(state["lineage"])
+        and isinstance(state.get("resources"), list)
+    )
+except ValueError:
+    valid = False
+if not valid:
+    sys.exit("state pull failed, or the current state is empty or invalid; nothing was backed up")
+sys.stdout.buffer.write(data)
+' \
+  | age "${RECIPIENTS[@]}" > "$pending"
 python3 - "$pending" <<'PY_SYNC'
 import os
 import sys

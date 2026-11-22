@@ -54,7 +54,7 @@ Each kit item has exactly one authority after the move. The catalog records it i
 | `keys/` | password manager or hardware token | CI uses separate identities in GitHub environments. |
 | `plans/` | ops repository `plans/` | Saved tfplans stay temporary and encrypted. |
 | `clients/<device-id>/` | temporary | Delivered encrypted to the recipient. |
-| `state-backups/` | B2 recovery prefix | Replaced by versioned remote state. |
+| `state-backups/` | stays in the kit | `make backup-state` age snapshots; the copy that survives losing the bucket. Set `BACKUP_DEST` to this folder; the script default is `~/.config/vpn-provision/state-backups`. |
 | `receipts/` | ops repository `receipts/` | No token-bearing URLs. |
 | `recovery/` | B2 recovery prefix | Sealed archive; its unlock factor stays in the password manager. |
 | `runtime/` | temporary | Never committed or uploaded. |
@@ -70,7 +70,7 @@ Before the cut-over, the private repository must show that a required reviewer b
 | age and SSH identities | Existing identity or hardware token. Record public fingerprints, expiry, use and recovery references. Copy exportable keys only through an authorized migration. |
 | MFA and account recovery | Encrypted recovery material where export is supported; record hardware-token enrollment and the independent recovery route. Keep PINs and backup unlock factors separate from their protected material. |
 | Local fleet, SSH, inventory, tfvars, profile and `vpnd` configuration | One active file per purpose; catalog its real path, source template and rebuild method. Tracked profiles remain authoritative for public configuration. |
-| Terraform state and saved plans | Keep active state at its existing tool path; retain encrypted state backups with provider, environment and time. Plans are temporary sensitive files, not reusable recovery state. |
+| Terraform state and saved plans | Active state lives encrypted in the state bucket; keep the state passphrase and the operator state identity as SOPS documents with a password-manager copy, and retain `make backup-state` snapshots with provider, environment and time. Plans are temporary encrypted files, not reusable recovery state. |
 | Client delivery files, URLs and QR codes | Derived sensitive output. Recover from the encrypted per-device authority where supported; record exceptions and expire delivery copies. |
 | Access grants and operational evidence | Private receipts with issue/revoke/expiry dates and the relevant resource. Token-bearing URLs and raw diagnostics require encryption or redaction. |
 

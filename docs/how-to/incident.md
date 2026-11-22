@@ -76,33 +76,35 @@ The encrypted SOPS blob may still be holding valid secrets in storage. age is co
 
 ## State loss
 
-Terraform's local state is the only record of which provider resources belong to this deployment. `ENV=prod` uses the legacy `default` workspace at `terraform/providers/<provider>/terraform.tfstate`; any other environment uses `terraform/providers/<provider>/terraform.tfstate.d/<ENV>/terraform.tfstate`. Lose the relevant state file and:
+OpenTofu state lives encrypted in the operator's versioned, Object Lock bucket (key layout in the `<provider>.s3.tfbackend` files of the ops repository: `state/<provider>/terraform.tfstate` for `ENV=prod`, `state/workspaces/<ENV>/state/<provider>/terraform.tfstate` for any other environment). Every write keeps the earlier object version for at least the 30-day governance retention. Without readable state:
 
 - `tofu plan` shows everything as "needs creating".
 - `tofu destroy` does nothing (no resources to destroy).
 - `make rollback-…` blue-green flows still work but become manual (you edit the UpCloud console / API directly).
 
-Recovery path 0 — restore from `make backup-state` snapshot (preferred):
+Break-glass material, all held outside GitHub: the state passphrase (`TF_VAR_state_passphrase`; password manager and the kit document `config/tofu-state-passphrase.sops.json`), the operator state identity (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` of `tofu-state-operator`; password manager and `config/scw-state-operator.sops.json`), and the ops repository backend files. Export them into the shell environment only, for example through `sops exec-env`; never write them to a file.
 
-The producer publishes a timestamped name only after encryption completes. Its private `.state-backup.*` staging files are not recovery snapshots. Do not rename or restore an interrupted staging file.
+Recovery path 0 — restore a bucket version after a bad apply (preferred):
 
 ```bash
-# State backups live in ~/.config/vpn-provision/state-backups/<provider>-<env>-<timestamp>.tfstate.age
-# Stop concurrent Terraform operations first. The helper selects only the exact
-# environment, decrypts into a private sibling, validates state structure and
-# atomically replaces state only after success. A failed restore retains old state.
-PROVIDER=upcloud ENV=prod ./scripts/restore-tf-state.sh &&
+# Lists the versions of the exact state object, newest first (metadata only).
+make restore-state PROVIDER=upcloud ENV=prod
+# Decrypts the selected version locally, refuses another lineage, and pushes it
+# through the backend lock as the next serial. Earlier versions stay retained.
+make restore-state PROVIDER=upcloud ENV=prod STATE_VERSION=<version-id>
 PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh plan -var-file=environments/prod.tfvars
 # Expect: no changes
 ```
 
-Recovery path 1 — state was committed on a partner workstation:
+`ALLOW_LINEAGE_CHANGE=1` replaces state with a version of another lineage (`tofu state push -force`). A forced push skips the serial check, so stop every other writer first, and use it only after confirming that the current state is the wrong one. A writer that died while holding the lock leaves `<state key>.tflock`; after confirming no writer runs, release it with `PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh force-unlock <lock-id>` using the operator identity (a refused push or plan prints the lock ID).
+
+Recovery path 1 — the bucket or its versions are lost: create a replacement bucket, point the `<provider>.s3.tfbackend` files of the ops repository at it, then restore the newest `make backup-state` snapshot into an initialized empty workspace. The producer publishes a timestamped name only after encryption completes; its private `.state-backup.*` staging files are not recovery snapshots.
 
 ```bash
-# Copy the state file back to the workspace path for the restored environment.
-# `prod` is the legacy default workspace; use terraform.tfstate.d/<ENV>/ for any other ENV.
-cp ~/team-shared/vpn-prod-terraform.tfstate \
-   terraform/providers/upcloud/terraform.tfstate
+# Snapshots live in ${BACKUP_DEST:-~/.config/vpn-provision/state-backups}/<provider>-<env>-<timestamp>.tfstate.age
+make PROVIDER=upcloud ENV=prod init
+age -d -i <age identity> <snapshot> | PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh state push -
+PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh plan -var-file=environments/prod.tfvars
 ```
 
 Recovery path 2 — re-import the existing VPS:
@@ -118,7 +120,7 @@ PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh plan
 
 Find `<SERVER_UUID>` in the UpCloud console (server details → "ID").
 
-After restoration, **back up the state file out of band** (encrypted USB, 1Password Documents, age-encrypted in the same recipient as your secrets). Don't lose it twice.
+After restoration, run `make backup-state` so an age snapshot of the restored state exists outside the bucket.
 
 ## Suspected compromise of the VPS
 

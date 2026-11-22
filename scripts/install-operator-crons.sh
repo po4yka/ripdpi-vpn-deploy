@@ -23,7 +23,10 @@
 #                                      a warm-spare ENV)
 #   daily   tspu-canary               DPI rule-drift probes
 #   daily   probing-summary           7-day rollup
-#   daily   backup-state              encrypted local TF state backup
+#   daily   backup-state              age snapshot of the remote state
+#                                      (only when STATE_IDENTITY_SOPS_FILE and
+#                                      STATE_PASSPHRASE_SOPS_FILE are set; both
+#                                      reach the job through sops exec-env)
 #   daily   probe-payload-throttle    per-ASN ~16 KiB payload-throttle probe
 #                                      (only when PAYLOAD_THROTTLE_HOST is set)
 #   daily   monitor-reality-target    active target ASN/path signal
@@ -42,6 +45,8 @@ PAYLOAD_THROTTLE_HOST="${PAYLOAD_THROTTLE_HOST:-}"
 REALITY_TARGET_VANTAGE="${REALITY_TARGET_VANTAGE:-}"
 SELF_STEAL_SOPS_FILE="${SELF_STEAL_SOPS_FILE:-}"
 SELF_STEAL_DNS_ENV_FILE="${SELF_STEAL_DNS_ENV_FILE:-}"
+STATE_IDENTITY_SOPS_FILE="${STATE_IDENTITY_SOPS_FILE:-}"
+STATE_PASSPHRASE_SOPS_FILE="${STATE_PASSPHRASE_SOPS_FILE:-}"
 LIVENESS_CONFIG="${LIVENESS_CONFIG:-}"
 SOPS_FILE="${SOPS_FILE:-}"
 SOPS_AGE_KEY_FILE="${SOPS_AGE_KEY_FILE:-}"
@@ -155,7 +160,6 @@ ${service_env}
 17 3 * * *     cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} make check-ip-reputation 2>&1 | logger -t vpn-iprep
 27 3 * * *     cd ${repo} && make tspu-canary                                         2>&1 | logger -t vpn-canary
 37 3 * * *     cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} make probing-summary     2>&1 | logger -t vpn-probing
-47 3 * * *     cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} make backup-state        2>&1 | logger -t vpn-state
 EOF
   if [[ -n "$WARM_SPARE_ENV" ]]; then
     liveness_env=""
@@ -191,6 +195,25 @@ EOF
 EOF
   else
     echo "REALITY target monitor skipped: set REALITY_TARGET_VANTAGE to a filtered technical label" >&2
+  fi
+  if [[ -n "$STATE_IDENTITY_SOPS_FILE" || -n "$STATE_PASSPHRASE_SOPS_FILE" ]]; then
+    local identity_q passphrase_q backup_q inner_q
+    [[ "$STATE_IDENTITY_SOPS_FILE" == /* && "$STATE_PASSPHRASE_SOPS_FILE" == /* &&
+       -f "$STATE_IDENTITY_SOPS_FILE" && -f "$STATE_PASSPHRASE_SOPS_FILE" &&
+       "$STATE_IDENTITY_SOPS_FILE$STATE_PASSPHRASE_SOPS_FILE" != *%* ]] || {
+      echo "STATE_IDENTITY_SOPS_FILE and STATE_PASSPHRASE_SOPS_FILE must both name existing absolute files without %" >&2
+      return 1
+    }
+    printf -v identity_q '%q' "$STATE_IDENTITY_SOPS_FILE"
+    printf -v passphrase_q '%q' "$STATE_PASSPHRASE_SOPS_FILE"
+    # The state key pair and passphrase exist only in the nested exec-env children.
+    printf -v backup_q '%q' "PROVIDER=${PROVIDER} ENV=${env_q} make backup-state"
+    printf -v inner_q '%q' "sops exec-env ${passphrase_q} ${backup_q}"
+    cat <<EOF
+47 3 * * *     cd ${repo_q} && SOPS_AGE_KEY_FILE=${age_key_q} sops exec-env ${identity_q} ${inner_q}  2>&1 | logger -t vpn-state
+EOF
+  else
+    echo "state backup skipped: set STATE_IDENTITY_SOPS_FILE and STATE_PASSPHRASE_SOPS_FILE" >&2
   fi
   if [[ -n "$SELF_STEAL_SOPS_FILE" || -n "$SELF_STEAL_DNS_ENV_FILE" ]]; then
     local steal_q steal_dns_q renewal_q

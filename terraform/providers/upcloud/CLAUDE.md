@@ -24,9 +24,8 @@ variable-driven, so each provider gets its own root. The output schema
 (`server_ipv4`, `server_ipv6`, `admin_user`, `ssh_port`, `server_hostname`) is fixed
 across providers so `scripts/render-inventory.sh` is provider-neutral.
 
-**Local TF state by default** — we don't trust remote state with VPN secrets
-even though we keep them out of TF. State is age-encrypted via
-`make backup-state`. Loss → re-import (see `docs/how-to/incident.md`, "State loss").
+**Encrypted remote state** — see `terraform/CLAUDE.md`; recovery is in
+`docs/how-to/incident.md`, "State loss".
 
 **Secondary public IP is opt-in** — `additional_public_ip = true` allocates a
 second public IPv4 for the honeypot role; there is no generic floating-IP

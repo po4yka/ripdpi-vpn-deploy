@@ -254,8 +254,9 @@ Add to your operator's cron / launchd:
 # Every 2 min — authenticated protocol quorum (requires managed sentinels)
 */2 * * * *   cd ~/GitRep/ripdpi-vpn-deploy && LIVENESS_CONFIG=~/.config/vpn-provision/liveness.yaml GREEN_ENV=spare make watch-spare 2>&1 | logger -t vpn-spare
 
-# Daily — encrypted backup of TF state to ~/.config/vpn-provision/state-backups/
-47 3 * * *   cd ~/GitRep/ripdpi-vpn-deploy && make backup-state >> /tmp/vpn-tfstate-backup.log 2>&1
+# Daily — age snapshot of the remote state to ~/.config/vpn-provision/state-backups/.
+# `make install-operator-crons STATE_IDENTITY_SOPS_FILE=… STATE_PASSPHRASE_SOPS_FILE=…` writes this
+# job; the state key pair and passphrase reach it only through nested `sops exec-env`.
 ```
 
 The scheduled checks give the node address to no probe service. The reputation and ASN checks (`make check-ip-reputation`, `make asn-drift`) send it only inside DNS-over-HTTPS queries and stop when that lookup fails; set `DOH_URL` to choose the resolver. Spamhaus does not answer public resolvers, so with the default resolver that check ends as incomplete, not clean; it needs a resolver of your own. Operator alerts go only to the service that `NTFY_URL` names. `make install-operator-crons NTFY_URL=… DOH_URL=…` writes both into the cron block, so that the scheduled monitors can deliver alerts. `TCP_PORT` selects the port for `make burn-check` when REALITY does not listen on 443.
