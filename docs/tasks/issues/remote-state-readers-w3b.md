@@ -2,7 +2,7 @@
 id: TFR-1795357890236562
 title: Read OpenTofu state through the encrypted backend in every script
 kind: feature
-status: doing
+status: review
 area: terraform
 priority: high
 risk: high
