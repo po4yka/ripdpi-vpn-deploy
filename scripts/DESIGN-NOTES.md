@@ -254,7 +254,7 @@ duplicate YAML mappings refuse before mutation. Normal de-onboarding must not
 inherit this recovery exception.
 Retirement holds the registered resource journal before the nonblocking SOPS
 locks and requires that manifest's reserved verified absence path. Its state
-digest/inode belong to the genuinely changed empty post-destroy state and are
+digest belongs to the genuinely changed empty post-destroy state pulled from the backend and is
 rechecked before publication and receipt. Prepared-executor removal then
 requires the completed client journal/receipt and final ciphertext. Its global
 profile lock and durable assignment/removal record serialize binding against
@@ -1199,7 +1199,7 @@ after abnormal controller death or publication failure is an unknown outcome,
 not success, and receipts never satisfy promotion or protocol proof.
 Disposable liveness de-onboarding after provider firewall promotion supplies
 both the original binding manifest and its reissued cleanup manifest. Their
-private hashes, immutable resource identity, account, deadline and state path
+private hashes, immutable resource identity, account and deadline
 must match the verified provider absence receipt before local removal.
 
 **Provider promotion snapshots only Terraform inputs** — pin the two referenced

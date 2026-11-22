@@ -41,6 +41,16 @@ def _load():
     return _MODULE
 
 
+SERVED: dict[str, object] = {}
+
+
+def _pull(provider: str, environment: str) -> bytes | None:
+    assert (provider, environment) == ("upcloud", "ci-staging-fixture")
+    if isinstance(SERVED["state"], Exception):
+        raise SERVED["state"]
+    return SERVED["state"]
+
+
 def _private(path: Path, payload: bytes) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     path.parent.chmod(0o700)
@@ -94,30 +104,26 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     storage_uuid = "ffeeddcc-bbaa-4988-8766-554433221100"
     hostname = "vpn-ci-staging-fixture"
     environment = "ci-staging-fixture"
-    state = _private(
-        root / "terraform.tfstate",
-        _canonical(
-            {
-                "version": 4,
-                "terraform_version": "1.14.5",
-                "serial": 4,
-                "lineage": "12345678-1234-4234-8234-123456789abc",
-                "outputs": {"server_uuid": {"value": server_uuid}},
-                "resources": [
-                    {"mode": "managed", "type": "upcloud_server", "name": "vpn"}
-                ],
-            }
-        ),
+    state_bytes = _canonical(
+        {
+            "version": 4,
+            "terraform_version": "1.14.5",
+            "serial": 4,
+            "lineage": "12345678-1234-4234-8234-123456789abc",
+            "outputs": {"server_uuid": {"value": server_uuid}},
+            "resources": [
+                {"mode": "managed", "type": "upcloud_server", "name": "vpn"}
+            ],
+        }
     )
+    monkeypatch.setattr(_load().tofu_state, "pull", _pull)
+    SERVED["state"] = state_bytes
     manifest = {
-        "schema_version": 3,
+        "schema_version": 4,
         "provider": "upcloud",
         "environment": environment,
         "workspace": environment,
-        "state": {
-            "path": str(state),
-            "sha256": hashlib.sha256(state.read_bytes()).hexdigest(),
-        },
+        "state": {"sha256": hashlib.sha256(state_bytes).hexdigest()},
         "hostname": hostname,
         "provider_account_username": "staging-owner",
         "server_uuid": server_uuid,
@@ -134,7 +140,7 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         manifest_path, absence_path, now="2026-09-05T20:04:00Z"
     )
     absence = {
-        "schema_version": 3,
+        "schema_version": 4,
         "status": "verified",
         "deadline_status": "within_deadline",
         "provider": "upcloud",
@@ -152,11 +158,11 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     }
     absence_path = _private(absence_path, _canonical(absence))
     # Real destroy changes the state bytes after the manifest was registered.
-    destroyed = json.loads(state.read_bytes())
+    destroyed = json.loads(state_bytes)
     destroyed["serial"] += 1
     destroyed["outputs"] = {}
     destroyed["resources"] = []
-    state.write_bytes(_canonical(destroyed))
+    SERVED["state"] = _canonical(destroyed)
 
     # Reuse the canonical schema-shaped liveness fixture and strip its epoch.
     fixture_spec = importlib.util.spec_from_file_location(
@@ -262,7 +268,6 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         "intent_path": intent_path,
         "cleanup_manifest_path": manifest_path,
         "absence_evidence_path": absence_path,
-        "state_path": state,
         "sops_file": sops_file,
         "journal_path": root / "retirement.journal.json",
         "receipt_path": root / "retirement.receipt.json",
@@ -647,21 +652,15 @@ def test_retirement_removes_exact_issued_client_and_is_idempotent(setup):
     assert len(setup["runner"].calls) == calls + 1  # semantic final reread only
 
 
-@pytest.mark.parametrize("replace_inode", [False, True])
-def test_retirement_freezes_destroyed_state_until_publication(setup, replace_inode):
-    state = setup["paths"]["state_path"]
+def test_retirement_freezes_destroyed_state_until_publication(setup):
     before = setup["paths"]["sops_file"].read_bytes()
 
     def mutate(phase):
         if phase != "before-publish":
             return
-        payload = state.read_bytes()
-        if replace_inode:
-            _private(setup["root"] / "state-replacement.json", payload).replace(state)
-        else:
-            value = json.loads(payload)
-            value["serial"] += 1
-            state.write_bytes(_canonical(value))
+        value = json.loads(SERVED["state"])
+        value["serial"] += 1
+        SERVED["state"] = _canonical(value)
 
     with pytest.raises(_load().RetirementError, match="retirement-input"):
         _run(setup, failpoint=mutate)
@@ -852,10 +851,11 @@ def test_retirement_refuses_any_onboarding_output(setup, artifact):
         "hostname",
         "server",
         "storage",
-        "state-path",
         "state-digest",
         "state-version",
         "state-nonempty",
+        "state-empty",
+        "state-pull-failed",
     ],
 )
 def test_retirement_refuses_target_or_state_mismatch(setup, case):
@@ -889,11 +889,6 @@ def test_retirement_refuses_target_or_state_mismatch(setup, case):
             "inventory_alias"
         ] = "other-host"
         setup["paths"]["intent_path"].write_bytes(_canonical(setup["intent"]))
-    elif case == "state-path":
-        other = _private(
-            setup["root"] / "other.tfstate", setup["paths"]["state_path"].read_bytes()
-        )
-        setup["paths"]["state_path"] = other
     elif case == "state-digest":
         setup["manifest"]["state"]["sha256"] = "d" * 64
         setup["paths"]["cleanup_manifest_path"].write_bytes(
@@ -906,12 +901,14 @@ def test_retirement_refuses_target_or_state_mismatch(setup, case):
             _canonical(setup["absence"])
         )
     elif case == "state-version":
-        setup["paths"]["state_path"].write_bytes(
-            _canonical({"version": 3, "outputs": {}, "resources": []})
-        )
+        SERVED["state"] = _canonical({"version": 3, "outputs": {}, "resources": []})
+    elif case == "state-empty":
+        SERVED["state"] = None
+    elif case == "state-pull-failed":
+        SERVED["state"] = _load().tofu_state.StateError("state-pull-failed")
     else:
-        setup["paths"]["state_path"].write_bytes(
-            _canonical({"version": 4, "resources": [{"mode": "managed"}]})
+        SERVED["state"] = _canonical(
+            {"version": 4, "resources": [{"mode": "managed"}]}
         )
     before = setup["paths"]["sops_file"].read_bytes()
     with pytest.raises(
@@ -962,7 +959,6 @@ def test_retirement_refuses_noncanonical_absence_timeline(
         "intent_path",
         "cleanup_manifest_path",
         "absence_evidence_path",
-        "state_path",
         "sops_file",
     ],
 )
@@ -1382,8 +1378,6 @@ def test_cli_and_make_never_emit_secret_values(setup, monkeypatch, capsys):
         str(setup["paths"]["cleanup_manifest_path"]),
         "--absence-evidence",
         str(setup["paths"]["absence_evidence_path"]),
-        "--state",
-        str(setup["paths"]["state_path"]),
         "--sops-file",
         str(setup["paths"]["sops_file"]),
         "--journal",
@@ -1420,8 +1414,6 @@ def test_cli_redacts_unexpected_dependency_failure(setup, monkeypatch, capsys):
             str(setup["paths"]["cleanup_manifest_path"]),
             "--absence-evidence",
             str(setup["paths"]["absence_evidence_path"]),
-            "--state",
-            str(setup["paths"]["state_path"]),
             "--sops-file",
             str(setup["paths"]["sops_file"]),
             "--journal",
@@ -1444,7 +1436,6 @@ def _make_args(intent: str = "/private/i") -> list[str]:
         f"UNBOUND_STAGING_INTENT={intent}",
         "STAGING_CLEANUP_MANIFEST=/private/a",
         "STAGING_POST_DESTROY_EVIDENCE=/private/b",
-        "STAGING_CLEANUP_STATE=/private/c",
         "SOPS_FILE=/private/d",
         "UNBOUND_CLIENT_JOURNAL=/private/e",
         "UNBOUND_CLIENT_RECEIPT=/private/f",
@@ -1457,7 +1448,6 @@ def _make_args(intent: str = "/private/i") -> list[str]:
         "UNBOUND_STAGING_INTENT",
         "STAGING_CLEANUP_MANIFEST",
         "STAGING_POST_DESTROY_EVIDENCE",
-        "STAGING_CLEANUP_STATE",
         "SOPS_FILE",
         "UNBOUND_CLIENT_JOURNAL",
         "UNBOUND_CLIENT_RECEIPT",
@@ -1488,7 +1478,6 @@ def test_make_boundary_keeps_every_operator_path_literal(tmp_path: Path, field: 
         "UNBOUND_STAGING_INTENT",
         "STAGING_CLEANUP_MANIFEST",
         "STAGING_POST_DESTROY_EVIDENCE",
-        "STAGING_CLEANUP_STATE",
         "SOPS_FILE",
         "UNBOUND_CLIENT_JOURNAL",
         "UNBOUND_CLIENT_RECEIPT",
@@ -1601,8 +1590,6 @@ def test_make_target_forwards_only_documented_literal_paths(tmp_path: Path):
         "/private/a",
         "--absence-evidence",
         "/private/b",
-        "--state",
-        "/private/c",
         "--sops-file",
         "/private/d",
         "--journal",
