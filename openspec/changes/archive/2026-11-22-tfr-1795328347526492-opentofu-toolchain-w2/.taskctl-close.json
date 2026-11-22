@@ -1,0 +1,11 @@
+{
+  "change": "tfr-1795328347526492-opentofu-toolchain-w2",
+  "evidence_summary": "OpenTofu 1.13.9 pinned everywhere (PR 682, 79 CI checks passed); all four production roots plan with no changes on 2026-11-22 (PR 684)",
+  "execution_sha256": "b4ae18ce83d573b1fdadce2d241bf775f3ef27a7610bbc5877da0a5d52460511",
+  "issue_sha256": "9514ab84f365270e06b90a90b0f09a3a7811df1e7a9e8414520102af14899537",
+  "outcome": "done",
+  "prepared_at": "2026-11-22T11:51:12Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "TFR-1795328347526492"
+}

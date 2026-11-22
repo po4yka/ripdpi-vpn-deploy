@@ -2,7 +2,7 @@
 id: TFR-1795328347526492
 title: Migrate the Terraform toolchain to OpenTofu
 kind: feature
-status: review
+status: done
 area: terraform
 priority: high
 risk: high
@@ -14,6 +14,9 @@ openspec_change: tfr-1795328347526492-opentofu-toolchain-w2
 created: 2026-11-22
 updated: 2026-11-22
 related_tasks: []
+closed_at: "2026-11-22T11:51:12Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: OpenTofu 1.13.9 pinned everywhere (PR 682, 79 CI checks passed); all four production roots plan with no changes on 2026-11-22 (PR 684)
 ---
 
 ## Goal
