@@ -2,13 +2,13 @@
 mock_provider "upcloud" {}
 
 variables {
-  server_name          = "vpn-test"
-  zone                 = "fi-hel1"
-  plan                 = "1xCPU-2GB"
-  storage_template     = "01000000-0000-4000-8000-000020030200"
-  admin_ssh_public_key = "ssh-ed25519 AAAATESTKEY test@harness"
-  allowed_ssh_cidrs    = ["203.0.113.42/32", "2001:db8::42/128"]
-  public_listeners     = [{ name = "xray", protocol = "tcp", port = 443 }]
+  server_name           = "vpn-test"
+  zone                  = "fi-hel1"
+  plan                  = "1xCPU-2GB"
+  storage_template      = "01000000-0000-4000-8000-000020030200"
+  admin_ssh_public_keys = ["ssh-ed25519 AAAATESTKEY test@harness"]
+  allowed_ssh_cidrs     = ["203.0.113.42/32", "2001:db8::42/128"]
+  public_listeners      = [{ name = "xray", protocol = "tcp", port = 443 }]
 }
 
 

@@ -53,7 +53,7 @@ state must not invoke provider detach.
   `hcloud_ssh_key` resource referenced by ID; UpCloud has no key resource and
   inlines the public key through `login.keys`.
 - **One operator key per environment** — a project keeps one SSH key per
-  fingerprint, so a second environment with the same `admin_ssh_public_key`
+  fingerprint, so a second environment with the same first `admin_ssh_public_keys` entry
   fails at apply. Give each environment its own key pair; blue-green refuses a
   green tfvars that repeats the blue key before the green plan. Reusing a named
   key is not possible here: the server's replace triggers need this root's key

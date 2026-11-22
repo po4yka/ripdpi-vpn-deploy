@@ -242,7 +242,7 @@ if [[ "$PROVIDER" == hetzner ]]; then
 import re
 import sys
 
-pattern = re.compile(r'^\s*admin_ssh_public_key\s*=\s*"([^"]*)"', re.MULTILINE)
+pattern = re.compile(r'^\s*admin_ssh_public_keys\s*=\s*\[\s*"([^"]*)"', re.MULTILINE)
 keys = []
 for path in sys.argv[1:]:
     try:
@@ -253,7 +253,7 @@ for path in sys.argv[1:]:
     keys.append(" ".join(match.group(1).split()[:2]) if match else None)
 if keys[0] is not None and keys[0] == keys[1]:
     sys.exit("Hetzner keeps one SSH key per fingerprint in a project: set a separate "
-             f"admin_ssh_public_key (a new operator key pair) in {sys.argv[2]}")
+             f"admin_ssh_public_keys first entry (a new operator key pair) in {sys.argv[2]}")
 PY
 fi
 

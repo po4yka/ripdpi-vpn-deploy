@@ -401,7 +401,7 @@ def execute(config, args, work, artifact, *, runtime_factory=Runtime, enrollment
         from tailnet_management import validate_sources
         sources = validate_sources(sources)
         values = {"server_name": alias, "zone": args.zone, "plan": "1xCPU-2GB", "storage_template": config["templates"][args.distro],
-                  "admin_ssh_public_key": (work / "admin.pub").read_text().strip(), "allowed_ssh_cidrs": [public_source + "/32"],
+                  "admin_ssh_public_keys": [(work / "admin.pub").read_text().strip()], "allowed_ssh_cidrs": [public_source + "/32"],
                   "build_env": environment, "enable_backups": False, "additional_public_ip": False,
                   "enable_provider_firewall": False, "public_listeners": listeners(args.profile),
                   "ci_ssh_seed": {"image_path": seed["image_path"], "image_sha256": seed["image_sha256"],

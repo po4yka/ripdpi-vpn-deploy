@@ -13,13 +13,13 @@ mock_provider "hcloud" {
 }
 
 variables {
-  server_name          = "vpn-test"
-  location             = "hel1"
-  server_type          = "cpx22"
-  image                = "debian-13"
-  admin_ssh_public_key = "ssh-ed25519 AAAATESTKEY test@harness"
-  allowed_ssh_cidrs    = ["203.0.113.42/32"]
-  build_env            = "test"
+  server_name           = "vpn-test"
+  location              = "hel1"
+  server_type           = "cpx22"
+  image                 = "debian-13"
+  admin_ssh_public_keys = ["ssh-ed25519 AAAATESTKEY test@harness"]
+  allowed_ssh_cidrs     = ["203.0.113.42/32"]
+  build_env             = "test"
   public_listeners = [
     { name = "xray", protocol = "tcp", port = 443 },
     { name = "xray-fallback", protocol = "tcp", port = 2053 },
@@ -50,5 +50,34 @@ run "unchanged_identity" {
   assert {
     condition     = hcloud_server.vpn.id != ""
     error_message = "Unchanged administrator identity must retain the node."
+  }
+}
+
+# A migrated tfvars file lists the existing key alone; the plan must not touch the node.
+run "single_key_list_keeps_node" {
+  command = plan
+
+  variables {
+    admin_ssh_public_keys = ["ssh-ed25519 AAAATESTKEY test@harness"]
+  }
+
+  assert {
+    condition     = hcloud_server.vpn.id != ""
+    error_message = "A single-entry key list must retain the node."
+  }
+}
+
+# Adding a key (for example the CI key) after the first entry updates cloud-init and
+# baseline only. The provider receives the first key, so the node stays.
+run "second_key_keeps_node" {
+  command = plan
+
+  variables {
+    admin_ssh_public_keys = ["ssh-ed25519 AAAATESTKEY test@harness", "ssh-ed25519 AAAACIKEY ci@harness"]
+  }
+
+  assert {
+    condition     = hcloud_server.vpn.id != ""
+    error_message = "Adding a second key must retain the node."
   }
 }

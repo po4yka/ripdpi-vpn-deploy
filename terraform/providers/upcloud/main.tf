@@ -1,7 +1,7 @@
 locals {
   base_user_data = templatefile("${path.module}/../../shared/cloud-init.yaml.tftpl", {
     admin_user                  = var.admin_user
-    admin_ssh_public_key        = var.admin_ssh_public_key
+    admin_ssh_public_keys       = var.admin_ssh_public_keys
     ssh_port                    = var.ssh_port
     build_env                   = var.build_env
     bootstrap_ssh_ownership_b64 = filebase64("${path.module}/../../shared/bootstrap-sshd-ownership.py")
@@ -115,7 +115,7 @@ resource "upcloud_server" "vpn" {
 
   login {
     user            = var.admin_user
-    keys            = [var.admin_ssh_public_key]
+    keys            = [var.admin_ssh_public_keys[0]]
     create_password = false
   }
 
