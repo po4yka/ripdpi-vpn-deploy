@@ -24,7 +24,7 @@ artifact_evidence: No release artifact.
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-TOFU-PIN | TFR-1795328401186589 | `tests/unit/test_workflow_terraform_version.py`; stub-only `PATH` script tests | passed: pin test and stub-only PATH tests green in CI |
-| REQ-TOFU-LOCKS | TFR-1795328413365163 | `tofu init` on a clean checkout in CI | passed: tofu init -lockfile=readonly in CI and locally |
-| REQ-TOFU-CHECKS | TFR-1795328425689060 | `make tf-test`, `make tf-policy-verify`, `make tf-conftest` | passed: tofu test 91/61/80/55, tf-policy-verify, tf-conftest |
-| REQ-TOFU-STATE-COMPAT | TFR-1795328448740009 | no-change plan receipts per root in the ops repository | passed: four production roots No changes (2026-11-22) |
+| REQ-TOFU-PIN | TFR-1795328401186589 | `tests/unit/test_workflow_terraform_version.py`; stub-only `PATH` script tests; pin test and stub-only PATH tests green in CI | passed |
+| REQ-TOFU-LOCKS | TFR-1795328413365163 | `tofu init` on a clean checkout in CI; tofu init -lockfile=readonly in CI and locally | passed |
+| REQ-TOFU-CHECKS | TFR-1795328425689060 | `make tf-test`, `make tf-policy-verify`, `make tf-conftest`; tofu test 91/61/80/55, tf-policy-verify, tf-conftest | passed |
+| REQ-TOFU-STATE-COMPAT | TFR-1795328448740009 | private kit receipt receipts/opentofu-w2-20261122/final-read-only-plans.json; four production roots No changes (2026-11-22) | passed |
