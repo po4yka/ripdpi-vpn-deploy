@@ -25,7 +25,8 @@ def execute(directory, *arguments):
         key: value for key, value in os.environ.items()
         if key in {"PATH", "HOME", "TMPDIR", "TF_PLUGIN_CACHE_DIR"}
     }
-    environment.update(TF_IN_AUTOMATION="1", CHECKPOINT_DISABLE="1")
+    environment.update(TF_IN_AUTOMATION="1", CHECKPOINT_DISABLE="1",
+                       TF_VAR_state_passphrase="tf-test-passphrase-not-a-secret")
     environment["TF_CLI_CONFIG_FILE"] = str(directory / "test-provider-installation.tfrc")
     return subprocess.run(
         ["tofu", *arguments], cwd=directory, env=environment,

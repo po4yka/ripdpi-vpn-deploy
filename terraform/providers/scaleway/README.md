@@ -61,6 +61,7 @@ No modules.
 | <a name="input_server_name"></a> [server\_name](#input\_server\_name) | Hostname / Terraform name of the VPS. | `string` | n/a | yes |
 | <a name="input_server_type"></a> [server\_type](#input\_server\_type) | Scaleway Instance commercial type. | `string` | n/a | yes |
 | <a name="input_ssh_port"></a> [ssh\_port](#input\_ssh\_port) | Effective SSH listener port configured by cloud-init and opened at the provider edge. | `number` | `22` | no |
+| <a name="input_state_passphrase"></a> [state\_passphrase](#input\_state\_passphrase) | State and plan encryption passphrase, from TF\_VAR\_state\_passphrase only. | `string` | n/a | yes |
 | <a name="input_use_legacy_public_listeners"></a> [use\_legacy\_public\_listeners](#input\_use\_legacy\_public\_listeners) | Opt-in to the historical implicit listener set when public\_listeners is empty. New environments must define public\_listeners explicitly; an empty effective contract fails the plan. | `bool` | `false` | no |
 | <a name="input_zone"></a> [zone](#input\_zone) | Scaleway Availability Zone. | `string` | n/a | yes |
 
