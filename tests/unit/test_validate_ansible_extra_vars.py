@@ -414,3 +414,20 @@ def test_accepts_the_self_steal_site_and_the_tls_identity_record(tmp_path: Path)
 def test_rejects_malformed_tls_identity_inputs(tmp_path: Path, document: dict, message: str) -> None:
     with pytest.raises(ValueError, match=message):
         validator.validate(write_yaml(tmp_path, document))
+
+
+@pytest.mark.parametrize("families,accepted", [
+    ({"nginx-xhttp": "ipv4", "hysteria": "dual"}, True),
+    ({"xray": "ipv6"}, True),
+    ({"nginx-xhttp": "ipv5"}, False),
+    ({"Nginx XHTTP": "ipv4"}, False),
+    ({"nginx-xhttp": None}, False),
+    (["nginx-xhttp"], False),
+])
+def test_listener_families_state_only_known_families(tmp_path, families, accepted):
+    path = write_yaml(tmp_path, {"public_listener_families": families})
+    if accepted:
+        validator.validate(path)
+    else:
+        with pytest.raises(ValueError):
+            validator.validate(path)

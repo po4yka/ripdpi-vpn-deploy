@@ -25,6 +25,7 @@ ALLOWED_KEYS = {
     "nginx_xhttp_public_site_dir",
     "reality_self_steal_public_site_dir",
     "hysteria_public_site_dir",
+    "public_listener_families",
     "reality_target_network",
     "tls_identity_exception",
     "network_exposure_gate",
@@ -40,6 +41,7 @@ LIVENESS_SENTINEL_AWG_FILES = {
     "liveness_sentinel_awg_go_vendor_archive",
 }
 ALLOWED_KEYS |= LIVENESS_SENTINEL_AWG_FILES | {f"{name}_sha256" for name in LIVENESS_SENTINEL_AWG_FILES}
+LISTENER_ROLE = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
 DNS_NAME = re.compile(
     r"(?=^.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*"
     r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
@@ -171,6 +173,14 @@ def validate(path: Path) -> None:
     for name in ("nginx_xhttp_public_site_dir", "reality_self_steal_public_site_dir", "hysteria_public_site_dir"):
         if name in document:
             read_site(document[name])
+
+    if "public_listener_families" in document:
+        # The runtime side of a Terraform listener `family`; check-listener-contract compares the two.
+        families = document["public_listener_families"]
+        if (not isinstance(families, dict) or len(families) > 32
+                or any(not isinstance(role, str) or LISTENER_ROLE.fullmatch(role) is None
+                       or family not in ("ipv4", "ipv6", "dual") for role, family in families.items())):
+            raise ValueError("public_listener_families must map listener roles to ipv4, ipv6 or dual")
 
     if document.get("reality_target_network", "") not in ("", "same_asn", "different_asn", "unknown"):
         raise ValueError("reality_target_network must be same_asn, different_asn or unknown")
