@@ -80,7 +80,7 @@ def read_bundle(path):
         assert set(archive.getnames()) == {
             "vpnd-version.txt",
             "uname.txt",
-            "terraform-version.txt",
+            "tofu-version.txt",
             "ansible-version.txt",
             "audit-log.txt",
             "doctor-report.md",
@@ -179,7 +179,7 @@ def test_bundle_contains_real_tool_evidence_and_redacts_every_member(
     assert entries["vpnd-version.txt"] == "vpnd " + version() + "\n"
     assert entries["uname.txt"] == "uname evidence\n" + (doctor.MARKER + "\n") * 2
     assert entries["ansible-version.txt"] == "ansible evidence\n" + (doctor.MARKER + "\n") * 2
-    assert entries["terraform-version.txt"].startswith("(terraform unavailable: ")
+    assert entries["tofu-version.txt"].startswith("(tofu unavailable: ")
     assert entries["doctor-report.md"] == "report evidence\n" + (doctor.MARKER + "\n") * 2
     assert events.read_text().splitlines() == ["audit-log"]
     if audit_failure:
@@ -342,12 +342,12 @@ def test_bundle_runs_terraform_with_version_flag(controlled, tmp_path):
     ctx, binary, _, _ = controlled
     executable(
         binary,
-        "terraform",
+        "tofu",
         "import sys\nprint('terraform evidence' if sys.argv[1:] == ['--version'] else 'wrong args')\n",
     )
     path = tmp_path / "bundle.tar.gz"
     asyncio.run(doctor.write_bundle(ctx, "report\n", path))
-    assert read_bundle(path)["terraform-version.txt"] == "terraform evidence\n"
+    assert read_bundle(path)["tofu-version.txt"] == "terraform evidence\n"
 
 
 def test_every_step_failing_to_start_is_counted_and_rendered(controlled, capsys):

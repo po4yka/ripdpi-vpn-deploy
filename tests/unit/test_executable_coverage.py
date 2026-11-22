@@ -70,9 +70,9 @@ def test_native_and_go_lanes_remain_executable_and_dependency_gated():
         (ROOT / ".github/actions/setup-disposable-ci/action.yml").read_text()
     )
     terraform = next(
-        s for s in setup["runs"]["steps"] if "setup-terraform@" in s.get("uses", "")
+        s for s in setup["runs"]["steps"] if "setup-opentofu@" in s.get("uses", "")
     )
-    assert terraform["with"]["terraform_wrapper"] is False
+    assert terraform["with"]["tofu_wrapper"] is False
     ech_step = next(step["run"] for step in native if "make test-hysteria-ech-runtime" in step.get("run", ""))
     assert "PATH=$PATH" in shlex.split(ech_step.replace("\\\n", ""))
     complete = next(step for step in native if step.get("name") == "Execute native tests with UID and GID capabilities")

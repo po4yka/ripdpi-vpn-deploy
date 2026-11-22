@@ -95,7 +95,7 @@ def test_invalid_expiry_fails_before_remote_or_terraform(tmp_path: Path) -> None
     env, _payload, _meta = _issuer_env(tmp_path)
     bin_dir = tmp_path / "bin"
     marker = tmp_path / "called"
-    for command in ("terraform", "ssh"):
+    for command in ("tofu", "ssh"):
         _write_executable(bin_dir / command, f"#!/bin/sh\ntouch {marker}\nexit 99\n")
     before = Path(env['SOPS_FILE']).read_bytes()
     result = subprocess.run(

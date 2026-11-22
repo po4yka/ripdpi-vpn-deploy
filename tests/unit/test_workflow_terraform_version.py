@@ -1,40 +1,53 @@
-"""Verify that Terraform workflows use the supported pinned release."""
+"""Every infrastructure CLI install and root names one exact OpenTofu release."""
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
-WORKFLOW_DIR = REPO_ROOT / ".github" / "workflows"
-SETUP_TERRAFORM = "hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e"
-SUPPORTED_VERSION = "1.15.9"
-WORKFLOWS = ("ci.yml", "real-vps-deploy.yml", "transport-reachability-matrix.yml")
+SETUP_OPENTOFU = "opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4"
+SUPPORTED_VERSION = "1.13.9"
+LINUX_AMD64_SHA256 = "bc44eb6b06446ba83bd4072114891987f590f66cca712737a7f1147c50c539ce"
+INSTALLERS = (
+    ".github/workflows/ci.yml",
+    ".github/workflows/tf-policy.yml",
+    ".github/actions/setup-disposable-ci/action.yml",
+)
 
 
-def terraform_version(workflow: str) -> str:
-    content = (WORKFLOW_DIR / workflow).read_text()
-    if SETUP_TERRAFORM not in content:
-        assert "./.github/workflows/ci-disposable-deploy.yml" in content
-        shared = (WORKFLOW_DIR / "ci-disposable-deploy.yml").read_text()
-        assert "./.github/actions/setup-disposable-ci" in shared
-        content = (REPO_ROOT / ".github/actions/setup-disposable-ci/action.yml").read_text()
-    assert SETUP_TERRAFORM in content
-    match = re.search(r'terraform_version:\s*"([^"]+)"', content)
-    assert match, f"{workflow} must declare terraform_version"
-    return match.group(1)
+def setup_steps(path: str) -> list[dict]:
+    document = yaml.safe_load((REPO_ROOT / path).read_text())
+    jobs = document.get("jobs", {}).values() if "jobs" in document else [document["runs"]]
+    return [step for job in jobs for step in job.get("steps", []) if "setup-" in step.get("uses", "")]
 
 
-def test_terraform_workflows_use_the_supported_pinned_release():
-    """Reachability measurements must run against provider-supported Terraform."""
-    versions = {workflow: terraform_version(workflow) for workflow in WORKFLOWS}
+def test_every_installer_pins_one_checksummed_opentofu_release():
+    pins = {}
+    for path in INSTALLERS:
+        steps = [step for step in setup_steps(path) if step["uses"].startswith("opentofu/setup-opentofu@")]
+        assert steps, f"{path} must install OpenTofu"
+        for step in steps:
+            assert step["uses"] == SETUP_OPENTOFU, path
+            assert step["with"]["tofu_wrapper"] is False, path
+            assert step["with"]["checksums"] == LINUX_AMD64_SHA256, path
+            pins[path] = step["with"]["tofu_version"]
+    mise = re.search(r'^opentofu = "([^"]+)"$', (REPO_ROOT / "mise.toml").read_text(), re.MULTILINE)
+    assert mise, "mise.toml must pin opentofu"
+    pins["mise.toml"] = mise[1]
+    assert set(pins.values()) == {SUPPORTED_VERSION}, pins
 
-    assert set(versions.values()) == {SUPPORTED_VERSION}
+
+def test_no_installer_or_tool_pin_selects_terraform():
+    for path in INSTALLERS:
+        assert all("setup-terraform" not in step["uses"] for step in setup_steps(path)), path
+    assert not re.search(r"^terraform\s*=", (REPO_ROOT / "mise.toml").read_text(), re.MULTILINE)
 
 
-def test_transport_workflow_does_not_override_setup_terraform():
-    """The legacy manual download would replace the supported Terraform binary."""
-    content = (WORKFLOW_DIR / "transport-reachability-matrix.yml").read_text()
-
-    assert "releases.hashicorp.com/terraform/" not in content
-    assert "terraform_1.9.5" not in content
+def test_every_root_requires_the_pinned_release():
+    roots = sorted(REPO_ROOT.glob("terraform/**/versions.tf"))
+    assert roots
+    for versions in roots:
+        assert f'required_version = "{SUPPORTED_VERSION}"' in versions.read_text(), versions

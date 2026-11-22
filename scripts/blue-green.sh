@@ -75,14 +75,14 @@ if (( DRY_RUN )); then
 
   1/8  Verify blue health  (sops --decrypt, make verify) — read-only
   2/8  Bootstrap green tfvars if missing  (scripts/new-cohort.sh)
-  3/8  terraform plan via workspace wrapper: PROVIDER=${PROVIDER} ENV=${GREEN_ENV} scripts/terraform-env.sh plan -var-file=environments/${GREEN_ENV}.tfvars, then apply after a typed yes
+  3/8  tofu plan via workspace wrapper: PROVIDER=${PROVIDER} ENV=${GREEN_ENV} scripts/terraform-env.sh plan -var-file=environments/${GREEN_ENV}.tfvars, then apply after a typed yes
   4/8  Establish pinned SSH + Tailnet ownership; review DEVICE_MIGRATION_PLAN and approve its exact digest; device-migration prepare, then decrypt separate GREEN_SOPS_FILE; make dry-run (--check) and, after a typed yes, deploy for the exact green alias
   5/8  make verify and smoke-test for the exact green alias, then device-migration publish through unchanged subscription URLs
   6/8  Operator origin pivot and explicit per-device receipt/attestation — manual step
   7/8  device-migration ready must pass before drain guidance; retain blue while evidence is incomplete
   8/8  Retain green's provider/environment identity for migrated devices
 
-[dry-run] no terraform apply, no ansible changes, no audit-log writes, no sops mutations
+[dry-run] no tofu apply, no ansible changes, no audit-log writes, no sops mutations
 EOF
   exit 0
 fi

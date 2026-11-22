@@ -108,7 +108,7 @@ mise exec "${setup_gate_tools[@]}" -- ansible-galaxy collection install \
   -r requirements.yml --collections-path "$ANSIBLE_COLLECTIONS_PATH"
 mise exec "${setup_gate_tools[@]}" -- make task-tools
 for setup_provider in $(printf '%s' "$setup_providers" | tr ',' ' '); do
-  mise exec "${setup_gate_tools[@]}" -- terraform \
+  mise exec "${setup_gate_tools[@]}" -- tofu \
     -chdir="terraform/providers/$setup_provider" init -backend=false
 done
 mise exec "${setup_gate_tools[@]}" -- make check-prereqs

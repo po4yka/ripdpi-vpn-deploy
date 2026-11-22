@@ -15,7 +15,7 @@ def test_recovery_plan_requires_admission_before_first_deploy(tmp_path, path):
     binary = tmp_path / "bin"
     binary.mkdir()
     marker = tmp_path / "side-effect"
-    for name in ("make", "ssh", "terraform", "sops", "age", "restic"):
+    for name in ("make", "ssh", "tofu", "sops", "age", "restic"):
         stub = binary / name
         stub.write_text(f"#!/bin/sh\ntouch '{marker}'\nexit 77\n")
         stub.chmod(0o700)

@@ -346,7 +346,7 @@ def test_orchestration_requires_deploy_and_verified_cleanup(tmp_path, monkeypatc
 
         class ResumeRuntime(BoundaryRuntime):
             def run(self, command, **kwargs):
-                if list(command) == ["pgrep", "-x", "terraform"]:
+                if list(command) == ["pgrep", "-x", "tofu"]:
                     calls.append(list(command))
                     if running[0]:
                         return b"4242\n"
@@ -360,7 +360,7 @@ def test_orchestration_requires_deploy_and_verified_cleanup(tmp_path, monkeypatc
         calls.clear()
         resumed = MODULE.resume_cleanup(work.resolve(), runtime_factory=ResumeRuntime)
         assert resumed["status"] == "provider-cleanup-confirmed"
-        assert calls == [["pgrep", "-x", "terraform"], ["make", "staging-destroy"]]
+        assert calls == [["pgrep", "-x", "tofu"], ["make", "staging-destroy"]]
         assert not override.exists()
         assert not marker.exists()
 

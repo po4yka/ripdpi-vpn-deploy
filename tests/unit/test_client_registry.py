@@ -572,9 +572,9 @@ def test_bootstrap_issuer_shows_usage_for_the_help_flag(tmp_path):
 @pytest.mark.parametrize("output", ["admin_user", "server_hostname"])
 def test_bootstrap_issuer_stops_when_a_terraform_output_read_fails(tmp_path, output):
     env, payload_file, ssh_marker, _ = _harness(tmp_path)
-    real = STUBS_BIN / "terraform"
+    real = STUBS_BIN / "tofu"
     _write_executable(
-        tmp_path / "bin/terraform",
+        tmp_path / "bin/tofu",
         f'#!/bin/sh\ncase "$*" in *"output -raw {output}") echo "state unreadable" >&2; exit 1 ;; esac\nexec "{real}" "$@"\n',
     )
     result = subprocess.run(

@@ -137,7 +137,7 @@ One authorization step validates the same manifest/state inodes and bytes, reche
 
 An apply that started before the hard deadline may finish read-only provider absence verification after expiry, but evidence is then explicitly `verified_after_expiry` / `expired_after_apply`; an expired reserved operation cannot begin or query resources.
 
-The binary plan is created under the same private directory with `umask 077`, opened once, unlinked, and passed through the same inherited file descriptor to both `terraform show` and `terraform apply`. The applied inode is therefore the one whose JSON view passed the guard; no worktree pathname remains available for substitution or disclosure between validation and apply.
+The binary plan is created under the same private directory with `umask 077`, opened once, unlinked, and passed through the same inherited file descriptor to both `tofu show` and `tofu apply`. The applied inode is therefore the one whose JSON view passed the guard; no worktree pathname remains available for substitution or disclosure between validation and apply.
 
 ```bash
 PROVIDER=upcloud ENV=ci-staging-<run> \

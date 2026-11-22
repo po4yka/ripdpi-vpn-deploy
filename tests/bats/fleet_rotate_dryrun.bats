@@ -4,7 +4,7 @@
 # Verifies that --dry-run exits 0 and is hermetic:
 #   - plan id appears in output
 #   - both rotation entries (upcloud, hetzner) appear in output
-#   - STUB_LOG has no terraform apply, sops --encrypt, gh release create,
+#   - STUB_LOG has no tofu apply, sops --encrypt, gh release create,
 #     or audit-log entries
 
 load 'test_helper/bats-support/load'
@@ -49,10 +49,10 @@ _run_dry() {
   assert_output --partial "hetzner"
 }
 
-@test "dry-run STUB_LOG has no terraform apply" {
+@test "dry-run STUB_LOG has no tofu apply" {
   _run_dry
   if [[ -s "${STUB_LOG}" ]]; then
-    run grep -F "terraform apply" "${STUB_LOG}"
+    run grep -F "tofu apply" "${STUB_LOG}"
     assert_failure
   fi
 }

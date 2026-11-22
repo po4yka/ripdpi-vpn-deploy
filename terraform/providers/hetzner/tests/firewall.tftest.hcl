@@ -10,7 +10,17 @@
 # machine-verifies this property: it checks that no SSH rule lists 0.0.0.0/0
 # or ::/0 as a source, which would defeat the implicit default-deny for port 22.
 
-mock_provider "hcloud" {}
+mock_provider "hcloud" {
+  mock_resource "hcloud_server" {
+    defaults = { id = "1001", ipv4_address = "203.0.113.10", ipv6_address = "2001:db8::10" }
+  }
+  mock_resource "hcloud_firewall" {
+    defaults = { id = "2001" }
+  }
+  mock_resource "hcloud_ssh_key" {
+    defaults = { id = "3001" }
+  }
+}
 
 variables {
   server_name          = "vpn-test"

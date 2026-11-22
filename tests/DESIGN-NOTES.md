@@ -837,9 +837,11 @@ Runtime acceptance has a separate canonical-role Linux lab. It uses exact checks
   explicitly registered in the exact executable-coverage assertion.
 
 - **Provider identity tests retain real mock state** — native lifecycle tests
-  include positive unchanged plans; the subprocess harness shares legacy/current
-  state, asserts safe attachment forgetting and exact identity refusal, including
-  first adoption. `make tf-test` runs that harness explicitly; no synthetic
+  include positive unchanged plans; the subprocess harness asserts exact identity
+  refusal and newline-tolerant keys. Its pre-guard migration cases were retired
+  with the OpenTofu move: `tofu test` has no `state_key`, so one run cannot
+  switch configurations and keep state, and every live state already carries
+  the guards. `make tf-test` runs that harness explicitly; no synthetic
   provider result is live resource or guest proof. Policy tests execute real
   Conftest, while operator gate tests cover private snapshot reuse and cleanup.
 

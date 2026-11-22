@@ -225,6 +225,8 @@ class SavedPlan:
     def path(self) -> str:
         if self._closed:
             raise PromotionError("provider-plan-closed")
+        # Darwin /dev/fd shares this offset, and OpenTofu reads the plan sequentially.
+        os.lseek(self.fd, 0, os.SEEK_SET)
         return (
             "/dev/fd/" if platform.system() == "Darwin" else "/proc/self/fd/"
         ) + str(self.fd)
@@ -294,7 +296,7 @@ class TrustedTerraform:
         root retains the FD/digest trust chain without relying on PATH state.
         """
         self.verify()
-        path = root / "terraform"
+        path = root / "tofu"
         fd = os.open(
             path,
             os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0),
@@ -898,7 +900,7 @@ class TerraformAdapter:
                 "PATH": binary_directory + ":/usr/bin:/bin:/usr/sbin:/sbin",
             }
             return _bounded(
-                [str(Path(binary_directory) / "terraform"), *command],
+                [str(Path(binary_directory) / "tofu"), *command],
                 environment,
                 pass_fds=pass_fds,
             )

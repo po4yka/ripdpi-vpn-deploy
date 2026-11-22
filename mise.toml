@@ -17,8 +17,9 @@
 [tools]
 # Compiled MTProxy helper; same exact toolchain in required CI.
 go = "1.27.3"
-# hashicorp/setup-terraform@v4 with terraform_version: "1.15.9" in ci.yml
-terraform = "1.15.9"
+# opentofu/setup-opentofu with tofu_version: "1.13.9" in ci.yml, tf-policy.yml
+# and .github/actions/setup-disposable-ci.
+opentofu = "1.13.9"
 
 # Checksum-pinned version in .github/workflows/tf-policy.yml.
 conftest = "0.57.0"

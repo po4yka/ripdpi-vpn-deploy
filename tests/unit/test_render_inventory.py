@@ -54,7 +54,7 @@ def _build_terraform_stub(bin_dir: Path, fixture: Path) -> None:
     fixture_path = str(fixture)
     body = f"""
 STUB_LOG="${{STUB_LOG:-/dev/null}}"
-printf 'STUB: terraform %s\\n' "$*" >> "${{STUB_LOG}}"
+printf 'STUB: tofu %s\\n' "$*" >> "${{STUB_LOG}}"
 
 FIXTURE="{fixture_path}"
 
@@ -103,7 +103,7 @@ case "${{1:-}}" in
     ;;
 esac
 """
-    _make_stub(bin_dir, "terraform", body)
+    _make_stub(bin_dir, "tofu", body)
 
 
 @pytest.mark.parametrize("provider_firewall,nat_range,valid", [
@@ -748,9 +748,9 @@ def test_unknown_cohort_fails_before_terraform_and_preserves_inventory(tmp_path,
 def test_failed_optional_address_read_stops_before_the_inventory_changes(tmp_path):
     root, env = _isolated_inventory_repo(tmp_path)
     bindir = tmp_path / "bin"
-    (bindir / "terraform").rename(bindir / "terraform.real")
+    (bindir / "tofu").rename(bindir / "terraform.real")
     # Only the full output listing fails, as it does for an unreadable state.
-    _make_stub(bindir, "terraform",
+    _make_stub(bindir, "tofu",
                'case "$*" in *"output -json") echo "state lock failed" >&2; exit 1 ;; esac\n'
                f'exec "{bindir}/terraform.real" "$@"')
     result = subprocess.run(

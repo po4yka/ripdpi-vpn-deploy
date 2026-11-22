@@ -34,14 +34,14 @@ fi
 
 TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
 [[ -d "$TF_DIR" ]] || { echo "missing Terraform root: $TF_DIR" >&2; exit 2; }
-[[ $# -gt 0 ]] || { echo "usage: $0 <terraform command> [args...]" >&2; exit 2; }
+[[ $# -gt 0 ]] || { echo "usage: $0 <tofu command> [args...]" >&2; exit 2; }
 
 workspace="$ENV"
 [[ "$ENV" == "prod" ]] && workspace="default"
 export TF_DATA_DIR="${TF_DIR}/.terraform-env/${workspace}"
 
 tf() {
-  terraform "-chdir=${TF_DIR}" "$@"
+  tofu "-chdir=${TF_DIR}" "$@"
 }
 
 if [[ "$1" == "init" ]]; then
@@ -65,7 +65,7 @@ if [[ "${VPN_DESTROY_OVERRIDE_OWNER:-}" != "1" ]]; then
     [[ -e "$override" ]] || continue
     case "$1" in
       plan|apply|destroy)
-        echo "refusing terraform $1: ${override} disables prevent_destroy for every ${PROVIDER} environment." >&2
+        echo "refusing tofu $1: ${override} disables prevent_destroy for every ${PROVIDER} environment." >&2
         echo "A destroy is running or crashed. Wait for it, or confirm that no destroy runs and remove the file." >&2
         exit 1
         ;;
@@ -99,4 +99,4 @@ if [[
     VULTR_STAGING_MANIFEST VULTR_STAGING_EVIDENCE
 fi
 
-exec terraform "-chdir=${TF_DIR}" "$@"
+exec tofu "-chdir=${TF_DIR}" "$@"

@@ -17,14 +17,14 @@ python3 "${REPO_ROOT}/scripts/check-cascade-attestation.py" --attestation "$ATTE
 
 # A fresh clone has no .terraform directory; validate/plan would fail with
 # "no package for ... cached". Initialize once instead of failing opaquely.
-# This stays AFTER the attestation gate: no terraform invocation may happen
+# This stays AFTER the attestation gate: no tofu invocation may happen
 # before the check passes.
 if [[ ! -d "${ROOT}/.terraform" ]]; then
-  echo "cascade exception root not initialized; running terraform init" >&2
-  terraform "-chdir=${ROOT}" init -input=false
+  echo "cascade exception root not initialized; running tofu init" >&2
+  tofu "-chdir=${ROOT}" init -input=false
 fi
 
-exec terraform "-chdir=${ROOT}" plan \
+exec tofu "-chdir=${ROOT}" plan \
   -var="exception_confirmation=${CONFIRMATION}" \
   -var="activation_mode=INERT_UNATTESTED" \
   -var="attestation_file=${ATTESTATION}" \

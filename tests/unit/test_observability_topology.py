@@ -314,7 +314,7 @@ case "$key" in
     esac ;;
 esac
 '''
-    _make_stub(bindir / "terraform", terraform)
+    _make_stub(bindir / "tofu", terraform)
     _make_stub(bindir / "ssh", "exit 99")
     _make_stub(
         bindir / "git",
@@ -449,7 +449,7 @@ def test_inventory_scope_refuses_before_terraform(tmp_path: Path, selection: str
     root, env = _inventory_repo(tmp_path)
     env["HOSTS"] = selection
     marker = tmp_path / "provider-called"
-    _make_stub(tmp_path / "bin" / "terraform", f'touch "{marker}"; exit 99')
+    _make_stub(tmp_path / "bin" / "tofu", f'touch "{marker}"; exit 99')
     result = subprocess.run(
         ["bash", str(root / "scripts" / "render-inventory.sh")],
         cwd=root, env=env, capture_output=True, text=True, timeout=20,

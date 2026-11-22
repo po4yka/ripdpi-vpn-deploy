@@ -24,7 +24,7 @@ later `user_data` drift, changing this creation-time input triggers node
 replacement and is held by `prevent_destroy`; use the normal disposable-node
 blue-green path rather than changing a live node in place.
 
-**Local state per provider and environment** — we don't trust remote state with VPN infrastructure. `ENV=prod` deliberately remains Terraform's legacy `default` workspace; every other `ENV` maps to its own same-named workspace. Initialize a new environment with `make PROVIDER=<provider> ENV=<env> init` before any plan, apply, or output. State is backed up via `make backup-state` (age-encrypted). Lose state → re-import (`docs/how-to/incident.md`).
+**Local state per provider and environment** — we don't trust remote state with VPN infrastructure. `ENV=prod` deliberately remains the legacy `default` workspace; every other `ENV` maps to its own same-named workspace. Initialize a new environment with `make PROVIDER=<provider> ENV=<env> init` before any plan, apply, or output. State is backed up via `make backup-state` (age-encrypted). Lose state → re-import (`docs/how-to/incident.md`).
 
 **No `local-exec` / `remote-exec`** — Terraform stays declarative.
 cloud-init owns first-boot bootstrap; Ansible owns runtime state.
@@ -45,7 +45,8 @@ refuses mutation. `tf-conftest` uses the same evaluator.
 **Bootstrap identity changes use replacement** — administrator changes on
 Hetzner, Vultr and Scaleway, and key changes on Vultr and Scaleway, are protected
 by replacement guards. Vultr and Scaleway also compare retained cloud-init
-identity during first adoption. Hetzner's provider hashes user-data in state,
+identity during first adoption (no longer tested: every live state carries the
+guards, and `tofu test` cannot share state across configurations). Hetzner's provider hashes user-data in state,
 so the existing key-name attribute guards first adoption; its combined name
 makes server-name changes creation-time edits too. Unchanged nodes migrate
 without replacement, while `prevent_destroy` blocks identity edits.
@@ -106,7 +107,7 @@ never compose each other as modules.
   the state alone does not revoke access. Public key fingerprints also identify devices.
 - **Cloud-init `user_data` is plaintext in state** — never put secrets
   there. Even with state encryption, this is operator-readable.
-- **`terraform destroy` does not remove backups** — the `backup` role's
+- **`tofu destroy` does not remove backups** — the `backup` role's
   remote restic repo persists. Destroy + recreate restores node data
   from that restic repository (`ansible/roles/backup/CLAUDE.md`,
   `docs/how-to/incident.md`); there is no `make restore` target.
@@ -115,5 +116,6 @@ never compose each other as modules.
 - **`tf-test`** uses `mock_provider`** — these tests verify the *shape*
   of plans, not that the cloud provider behaves correctly. Real-deploy
   validation is separate (`docs/how-to/ci-real-deploy.md`).
-- **Raw Terraform bypasses environment selection** — operator paths must use `scripts/terraform-env.sh` (or the Makefile / `vpnd` wrappers), never direct `terraform output`, `plan`, or `apply`.
+- **`tofu test` is not Terraform's test runner** — there is no `run.state_key`, so a case that needs fresh state goes in its own test file; test state is keyed by the run's module source, so one run cannot switch configurations and keep state. Mock providers return known random strings for computed values even in plan mode, so give numeric-ID resources `mock_resource` defaults. `var.<name>` in an assertion is the raw test value; compare outputs with an explicit typed literal. Teardown reports `prevent_destroy` as an error, keeps the exit status, and leaves an ignored `errored_test.tfstate` with mock data.
+- **Raw Terraform bypasses environment selection** — operator paths must use `scripts/terraform-env.sh` (or the Makefile / `vpnd` wrappers), never direct `tofu output`, `plan`, or `apply`.
 - **A provider rule without the contract is a drift bug** — do not add static listener ports to a provider firewall or nftables template; update `public_listeners` and the runtime role configuration together.

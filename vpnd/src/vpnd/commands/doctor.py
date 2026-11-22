@@ -98,7 +98,7 @@ async def write_bundle(ctx, report, out_path):
     entries = [("vpnd-version.txt", f"vpnd {__version__}\n")]
     for name, program, args in [
         ("uname.txt", "uname", ["-a"]),
-        ("terraform-version.txt", "terraform", ["--version"]),
+        ("tofu-version.txt", "tofu", ["--version"]),
         ("ansible-version.txt", "ansible", ["--version"]),
     ]:
         entries.append((name, await run_capture(program, args)))

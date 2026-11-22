@@ -229,7 +229,7 @@ def _run_snell_only_script(
     fake_bin = tmp_path / "snell-bin"
     fake_bin.mkdir()
     (fake_bin / "sops").write_text('#!/bin/sh\ncat >/dev/null\ncat "$SOPS_FILE"\n')
-    (fake_bin / "terraform").write_text(
+    (fake_bin / "tofu").write_text(
         "#!/bin/sh\n"
         'case "$*" in\n'
         "  *'workspace select'*) exit 0 ;;\n"
@@ -239,7 +239,7 @@ def _run_snell_only_script(
         "esac\n"
     )
     (fake_bin / "sops").chmod(0o700)
-    (fake_bin / "terraform").chmod(0o700)
+    (fake_bin / "tofu").chmod(0o700)
     environment = os.environ.copy()
     for var in ("HOSTS", "SOPS_FILES", "COHORTS", "VPN_SECRETS_FILE"):
         environment.pop(var, None)
@@ -347,14 +347,14 @@ def _run_shape_only_emitter(
     bin_dir = tmp_path / "shape-bin"
     bin_dir.mkdir()
     (bin_dir / "sops").write_text('#!/bin/sh\ncat >/dev/null\ncat "$SOPS_FILE"\n')
-    (bin_dir / "terraform").write_text(
+    (bin_dir / "tofu").write_text(
         '#!/bin/sh\ncase "$*" in\n'
         "  *'workspace select'*) exit 0 ;;\n"
         "  *'server_ipv4'*) printf '203.0.113.10' ;;\n"
         "  *'server_hostname'*) printf 'shape-test-node' ;;\n"
         "  *) exit 0 ;;\nesac\n"
     )
-    for command in (bin_dir / "sops", bin_dir / "terraform"):
+    for command in (bin_dir / "sops", bin_dir / "tofu"):
         command.chmod(0o700)
     environment = os.environ.copy()
     for var in ("HOSTS", "SOPS_FILES", "COHORTS", "VPN_SECRETS_FILE"):
@@ -923,7 +923,7 @@ def test_unavailable_terraform_endpoint_reports_its_fixed_category(tmp_path, pla
     # A fresh worktree without the Terraform workspace data makes `output` fail.
     secrets_json = _secrets_as_json(tmp_path)
     env = _build_env(tmp_path, secrets_json)
-    failing = tmp_path / "bin" / "terraform"
+    failing = tmp_path / "bin" / "tofu"
     failing.write_text("#!/bin/sh\necho 'workspace missing at /private/path' >&2\nexit 1\n")
     failing.chmod(0o700)
     if plaintext:

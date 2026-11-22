@@ -127,7 +127,7 @@ def test_diff_secrets_gates_fail_closed_without_network(tmp_path: Path) -> None:
     stubs.mkdir()
     # CI runners and minimal workstations lack the full toolchain; stub the
     # tools the script probes so the test reaches the input gates.
-    for tool in ("terraform", "ssh", "ansible", "ansible-playbook", "diff", "jq"):
+    for tool in ("tofu", "ssh", "ansible", "ansible-playbook", "diff", "jq"):
         stub = stubs / tool
         stub.write_text("#!/usr/bin/env bash\nexit 0\n")
         stub.chmod(stub.stat().st_mode | stat.S_IXUSR)

@@ -62,7 +62,7 @@ off under the restic+age backup contract.
 
 - **Example listener completeness** — the explicit staging/prod contracts include
   HTTP/80 for the nginx public-site redirect; deploy fails closed without it.
-- **Vultr API rate limit is tight** — bulk `terraform apply` across many hosts
+- **Vultr API rate limit is tight** — bulk `tofu apply` across many hosts
   hits 429s. Use `-parallelism=2`.
 - **Floating IP is global, not regional** — but attachment is regional. Don't
   assume regional FIPs.

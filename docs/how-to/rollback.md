@@ -122,7 +122,7 @@ Do not delete transaction state, install journals or old code generations to cle
 
 ## What blocks rollback
 
-- **Lost Terraform state** — without state, Terraform doesn't know about blue. You can `terraform import` to recover, but it's manual. See `incident.md` § "State loss".
+- **Lost Terraform state** — without state, Terraform doesn't know about blue. You can `tofu import` to recover, but it's manual. See `incident.md` § "State loss".
 - **Lost SOPS secrets** — without secrets, you can't redeploy onto green. Restore from out-of-band backup of the SOPS file or treat as full rotation event.
 - **Single shared subscription URL** — if every client uses the same bare-IP URL, switching IPs requires reissuing every URL. Move to per-device subscription tokens (see `subscription-host` role) to make this a non-event.
 

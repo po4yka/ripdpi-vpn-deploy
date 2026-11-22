@@ -1298,8 +1298,8 @@ def test_terraform_environment_is_canonical_and_sanitized():
 
 @pytest.mark.native_runtime
 def test_adapter_command_uses_reviewed_terraform_fd_and_snapshot(tmp_path, monkeypatch):
-    terraform = __import__("shutil").which("terraform")
-    assert terraform is not None, "native runtime lane requires Terraform"
+    terraform = __import__("shutil").which("tofu")
+    assert terraform is not None, "native runtime lane requires OpenTofu"
     m = mod()
     raw = Path(terraform).read_bytes()
     # The adapter requires a binary owned by its effective user. CI installs
@@ -1322,7 +1322,7 @@ def test_adapter_command_uses_reviewed_terraform_fd_and_snapshot(tmp_path, monke
         adapter = m.TerraformAdapter(
             target, trusted_terraform=trusted, terraform_snapshot=snapshot
         )
-        assert b"Terraform v" in adapter._command(["version"])
+        assert b"OpenTofu v" in adapter._command(["version"])
     finally:
         if adapter is not None:
             adapter.close()
@@ -1337,8 +1337,8 @@ def test_adapter_command_uses_reviewed_terraform_fd_and_snapshot(tmp_path, monke
 
 @pytest.mark.native_runtime
 def test_actual_builtin_terraform_data_plan_can_be_saved_if_terraform_exists(tmp_path):
-    terraform = __import__("shutil").which("terraform")
-    assert terraform is not None, "native runtime lane requires Terraform"
+    terraform = __import__("shutil").which("tofu")
+    assert terraform is not None, "native runtime lane requires OpenTofu"
     # The fixture is local-only and uses Terraform's builtin provider.
     (tmp_path / "main.tf").write_text('resource "terraform_data" "x" { input = "x" }\n')
     env = {
@@ -1390,7 +1390,7 @@ def test_actual_builtin_terraform_data_plan_can_be_saved_if_terraform_exists(tmp
             "format_version"
         ].startswith("1.")
         applied = __import__("subprocess").run(
-            [terraform, "apply", "-auto-approve", fd_path],
+            [terraform, "apply", "-auto-approve", saved.path()],
             cwd=tmp_path,
             env=env,
             pass_fds=(saved.fd,),

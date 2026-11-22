@@ -80,7 +80,7 @@ build_operator_path() {
   fi
   # Order is significant: the validated operator Python must precede Apple's
   # dependency-minimal /usr/bin/python3 in cron's lookup path.
-  for command_name in python3 sops age lego terraform ansible-playbook jq make curl ssh logger openssl git gtimeout timeout whois dig host; do
+  for command_name in python3 sops age lego tofu ansible-playbook jq make curl ssh logger openssl git gtimeout timeout whois dig host; do
     command_path="$(command -v "$command_name" 2>/dev/null || true)"
     [[ "$command_path" == /* ]] || continue
     directory="${command_path%/*}"

@@ -118,7 +118,7 @@ case "$*" in *"${FAIL_HTTP_IP:-__none__}"*) printf '000'; exit 28;; esac
 printf '204'""",
     )
     for forbidden in (
-        "terraform",
+        "tofu",
         "ansible-playbook",
         "vpnd",
         "make",

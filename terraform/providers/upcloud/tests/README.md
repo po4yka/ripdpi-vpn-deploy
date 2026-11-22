@@ -7,7 +7,7 @@ These `*.tftest.hcl` files exercise the module without contacting UpCloud. `mock
 ```bash
 make tf-test
 # or:
-cd terraform/providers/upcloud && terraform init -backend=false && terraform test
+cd terraform/providers/upcloud && tofu init -backend=false && tofu test
 ```
 
 Requires Terraform **1.6+** (native test framework). Local boxes on older versions can run the rest of the CI but will skip this layer.

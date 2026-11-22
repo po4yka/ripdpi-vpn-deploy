@@ -2,9 +2,9 @@
 # Dry-run tests for scripts/blue-green.sh.
 #
 # Verifies that --dry-run exits 0 and triggers only read-only stub calls:
-#   - output mentions "terraform plan"
+#   - output mentions "tofu plan"
 #   - output mentions "--check"
-#   - STUB_LOG does not contain: terraform apply, audit-log, sops --encrypt
+#   - STUB_LOG does not contain: tofu apply, audit-log, sops --encrypt
 
 load 'test_helper/bats-support/load'
 load 'test_helper/bats-assert/load'
@@ -69,9 +69,9 @@ _run_dry() {
   done
 }
 
-@test "dry-run output mentions terraform plan" {
+@test "dry-run output mentions tofu plan" {
   _run_dry
-  assert_output --partial "terraform plan"
+  assert_output --partial "tofu plan"
 }
 
 @test "dry-run output mentions --check (ansible check mode)" {
@@ -79,10 +79,10 @@ _run_dry() {
   assert_output --partial "--check"
 }
 
-@test "dry-run STUB_LOG has no terraform apply" {
+@test "dry-run STUB_LOG has no tofu apply" {
   _run_dry
   if [[ -s "${STUB_LOG}" ]]; then
-    run grep -F "terraform apply" "${STUB_LOG}"
+    run grep -F "tofu apply" "${STUB_LOG}"
     assert_failure
   fi
 }

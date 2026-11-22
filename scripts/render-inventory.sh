@@ -38,7 +38,7 @@ if [[ -z "${ANSIBLE_SSH_PRIVATE_KEY_FILE:-}" ]]; then
   exit 1
 fi
 
-for tool in terraform jq ssh python3; do
+for tool in tofu jq ssh python3; do
   command -v "$tool" >/dev/null 2>&1 || { echo "missing: $tool" >&2; exit 1; }
 done
 

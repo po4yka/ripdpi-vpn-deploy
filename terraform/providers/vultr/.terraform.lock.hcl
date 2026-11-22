@@ -1,13 +1,25 @@
-# This file is maintained automatically by "terraform init".
+# This file is maintained automatically by "tofu init".
 # Manual edits may be lost in future updates.
 
-provider "registry.terraform.io/vultr/vultr" {
+provider "registry.opentofu.org/vultr/vultr" {
   version     = "2.33.2"
   constraints = "~> 2.31"
   hashes = [
+    "h1:/MGO+xnJmbn+IFkuK2V3GBxWZtRG+mPPOmf9w6hS2yM=",
+    "h1:4COMtN9bpE1kawNvWw0963KxQeb2hZrflicxoMLZet4=",
+    "h1:A0UeyPFM3RNxwqeR5kQ6FS8ukfbkT8X0npBVmFNUoNU=",
+    "h1:AxocYE5ZZTLitlRJPnNDZncISPET2g7iSQIVvcFZ2e8=",
     "h1:WKPEiK7TgQ7Gm11UpQ+KIliguFedJ/1gufaZFe2Zius=",
+    "h1:WTm46VU7+24PZGAkplUoilU7mQdGIn6/oMp8tqB0Xbg=",
+    "h1:Zk/YgKticqavryvSzAD0LvKMEdBfK/KmWRSpIOW8hj4=",
+    "h1:aJTuFl36Ae8C1tzBJUpXDVpIszCCqUIedgqpvB1/DzI=",
+    "h1:cyjtm9W99/+0GYm4WOrpkR56yka1XXLPjeMeeQCw13w=",
+    "h1:hDBWZylv9EYj8fxfXUyHPvE17gU0EwmTvjhiS4M4wVU=",
+    "h1:iONmBeexixgqY2c7OB62e45o1Ucj2Pue4nEcqnrjDK0=",
     "h1:isr1UgZRi798VQduSwIzZDgF7ZZJ1AUlTmnKOUDyDgc=",
     "h1:jvurMhnyTbO2JAF9JKx79zoag0I0H/aWq/T66st7Q/0=",
+    "h1:mrHmuZfPih6e+eC+rmk+MZi0YK26GRDqpts8sHhr4l4=",
+    "h1:uuvqm8K02IHzyhvY5qB1qg/7NgeNm1rw8kixxJ/SzwA=",
     "zh:1f868da83718a7f7c874635b7356ede1bb007672934ba46e1428588b779884db",
     "zh:265eff90def8005dbf23420f49b243694bf972dae43ef55d90668a26825f731f",
     "zh:433db0ce326e5ac40a1a0a7ad1f7060007edb4e43bc3d7187578959c00e87648",

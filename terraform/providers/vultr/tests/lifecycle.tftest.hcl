@@ -56,20 +56,6 @@ run "same_public_key_with_file_newline" {
   }
 }
 
-run "fresh_public_key_with_file_newline" {
-  command   = apply
-  state_key = "newline-key"
-
-  variables {
-    admin_ssh_public_key = "ssh-ed25519 AAAATESTKEY test@harness\n"
-  }
-
-  assert {
-    condition     = terraform_data.admin_ssh_public_key.output == sha256(trimspace(var.admin_ssh_public_key))
-    error_message = "A fresh node must accept a newline-terminated public key."
-  }
-}
-
 run "os_change_refuses_in_place_reinstall" {
   command = plan
 

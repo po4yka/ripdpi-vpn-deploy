@@ -87,7 +87,7 @@ def terraform_render(values, tmp_path):
         + ", jsondecode(file(" + json.dumps(str(inputs)) + "))))\n"
     )
     return subprocess.run(
-        ["terraform", "console", "-no-color"], input=expression,
+        ["tofu", "console", "-no-color"], input=expression,
         cwd=tmp_path, env=environment, text=True, capture_output=True, timeout=30,
     )
 
@@ -109,4 +109,4 @@ def test_actual_terraform_render_matches_ci_scalar_document(edits, tmp_path):
 def test_actual_terraform_render_refuses_null_bootstrap_scalars(name, tmp_path):
     result = terraform_render(dict(renderer.VALUES, **{name: None}), tmp_path)
     assert result.returncode != 0
-    assert "null value" in result.stderr
+    assert "null value" in " ".join(result.stderr.split())

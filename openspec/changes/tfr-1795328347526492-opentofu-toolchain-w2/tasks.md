@@ -10,10 +10,10 @@ Every root, script, Make target, CI job and vpnd command uses one exact OpenTofu
 
 ## Execution
 
-- [ ] TFR-1795328401186589 Pin OpenTofu in mise.toml and the CI workflows with a checksum-verified install #feature !high @item:TFR-1795328347526492
-- [ ] TFR-1795328413365163 Switch Make targets, scripts, vpnd and stubs from terraform to tofu and regenerate provider lock files #feature !high @item:TFR-1795328347526492
-- [ ] TFR-1795328425689060 Run the mock_provider tests and conftest policies under tofu in make tf-test and tf-policy-verify #feature !high @item:TFR-1795328347526492
-- [ ] TFR-1795328437282569 Update docs, folder notes and generated references for OpenTofu #feature !high @item:TFR-1795328347526492
+- [x] TFR-1795328401186589 Pin OpenTofu in mise.toml and the CI workflows with a checksum-verified install #feature !high @item:TFR-1795328347526492
+- [x] TFR-1795328413365163 Switch Make targets, scripts, vpnd and stubs from terraform to tofu and regenerate provider lock files #feature !high @item:TFR-1795328347526492
+- [x] TFR-1795328425689060 Run the mock_provider tests and conftest policies under tofu in make tf-test and tf-policy-verify #feature !high @item:TFR-1795328347526492
+- [x] TFR-1795328437282569 Update docs, folder notes and generated references for OpenTofu #feature !high @item:TFR-1795328347526492
 - [ ] TFR-1795328448740009 Confirm a no-change tofu plan for every production root against current local state (authorized live step) #feature !high @item:TFR-1795328347526492
 
 ## Verification

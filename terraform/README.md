@@ -21,20 +21,20 @@ The Ansible layer is provider-neutral — only the inventory render script reads
 
 ## Native tests
 
-Each provider root has provider-mocked `terraform test` coverage under `providers/<name>/tests/`. These tests run without contacting cloud APIs and assert the shared inventory output contract plus provider-specific firewall and server-resource invariants:
+Each provider root has provider-mocked `tofu test` coverage under `providers/<name>/tests/`. These tests run without contacting cloud APIs and assert the shared inventory output contract plus provider-specific firewall and server-resource invariants:
 
 ```bash
-terraform -chdir=terraform/providers/upcloud init -backend=false
-terraform -chdir=terraform/providers/upcloud test
+tofu -chdir=terraform/providers/upcloud init -backend=false
+tofu -chdir=terraform/providers/upcloud test
 
-terraform -chdir=terraform/providers/hetzner init -backend=false
-terraform -chdir=terraform/providers/hetzner test
+tofu -chdir=terraform/providers/hetzner init -backend=false
+tofu -chdir=terraform/providers/hetzner test
 
-terraform -chdir=terraform/providers/vultr init -backend=false
-terraform -chdir=terraform/providers/vultr test
+tofu -chdir=terraform/providers/vultr init -backend=false
+tofu -chdir=terraform/providers/vultr test
 
-terraform -chdir=terraform/providers/scaleway init -backend=false
-terraform -chdir=terraform/providers/scaleway test
+tofu -chdir=terraform/providers/scaleway init -backend=false
+tofu -chdir=terraform/providers/scaleway test
 ```
 
 ## State
@@ -46,7 +46,7 @@ make PROVIDER=upcloud ENV=green init
 make PROVIDER=upcloud ENV=green plan apply
 ```
 
-Operator scripts and `vpnd` use `scripts/terraform-env.sh`; do not invoke raw `terraform output`, `plan`, or `apply`, because it can select the wrong workspace. Back up state out-of-band; without it Terraform cannot follow blue-green or rotate the floating IP. See `docs/how-to/incident.md` § "State loss".
+Operator scripts and `vpnd` use `scripts/terraform-env.sh`; do not invoke raw `tofu output`, `plan`, or `apply`, because it can select the wrong workspace. Back up state out-of-band; without it Terraform cannot follow blue-green or rotate the floating IP. See `docs/how-to/incident.md` § "State loss".
 
 ## Public listener contract
 

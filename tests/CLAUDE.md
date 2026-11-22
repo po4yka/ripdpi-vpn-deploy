@@ -70,7 +70,7 @@ counts or prose. Suite sizes come from runner output for a specific revision.
 - **Selected skips fail required pytest lanes** — portable tests use
   `make test-unit` (both `tests/unit/` and `scripts/tests/`);
   `native_runtime` tests run separately with pinned
-  Terraform/Alertmanager and UID/GID capabilities on a disposable Linux runner.
+  OpenTofu/Alertmanager and UID/GID capabilities on a disposable Linux runner.
   Both use `--fail-on-skip`. Never run the full workstation suite as root.
 - Pytest module basenames must be unique across `tests/unit`, `scripts/tests` and
   `vpnd/tests`: the full collection and shard-consistency checks import them together.

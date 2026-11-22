@@ -48,7 +48,7 @@ def _test_repo(tmp_path: Path) -> Path:
 
 
 def _terraform_stub(tmp_path: Path, *, fail_apply: bool = False) -> Path:
-    stub = tmp_path / "terraform"
+    stub = tmp_path / "tofu"
     stub.write_text(
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"

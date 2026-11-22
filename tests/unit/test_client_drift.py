@@ -46,7 +46,7 @@ def lab(tmp_path, monkeypatch):
     bin_dir.mkdir()
     # Real SOPS, real renderer and crypto; only provider lookup and SSH delivery
     # are isolated. No fixture is claimed as live fleet acceptance.
-    (bin_dir / 'terraform').write_text('''#!/usr/bin/env python3
+    (bin_dir / 'tofu').write_text('''#!/usr/bin/env python3
 import sys
 key = sys.argv[-1]
 print({'server_ipv4':'192.0.2.10','server_hostname':'vpn.example.com','admin_user':'admin','ssh_port':'22'}.get(key, ''))
@@ -545,7 +545,7 @@ def test_peer_public_key_rotation_is_stale_even_with_identical_export(lab, capsy
 
 
 def test_explicit_cohort_needs_only_endpoint(lab):
-    terraform = Path(os.environ['PATH'].split(os.pathsep)[0]) / 'terraform'
+    terraform = Path(os.environ['PATH'].split(os.pathsep)[0]) / 'tofu'
     terraform.write_text('#!/bin/sh\ncase "$*" in *workspace*) exit 0;; *server_ipv4) printf 192.0.2.10;; *) exit 2;; esac\n')
     artifact, bindings = payload.materialize('phone', payload.options('ripdpi', cohorts=['p2-udp']), extended=True)
     assert artifact['ripdpi']['amneziawg'] and bindings

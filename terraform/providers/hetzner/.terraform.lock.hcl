@@ -1,12 +1,22 @@
-# This file is maintained automatically by "terraform init".
+# This file is maintained automatically by "tofu init".
 # Manual edits may be lost in future updates.
 
-provider "registry.terraform.io/hetznercloud/hcloud" {
+provider "registry.opentofu.org/hetznercloud/hcloud" {
   version     = "1.70.2"
   constraints = "~> 1.62"
   hashes = [
+    "h1:2eVvib40d9ki4E/wvPnT2wXxM704YjBRVxkozKHGTCs=",
     "h1:BZWdJOileBlR+WMz0D0wrJXFhNLJpHcQJIgDqmPNlpw=",
     "h1:EV7uBBPrEpNz8gJJ//iyBUu9/Tt+JJKjL3D3f9xVzX0=",
+    "h1:J5jjFM74jJrhwWKRdyQNFC3Ef7pbFBkLXGxbLSXheks=",
+    "h1:RYD1e858eOJstFN/bf9KonHtltMycZKIcYu7ngyiIRE=",
+    "h1:UB3bnUROLsLu1hreopppKw+Wm22//b3YZtM1k/SLloM=",
+    "h1:VB4xF79qoFHtcdxvEcajWgJZLJ59/uvbCReraaEHwqM=",
+    "h1:byNVX40XzpAO0MRuyxipatu4RWPfWKZ4Mf6PKyz0Tjk=",
+    "h1:cRkaW7N60DfWVvMhD8QtH2MdDDQzNOAJs0Gr5cmzwlE=",
+    "h1:eYR/chP/jFcSQlmPcfFBktyxZsoJuYRlJ57pOLVq1/k=",
+    "h1:hxmW37pH+dIDMH+9JQ9GSwjZg72SfvKIWUeJctmcy1M=",
+    "h1:qwPVmCN5bLh/2MjvsoatZhBvsvD8Nhs2J8OySiYN17M=",
     "h1:wechRCpT64RPYT0BGWlkj/Y59BQa/qhO4elGaAlRpBo=",
     "zh:05a474ecd2b019be03f857877c9bf1eca8f96c0897f6e76b91780adf3a8dd388",
     "zh:1d4e4c0525c02618c015c079dc3e8d8b693ca796d698f95b59c4412114cbf166",

@@ -44,7 +44,7 @@ def test_normal_terraform_router_cannot_reach_exception_root() -> None:
 
 def test_missing_attestation_blocks_before_terraform_runs(tmp_path: Path) -> None:
     marker = tmp_path / "terraform-called"
-    stub = tmp_path / "terraform"
+    stub = tmp_path / "tofu"
     stub.write_text(f"#!/bin/sh\ntouch '{marker}'\n", encoding="utf-8")
     stub.chmod(0o755)
     env = {
