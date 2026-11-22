@@ -8,7 +8,7 @@ priority: high
 risk: high
 owner: Planner
 parent: EPC-1795327697650892
-blocked_by: [OPS-1795327950629406, TFR-1795328347526492]
+blocked_by: [TFR-1795328347526492]
 spec_mode: required
 openspec_change: tfr-1795328481774241-encrypted-remote-state-w3
 created: 2026-11-22

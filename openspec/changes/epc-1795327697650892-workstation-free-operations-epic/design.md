@@ -20,11 +20,11 @@ The operator chose: GitHub Actions on GitHub-hosted runners as the executor; a d
 |---|---|---|---|
 | W1 ops repository and kit mapping | `private-ops-repository-w1` | — | Every later change needs a private home for config, receipts and workflows. |
 | W2 OpenTofu toolchain | `opentofu-toolchain-w2` | — | Pure toolchain swap, provable offline; encryption needs OpenTofu. |
-| W3 encrypted B2 state | `encrypted-remote-state-w3` | W1, W2 | Needs `tofu` encryption and a private place for backend config and receipts. |
-| W4 CI identities and environments | `ci-identities-environments-w4` | W1 | Environments live in the ops repository. |
+| W3 encrypted B2 state | `encrypted-remote-state-w3` | W2 | Needs `tofu` encryption and a private place for backend config and receipts. |
+| W4 CI identities and environments | `ci-identities-environments-w4` | — | Environments live in the ops repository. |
 | W5 egress proxy node | `egress-proxy-node-w5` | W2, W3, W4 | The node is an OpenTofu resource with remote state; its Tailnet grant names the CI tag from W4. |
 | W6 Porkbun DNS root | `porkbun-dns-root-w6` | W2, W3, W5 | New root starts on remote state; Porkbun API calls go through the egress allowlist. |
-| W7 ops workflows and cloud environment | `ops-repository-workflows-w7` | W1, W3, W4, W5, W6 | Assembles everything into runnable workflows and the cloud trigger path. |
+| W7 ops workflows and cloud environment | `ops-repository-workflows-w7` | W1b, W3, W4, W5, W6 | Assembles everything into runnable workflows and the cloud trigger path. |
 
 - Split of trust: the cloud session edits non-secret settings only, through pull requests in the ops repository. CI generates or decrypts secrets inside a job that runs in a protected environment. Rejected: giving the cloud session a scoped token, because its environment variables are readable inside its VM.
 
@@ -50,3 +50,7 @@ The children list their own open questions; the program-level ones are:
 1. Can a Claude cloud session dispatch a workflow, or only push and open pull requests? W7 designs the PR/push-triggered path either way.
 2. Can B2 enforce the W3 lock across CI and workstation writes under the intended key scopes and retention policy? W3 keeps local state authoritative until the full probe succeeds.
 3. Does every provider client honour `HTTPS_PROXY` when it runs under OpenTofu? W5 proves it per provider before enabling allowlists.
+
+## W1 replacement
+
+W1 (`OPS-1795327950629406`) was dropped on 2026-11-22 after its live ops repository work merged: the evidence transfer committed in `baa16596` omits `REQ-OPSREPO-MERGE-GATE`, and taskctl validates every historical transfer, so W1 could never close. `OPS-1795351496232576` (W1b) carries its capability spec and the open dry-run evidence. The ops repository that W3 and W4 need already exists, so they no longer wait on W1; W7 waits on W1b.

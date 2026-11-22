@@ -8,7 +8,7 @@ priority: high
 risk: high
 owner: Planner
 parent: EPC-1795327697650892
-blocked_by: [OPS-1795327950629406]
+blocked_by: []
 spec_mode: required
 openspec_change: sec-1795328680299474-ci-identities-environments-w4
 created: 2026-11-22
