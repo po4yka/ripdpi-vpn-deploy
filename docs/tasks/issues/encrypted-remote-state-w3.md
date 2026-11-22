@@ -1,8 +1,8 @@
 ---
 id: TFR-1795328481774241
-title: Move OpenTofu state to an encrypted Backblaze B2 backend
+title: Move OpenTofu state to an encrypted, locked object storage backend
 kind: feature
-status: backlog
+status: doing
 area: terraform
 priority: high
 risk: high
@@ -18,7 +18,7 @@ related_tasks: []
 
 ## Goal
 
-OpenTofu state and saved plans of every root are encrypted on the client and kept in a versioned, object-locked Backblaze B2 bucket with scoped keys and serialized writers, migrated exactly from the current local files.
+OpenTofu state and saved plans of every root are encrypted on the client and kept in a versioned, object-locked Scaleway Object Storage bucket with scoped keys and serialized writers, migrated exactly from the current local files.
 
 ## Acceptance criteria
 

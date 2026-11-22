@@ -1,6 +1,6 @@
 ## Purpose
 
-Define how OpenTofu state and saved plans for every infrastructure root are encrypted on the client, stored in a versioned and object-locked Backblaze B2 bucket, accessed with scoped keys, serialized between writers, migrated from local files and recovered.
+Define how OpenTofu state and saved plans for every infrastructure root are encrypted on the client, stored in a versioned and object-locked Scaleway Object Storage bucket, accessed with scoped keys, serialized between writers, migrated from local files and recovered.
 
 ## ADDED Requirements
 
@@ -20,7 +20,7 @@ Every root MUST configure OpenTofu `encryption` for `state` and `plan` with an A
 
 ### Requirement: REQ-STATE-BACKEND — One private, versioned, object-locked bucket
 
-State MUST live in one private B2 bucket with file versions kept, Object Lock enabled with a governance default retention, and a lifecycle rule that removes hidden versions only after the retention ends. Each root and workspace MUST map to a distinct key; the production `default` workspace mapping of `scripts/terraform-env.sh` MUST be preserved. Backend files MUST NOT contain credentials. Both the default key and the workspace prefix MUST begin with `state/`.
+State MUST live in one private bucket that supports the OpenTofu lock, with versioning, Object Lock governance retention and a bucket policy limiting state identities to `state/`. Each root and workspace MUST map to a distinct key under `state/`, keeping the production `default` workspace mapping of `scripts/terraform-env.sh`. Backend files MUST NOT contain credentials.
 
 #### Scenario: Two roots
 
@@ -39,12 +39,12 @@ State MUST live in one private B2 bucket with file versions kept, Object Lock en
 
 ### Requirement: REQ-STATE-KEYS — Keys are bucket-scoped and least-privilege
 
-The plan identity MUST be able to list and read state only. The apply identity MUST be able to list, read and write state but MUST NOT delete files or bypass governance retention. The recovery prefix MUST use a separate operator-only key that CI never holds. The operator MUST have a separate state-prefix identity with version read, list and write access for locked restore.
+The plan identity MUST be able to list and read state only. The apply identity MUST be able to list, read and write state and delete only lock files, and MUST NOT bypass governance retention. The recovery prefix MUST use a separate operator-only key that CI never holds. The operator MUST have a separate state identity with the apply rights for locked restore.
 
 #### Scenario: Compromised apply key
 
 - **WHEN** an attacker with the apply key tries to delete or overwrite an older state version
-- **THEN** B2 refuses the deletion under Object Lock and the earlier version stays restorable
+- **THEN** the bucket policy refuses the deletion and Object Lock keeps every earlier version restorable
 
 ### Requirement: REQ-STATE-SERIAL — Only one writer per state at a time
 
