@@ -934,6 +934,9 @@ jobs:
         run: tofu init -backend=false
       - name: tofu test
         working-directory: terraform/providers/${{ matrix.provider }}
+        env:
+          # Fixed, public value: tests encrypt only throwaway in-memory state.
+          TF_VAR_state_passphrase: tf-test-passphrase-not-a-secret
         run: tofu test
 
   vpnd-test:

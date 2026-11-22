@@ -45,7 +45,15 @@ tf() {
 }
 
 if [[ "$1" == "init" ]]; then
-  tf "$@"
+  # Every provider root declares a partial S3 backend; its settings live in the
+  # ops repository as <provider>.s3.tfbackend and persist in TF_DATA_DIR.
+  [[ "${TF_BACKEND_ROOT:-}" == /* ]] || {
+    echo "TF_BACKEND_ROOT must be the absolute directory of ${PROVIDER}.s3.tfbackend" >&2
+    exit 2
+  }
+  backend_config="${TF_BACKEND_ROOT}/${PROVIDER}.s3.tfbackend"
+  [[ -f "$backend_config" ]] || { echo "missing backend file: $backend_config" >&2; exit 2; }
+  tf "$@" "-backend-config=${backend_config}"
   if ! tf workspace select "$workspace" >/dev/null 2>&1; then
     tf workspace new "$workspace"
   fi

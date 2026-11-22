@@ -781,6 +781,13 @@ ifeq ($(filter /%,$(TFVARS_ROOT)),)
 $(error TFVARS_ROOT must be an absolute path)
 endif
 endif
+# Absolute directory holding <provider>.s3.tfbackend files (the ops repository).
+TF_BACKEND_ROOT ?=
+ifneq ($(TF_BACKEND_ROOT),)
+ifeq ($(filter /%,$(TF_BACKEND_ROOT)),)
+$(error TF_BACKEND_ROOT must be an absolute path)
+endif
+endif
 TFPLAN        := $(TF_ROOT)/$(ENV).tfplan
 ZIZMOR_VERSION := 1.29.0
 PROMTOOL_VERSION := 3.15.1
@@ -1014,12 +1021,14 @@ check-prereqs:
 	@python3 scripts/check-prereqs.py
 
 init:
-	PROVIDER=$(PROVIDER) ENV=$(ENV) $(TF_ENV) init
+	PROVIDER=$(PROVIDER) ENV=$(ENV) TF_BACKEND_ROOT="$(TF_BACKEND_ROOT)" $(TF_ENV) init
 
 # validate and tf-test share one backend-free OpenTofu data directory per
 # provider: providers install once per invocation and `make -j` never runs two
 # inits on the same directory.
 TF_VALIDATION_ENV = TF_DATA_DIR="$(CURDIR)/terraform/providers/$$provider/.terraform-env/.validation" TF_WORKSPACE=default
+# Fixed, public value: tests encrypt only throwaway in-memory state.
+TF_TEST_STATE_PASSPHRASE := tf-test-passphrase-not-a-secret
 
 .PHONY: terraform-init ansible-syntax-check
 terraform-init:
@@ -1686,7 +1695,7 @@ cloud-init-schema:
 tf-test: terraform-init
 	@for provider in upcloud hetzner vultr scaleway; do \
 	  echo "== tofu test: $$provider =="; \
-	  $(TF_VALIDATION_ENV) tofu -chdir=terraform/providers/$$provider test || exit 1; \
+	  $(TF_VALIDATION_ENV) TF_VAR_state_passphrase=$(TF_TEST_STATE_PASSPHRASE) tofu -chdir=terraform/providers/$$provider test || exit 1; \
 	done
 	python3 -m pytest -q tests/unit/test_provider_bootstrap_lifecycle.py -m native_runtime --fail-on-skip
 

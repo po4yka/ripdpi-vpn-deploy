@@ -6,6 +6,8 @@ import stat
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "terraform-env.sh"
@@ -43,9 +45,15 @@ def _run(
     args: list[str],
     existing: str = "default",
     provider: str = "upcloud",
+    backend_root: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     stub_dir = _terraform_stub(tmp_path).parent
-    env = os.environ | {
+    if backend_root is None:
+        (tmp_path / "backend").mkdir(exist_ok=True)
+        (tmp_path / "backend" / f"{provider}.s3.tfbackend").write_text('bucket = "fixture"\n')
+        backend_root = str(tmp_path / "backend")
+    env = {k: v for k, v in os.environ.items() if k != "TF_BACKEND_ROOT"} | {
+        "TF_BACKEND_ROOT": backend_root,
         "PATH": f"{stub_dir}:{os.environ['PATH']}",
         "STUB_LOG": str(tmp_path / "terraform.log"),
         "PROVIDER": provider,
@@ -66,11 +74,11 @@ def test_prod_keeps_legacy_default_workspace(tmp_path: Path) -> None:
 
 
 def test_init_creates_missing_nonprod_workspace(tmp_path: Path) -> None:
-    result = _run(tmp_path, env_name="green-2026", args=["init", "-backend=false"])
+    result = _run(tmp_path, env_name="green-2026", args=["init", "-input=false"])
 
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "terraform.log").read_text().splitlines() == [
-        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/upcloud/.terraform-env/green-2026'} -chdir={REPO_ROOT / 'terraform/providers/upcloud'} init -backend=false",
+        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/upcloud/.terraform-env/green-2026'} -chdir={REPO_ROOT / 'terraform/providers/upcloud'} init -input=false -backend-config={tmp_path / 'backend/upcloud.s3.tfbackend'}",
         f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/upcloud/.terraform-env/green-2026'} -chdir={REPO_ROOT / 'terraform/providers/upcloud'} workspace select green-2026",
         f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/upcloud/.terraform-env/green-2026'} -chdir={REPO_ROOT / 'terraform/providers/upcloud'} workspace new green-2026",
     ]
@@ -194,3 +202,17 @@ def test_relative_tfvars_root_is_refused() -> None:
                             text=True, capture_output=True, check=False)
     assert result.returncode != 0
     assert "TFVARS_ROOT must be an absolute path" in result.stderr
+
+
+@pytest.mark.parametrize("backend_root", ["", "relative/backend"])
+def test_init_refuses_without_an_absolute_backend_root(tmp_path: Path, backend_root: str) -> None:
+    result = _run(tmp_path, env_name="green-2026", args=["init"], backend_root=backend_root)
+    assert result.returncode == 2
+    assert "TF_BACKEND_ROOT must be the absolute directory of upcloud.s3.tfbackend" in result.stderr
+    assert not (tmp_path / "terraform.log").exists()
+
+
+def test_init_refuses_a_missing_backend_file(tmp_path: Path) -> None:
+    result = _run(tmp_path, env_name="green-2026", args=["init"], backend_root=str(tmp_path))
+    assert result.returncode == 2
+    assert "missing backend file" in result.stderr
