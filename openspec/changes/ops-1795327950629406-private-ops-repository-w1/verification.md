@@ -3,7 +3,7 @@ task_id: OPS-1795327950629406
 change: ops-1795327950629406-private-ops-repository-w1
 commit_sha: null
 local: required
-local_evidence: null
+local_evidence: "make -k check -j 4: tofu test, bats 92, vpnd 551, unit 12765 passed with one load-sensitive failure that passes alone; validate failed on staged gitleaks for literal key markers, fixed, then make validate passed. New tests: test_validate_ops_repo.py (20), test_deploy_controller.py two-checkout dry-run (fails on the previous controller), test_render_inventory.py external tfvars and output, test_terraform_env.py plan var-file. After independent review: validator tightened (content-based plaintext detection, sops.json, any .dec, encrypted-value check, symlinks, PGP/WireGuard keys, malformed policy, Git-committable scope), relative TFVARS_ROOT refused in Make; test_validate_ops_repo.py and test_terraform_env.py 42 passed; validator passes all 34 real kit SOPS documents in a scratch copy; gitleaks staged clean."
 remote_ci: required
 remote_ci_evidence: null
 dry_run: required

@@ -60,6 +60,7 @@
 - [Make targets](/md/reference/make-targets.md)
 - [Reviewed network exposure policy](/md/reference/network-exposure-gate.md)
 - [Resource-bounded observability on existing hosts](/md/reference/observability-operations.md)
+- [Ops repository](/md/reference/ops-repository.md)
 - [Protocol-level liveness and rotation](/md/reference/protocol-liveness.md)
 - [Provider notes](/md/reference/provider-notes.md)
 - [REALITY active-target ASN monitoring](/md/reference/reality-target-monitoring.md)

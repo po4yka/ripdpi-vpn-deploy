@@ -77,6 +77,7 @@ Facts, tables and contracts.
 | [Make targets](reference/make-targets.md) | Generated mirror of `make help`: every operator target with its one-line purpose | — |
 | [Reviewed network exposure policy](reference/network-exposure-gate.md) | The reviewed, default-off network exposure policy gate and its operator contract | — |
 | [Resource-bounded observability on existing hosts](reference/observability-operations.md) | Bounded co-hosted metrics, private Uptime Kuma, lifecycle verbs, encrypted backup and restore, current contract and task history | — |
+| [Ops repository](reference/ops-repository.md) | The private ops repository: layout, public pin, Make input wiring and the validator that refuses plaintext secrets | — |
 | [Protocol-level liveness and rotation](reference/protocol-liveness.md) | Authenticated protocol-level liveness sentinels, quorum evaluation and rotation decisions | — |
 | [Provider notes](reference/provider-notes.md) | Provider capabilities, ASN tiers to avoid, fallback transport tiers and sanitized fleet notes | — |
 | [REALITY active-target ASN monitoring](reference/reality-target-monitoring.md) | Recurring filtered-vantage monitoring of the active REALITY target's ASN and path | — |

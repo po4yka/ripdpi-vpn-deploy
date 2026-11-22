@@ -106,6 +106,38 @@ esac
     _make_stub(bin_dir, "tofu", body)
 
 
+def test_external_tfvars_root_and_inventory_output_stay_in_the_ops_checkout(tmp_path):
+    stub_bin = tmp_path / "bin"
+    stub_bin.mkdir()
+    _build_terraform_stub(stub_bin, FIXTURES / "tf-output-sample.json")
+    ops = tmp_path / "ops"
+    tfvars = ops / "config/tfvars/upcloud/prod.tfvars"
+    tfvars.parent.mkdir(parents=True)
+    tfvars.write_text("# ops tfvars\n")
+    output = ops / "config/inventories/prod.ini"
+    output.parent.mkdir(parents=True)
+    local_inventory = REPO_ROOT / "ansible/inventory/generated.ini"
+    local_before = local_inventory.read_bytes() if local_inventory.exists() else None
+    env = {**os.environ, "PATH": f"{stub_bin}:{os.environ['PATH']}", "PROVIDER": "upcloud", "ENV": "prod",
+           "ANSIBLE_SSH_PRIVATE_KEY_FILE": "/tmp/test-ssh-key", "STUB_LOG": str(tmp_path / "stub.log"),
+           "TFVARS_ROOT": str(ops / "config/tfvars"), "INVENTORY_OUTPUT": str(output)}
+    for name in ("HOSTS", "COHORTS", "AWG_EVIDENCE_MODES"):
+        env.pop(name, None)
+
+    result = subprocess.run(["bash", str(SCRIPT)], capture_output=True, text=True, env=env, cwd=str(REPO_ROOT))
+
+    assert result.returncode == 0, result.stderr
+    consoles = [line for line in (tmp_path / "stub.log").read_text().splitlines() if " console " in line]
+    assert consoles and all(f"-var-file={tfvars}" in line for line in consoles)
+    assert "[vpn]" in output.read_text()
+    assert (local_inventory.read_bytes() if local_inventory.exists() else None) == local_before
+
+    env["TFVARS_ROOT"] = "config/tfvars"
+    refused = subprocess.run(["bash", str(SCRIPT)], capture_output=True, text=True, env=env, cwd=str(REPO_ROOT))
+    assert refused.returncode != 0
+    assert "TFVARS_ROOT must be an absolute path" in refused.stderr
+
+
 @pytest.mark.parametrize("provider_firewall,nat_range,valid", [
     (False, "", True),
     (True, "", True),
