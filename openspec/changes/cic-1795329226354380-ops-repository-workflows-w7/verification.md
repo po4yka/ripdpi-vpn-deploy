@@ -33,3 +33,18 @@ artifact_evidence: Client artifacts are covered by the client gate; no release a
 | REQ-OPSWF-SCHEDULED | CIC-1795329376420274 | scheduled run receipts | planned |
 | REQ-OPSWF-CLOUD-SESSION | CIC-1795329421913712 | cloud environment review and dispatch test result | planned |
 | REQ-OPSWF-RECEIPTS | CIC-1795329439874508 | Branch protection, denied collaborator write and preserved concurrent attempt records | planned |
+
+## Shared operational evidence ownership
+
+| Source task | Operational owner | Requirement | Acceptance command | Evidence category | Source revision |
+|---|---|---|---|---|---|
+| OPS-1795327950629406 | CIC-1795329226354380 | REQ-OPSREPO-PIN | `make dry-run ENV=p2-vultr ANSIBLE_LIMIT=node-c` | dry_run | aa46b09758aa2b4e550b6d7b34aad67db06d6c56 |
+| OPS-1795327950629406 | CIC-1795329226354380 | REQ-OPSREPO-NO-PLAINTEXT | `make dry-run ENV=p2-vultr ANSIBLE_LIMIT=node-c` | dry_run | aa46b09758aa2b4e550b6d7b34aad67db06d6c56 |
+| OPS-1795327950629406 | CIC-1795329226354380 | REQ-OPSREPO-KIT-MAP | `make dry-run ENV=p2-vultr ANSIBLE_LIMIT=node-c` | dry_run | aa46b09758aa2b4e550b6d7b34aad67db06d6c56 |
+| OPS-1795327950629406 | CIC-1795329226354380 | REQ-OPSREPO-PUBLIC-HYGIENE | `make dry-run ENV=p2-vultr ANSIBLE_LIMIT=node-c` | dry_run | aa46b09758aa2b4e550b6d7b34aad67db06d6c56 |
+| OPS-1795327950629406 | CIC-1795329226354380 | REQ-OPSREPO-ROLLBACK | `make dry-run ENV=p2-vultr ANSIBLE_LIMIT=node-c` | dry_run | aa46b09758aa2b4e550b6d7b34aad67db06d6c56 |
+| OPS-1795327950629406 | CIC-1795329226354380 | REQ-OPSREPO-PIN | `make dry-run ENV=staging` | staging | aa46b09758aa2b4e550b6d7b34aad67db06d6c56 |
+| OPS-1795327950629406 | CIC-1795329226354380 | REQ-OPSREPO-NO-PLAINTEXT | `make dry-run ENV=staging` | staging | aa46b09758aa2b4e550b6d7b34aad67db06d6c56 |
+| OPS-1795327950629406 | CIC-1795329226354380 | REQ-OPSREPO-KIT-MAP | `make dry-run ENV=staging` | staging | aa46b09758aa2b4e550b6d7b34aad67db06d6c56 |
+| OPS-1795327950629406 | CIC-1795329226354380 | REQ-OPSREPO-PUBLIC-HYGIENE | `make dry-run ENV=staging` | staging | aa46b09758aa2b4e550b6d7b34aad67db06d6c56 |
+| OPS-1795327950629406 | CIC-1795329226354380 | REQ-OPSREPO-ROLLBACK | `make dry-run ENV=staging` | staging | aa46b09758aa2b4e550b6d7b34aad67db06d6c56 |

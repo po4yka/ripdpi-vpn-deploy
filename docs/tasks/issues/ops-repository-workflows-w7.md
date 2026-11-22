@@ -13,7 +13,7 @@ spec_mode: required
 openspec_change: cic-1795329226354380-ops-repository-workflows-w7
 created: 2026-11-22
 updated: 2026-11-22
-related_tasks: []
+related_tasks: [OPS-1795327950629406]
 ---
 
 ## Goal
