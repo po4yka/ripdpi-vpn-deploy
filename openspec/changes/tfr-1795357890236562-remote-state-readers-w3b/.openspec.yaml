@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-22
+goal: TFR-1795357890236562 Read OpenTofu state through the encrypted backend in
+  every script
