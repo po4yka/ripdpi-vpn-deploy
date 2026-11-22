@@ -345,6 +345,9 @@ def test_orchestration_requires_deploy_and_verified_cleanup(tmp_path, monkeypatc
     # The teardown marker outlives the run only while the provider teardown is still owed.
     marker = work / "teardown.json"
     assert marker.exists() is (fail_goal == "staging-destroy")
+    # The local backend override stays only while a teardown still needs the run's state.
+    backend_override = root / "terraform/providers/upcloud/ci_backend_override.tf"
+    assert backend_override.exists() is (fail_goal in {"staging-destroy", "logout"})
     if fail_goal == "staging-destroy":
         calls.clear()
         fail_goal = None
@@ -370,6 +373,7 @@ def test_orchestration_requires_deploy_and_verified_cleanup(tmp_path, monkeypatc
         resumed = MODULE.resume_cleanup(work.resolve(), runtime_factory=ResumeRuntime)
         assert resumed["status"] == "provider-cleanup-confirmed"
         assert calls == [["pgrep", "-x", "tofu"], ["make", "staging-destroy"]]
+        assert not backend_override.exists()
         assert not override.exists()
         assert not marker.exists()
 
@@ -514,3 +518,12 @@ def test_ci_generator_refuses_partial_or_unsafe_geodata_pins_before_any_work(tmp
     assert result.returncode == 2
     assert "geodata pins need both https URLs and both sha256 values" in result.stderr
     assert not output.exists()
+
+
+def test_unreadable_state_is_not_reported_as_unprovisioned(tmp_path, monkeypatch):
+    def pull(*_args, **_kwargs):
+        raise MODULE.tofu_state.StateError("state-pull-failed")
+    monkeypatch.setattr(MODULE.tofu_state, "pull", pull)
+    runtime = argparse.Namespace(environment={}, work=tmp_path)
+    with pytest.raises(MODULE.DeploymentError, match="provider-state-unreadable"):
+        MODULE.provider_teardown(runtime, tmp_path, "ci-staging-0123456789abcdef", "alias", "seed.json", [])
