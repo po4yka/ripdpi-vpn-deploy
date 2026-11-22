@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-22
+goal: CIC-1795329226354380 Run plan, deploy, verify, rotate and issue from ops
+  repository workflows

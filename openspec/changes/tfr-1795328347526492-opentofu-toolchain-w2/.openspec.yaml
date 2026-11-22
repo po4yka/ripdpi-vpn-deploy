@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-11-22
+goal: TFR-1795328347526492 Migrate the Terraform toolchain to OpenTofu

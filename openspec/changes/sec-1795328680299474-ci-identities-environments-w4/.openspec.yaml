@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-22
+goal: SEC-1795328680299474 Issue revocable CI identities in scoped GitHub
+  environments

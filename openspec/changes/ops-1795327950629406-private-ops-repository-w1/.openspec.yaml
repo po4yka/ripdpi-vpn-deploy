@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-22
+goal: OPS-1795327950629406 Create the private ops repository and map the
+  operator kit onto it
