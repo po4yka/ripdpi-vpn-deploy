@@ -56,6 +56,11 @@ def test_publishes_valid_private_intent_and_exact_alias_mapping_without_key_read
     assert json.loads((output / "deployment-inputs.json").read_bytes()) == {
         data["target_identity"]["inventory_alias"]: data
     }
+    retirement = importlib.util.spec_from_file_location(
+        "retire_unbound_canonical", ROOT / "scripts/retire-unbound-staging-client.py")
+    retire = importlib.util.module_from_spec(retirement)
+    retirement.loader.exec_module(retire)
+    assert (output / "intent.json").read_bytes() == retire._canonical(data)
     assert "applied_at" not in data["target_identity"]
     assert outcome == {"status": "promotion-intent-prepared"}
     assert stat.S_IMODE(output.stat().st_mode) == 0o700
