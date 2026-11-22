@@ -202,7 +202,12 @@ def _target(
     path = tmp_path / ("provider-target-" + alias + ".json")
     path.write_text(json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n")
     path.chmod(0o600)
-    return m.ProviderTarget(os.open(path, os.O_RDONLY))
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        return m.ProviderTarget(fd)
+    except BaseException:
+        os.close(fd)
+        raise
 
 
 def _recovery_snapshot(m):
