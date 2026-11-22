@@ -20,6 +20,7 @@ import yaml
 
 import fleet_inspection as inspection
 import tailnet_management as tailnet
+import tofu_state
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_FIELDS = {
@@ -144,10 +145,9 @@ def _cleanup_fences(config, host):
         raw_manifest, manifest_fence = deploy.read_fenced_input(path, private=True, exact_mode=0o600)
         if json.loads(raw_manifest) != manifest:
             raise BootstrapError("cleanup-manifest-changed")
-        state_path = manifest["state"]["path"]
-        raw, state_fence = deploy.read_fenced_input(
-            state_path, private=True, exact_mode=0o600, limit=guard.MAX_STATE_BYTES,
-        )
+        raw = tofu_state.pull(manifest["provider"], manifest["environment"])
+        if raw is None:
+            raise BootstrapError("cleanup-target-mismatch")
         state = inspection.decode_json(raw)
         if (hashlib.sha256(raw).hexdigest() != manifest["state"]["sha256"]
                 or manifest["hostname"] != host["name"]
@@ -160,8 +160,8 @@ def _cleanup_fences(config, host):
         else:
             if guard._extract_identity(state, host["name"]) != manifest["resources"]:
                 raise BootstrapError("cleanup-target-mismatch")
-        return [manifest_fence, state_fence]
-    except (guard.GuardError, KeyError, TypeError, ValueError):
+        return [manifest_fence]
+    except (guard.GuardError, tofu_state.StateError, KeyError, TypeError, ValueError):
         raise BootstrapError("cleanup-ownership-refused") from None
 
 

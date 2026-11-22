@@ -26,12 +26,12 @@ from pathlib import Path
 from typing import Any
 
 import staging_lifecycle as lifecycle
+import tofu_state
 
 GuardError = lifecycle.GuardError
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 MAX_JSON_BYTES = 16 * 1024 * 1024
-MAX_STATE_BYTES = 64 * 1024 * 1024
 TARGET_AFTER = timedelta(hours=36)
 ESCALATION_AFTER = timedelta(hours=44)
 EXPIRY_AFTER = timedelta(hours=47)
@@ -403,18 +403,31 @@ def _valid_plan_binding(value: Any) -> bool:
     )
 
 
-def _state_binding(manifest: dict[str, Any]) -> dict[str, Any]:
-    state_path = Path(manifest["state"]["path"])
-    raw, identity = _private_read(
-        state_path, "state", max_bytes=MAX_STATE_BYTES, exact_parent=False
+def _valid_state_binding(value: Any) -> bool:
+    return (
+        isinstance(value, dict)
+        and set(value) == {"sha256"}
+        and isinstance(value["sha256"], str)
+        and SHA256_RE.fullmatch(value["sha256"]) is not None
     )
+
+
+def _pull_state(provider: str, environment: str) -> bytes:
+    try:
+        state_bytes = tofu_state.pull(provider, environment)
+    except tofu_state.StateError:
+        raise GuardError("state could not be read from the backend") from None
+    if state_bytes is None:
+        raise GuardError("state is empty")
+    return state_bytes
+
+
+def _state_binding(manifest: dict[str, Any]) -> dict[str, Any]:
+    raw = _pull_state(manifest["provider"], manifest["environment"])
     digest = hashlib.sha256(raw).hexdigest()
     if digest != manifest["state"]["sha256"]:
         raise GuardError("state digest does not match manifest")
-    return {
-        "identity": [identity[0], identity[1]],
-        "sha256": digest,
-    }
+    return {"sha256": digest}
 
 
 def _receipt_time(value: Any, label: str) -> datetime:
@@ -442,7 +455,7 @@ def _validate_lifecycle_receipt(
     if any(receipt.get(key) != value for key, value in common.items()):
         raise GuardError("evidence lifecycle receipt is invalid")
     status = receipt.get("status")
-    if not _valid_plan_binding(receipt.get("state_binding")):
+    if not _valid_state_binding(receipt.get("state_binding")):
         raise GuardError("evidence lifecycle receipt is invalid")
     base_keys = set(common) | {"status", "state_binding"}
     if status == "reserved":
@@ -957,7 +970,6 @@ def create_manifest(
     provider: str,
     environment: str,
     workspace: str,
-    state_path: Path,
     hostname: str,
     request_json: JsonRequest,
     now: datetime | None = None,
@@ -970,10 +982,7 @@ def create_manifest(
         or not NAME_RE.fullmatch(hostname)
     ):
         raise GuardError("provider, environment, workspace, or hostname is invalid")
-    state_path = state_path.absolute()
-    state_bytes, _ = _private_read(
-        state_path, "state", max_bytes=MAX_STATE_BYTES, exact_parent=False
-    )
+    state_bytes = _pull_state(provider, environment)
     identity = _extract_identity(_json(state_bytes, "state"), hostname)
     binding = _account_binding(request_json)
     created = _provider_created(
@@ -989,10 +998,7 @@ def create_manifest(
         "workspace": workspace,
         "hostname": hostname,
         "provider_account_binding": binding,
-        "state": {
-            "path": str(state_path),
-            "sha256": hashlib.sha256(state_bytes).hexdigest(),
-        },
+        "state": {"sha256": hashlib.sha256(state_bytes).hexdigest()},
         "resources": identity,
         "created_at": _format_time(created),
         "target_at": _format_time(created + TARGET_AFTER),
@@ -1049,8 +1055,7 @@ def load_manifest(
     state_info = manifest.get("state")
     if (
         not isinstance(state_info, dict)
-        or set(state_info) != {"path", "sha256"}
-        or not isinstance(state_info.get("path"), str)
+        or set(state_info) != {"sha256"}
         or not SHA256_RE.fullmatch(state_info.get("sha256", ""))
     ):
         raise GuardError("manifest state binding is invalid")
@@ -1058,12 +1063,7 @@ def load_manifest(
     if not isinstance(resources, dict):
         raise GuardError("manifest resource binding is invalid")
     if verify_state:
-        state_bytes, _ = _private_read(
-            Path(state_info["path"]),
-            "state",
-            max_bytes=MAX_STATE_BYTES,
-            exact_parent=False,
-        )
+        state_bytes = _pull_state(manifest["provider"], manifest["environment"])
         if (
             hashlib.sha256(state_bytes).hexdigest() != state_info["sha256"]
             or _extract_identity(_json(state_bytes, "state"), manifest.get("hostname"))
@@ -1583,17 +1583,11 @@ def mark_apply_started(
     manifest = load_manifest(
         manifest_path, now=current, expected_environment=expected_environment
     )
-    state_path = Path(manifest["state"]["path"])
-    state_before, state_identity = _private_read(
-        state_path, "state", max_bytes=MAX_STATE_BYTES, exact_parent=False
-    )
+    state_before = _pull_state(manifest["provider"], manifest["environment"])
     evidence, evidence_identity = _evidence(
         manifest, manifest_path, evidence_path, "plan_validated"
     )
-    if {
-        "identity": [state_identity[0], state_identity[1]],
-        "sha256": hashlib.sha256(state_before).hexdigest(),
-    } != evidence["state_binding"]:
+    if {"sha256": hashlib.sha256(state_before).hexdigest()} != evidence["state_binding"]:
         raise GuardError("state identity changed after authorization")
     plan_value = evidence.get("plan_binding")
     if (
@@ -1622,9 +1616,7 @@ def mark_apply_started(
     raw_after, identity_after = _private_read(
         manifest_path.absolute(), "manifest", max_bytes=MAX_JSON_BYTES
     )
-    state_after, state_identity_after = _private_read(
-        state_path, "state", max_bytes=MAX_STATE_BYTES, exact_parent=False
-    )
+    state_after = _pull_state(manifest["provider"], manifest["environment"])
     evidence_after, evidence_identity_after = _evidence(
         manifest, manifest_path, evidence_path, "plan_validated"
     )
@@ -1632,7 +1624,6 @@ def mark_apply_started(
         raw_before != raw_after
         or manifest_identity != identity_after
         or state_before != state_after
-        or state_identity != state_identity_after
         or evidence != evidence_after
         or evidence_identity != evidence_identity_after
     ):
@@ -1798,7 +1789,6 @@ def _parser() -> argparse.ArgumentParser:
         create.add_argument("--provider", required=True)
         create.add_argument("--environment", required=True)
         create.add_argument("--workspace", required=True)
-        create.add_argument("--state", type=Path, required=True)
         create.add_argument("--hostname", required=True)
         if verb == "reissue-manifest":
             create.add_argument("--previous-manifest", type=Path, required=True)
@@ -1844,7 +1834,6 @@ def main(argv: list[str] | None = None) -> int:
             provider=args.provider,
             environment=args.environment,
             workspace=args.workspace,
-            state_path=args.state,
             hostname=args.hostname,
             request_json=_vultr_https_request(token),
             now=now,

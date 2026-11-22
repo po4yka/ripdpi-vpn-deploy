@@ -5,7 +5,7 @@ Operator usage is intentionally limited to the canonical Make targets::
 
     export UPCLOUD_TOKEN=...
     PROVIDER=upcloud ENV=ci-staging-... make staging-cleanup-manifest \
-        STAGING_CLEANUP_STATE=... STAGING_CLEANUP_HOSTNAME=... \
+        STAGING_CLEANUP_HOSTNAME=... \
         STAGING_CLEANUP_MANIFEST=...
     PROVIDER=upcloud ENV=ci-staging-... make staging-destroy \
         STAGING_CLEANUP_MANIFEST=... STAGING_POST_DESTROY_EVIDENCE=...
@@ -39,12 +39,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 import staging_lifecycle as lifecycle
+import tofu_state
 
 GuardError = lifecycle.GuardError
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 MAX_JSON_BYTES = 16 * 1024 * 1024
-MAX_STATE_BYTES = 64 * 1024 * 1024
 MAX_API_BYTES = 64 * 1024
 API_ROOT = "https://api.upcloud.com"
 UUID_RE = re.compile(
@@ -370,6 +370,16 @@ def _json_object(data: bytes, label: str) -> dict[str, Any]:
     return value
 
 
+def _pull_state(provider: str, environment: str) -> bytes:
+    try:
+        state_bytes = tofu_state.pull(provider, environment)
+    except tofu_state.StateError:
+        raise GuardError("state could not be read from the backend") from None
+    if state_bytes is None:
+        raise GuardError("state is empty")
+    return state_bytes
+
+
 def _state_resources(state_value: dict[str, Any]) -> dict[str, dict[str, Any]]:
     if state_value.get("version") != 4 or not isinstance(
         state_value.get("resources"), list
@@ -546,7 +556,6 @@ def create_manifest(
     provider: str,
     environment: str,
     workspace: str,
-    state_path: Path,
     hostname: str,
     request_json: JsonRequest,
     now: datetime | None = None,
@@ -559,13 +568,7 @@ def create_manifest(
         raise GuardError("environment and workspace must be the same ci-staging name")
     if not NAME_RE.fullmatch(hostname):
         raise GuardError("hostname is invalid")
-    state_path = state_path.absolute()
-    state_bytes = _private_read(
-        state_path,
-        "state",
-        max_bytes=MAX_STATE_BYTES,
-        exact_parent_mode=False,
-    )
+    state_bytes = _pull_state(provider, environment)
     state_value = _json_object(state_bytes, "state")
     server_uuid, storage_uuid = _extract_state_identity(state_value, hostname)
     seed = _seed_identity(_state_resources(state_value), hostname, environment)
@@ -595,7 +598,6 @@ def create_manifest(
         "environment": environment,
         "workspace": workspace,
         "state": {
-            "path": str(state_path),
             "sha256": hashlib.sha256(state_bytes).hexdigest(),
         },
         "hostname": hostname,
@@ -672,12 +674,9 @@ def _validate_manifest_shape(
     if not allow_expired and now >= expiry:
         raise GuardError("cleanup manifest is expired")
     state_info = manifest.get("state")
-    if not isinstance(state_info, dict) or set(state_info) != {"path", "sha256"}:
+    if not isinstance(state_info, dict) or set(state_info) != {"sha256"}:
         raise GuardError("manifest state binding is invalid")
-    state_path = state_info.get("path")
     state_digest = state_info.get("sha256")
-    if not isinstance(state_path, str) or not Path(state_path).is_absolute():
-        raise GuardError("manifest state path is not absolute")
     if not isinstance(state_digest, str) or not SHA256_RE.fullmatch(state_digest):
         raise GuardError("manifest state digest is invalid")
 
@@ -705,14 +704,8 @@ def load_manifest(
     ):
         raise GuardError("manifest environment does not match destroy target")
     if verify_state:
-        state_info = manifest["state"]
-        state_bytes = _private_read(
-            Path(state_info["path"]),
-            "state",
-            max_bytes=MAX_STATE_BYTES,
-            exact_parent_mode=False,
-        )
-        if hashlib.sha256(state_bytes).hexdigest() != state_info["sha256"]:
+        state_bytes = _pull_state(manifest["provider"], manifest["environment"])
+        if hashlib.sha256(state_bytes).hexdigest() != manifest["state"]["sha256"]:
             raise GuardError("state digest does not match manifest")
     lifecycle.check_manifest(path, manifest)
     return manifest
@@ -937,28 +930,16 @@ def authorize_reserve_evidence(
         expected_provider=expected_provider,
         expected_environment=expected_environment,
     )
-    state_path = Path(manifest["state"]["path"])
-    state_bytes, state_identity = _private_snapshot(
-        state_path,
-        "state",
-        max_bytes=MAX_STATE_BYTES,
-        exact_parent_mode=False,
-    )
+    state_bytes = _pull_state(manifest["provider"], manifest["environment"])
     _require_account_matches(manifest, request_json)
     after, after_identity = _private_snapshot(
         manifest_path, "manifest", max_bytes=MAX_JSON_BYTES
     )
-    confirmed_state, confirmed_state_identity = _private_snapshot(
-        state_path,
-        "state",
-        max_bytes=MAX_STATE_BYTES,
-        exact_parent_mode=False,
-    )
+    confirmed_state = _pull_state(manifest["provider"], manifest["environment"])
     if (
         after != before
         or after_identity != before_identity
         or confirmed_state != state_bytes
-        or confirmed_state_identity != state_identity
     ):
         raise GuardError("manifest changed during provider authorization")
     confirmed = load_manifest(
@@ -1266,13 +1247,7 @@ def mark_apply_started(
         expected_provider=expected_provider,
         expected_environment=expected_environment,
     )
-    state_path = Path(manifest["state"]["path"])
-    state_bytes, state_identity = _private_snapshot(
-        state_path,
-        "state",
-        max_bytes=MAX_STATE_BYTES,
-        exact_parent_mode=False,
-    )
+    state_bytes = _pull_state(manifest["provider"], manifest["environment"])
     reserved = _require_evidence_status(
         manifest, manifest_path, evidence_path, "reserved", now=current
     )
@@ -1280,17 +1255,11 @@ def mark_apply_started(
     after, after_identity = _private_snapshot(
         manifest_path, "manifest", max_bytes=MAX_JSON_BYTES
     )
-    confirmed_state, confirmed_state_identity = _private_snapshot(
-        state_path,
-        "state",
-        max_bytes=MAX_STATE_BYTES,
-        exact_parent_mode=False,
-    )
+    confirmed_state = _pull_state(manifest["provider"], manifest["environment"])
     if (
         after != before
         or after_identity != before_identity
         or confirmed_state != state_bytes
-        or confirmed_state_identity != state_identity
     ):
         raise GuardError("manifest changed during pre-apply authorization")
     confirmed = load_manifest(
@@ -1449,7 +1418,6 @@ def _parser() -> argparse.ArgumentParser:
         create.add_argument("--provider", required=True)
         create.add_argument("--environment", required=True)
         create.add_argument("--workspace", required=True)
-        create.add_argument("--state", type=Path, required=True)
         create.add_argument("--hostname", required=True)
         if verb == "reissue-manifest":
             create.add_argument("--previous-manifest", type=Path, required=True)
@@ -1508,7 +1476,6 @@ def main(argv: list[str] | None = None) -> int:
             provider=args.provider,
             environment=args.environment,
             workspace=args.workspace,
-            state_path=args.state,
             hostname=args.hostname,
             request_json=_upcloud_request(authorization),
         )
