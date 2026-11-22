@@ -9,7 +9,7 @@ A disposable staging node serves the self-signed certificate that its generated 
 ## What Changes
 
 - `make provision-disposable-liveness-runtime` accepts an optional `STAGING_TRUST_ANCHOR` path to one PEM certificate.
-- The provisioning script validates the certificate locally (exactly one certificate, self-signed, currently valid, at least one DNS subject alternative name) before it changes the executor, installs it into the executor's system trust store and reports its SHA-256 fingerprint.
+- The provisioning script validates the certificate locally (exactly one certificate, self-signed, currently valid, exactly one non-wildcard DNS subject alternative name) before it changes the executor, installs it into the executor's system trust store and reports its SHA-256 fingerprint.
 - Without `STAGING_TRUST_ANCHOR` the command behaves as before.
 - TLS verification in the liveness profiles is unchanged; `insecure` stays refused.
 

@@ -134,6 +134,10 @@ def _certificate(tmp_path: Path, name: str, *, ca: bool | None = True, valid=(-1
         builder = builder.add_extension(x509.BasicConstraints(ca=ca, path_length=None), critical=True)
     if san == "dns":
         builder = builder.add_extension(x509.SubjectAlternativeName([x509.DNSName(name)]), critical=False)
+    elif san in ("two-names", "wildcard"):
+        names = [x509.DNSName(name), x509.DNSName("other.example.test")] if san == "two-names" else [
+            x509.DNSName("*.example.test")]
+        builder = builder.add_extension(x509.SubjectAlternativeName(names), critical=False)
     elif san == "ip":
         builder = builder.add_extension(
             x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address("192.0.2.1"))]), critical=False)
@@ -180,13 +184,14 @@ def test_trust_anchor_accepts_one_valid_self_signed_certificate(module, tmp_path
 
 
 @pytest.mark.parametrize("fault", ["bundle", "private-key", "ca-issued", "foreign-key-same-name", "expired",
-                                   "not-yet-valid", "no-san", "ip-only-san", "not-pem", "oversized"])
+                                   "not-yet-valid", "no-san", "ip-only-san", "two-names", "wildcard", "not-pem",
+                                   "oversized"])
 def test_trust_anchor_refuses_unsuitable_input_before_the_executor(module, tmp_path, monkeypatch, fault):
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import ec
 
     valid = {"expired": (-10, -1), "not-yet-valid": (1, 30)}.get(fault, (-1, 30))
-    san = {"no-san": None, "ip-only-san": "ip"}.get(fault, "dns")
+    san = {"no-san": None, "ip-only-san": "ip", "two-names": "two-names", "wildcard": "wildcard"}.get(fault, "dns")
     signer = ec.generate_private_key(ec.SECP256R1()) if fault == "foreign-key-same-name" else None
     path, cert, key = _certificate(tmp_path, "vpn-ci-staging-fixture", valid=valid, san=san, signer=signer)
     if fault == "bundle":
