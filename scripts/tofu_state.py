@@ -37,7 +37,8 @@ def pull(provider: str, environment: str, *, env=None, timeout: float = 120) -> 
         raise StateError("state-pull-failed") from None
     def kill():
         # The wrapper's tofu child keeps the pipe open; stop the whole session.
-        with contextlib.suppress(ProcessLookupError):
+        # macOS reports EPERM for a group whose members are already zombies.
+        with contextlib.suppress(ProcessLookupError, PermissionError):
             os.killpg(process.pid, signal.SIGKILL)
 
     timer = threading.Timer(timeout, kill)

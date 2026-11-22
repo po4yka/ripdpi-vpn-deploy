@@ -276,11 +276,15 @@ def local_backend(runtime):
 
 
 def state_recorded(runtime, environment):
-    """True only when the workspace holds state; an unreadable state is not evidence."""
+    """True when the workspace holds state; an unreadable state is never read as empty."""
     try:
         return tofu_state.pull("upcloud", environment, env=runtime.environment) is not None
     except tofu_state.StateError:
-        return False
+        raise DeploymentError("provider-state-unreadable") from None
+
+
+def remove_local_backend():
+    (ROOT / "terraform/providers/upcloud/ci_backend_override.tf").unlink(missing_ok=True)
 
 
 def provider_teardown(runtime, work, environment, alias, seed_manifest, phases):
@@ -349,6 +353,7 @@ def resume_cleanup(work, *, runtime_factory=Runtime):
         recover_interrupted_destroy(runtime)
         provider_teardown(runtime, work, environment, alias, seed_manifest, phases)
     marker.unlink()
+    remove_local_backend()
     return {"schema_version": 1, "status": "provider-cleanup-confirmed", "phases": phases}
 
 
@@ -469,6 +474,8 @@ def execute(config, args, work, artifact, *, runtime_factory=Runtime, enrollment
                     if seed is not None:
                         runtime.script("ci-ssh-seed.py", "cleanup-local", "--manifest", seed["manifest_path"])
                     tfvars.unlink(missing_ok=True)
+                    if not (work / "teardown.json").exists():
+                        remove_local_backend()
                 except (DeploymentError, OSError):
                     cleanup_errors.append("local-seed-cleanup-incomplete")
             result = {"schema_version": 1, "profile": args.profile, "distro": args.distro, "source_revision": identity[0] if 'identity' in locals() else None,
