@@ -16,7 +16,7 @@ Every credential that operates the fleet today is the operator's own: the age id
 - A separate CI age recipient added to the recipient policy; every scoped SOPS file is re-encrypted to operator plus CI. The operator identity becomes break-glass in the password manager.
 - BREAKING: the admin SSH key input becomes a list (`admin_ssh_public_keys`) in every root and cloud-init, and the `baseline` role manages the admin account's `authorized_keys` exclusively from that list, so a CI key can be added and revoked by deploy.
 - Tailnet: two CI tags (`tag:ci-tofu`, `tag:ci-deploy`) joined by workload identity federation or OAuth clients, `tagOwners`, and grants (`tag:ci-tofu` to the egress proxy port only; `tag:ci-deploy` to VPN and egress management SSH only). The Tailnet policy file moves into the ops repository and is pushed by the official GitOps action.
-- Least-privilege tokens for Scaleway, UpCloud, Vultr, Hetzner, Backblaze, Porkbun and Tailscale, each recorded in the catalog with its revoke procedure; read-only tokens for `tofu-plan` where the provider offers them.
+- Least-privilege tokens for Scaleway, UpCloud, Vultr, Hetzner, Porkbun and Tailscale, plus the scoped Scaleway state identities from W3, each recorded in the catalog with its revoke procedure; read-only tokens for `tofu-plan` where the provider offers them.
 
 ## Capabilities
 
