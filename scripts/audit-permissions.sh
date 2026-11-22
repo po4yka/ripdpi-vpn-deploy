@@ -5,7 +5,6 @@
 #   * SOPS file world-readable
 #   * SSH private key not 0600
 #   * stray plaintext *.secrets.yaml on disk (left by a crashed sops editor)
-#   * group-readable Terraform state
 #
 # Exit 1 on any finding.
 #
@@ -81,24 +80,6 @@ else
     findings=$((findings+1))
   done
 fi
-
-echo
-echo "[4] Terraform state"
-for tf in "$REPO_ROOT"/terraform/providers/*/terraform.tfstate \
-          "$REPO_ROOT"/terraform/providers/*/terraform.tfstate.backup \
-          "$REPO_ROOT"/terraform/providers/*/terraform.tfstate.d/*/terraform.tfstate \
-          "$REPO_ROOT"/terraform/providers/*/terraform.tfstate.d/*/terraform.tfstate.backup; do
-  [[ -f "$tf" ]] || continue
-  # Terraform state may contain secrets even when our pipeline tries to
-  # avoid it. 600 is the safe floor.
-  got="$(stat_mode "$tf")"
-  if [[ "$got" != "600" ]]; then
-    echo "  FAIL $tf  mode=$got  want=600"
-    findings=$((findings+1))
-  else
-    echo "  ok   $tf  mode=$got"
-  fi
-done
 
 echo
 if (( findings == 0 )); then

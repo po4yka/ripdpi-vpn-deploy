@@ -177,7 +177,7 @@ def cleanup_local(path: Path) -> None:
 
 
 
-def cleanup_seed(path: Path, state: Path, environment: str, request=None) -> dict:
+def cleanup_seed(path: Path, environment: str, request=None) -> dict:
     """Remove only a detached, state-recorded seed from an interrupted apply."""
     data = _manifest(path)
     if data["environment"] != environment:
@@ -185,7 +185,13 @@ def cleanup_seed(path: Path, state: Path, environment: str, request=None) -> dic
     spec = importlib.util.spec_from_file_location("seed_cleanup_guard", ROOT / "scripts/staging-cleanup-guard.py")
     guard = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(guard)
-    raw = guard._private_read(state, "state", max_bytes=guard.MAX_STATE_BYTES, exact_parent_mode=False)
+    import tofu_state
+    try:
+        raw = tofu_state.pull("upcloud", environment)
+    except tofu_state.StateError:
+        raise Refusal("seed-cleanup-state-invalid") from None
+    if raw is None:
+        raise Refusal("seed-cleanup-no-recorded-resource")
     value = guard._json_object(raw, "state")
     if value.get("version") != 4 or not isinstance(value.get("resources"), list):
         raise Refusal("seed-cleanup-state-invalid")
@@ -255,7 +261,6 @@ def main() -> int:
         command.add_argument("--manifest", type=Path, required=True)
     cleanup = commands.add_parser("cleanup-seed")
     cleanup.add_argument("--manifest", type=Path, required=True)
-    cleanup.add_argument("--state", type=Path, required=True)
     cleanup.add_argument("--environment", required=True)
     args = parser.parse_args()
     os.umask(0o077)
@@ -266,7 +271,7 @@ def main() -> int:
         elif args.command == "validate":
             data = validate(args.manifest)
         elif args.command == "cleanup-seed":
-            data = cleanup_seed(args.manifest, args.state, args.environment)
+            data = cleanup_seed(args.manifest, args.environment)
         else:
             cleanup_local(args.manifest)
             data = {"status": "local-seed-removed"}

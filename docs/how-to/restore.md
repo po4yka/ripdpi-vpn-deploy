@@ -34,7 +34,7 @@ Every target below that uses cloud credentials, inventory, SSH or decrypted secr
 - The repo (git clone — public).
 - The encrypted SOPS secrets file (`~/.config/vpn-provision/prod.secrets.sops.yaml`).
 - Your age private key (`~/.config/vpn-provision/age.key`).
-- The Terraform state file for the chosen provider and `ENV` (or willingness to import an existing VPS through `scripts/terraform-env.sh`). `prod` retains Terraform's legacy `default` workspace; other environments use same-named workspaces.
+- The OpenTofu state for the chosen provider and `ENV` in the encrypted backend (or a bucket version to restore with `make restore-state`) (or willingness to import an existing VPS through `scripts/terraform-env.sh`). `prod` retains Terraform's legacy `default` workspace; other environments use same-named workspaces.
 - Optional: a recent restic snapshot from the old VPS, if you want to restore configs verbatim instead of re-rendering from secrets.
 
 ## Operator-kit and observer recovery

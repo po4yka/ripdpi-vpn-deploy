@@ -17,6 +17,7 @@ def load(name, path):
     return module
 
 seed = load("ci_ssh_seed", "scripts/ci-ssh-seed.py")
+import tofu_state as seed_state  # noqa: E402
 guest = load("bootstrap_ssh_seed", "terraform/shared/bootstrap-ssh-seed.py")
 UUID = "11223344-5566-4788-99aa-bbccddeeff00"
 
@@ -82,11 +83,13 @@ def partial_state(data):
     }}]}]}
 
 @pytest.mark.parametrize("condition", ["valid", "attached", "foreign", "unknown", "still-present"])
-def test_partial_cleanup_exact_provider_binding(material, tmp_path, condition):
+def test_partial_cleanup_exact_provider_binding(material, monkeypatch, condition):
     data, manifest = material
-    state = tmp_path.resolve() / "state.json"
-    state.write_text(json.dumps(partial_state(data)))
-    state.chmod(0o600)
+    pulled = []
+    def pull(provider, environment):
+        pulled.append((provider, environment))
+        return json.dumps(partial_state(data)).encode()
+    monkeypatch.setattr(seed_state, "pull", pull)
     calls = []
     removed = False
     def request(path, *, method="GET"):
@@ -102,21 +105,33 @@ def test_partial_cleanup_exact_provider_binding(material, tmp_path, condition):
         return 200, {"storage": {"uuid": UUID, "title": data["host_alias"] + "-ssh-seed", "encrypted": "yes", "servers": {"server": ["foreign"] if condition == "attached" else []}, "labels": [
             {"key": "managed_by", "value": "terraform"}, {"key": "env", "value": "prod" if condition == "foreign" else data["environment"]}, {"key": "seed_id", "value": data["filesystem_uuid"]}]}}
     if condition == "valid":
-        assert seed.cleanup_seed(manifest, state, data["environment"], request)["status"] == "seed-storage-absent"
+        assert seed.cleanup_seed(manifest, data["environment"], request)["status"] == "seed-storage-absent"
     else:
-        with pytest.raises(seed.Refusal): seed.cleanup_seed(manifest, state, data["environment"], request)
+        with pytest.raises(seed.Refusal): seed.cleanup_seed(manifest, data["environment"], request)
         if condition != "still-present": assert all(method != "DELETE" for _, method in calls)
     assert manifest.exists()
+    assert set(pulled) == {("upcloud", data["environment"])}
+
+
+@pytest.mark.parametrize("pulled", [None, seed_state.StateError("state-pull-failed")])
+def test_partial_cleanup_refuses_absent_or_unreadable_state_before_api(material, monkeypatch, pulled):
+    data, manifest = material
+    def pull(provider, environment):
+        if isinstance(pulled, Exception):
+            raise pulled
+        return pulled
+    monkeypatch.setattr(seed_state, "pull", pull)
+    with pytest.raises(seed.Refusal):
+        seed.cleanup_seed(manifest, data["environment"], lambda _: pytest.fail("API called"))
 
 @pytest.mark.parametrize("foreign", ["upcloud_server", "upcloud_firewall_rules", "unexpected"])
-def test_partial_cleanup_refuses_other_resources_before_api(material, tmp_path, foreign):
+def test_partial_cleanup_refuses_other_resources_before_api(material, monkeypatch, foreign):
     data, manifest = material
     value = partial_state(data)
     value["resources"].append({"mode": "managed", "type": foreign, "name": "vpn", "instances": []})
-    state = tmp_path.resolve() / "state.json"
-    state.write_text(json.dumps(value)); state.chmod(0o600)
+    monkeypatch.setattr(seed_state, "pull", lambda provider, environment: json.dumps(value).encode())
     with pytest.raises(seed.Refusal, match="full-manifest"):
-        seed.cleanup_seed(manifest, state, data["environment"], lambda _: pytest.fail("API called"))
+        seed.cleanup_seed(manifest, data["environment"], lambda _: pytest.fail("API called"))
 
 
 @pytest.mark.native_runtime

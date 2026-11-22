@@ -89,7 +89,6 @@ def _providers() -> list[dict[str, object]]:
             "account_id": "account-a",
             "project_id": None,
             "environment": "staging",
-            "state_path": "/private/upcloud.tfstate",
             "state_sha256": "1" * 64,
             "destroy_plan_sha256": "a" * 64,
             "terraform_addresses": [
@@ -119,7 +118,6 @@ def _providers() -> list[dict[str, object]]:
             "account_id": "42",
             "project_id": None,
             "environment": "staging",
-            "state_path": "/private/hetzner.tfstate",
             "state_sha256": "2" * 64,
             "destroy_plan_sha256": "b" * 64,
             "terraform_addresses": [
@@ -158,7 +156,6 @@ def _providers() -> list[dict[str, object]]:
             "account_id": "org-a",
             "project_id": "11111111-1111-4111-8111-111111111111",
             "environment": "staging",
-            "state_path": "/private/scaleway.tfstate",
             "state_sha256": "3" * 64,
             "destroy_plan_sha256": "c" * 64,
             "terraform_addresses": [
@@ -276,11 +273,31 @@ def test_delete_plan_must_delete_exact_frozen_address_set() -> None:
 def test_nonempty_state_must_be_bound_to_manifest() -> None:
     module = _load()
     with pytest.raises(module.CleanupError, match="nonempty unbound state"):
-        module.validate_state_binding(
-            b'{"version":4,"resources":[{}]}', None, "/private/upcloud.tfstate"
-        )
+        module.validate_state_binding(b'{"version":4,"resources":[{}]}', None)
     empty = b'{"version":4,"resources":[]}'
-    module.validate_state_binding(empty, None, "/private/upcloud.tfstate")
+    module.validate_state_binding(empty, None)
+
+
+def test_state_reads_the_backend_with_state_identity_and_refuses_failure(monkeypatch) -> None:
+    module = _load()
+    calls = []
+
+    def pull(provider, environment, *, env):
+        calls.append((provider, environment, env["AWS_ACCESS_KEY_ID"], env["TF_VAR_state_passphrase"]))
+        if provider == "scaleway":
+            raise module.tofu_state.StateError("state-pull-failed")
+        return None
+
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "fixture-key-id")
+    monkeypatch.setenv("TF_VAR_state_passphrase", "fixture-passphrase-value")
+    monkeypatch.setattr(module.tofu_state, "pull", pull)
+    assert module._state_pull("hetzner") == b'{"version":4,"resources":[]}'
+    with pytest.raises(module.CleanupError, match="state unavailable"):
+        module._state_pull("scaleway")
+    assert calls == [
+        ("hetzner", "staging", "fixture-key-id", "fixture-passphrase-value"),
+        ("scaleway", "staging", "fixture-key-id", "fixture-passphrase-value"),
+    ]
 
 
 def test_receipt_is_redacted_and_contains_no_resource_or_state_identity() -> None:

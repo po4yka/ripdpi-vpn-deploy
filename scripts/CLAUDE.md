@@ -54,7 +54,7 @@ other node is listed in it.
 `audit-log.sh append-best-effort` after a successful run; there is no
 opt-out flag.
 
-**Terraform is workspace-routed centrally** — scripts call `scripts/terraform-env.sh`, which maps `PROVIDER` + `ENV` to the correct local state workspace. `prod` intentionally selects Terraform's legacy `default` workspace; the environment alias `default` is refused. New environments must be initialized through `make ... init`.
+**Terraform is workspace-routed centrally** — scripts call `scripts/terraform-env.sh`, which maps `PROVIDER` + `ENV` to the correct workspace of the encrypted remote backend. Scripts read state only through `tofu_state.pull` (`state pull`, in memory, empty workspace is `None`, failure raises); never read, copy or bind a local state path. `prod` intentionally selects Terraform's legacy `default` workspace; the environment alias `default` is refused. New environments must be initialized through `make ... init`.
 
 ## What's done well
 

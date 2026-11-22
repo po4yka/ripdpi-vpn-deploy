@@ -39,7 +39,7 @@ tofu -chdir=terraform/providers/scaleway test
 
 ## State
 
-State is local by default and isolated by provider plus `ENV`. The legacy `ENV=prod` deployment remains in Terraform's `default` workspace so existing state keeps working; every other environment uses a workspace with the same name, stored under `terraform.tfstate.d/<ENV>/`. Before using a new environment, run its initialization explicitly:
+State is encrypted on the client and stored in the remote S3 backend that `TF_BACKEND_ROOT` configures, isolated by provider plus `ENV`. The legacy `ENV=prod` deployment remains in Terraform's `default` workspace so existing state keeps working; every other environment uses a workspace with the same name. Before using a new environment, run its initialization explicitly:
 
 ```bash
 make PROVIDER=upcloud ENV=green init

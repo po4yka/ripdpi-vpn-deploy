@@ -256,7 +256,15 @@ def test_orchestration_requires_deploy_and_verified_cleanup(tmp_path, monkeypatc
     monkeypatch.setattr(MODULE.urllib.request, "urlopen", lambda *a, **k: io.BytesIO(b"8.8.8.8"))
     monkeypatch.setattr(MODULE, "issue_secrets", lambda *a: None)
     monkeypatch.setattr(MODULE, "bootstrap", lambda *a: None)
-    calls = []
+    calls, recorded = [], set()
+
+    def pull(provider, environment, *, env):
+        # The run's encrypted local backend is the only state source.
+        assert provider == "upcloud" and env["TF_BACKEND_ROOT"] == str(work / "backend")
+        assert env["TF_VAR_state_passphrase"] == (work / "state-passphrase").read_text()
+        return b"{}" if environment in recorded else None
+
+    monkeypatch.setattr(MODULE.tofu_state, "pull", pull)
 
     class BoundaryRuntime:
         def __init__(self, private_root):
@@ -294,10 +302,11 @@ def test_orchestration_requires_deploy_and_verified_cleanup(tmp_path, monkeypatc
 
         def make(self, goal, **environment):
             calls.append(["make", goal])
+            if goal == "init":
+                assert (root / "terraform/providers/upcloud/ci_backend_override.tf").read_text().count('backend "local"') == 1
+                assert (work / "backend/upcloud.s3.tfbackend").read_text().startswith("workspace_dir = ")
             if goal == "apply":
-                state = root / "terraform/providers/upcloud/terraform.tfstate.d" / self.environment["ENV"] / "terraform.tfstate"
-                state.parent.mkdir(parents=True)
-                MODULE.private(state, "{}")
+                recorded.add(self.environment["ENV"])
             if goal == "staging-cleanup-manifest":
                 MODULE.document(work / "cleanup.json", {"owned": True})
             if goal == "staging-destroy" and fail_goal == "deploy-with-signal":
