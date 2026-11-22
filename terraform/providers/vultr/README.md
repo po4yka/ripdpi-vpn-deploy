@@ -36,7 +36,7 @@ Before adopting DNS records, follow the [existing DNS state migration](../../../
 
 | Name | Version |
 | ---- | ------- |
-| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.15, < 2.0 |
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | 1.13.9 |
 | <a name="requirement_vultr"></a> [vultr](#requirement\_vultr) | ~> 2.31 |
 
 ## Modules

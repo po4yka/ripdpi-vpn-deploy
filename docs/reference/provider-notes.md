@@ -64,7 +64,7 @@ Regenerate inventory and converge the guest NAT policy as part of the authorized
 
 ### Useful UpCloud zones for EU baseline
 
-The UpCloud root validates `zone` against an allowlist: `fi-hel1`, `de-fra1`, `nl-ams1`, `sg-sin1` (see `terraform/providers/upcloud/variables.tf`). Warsaw (`pl-waw1`) is NOT in the allowlist and fails `terraform validate`.
+The UpCloud root validates `zone` against an allowlist: `fi-hel1`, `de-fra1`, `nl-ams1`, `sg-sin1` (see `terraform/providers/upcloud/variables.tf`). Warsaw (`pl-waw1`) is NOT in the allowlist and fails `tofu validate`.
 
 - `fi-hel1` — Helsinki (default in `prod.tfvars.example`)
 - `de-fra1` — Frankfurt

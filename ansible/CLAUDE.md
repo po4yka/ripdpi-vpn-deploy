@@ -190,7 +190,7 @@ hyphenated profile slugs. Ansible keeps those names verbatim without warning;
 templates must address them with bracket notation rather than attribute syntax.
 
 **Inventory is rendered, not committed** — `scripts/render-inventory.sh`
-reads `terraform output -json` and emits `inventory/<env>.yml`. Don't edit
+reads `tofu output -json` and emits `inventory/<env>.yml`. Don't edit
 the rendered file.
 
 **Listener collisions fail before convergence** — `site.yml` renders a sanitized public listener manifest and runs `scripts/check-listener-collisions.py` in pre_tasks before any role mutates services or nftables. Collisions with the effective SSH port are host state and fail in the firewall role instead (see `roles/firewall/CLAUDE.md`).

@@ -54,11 +54,11 @@ Variables (override on command line):
   task-federation PEER_ROOT=…  Validate the combined RIPDPI backlog graph
 
 ── DEPLOY LIFECYCLE ───────────────────────────────────────────────────
-  init                       terraform init in $TF_ROOT
+  init                       tofu init in $TF_ROOT
   validate                   fmt + validate + gitleaks + ansible-lint
   decrypt                    sops --decrypt → $SECRETS_FILE
-  plan                       terraform plan -out=$TFPLAN
-  apply                      terraform apply $TFPLAN
+  plan                       tofu plan -out=$TFPLAN
+  apply                      tofu apply $TFPLAN
   inventory                  Render Ansible inventory from TF outputs
   wait                       Wait for cloud-init to finish
   pre-deploy-check           spot-check-secrets + check-certs (auto for deploy/verify; SKIP_PRECHECK=1 skips all but the placeholder check)
@@ -86,8 +86,8 @@ Variables (override on command line):
   rollback-xray              Roll Xray back to ROLLBACK_XRAY_VERSION=vX.Y.Z on one node (ANSIBLE_LIMIT=<alias>)
   rollback-config            Revert Xray to .prev config on one node (ANSIBLE_LIMIT=<alias>)
   rotate-credentials         Rotate per-client UUIDs / passwords / peer keys on one node (ANSIBLE_LIMIT=<alias>, repeat per node)
-  destroy                    Safe terraform destroy (double confirmation)
-  backup-state               age-encrypt the local terraform state
+  destroy                    Safe tofu destroy (double confirmation)
+  backup-state               age-encrypt the local OpenTofu state
   drift-since-tag            Diff fleet against last vpn-deploy-known-good-* tag
   blue-green GREEN_ENV=… GREEN_SOPS_FILE=… DEVICE_MIGRATION_PLAN=…  Replace with device handover
   recovery ACTION=… RECOVERY_MANIFEST=…  Execute or resume an exact reviewed replacement
@@ -184,7 +184,7 @@ Variables (override on command line):
   actionlint-check           Validate every GitHub Actions workflow
   zizmor-check               Audit owned GitHub automation (strict, offline)
   cloud-init-schema          Render shared cloud-init and run cloud-init schema
-  tf-test                    terraform test for all provider roots
+  tf-test                    tofu test for all provider roots
   yamllint-check             Lint repository YAML with the CI configuration
   shellcheck                 Lint every operator shell script
   ci-fast                    Portable CI-parity bundle (excludes native Linux lane, Molecule and validate)

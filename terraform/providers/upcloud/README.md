@@ -39,7 +39,7 @@ Return packets are accepted only into `provider_return_ephemeral_ports` (default
 
 | Name | Version |
 | ---- | ------- |
-| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.15, < 2.0 |
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | 1.13.9 |
 | <a name="requirement_upcloud"></a> [upcloud](#requirement\_upcloud) | ~> 5.48 |
 
 ## Modules

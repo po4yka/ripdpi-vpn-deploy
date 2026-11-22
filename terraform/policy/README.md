@@ -1,6 +1,6 @@
 # terraform/policy — Conftest / OPA policies
 
-Cross-provider policy layer above the per-provider `terraform test` suite. Every provider plan must satisfy all rules before merge.
+Cross-provider policy layer above the per-provider `tofu test` suite. Every provider plan must satisfy all rules before merge.
 
 ## Policies
 
@@ -22,8 +22,8 @@ Fail-on-violation only — no `--warn` flag is passed (Open Question 6 resolutio
 
 ```sh
 # 1. Run native provider tests; they use mock_provider and do not contact provider APIs.
-terraform -chdir=terraform/providers/upcloud init -backend=false
-terraform -chdir=terraform/providers/upcloud test
+tofu -chdir=terraform/providers/upcloud init -backend=false
+tofu -chdir=terraform/providers/upcloud test
 
 # 2. Verify Conftest policy modules.
 conftest verify --rego-version v0 -p terraform/policy/

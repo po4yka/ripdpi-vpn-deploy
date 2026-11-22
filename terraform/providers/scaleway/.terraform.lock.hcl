@@ -1,13 +1,23 @@
-# This file is maintained automatically by "terraform init".
+# This file is maintained automatically by "tofu init".
 # Manual edits may be lost in future updates.
 
-provider "registry.terraform.io/scaleway/scaleway" {
+provider "registry.opentofu.org/scaleway/scaleway" {
   version     = "2.88.0"
   constraints = "~> 2.88"
   hashes = [
+    "h1:/f9rUIeex0LcD+xzybLiDfmwUaqzf33Y9xgddWlDTWo=",
+    "h1:2sNQ9k3GZ5tBQPTEdgeXT7ogXWbnGeGWLMM6COXkBEc=",
     "h1:3LwyPFJgje1OO00RBSMAkbwfRpZKJ5yxdQkb1mw1eBA=",
+    "h1:8hMe8sadhIfJzn8Q5xc3dOqRQg11BY1l1nxeMQmoX4Y=",
+    "h1:AFM6F+kdqMQotM5nrQNuecqr/O2MdyDsiOsTPyFSIac=",
     "h1:LxogY39K0mMyB41A0dSbLyhdjCYZC5CoBYEOWOlq+E8=",
+    "h1:PO+2aU94x9va1emdfFayeYsOz2Sh2sCwkvBvMpu5Lto=",
     "h1:kp0ZD9WAqscBKQUbewva4pypOp/a39+iHVvZl3xrwPE=",
+    "h1:lH26ojBZGaCP3zI8RrR/NAbmgxHAYAQn77xdNDMCFd8=",
+    "h1:ms3HKTeeFpyjEDJoibeXmac5arPwds/6hpCR0BQb62k=",
+    "h1:pCSU0h9oGIBSNRxueRFtg9de9Lxe51LEdSVCyCWM9wk=",
+    "h1:tzmweazv8HbTBe47U/pAzeOcSu8tZddKf13EH4S4bnk=",
+    "h1:vaZjInycQITi9+cTmrjoXkyhYpS+E+WjiIVmPDaztKk=",
     "zh:1e2fe730b88b984c23f64ac72c39e6d90de0cc381d9108294b84652241992c7b",
     "zh:4dbe7bb1ab57f9302bf5975ea01586e33d4ba5f81a1596d2bed4a0db76bf41aa",
     "zh:7d4b27b465fbb49b8c4b8034ebb8668b16f9272f9dcb04d3590335a7c901944a",

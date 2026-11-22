@@ -27,7 +27,7 @@ def _setup(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     private.mkdir()
     bins = tmp_path / "bin"
     bins.mkdir()
-    terraform = bins / "terraform"
+    terraform = bins / "tofu"
     terraform.write_text('''#!/usr/bin/env python3
 import json, os, pathlib, stat, sys
 args=sys.argv[1:]

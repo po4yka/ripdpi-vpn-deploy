@@ -36,7 +36,12 @@ run "ranges_are_adapted_without_changing_listener_contract" {
   }
 
   assert {
-    condition     = output.public_listeners == var.public_listeners
+    condition = jsonencode(output.public_listeners) == jsonencode([
+      { name = "tcp-window", protocol = "tcp", port = null, port_range = "4433-4443", family = null },
+      { name = "udp-window", protocol = "udp", port = null, port_range = "51820-51822", family = null },
+      { name = "tcp-single", protocol = "tcp", port = 443, port_range = null, family = null },
+      { name = "udp-single", protocol = "udp", port = 443, port_range = null, family = null },
+    ])
     error_message = "The exported listener contract must preserve canonical hyphen ranges and singleton ports."
   }
 }

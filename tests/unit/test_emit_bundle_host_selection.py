@@ -124,7 +124,7 @@ def test_bundle_uses_feature_host_and_emits_ingress_topology(
     (fake_bin / "sops").write_text(
         '#!/bin/sh\nfor input in "$@"; do :; done\nexec cat -- "$input"\n'
     )
-    (fake_bin / "terraform").write_text("#!/bin/sh\nexit 0\n")
+    (fake_bin / "tofu").write_text("#!/bin/sh\nexit 0\n")
     (fake_bin / "wg").write_text("#!/bin/sh\ncat >/dev/null\nprintf 'server-public-fixture'\n")
     for stub in fake_bin.iterdir():
         stub.chmod(0o700)

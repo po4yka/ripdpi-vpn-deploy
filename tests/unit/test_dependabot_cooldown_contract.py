@@ -14,9 +14,9 @@ def test_every_dependabot_ecosystem_has_seven_day_default_cooldown():
     updates = config["updates"]
 
     assert {(u['package-ecosystem'], u['directory']) for u in updates} == {
-        ('github-actions', '/'), ('terraform', '/terraform/providers/upcloud'),
-        ('terraform', '/terraform/providers/hetzner'), ('terraform', '/terraform/providers/vultr'),
-        ('terraform', '/terraform/providers/scaleway'), ('pip', '/'), ('pip', '/vpnd'),
+        ('github-actions', '/'), ('opentofu', '/terraform/providers/upcloud'),
+        ('opentofu', '/terraform/providers/hetzner'), ('opentofu', '/terraform/providers/vultr'),
+        ('opentofu', '/terraform/providers/scaleway'), ('pip', '/'), ('pip', '/vpnd'),
         ('npm', '/tools/tasking'), ('gomod', '/tools/probe-matrix-mtproto'),
     }
     for update in updates:

@@ -67,7 +67,7 @@ def collect(*, docker=False):
     result.append({'name': 'python-imports', 'status': 'ok' if imports and imports.strip() == 'ok' else 'unavailable'})
     commands = (
         ('go', 'go', ['go', 'version'], r'go version go([0-9.]+)'),
-        ('terraform', 'terraform', ['terraform', 'version', '-json'], None),
+        ('tofu', 'opentofu', ['tofu', 'version', '-json'], None),
         ('conftest', 'conftest', ['conftest', '--version'], r'Conftest: ([0-9.]+)'),
         ('gitleaks', 'gitleaks', ['gitleaks', 'version'], r'^v?([0-9.]+)'),
         ('promtool', 'aqua:prometheus/prometheus', ['promtool', '--version'], r'version ([0-9.]+)'),

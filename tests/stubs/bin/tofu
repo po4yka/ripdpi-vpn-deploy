@@ -2,7 +2,7 @@
 set -eu
 
 STUB_LOG="${STUB_LOG:-/dev/null}"
-printf 'STUB: terraform %s\n' "$*" >> "${STUB_LOG}"
+printf 'STUB: tofu %s\n' "$*" >> "${STUB_LOG}"
 
 while [ "${1#-chdir=}" != "$1" ]; do
   shift
@@ -30,15 +30,15 @@ else:
 "
       exit 0
     fi
-    printf 'STUB: terraform output %s\n' "$*" >&2
+    printf 'STUB: tofu output %s\n' "$*" >&2
     exit 0
     ;;
   init|plan|apply|destroy|validate|fmt|console)
-    printf 'STUB: terraform %s\n' "$*" >&2
+    printf 'STUB: tofu %s\n' "$*" >&2
     exit 0
     ;;
   *)
-    printf 'STUB: terraform %s\n' "$*" >&2
+    printf 'STUB: tofu %s\n' "$*" >&2
     exit 0
     ;;
 esac

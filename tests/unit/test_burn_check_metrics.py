@@ -25,7 +25,7 @@ def _run_burn_check(
     metrics_dir.mkdir()
 
     _write_executable(
-        bin_dir / "terraform",
+        bin_dir / "tofu",
         "#!/usr/bin/env bash\n"
         "case \"$*\" in\n"
         "  *'workspace select test'*) exit 0 ;;\n"

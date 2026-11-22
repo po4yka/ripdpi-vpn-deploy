@@ -225,14 +225,14 @@ def test_target_with_first_failing_key_aborts_and_nothing_spawns():
 @pytest.mark.parametrize(
     "build, description, arguments",
     [
-        (terraform.init, "terraform init for upcloud/prod", "init"),
+        (terraform.init, "tofu init for upcloud/prod", "init"),
         (
             terraform.plan,
-            "terraform plan -out=prod.tfplan",
+            "tofu plan -out=prod.tfplan",
             "plan -var-file=environments/prod.tfvars -out=prod.tfplan",
         ),
-        (terraform.apply, "terraform apply prod.tfplan", "apply prod.tfplan"),
-        (terraform.output, "terraform output -json", "output -json"),
+        (terraform.apply, "tofu apply prod.tfplan", "apply prod.tfplan"),
+        (terraform.output, "tofu output -json", "output -json"),
     ],
 )
 def test_terraform_commands_and_descriptions_are_exact(capsys, build, description, arguments):

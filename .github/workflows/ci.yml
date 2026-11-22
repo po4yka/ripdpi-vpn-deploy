@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  # Terraform's registry client defaults to one retry and a 10-second timeout.
+  # OpenTofu's registry client defaults to one retry and a 10-second timeout.
   TF_REGISTRY_DISCOVERY_RETRY: "5"
   TF_REGISTRY_CLIENT_TIMEOUT: "30"
 
@@ -175,7 +175,7 @@ jobs:
     timeout-minutes: 10
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['terraform'] }}
-    name: terraform fmt + validate
+    name: tofu fmt + validate
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -186,44 +186,48 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4  # v2.0.2
         with:
-          terraform_version: "1.15.9"
+          tofu_version: "1.13.9"
+          tofu_wrapper: false
+          checksums: bc44eb6b06446ba83bd4072114891987f590f66cca712737a7f1147c50c539ce
 
-      - name: terraform fmt -check
+      - name: tofu fmt -check
         working-directory: terraform/providers/${{ matrix.provider }}
-        run: terraform fmt -check -recursive
+        run: tofu fmt -check -recursive
 
-      - name: terraform init -backend=false
+      - name: tofu init -backend=false
         working-directory: terraform/providers/${{ matrix.provider }}
-        run: terraform init -backend=false
+        run: tofu init -backend=false
 
-      - name: terraform validate
+      - name: tofu validate
         working-directory: terraform/providers/${{ matrix.provider }}
-        run: terraform validate
+        run: tofu validate
 
   terraform-exception:
     timeout-minutes: 10
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['terraform-exception'] }}
-    name: terraform inert exception root
+    name: tofu inert exception root
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4  # v2.0.2
         with:
-          terraform_version: "1.15.9"
-      - name: terraform fmt -check
+          tofu_version: "1.13.9"
+          tofu_wrapper: false
+          checksums: bc44eb6b06446ba83bd4072114891987f590f66cca712737a7f1147c50c539ce
+      - name: tofu fmt -check
         working-directory: terraform/exception/cascade-ingress
-        run: terraform fmt -check
-      - name: terraform init without backend
+        run: tofu fmt -check
+      - name: tofu init without backend
         working-directory: terraform/exception/cascade-ingress
-        run: terraform init -backend=false
-      - name: terraform validate
+        run: tofu init -backend=false
+      - name: tofu validate
         working-directory: terraform/exception/cascade-ingress
-        run: terraform validate
+        run: tofu validate
 
   cloud-init:
     timeout-minutes: 10
@@ -910,7 +914,7 @@ jobs:
     timeout-minutes: 10
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['tf-test'] }}
-    name: terraform test (${{ matrix.provider }})
+    name: tofu test (${{ matrix.provider }})
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -920,15 +924,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4  # v2.0.2
         with:
-          terraform_version: "1.15.9"
-      - name: terraform init -backend=false
+          tofu_version: "1.13.9"
+          tofu_wrapper: false
+          checksums: bc44eb6b06446ba83bd4072114891987f590f66cca712737a7f1147c50c539ce
+      - name: tofu init -backend=false
         working-directory: terraform/providers/${{ matrix.provider }}
-        run: terraform init -backend=false
-      - name: terraform test
+        run: tofu init -backend=false
+      - name: tofu test
         working-directory: terraform/providers/${{ matrix.provider }}
-        run: terraform test
+        run: tofu test
 
   vpnd-test:
     needs: selection

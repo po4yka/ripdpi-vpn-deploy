@@ -37,7 +37,7 @@ shift $((OPTIND - 1))
 [[ $# -eq 0 ]] || { usage; exit 64; }
 [[ -n "$provider" && -n "$env_name" ]] || { usage; exit 64; }
 
-for bin in conftest terraform; do
+for bin in conftest tofu; do
 	command -v "$bin" >/dev/null 2>&1 || { printf 'missing: %s\n' "$bin" >&2; exit 69; }
 done
 

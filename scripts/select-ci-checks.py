@@ -69,8 +69,8 @@ ALL_CHECKS = ALWAYS | set().union(*CHECKS.values())
 JOB_NAMES = {
     "ansible": "ansible-lint + syntax-check", "molecule": "molecule (",
     "molecule-full-stack": "molecule full-stack (", "molecule-failure-scenarios": "molecule failure (",
-    "terraform": "terraform fmt + validate (", "terraform-exception": "terraform inert exception root",
-    "tf-test": "terraform test (", "tf-policy": "tf-policy / ", "cloud-init": "cloud-init schema",
+    "terraform": "tofu fmt + validate (", "terraform-exception": "tofu inert exception root",
+    "tf-test": "tofu test (", "tf-policy": "tf-policy / ", "cloud-init": "cloud-init schema",
     "vpnd-test": "vpnd-test / ", "vpnd-lint": "vpnd-lint / ", "vpnd-package": "vpnd-package / ",
     "vpnd-dependency": "vpnd-dependency / ", "vpnd-sbom": "vpnd release SBOM",
     "native-runtime": "native runtime integration (",

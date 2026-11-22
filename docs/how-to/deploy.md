@@ -257,7 +257,7 @@ make wait
 ```
 
 > [!WARNING]
-> `make destroy` is irreversible. `prevent_destroy = true` on `upcloud_server` blocks accidental destruction in `terraform apply`; `make destroy` lifts it on purpose through a temporary override file so the tracked source stays clean.
+> `make destroy` is irreversible. `prevent_destroy = true` on `upcloud_server` blocks accidental destruction in `tofu apply`; `make destroy` lifts it on purpose through a temporary override file so the tracked source stays clean.
 
 ## Replace a server with existing devices
 

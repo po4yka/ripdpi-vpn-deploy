@@ -78,8 +78,8 @@ The encrypted SOPS blob may still be holding valid secrets in storage. age is co
 
 Terraform's local state is the only record of which provider resources belong to this deployment. `ENV=prod` uses the legacy `default` workspace at `terraform/providers/<provider>/terraform.tfstate`; any other environment uses `terraform/providers/<provider>/terraform.tfstate.d/<ENV>/terraform.tfstate`. Lose the relevant state file and:
 
-- `terraform plan` shows everything as "needs creating".
-- `terraform destroy` does nothing (no resources to destroy).
+- `tofu plan` shows everything as "needs creating".
+- `tofu destroy` does nothing (no resources to destroy).
 - `make rollback-…` blue-green flows still work but become manual (you edit the UpCloud console / API directly).
 
 Recovery path 0 — restore from `make backup-state` snapshot (preferred):

@@ -19,7 +19,7 @@ def doctor(tmp_path, monkeypatch):
     (tmp_path / 'mise.toml').write_text('''[tools]
 python="3.12"
 go="1.27.3"
-terraform="1.15.9"
+opentofu="1.13.9"
 conftest="0.57.0"
 gitleaks="8.30.1"
 "aqua:prometheus/prometheus"="3.15.1"
@@ -33,7 +33,7 @@ zizmor="1.29.0"
         'ansible-core': '2.21.5', 'ansible-lint': '26.10.1', 'PyYAML': '6.0.3'}[name])
     outputs = {'python3': json.dumps({'version': '3.12.15', 'prefix': sys.prefix}),
                sys.executable: 'ok', 'go': 'go version go1.27.3 darwin/arm64',
-               'terraform': '{"terraform_version":"1.15.9"}', 'conftest': 'Conftest: 0.57.0',
+               'tofu': '{"terraform_version":"1.13.9"}', 'conftest': 'Conftest: 0.57.0',
                'gitleaks': '8.30.1', 'promtool': 'promtool, version 3.15.1', 'zizmor': 'zizmor 1.29.0',
                'ansible': 'ansible [core 2.21.5]', 'ansible-playbook': 'ansible-playbook [core 2.21.5]',
                'ansible-lint': 'ansible-lint 26.10.1', 'docker': 'linux/aarch64', 'docker-sdk': 'ok', 'bash': 'ok'}
@@ -46,7 +46,7 @@ zizmor="1.29.0"
     return module, outputs, calls
 
 
-@pytest.mark.parametrize('fault', [None, 'python', 'child-environment', 'go', 'terraform', 'missing', 'package', 'invalid-output', 'old-bash'])
+@pytest.mark.parametrize('fault', [None, 'python', 'child-environment', 'go', 'tofu', 'missing', 'package', 'invalid-output', 'old-bash'])
 def test_diagnostics_separate_toolchain_failures_without_raw_output(doctor, monkeypatch, fault):
     module, outputs, calls = doctor
     monkeypatch.setenv('VULTR_API_KEY', 'synthetic-administrative-value')
@@ -55,10 +55,10 @@ def test_diagnostics_separate_toolchain_failures_without_raw_output(doctor, monk
     if fault == 'child-environment':
         outputs['python3'] = json.dumps({'version': '3.12.15', 'prefix': '/other-interpreter'})
     if fault == 'go': outputs['go'] = 'go version go1.26.0 darwin/arm64'
-    if fault == 'terraform': outputs['terraform'] = '{"terraform_version":"1.14.99"}'
+    if fault == 'tofu': outputs['tofu'] = '{"terraform_version":"1.13.8"}'
     if fault == 'missing': monkeypatch.setattr(module.shutil, 'which', lambda _: None)
     if fault == 'package': monkeypatch.setattr(module.importlib.metadata, 'version', lambda _: '1.0.0')
-    if fault == 'invalid-output': outputs['terraform'] = '{"terraform_version":"synthetic-private-output"}'
+    if fault == 'invalid-output': outputs['tofu'] = '{"terraform_version":"synthetic-private-output"}'
     if fault == 'old-bash': del outputs['bash']
     result = module.collect()
     assert result['verdict'] == ('ready' if fault is None else 'not-ready')

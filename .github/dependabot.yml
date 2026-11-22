@@ -23,7 +23,7 @@ updates:
     commit-message:
       prefix: chore
       include: scope
-  - package-ecosystem: terraform
+  - package-ecosystem: opentofu
     directory: /terraform/providers/upcloud
     schedule:
       interval: weekly
@@ -43,7 +43,7 @@ updates:
     commit-message:
       prefix: chore
       include: scope
-  - package-ecosystem: terraform
+  - package-ecosystem: opentofu
     directory: /terraform/providers/hetzner
     schedule:
       interval: weekly
@@ -63,7 +63,7 @@ updates:
     commit-message:
       prefix: chore
       include: scope
-  - package-ecosystem: terraform
+  - package-ecosystem: opentofu
     directory: /terraform/providers/vultr
     schedule:
       interval: weekly
@@ -103,7 +103,7 @@ updates:
     commit-message:
       prefix: chore
       include: scope
-  - package-ecosystem: terraform
+  - package-ecosystem: opentofu
     directory: /terraform/providers/scaleway
     schedule:
       interval: weekly

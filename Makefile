@@ -858,11 +858,11 @@ help:
 	@echo "  task-federation PEER_ROOT=…  Validate the combined RIPDPI backlog graph"
 	@echo ""
 	@echo "── DEPLOY LIFECYCLE ───────────────────────────────────────────────────"
-	@echo "  init                       terraform init in $(TF_ROOT)"
+	@echo "  init                       tofu init in $(TF_ROOT)"
 	@echo "  validate                   fmt + validate + gitleaks + ansible-lint"
 	@echo "  decrypt                    sops --decrypt → $(SECRETS_FILE)"
-	@echo "  plan                       terraform plan -out=$(TFPLAN)"
-	@echo "  apply                      terraform apply $(TFPLAN)"
+	@echo "  plan                       tofu plan -out=$(TFPLAN)"
+	@echo "  apply                      tofu apply $(TFPLAN)"
 	@echo "  inventory                  Render Ansible inventory from TF outputs"
 	@echo "  wait                       Wait for cloud-init to finish"
 	@echo "  pre-deploy-check           spot-check-secrets + check-certs (auto for deploy/verify; SKIP_PRECHECK=1 skips all but the placeholder check)"
@@ -890,8 +890,8 @@ help:
 	@echo "  rollback-xray              Roll Xray back to ROLLBACK_XRAY_VERSION=vX.Y.Z on one node (ANSIBLE_LIMIT=<alias>)"
 	@echo "  rollback-config            Revert Xray to .prev config on one node (ANSIBLE_LIMIT=<alias>)"
 	@echo "  rotate-credentials         Rotate per-client UUIDs / passwords / peer keys on one node (ANSIBLE_LIMIT=<alias>, repeat per node)"
-	@echo "  destroy                    Safe terraform destroy (double confirmation)"
-	@echo "  backup-state               age-encrypt the local terraform state"
+	@echo "  destroy                    Safe tofu destroy (double confirmation)"
+	@echo "  backup-state               age-encrypt the local OpenTofu state"
 	@echo "  drift-since-tag            Diff fleet against last vpn-deploy-known-good-* tag"
 	@echo "  blue-green GREEN_ENV=… GREEN_SOPS_FILE=… DEVICE_MIGRATION_PLAN=…  Replace with device handover"
 	@echo "  recovery ACTION=… RECOVERY_MANIFEST=…  Execute or resume an exact reviewed replacement"
@@ -989,7 +989,7 @@ help:
 	@echo "  actionlint-check           Validate every GitHub Actions workflow"
 	@echo "  zizmor-check               Audit owned GitHub automation (strict, offline)"
 	@echo "  cloud-init-schema          Render shared cloud-init and run cloud-init schema"
-	@echo "  tf-test                    terraform test for all provider roots"
+	@echo "  tf-test                    tofu test for all provider roots"
 	@echo "  yamllint-check             Lint repository YAML with the CI configuration"
 	@echo "  shellcheck                 Lint every operator shell script"
 	@echo "  ci-fast                    Portable CI-parity bundle (excludes native Linux lane, Molecule and validate)"
@@ -1009,16 +1009,16 @@ check-prereqs:
 init:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) $(TF_ENV) init
 
-# validate and tf-test share one backend-free Terraform data directory per
+# validate and tf-test share one backend-free OpenTofu data directory per
 # provider: providers install once per invocation and `make -j` never runs two
 # inits on the same directory.
 TF_VALIDATION_ENV = TF_DATA_DIR="$(CURDIR)/terraform/providers/$$provider/.terraform-env/.validation" TF_WORKSPACE=default
 
 .PHONY: terraform-init ansible-syntax-check
 terraform-init:
-	@command -v terraform >/dev/null 2>&1 || { echo "missing: terraform" >&2; exit 1; }
+	@command -v tofu >/dev/null 2>&1 || { echo "missing: tofu (see mise.toml)" >&2; exit 1; }
 	@for provider in upcloud hetzner vultr scaleway; do \
-	  $(TF_VALIDATION_ENV) terraform -chdir=terraform/providers/$$provider init -backend=false -input=false -lockfile=readonly >/dev/null || exit 1; \
+	  $(TF_VALIDATION_ENV) tofu -chdir=terraform/providers/$$provider init -backend=false -input=false -lockfile=readonly >/dev/null || exit 1; \
 	done
 
 ansible-syntax-check:
@@ -1027,8 +1027,8 @@ ansible-syntax-check:
 
 validate: terraform-init ansible-syntax-check
 	@for provider in upcloud hetzner vultr scaleway; do \
-	  terraform -chdir=terraform/providers/$$provider fmt -check -recursive || exit 1; \
-	  $(TF_VALIDATION_ENV) terraform -chdir=terraform/providers/$$provider validate || exit 1; \
+	  tofu -chdir=terraform/providers/$$provider fmt -check -recursive || exit 1; \
+	  $(TF_VALIDATION_ENV) tofu -chdir=terraform/providers/$$provider validate || exit 1; \
 	done
 	gitleaks git --redact --no-banner .
 	gitleaks git --staged --redact --no-banner .
@@ -1675,8 +1675,8 @@ cloud-init-schema:
 
 tf-test: terraform-init
 	@for provider in upcloud hetzner vultr scaleway; do \
-	  echo "== terraform test: $$provider =="; \
-	  $(TF_VALIDATION_ENV) terraform -chdir=terraform/providers/$$provider test || exit 1; \
+	  echo "== tofu test: $$provider =="; \
+	  $(TF_VALIDATION_ENV) tofu -chdir=terraform/providers/$$provider test || exit 1; \
 	done
 	python3 -m pytest -q tests/unit/test_provider_bootstrap_lifecycle.py -m native_runtime --fail-on-skip
 

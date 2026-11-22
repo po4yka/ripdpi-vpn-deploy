@@ -8,9 +8,9 @@
 # call.
 #
 # Run from the module dir:
-#   terraform -chdir=terraform/providers/upcloud test
+#   tofu -chdir=terraform/providers/upcloud test
 #
-# Requires Terraform 1.6+ (native test framework).
+# Requires the pinned OpenTofu (native test framework).
 
 mock_provider "upcloud" {}
 

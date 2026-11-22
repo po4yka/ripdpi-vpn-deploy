@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  # Native Terraform tests run in the ci.yml tf-test job; the Rego suite is
+  # Native OpenTofu tests run in the ci.yml tf-test job; the Rego suite is
   # provider-independent, so one runner verifies it once.
   conftest:
     timeout-minutes: 15
@@ -20,9 +20,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4  # v2.0.2
         with:
-          terraform_version: "1.15.9"
+          tofu_version: "1.13.9"
+          tofu_wrapper: false
+          checksums: bc44eb6b06446ba83bd4072114891987f590f66cca712737a7f1147c50c539ce
 
       - name: install conftest
         # Conftest 0.57.0 — pinned SHA256 verified against upstream release
@@ -86,9 +88,9 @@ jobs:
                   > environments/ci-policy.tfvars
                 ;;
             esac
-            terraform init -backend=false -input=false
-            terraform plan -input=false -refresh=false -lock=false \
+            tofu init -backend=false -input=false
+            tofu plan -input=false -refresh=false -lock=false \
               -var-file=environments/ci-policy.tfvars -out=ci-policy.tfplan
-            terraform show -json ci-policy.tfplan > ci-policy.json
+            tofu show -json ci-policy.tfplan > ci-policy.json
             ../../../scripts/check-tf-plan.sh ci-policy.json
           done

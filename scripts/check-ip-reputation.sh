@@ -35,7 +35,7 @@ if [[ -z "${IP:-}" ]]; then
   IP="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4 2>/dev/null || true)"
 fi
 if [[ -z "${IP:-}" ]]; then
-  echo "no IP available (terraform output missing? export IP=… to override)" >&2
+  echo "no IP available (tofu output missing? export IP=… to override)" >&2
   exit 2
 fi
 

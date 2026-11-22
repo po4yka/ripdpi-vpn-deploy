@@ -57,7 +57,7 @@ def test_bundle_preserves_the_failed_step_evidence(tmp_path):
         assert set(archive.getnames()) == {
             "vpnd-version.txt",
             "uname.txt",
-            "terraform-version.txt",
+            "tofu-version.txt",
             "ansible-version.txt",
             "audit-log.txt",
             "doctor-report.md",

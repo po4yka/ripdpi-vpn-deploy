@@ -414,7 +414,7 @@ def test_reconverge_explain_does_not_execute_or_harden_an_existing_file(tmp_path
 # Rust test: vpnd/tests/deploy_lifecycle.rs::doctor_redacts_both_ai_and_every_bundle_entry
 def test_doctor_redacts_both_ai_and_every_bundle_entry(tmp_path):
     f = Fixture(tmp_path)
-    for name in ("uname", "terraform", "ansible"):
+    for name in ("uname", "tofu", "ansible"):
         f.executable(
             name,
             "#!/bin/sh\nprintf 'diagnostic %s/runtime/vpn-test.secrets.yaml\\n' \"$FIXTURE_ROOT\"\n",
