@@ -84,6 +84,7 @@ def test_live_family_profile_list_includes_explicit_profiles():
         "group_vars/vpn-device-full-tailnet.yml",
         "group_vars/vpn-p1-web.yml",
         "group_vars/vpn-p2-udp.yml",
+        "group_vars/vpn-p2-udp-staging.yml",
         "group_vars/vpn-p0.yml",
         "group_vars/vpn-p1p2.yml",
         "group_vars/vpn-fullstack.yml",
@@ -140,6 +141,14 @@ def test_live_explicit_profile_surfaces_are_locked():
         assert service_profile["enable_monitoring"] is True
         assert service_profile["enable_backup"] is True
         assert service_profile["enable_tailnet_management"] is True
+
+    # Disposable staging dry-runs the p2-udp transports with staging secrets only.
+    p2_udp_staging = yaml.safe_load((group_vars / "vpn-p2-udp-staging.yml").read_text())
+    p2_udp_data = yaml.safe_load((group_vars / "vpn-p2-udp.yml").read_text())
+    assert p2_udp_staging["vpn"] == {**p2_udp, "enable_monitoring": False, "enable_watchdog": False,
+                                     "enable_backup": False}
+    for key in ("hysteria_masquerade_tcp", "hysteria_resource_profile_default"):
+        assert p2_udp_staging[key] == p2_udp_data[key]
 
     assert lab["allow_research_roles"] == []
     assert lab["vpn"]["enable_split_hop_egress"] is False
