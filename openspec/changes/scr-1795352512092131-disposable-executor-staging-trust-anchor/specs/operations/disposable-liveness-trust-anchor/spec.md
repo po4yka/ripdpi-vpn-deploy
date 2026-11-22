@@ -31,3 +31,12 @@ The implementation MUST refuse, before it runs any command in the executor, a tr
 
 - **WHEN** the anchor certificate's validity period has ended
 - **THEN** provisioning fails with a categorical `trust-anchor` error and the executor is not contacted
+
+### Requirement: REQ-STAGING-TRUST-ANCHOR-XRAY — The liveness Xray profile verifies against the system store
+
+The implementation MUST set `useSystemCA: true` in the TLS settings of the liveness Xray `p1-xhttp` outbound, with `allowInsecure` kept false, so that Xray verifies the node certificate against the executor's system trust store, which holds the staging trust anchor.
+
+#### Scenario: Self-signed staging node with the anchor installed
+
+- **WHEN** the executor's system store holds the staging anchor and the node presents that certificate on its XHTTP listener
+- **THEN** the `p1-xhttp` probe completes its verified TLS handshake and is not reported as `blocked` with a `network` error

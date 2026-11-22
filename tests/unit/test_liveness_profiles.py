@@ -78,6 +78,8 @@ def test_four_profiles_are_materialized_with_only_named_client_material():
     assert not any("transport" in o and o["transport"]["type"] == "xhttp" for o in standard["outbounds"])
     assert xray["outbounds"][1]["streamSettings"]["network"] == "xhttp"
     assert xray["outbounds"][1]["streamSettings"]["tlsSettings"]["allowInsecure"] is False
+    # Xray defaults to its built-in CA list; the executor trust anchor lives in the system store.
+    assert xray["outbounds"][1]["streamSettings"]["tlsSettings"]["useSystemCA"] is True
     assert xray["outbounds"][0]["settings"]["vnext"][0]["users"][0]["id"] == args["secrets_doc"]["xray"]["clients"][0]["uuid"]
     assert f"PrivateKey = {key(1)}" in awg and f"PublicKey = {key(5)}" in awg
     assert f"PresharedKey = {key(3)}" in awg and key(4) not in awg

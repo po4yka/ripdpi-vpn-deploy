@@ -11,7 +11,7 @@ dry_run_evidence: The change touches only the operator-side disposable executor 
 staging: required
 staging_evidence: null
 live: not_applicable
-live_evidence: The disposable executor is deleted at de-onboarding; no production node or fleet sentinel changes.
+live_evidence: The disposable executor is deleted at de-onboarding. The `useSystemCA` profile field reaches a fleet sentinel only when its profile is next installed; fleet system stores carry the public CAs that issue production certificates, and no production node changes.
 client: not_applicable
 client_evidence: No client contract changes.
 artifact: not_applicable
@@ -26,3 +26,4 @@ artifact_evidence: No release artifact.
 |---|---|---|---|
 | REQ-STAGING-TRUST-ANCHOR-INSTALL | SCR-1795352837575574 | `test_provision_installs_the_anchor_into_the_executor_store_only_when_given`, `test_provision_passes_the_staging_trust_anchor_only_when_given` | pass (local) |
 | REQ-STAGING-TRUST-ANCHOR-VALIDATION | SCR-1795352837575574 | `test_trust_anchor_refuses_unsuitable_input_before_the_executor` (12 cases), `test_trust_anchor_accepts_one_valid_self_signed_certificate` (5 shapes) | pass (local) |
+| REQ-STAGING-TRUST-ANCHOR-XRAY | SCR-1795371731256603 | `test_four_profiles_are_materialized_with_only_named_client_material` asserts `useSystemCA` on the XHTTP outbound; on the 2026-11-22 executor the pinned Xray 26.10.31 reported `p1-xhttp` blocked with `x509: certificate signed by unknown authority` without the field and HTTP 204 with it | pass (local) |

@@ -328,7 +328,8 @@ def build_profiles(standard_doc, ripdpi_doc, secrets_doc, client, required_profi
                                          "tag": inbound_tag, "settings": {"udp": False}})
                 native = {"protocol": "vless", "tag": outbound["tag"], "settings": {"vnext": [{"address": server, "port": port,
                           "users": [{"id": xray_client["uuid"], "encryption": "none"}]}]},
-                          "streamSettings": {"network": "xhttp", "security": "tls", "tlsSettings": {"serverName": tls["server_name"], "allowInsecure": False},
+                          "streamSettings": {"network": "xhttp", "security": "tls", "tlsSettings": {"serverName": tls["server_name"], "allowInsecure": False,
+                                                                                         "useSystemCA": True},
                                              "xhttpSettings": {"host": transport["host"], "path": transport["path"], "mode": mode}}}
                 if tuning:
                     native["streamSettings"]["xhttpSettings"]["xmux"] = tuning
