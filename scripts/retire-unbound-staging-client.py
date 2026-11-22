@@ -32,9 +32,9 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import disposable_liveness_executor as executor  # noqa: E402
 import disposable_promotion as promotion  # noqa: E402
+import tofu_state  # noqa: E402
 
 MAX_INPUT = 256 * 1024
-MAX_STATE = 64 * 1024 * 1024
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,63}\Z")
 # Finalization write order before installation (disposable_promotion.finalize).
@@ -424,12 +424,14 @@ def _validate_inputs(
         or intent.get("inputs", {}).get("cleanup_manifest")
         != str(paths["cleanup_manifest_path"])
         or intent.get("inputs", {}).get("sops_file") != str(paths["sops_file"])
-        or manifest.get("state", {}).get("path") != str(paths["state_path"])
     ):
         raise RetirementError("retirement-target")
-    state_payload, state_identity = _read_bytes(
-        paths["state_path"], "destroyed state", MAX_STATE
-    )
+    try:
+        state_payload = tofu_state.pull(manifest["provider"], manifest["environment"])
+    except tofu_state.StateError as exc:
+        raise RetirementError("retirement-state") from exc
+    if state_payload is None:
+        raise RetirementError("retirement-state")
     try:
         state = json.loads(state_payload)
     except (UnicodeError, json.JSONDecodeError) as exc:
@@ -448,7 +450,6 @@ def _validate_inputs(
         "cleanup_manifest_sha256": _sha(manifest_payload),
         "absence_evidence_sha256": _sha(absence_payload),
         "state_sha256": _sha(state_payload),
-        "state_identity": list(state_identity),
         "client_sha256": _sha(intent["client"].encode("ascii")),
         "target_sha256": _sha(
             _canonical(
@@ -957,7 +958,6 @@ def _retire_registered(
     intent_path: Path,
     cleanup_manifest_path: Path,
     absence_evidence_path: Path,
-    state_path: Path,
     sops_file: Path,
     journal_path: Path,
     receipt_path: Path,
@@ -968,7 +968,6 @@ def _retire_registered(
         "intent_path": intent_path.absolute(),
         "cleanup_manifest_path": cleanup_manifest_path.absolute(),
         "absence_evidence_path": absence_evidence_path.absolute(),
-        "state_path": state_path.absolute(),
         "sops_file": sops_file.absolute(),
         "journal_path": journal_path.absolute(),
         "receipt_path": receipt_path.absolute(),
@@ -1109,7 +1108,6 @@ def retire(
     intent_path: Path,
     cleanup_manifest_path: Path,
     absence_evidence_path: Path,
-    state_path: Path,
     sops_file: Path,
     journal_path: Path,
     receipt_path: Path,
@@ -1127,7 +1125,6 @@ def retire(
                 intent_path=intent_path,
                 cleanup_manifest_path=cleanup_manifest_path,
                 absence_evidence_path=absence_evidence_path,
-                state_path=state_path,
                 sops_file=sops_file,
                 journal_path=journal_path,
                 receipt_path=receipt_path,
@@ -1173,7 +1170,6 @@ def main() -> int:
     parser.add_argument("--intent", required=True, type=Path)
     parser.add_argument("--cleanup-manifest", required=True, type=Path)
     parser.add_argument("--absence-evidence", required=True, type=Path)
-    parser.add_argument("--state", required=True, type=Path)
     parser.add_argument("--sops-file", required=True, type=Path)
     parser.add_argument("--journal", required=True, type=Path)
     parser.add_argument("--receipt", required=True, type=Path)
@@ -1183,7 +1179,6 @@ def main() -> int:
             intent_path=args.intent,
             cleanup_manifest_path=args.cleanup_manifest,
             absence_evidence_path=args.absence_evidence,
-            state_path=args.state,
             sops_file=args.sops_file,
             journal_path=args.journal,
             receipt_path=args.receipt,
