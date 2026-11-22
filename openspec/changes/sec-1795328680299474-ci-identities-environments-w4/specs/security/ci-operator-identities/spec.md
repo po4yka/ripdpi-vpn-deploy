@@ -20,7 +20,7 @@ CI MUST use its own age recipient, admin SSH key, Tailnet identities and provide
 
 ### Requirement: REQ-CIID-ENV-MATRIX — Environments hold only their own credential classes
 
-Environments MUST hold only these classes: `tofu-plan` and `tofu-apply` hold the state passphrase, B2 state keys, provider tokens and the `tag:ci-tofu` Tailnet identity; `deploy-check` and `deploy` hold the CI age identity, CI SSH key and `tag:ci-deploy` Tailnet identity; `ops-secrets` holds only the CI age identity for offline preparation; `tailnet-policy` holds only the policy-push identity. A job MUST NOT reference a secret outside its environment.
+Environments MUST hold only these classes: `tofu-plan` and `tofu-apply` hold the state passphrase, the scoped state bucket identities, provider tokens and the `tag:ci-tofu` Tailnet identity; `deploy-check` and `deploy` hold the CI age identity, CI SSH key and `tag:ci-deploy` Tailnet identity; `ops-secrets` holds only the CI age identity for offline preparation; `tailnet-policy` holds only the policy-push identity. A job MUST NOT reference a secret outside its environment.
 
 #### Scenario: Deploy job reads a provider token
 
