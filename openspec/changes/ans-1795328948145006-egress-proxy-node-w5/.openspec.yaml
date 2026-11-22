@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-11-22
+goal: ANS-1795328948145006 Add a secretless egress proxy node for provider APIs

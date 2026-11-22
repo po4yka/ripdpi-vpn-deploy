@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-11-22
+goal: TFR-1795329107889572 Manage Porkbun DNS with a pinned OpenTofu root
