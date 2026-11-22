@@ -532,7 +532,7 @@ def test_deonboard_refuses_without_exact_provider_absence_before_mutation(setup)
                 "provider": "upcloud",
                 "environment": "ci-staging-fixture",
                 "root_storage_status": "absent",
-                "schema_version": 3,
+                "schema_version": 4,
                 "server_status": "absent",
                 "status": "apply_started",
             },
@@ -590,14 +590,14 @@ def test_deonboard_removes_only_exact_bound_local_executor_after_absence(setup, 
     config.write_text(yaml.safe_dump(config_doc))
     config.chmod(0o600)
     cleanup_doc = {
-        "schema_version": 3,
+        "schema_version": 4,
         "provider": "upcloud",
         "environment": "ci-staging-fixture",
         "provider_account_username": "fixture-account",
         "server_uuid": "11111111-1111-4111-8111-111111111111",
         "root_storage_uuid": "22222222-2222-4222-8222-222222222222",
         "expiry_at": "2026-09-28T00:00:00Z",
-        "state": {"path": "/private/fixture.tfstate", "sha256": "0" * 64},
+        "state": {"sha256": "0" * 64},
     }
     cleanup.write_text(
         json.dumps(cleanup_doc, sort_keys=True, separators=(",", ":")) + "\n"
@@ -663,7 +663,7 @@ def test_deonboard_removes_only_exact_bound_local_executor_after_absence(setup, 
                 "provider": "upcloud",
                 "environment": "ci-staging-fixture",
                 "root_storage_status": "absent",
-                "schema_version": 3,
+                "schema_version": 4,
                 "server_status": "absent",
                 "status": "verified",
             },
@@ -675,7 +675,7 @@ def test_deonboard_removes_only_exact_bound_local_executor_after_absence(setup, 
     absence.chmod(0o600)
 
     obsolete = json.loads(absence.read_text())
-    obsolete["schema_version"] = 2
+    obsolete["schema_version"] = 3
     absence.write_text(
         json.dumps(obsolete, sort_keys=True, separators=(",", ":")) + "\n"
     )
@@ -693,7 +693,7 @@ def test_deonboard_removes_only_exact_bound_local_executor_after_absence(setup, 
         )
     absence.write_text(
         json.dumps(
-            {**obsolete, "schema_version": 3}, sort_keys=True, separators=(",", ":")
+            {**obsolete, "schema_version": 4}, sort_keys=True, separators=(",", ":")
         )
         + "\n"
     )

@@ -226,12 +226,7 @@ def _cleanup_target(intent, host):
         expected_provider="upcloud",
         expected_environment=intent["host"].split(":")[1],
     )
-    raw = guard._private_read(
-        Path(manifest["state"]["path"]),
-        "state",
-        max_bytes=guard.MAX_STATE_BYTES,
-        exact_parent_mode=False,
-    )
+    raw = guard._pull_state(manifest["provider"], manifest["environment"])
     if hashlib.sha256(raw).hexdigest() != manifest["state"]["sha256"]:
         raise ValueError
     state = guard._json_object(raw, "state")
@@ -391,12 +386,7 @@ def finalize(intent, environment, *, clock=None):
             expected_environment=value["host"].split(":")[1],
         )
         state = guard._json_object(
-            guard._private_read(
-                Path(state_manifest["state"]["path"]),
-                "state",
-                max_bytes=guard.MAX_STATE_BYTES,
-                exact_parent_mode=False,
-            ),
+            guard._pull_state(state_manifest["provider"], state_manifest["environment"]),
             "state",
         )
         _cleanup_target(

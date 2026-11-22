@@ -175,15 +175,16 @@ def capabilities(intent, tmp_path, monkeypatch):
     private.mkdir(mode=0o700)
     state = fixture._state_view()
     state["outputs"] = {"server_ipv4": {"value": "192.0.2.10"}}
-    state_path = private / "state.json"
-    fixture._private_file(state_path, guard.canonical_json(state))
+    import tofu_state
+    served = guard.canonical_json(state)
+    monkeypatch.setattr(tofu_state, "pull", lambda provider, environment: (
+        served if (provider, environment) == ("upcloud", "ci-staging-fixture") else None))
     cleanup = private / "cleanup.json"
     guard.create_manifest(
         output_path=cleanup,
         provider="upcloud",
         environment="ci-staging-fixture",
         workspace="ci-staging-fixture",
-        state_path=state_path,
         hostname=fixture.HOSTNAME,
         request_json=fixture._fresh_creation_get,
         now=datetime.now(timezone.utc),
