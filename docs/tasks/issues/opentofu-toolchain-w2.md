@@ -2,7 +2,7 @@
 id: TFR-1795328347526492
 title: Migrate the Terraform toolchain to OpenTofu
 kind: feature
-status: doing
+status: review
 area: terraform
 priority: high
 risk: high
