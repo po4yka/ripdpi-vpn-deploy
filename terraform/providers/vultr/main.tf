@@ -1,7 +1,7 @@
 locals {
   user_data = templatefile("${path.module}/../../shared/cloud-init.yaml.tftpl", {
     admin_user                  = var.admin_user
-    admin_ssh_public_key        = var.admin_ssh_public_key
+    admin_ssh_public_keys       = var.admin_ssh_public_keys
     ssh_port                    = var.ssh_port
     build_env                   = var.build_env
     bootstrap_ssh_ownership_b64 = filebase64("${path.module}/../../shared/bootstrap-sshd-ownership.py")
@@ -26,12 +26,12 @@ resource "terraform_data" "admin_user" {
 }
 
 resource "terraform_data" "admin_ssh_public_key" {
-  input = sha256(trimspace(var.admin_ssh_public_key))
+  input = sha256(trimspace(var.admin_ssh_public_keys[0]))
 }
 
 resource "vultr_ssh_key" "admin" {
   name    = "${var.server_name}-${var.admin_user}"
-  ssh_key = var.admin_ssh_public_key
+  ssh_key = var.admin_ssh_public_keys[0]
 }
 
 resource "vultr_firewall_group" "vpn" {
@@ -91,10 +91,10 @@ resource "vultr_instance" "vpn" {
     postcondition {
       condition = try(
         yamldecode(self.user_data).users[length(yamldecode(self.user_data).users) - 1].name == var.admin_user
-        && [for key in tolist(yamldecode(self.user_data).users[length(yamldecode(self.user_data).users) - 1].ssh_authorized_keys) : trimspace(key)] == [trimspace(var.admin_ssh_public_key)],
+        && trimspace(tolist(yamldecode(self.user_data).users[length(yamldecode(self.user_data).users) - 1].ssh_authorized_keys)[0]) == trimspace(var.admin_ssh_public_keys[0]),
         false,
       )
-      error_message = "Bootstrap administrator identity differs from the requested username or key; provision a replacement node instead of adopting divergent identity."
+      error_message = "Bootstrap administrator identity differs from the requested username or first key; provision a replacement node instead of adopting divergent identity."
     }
   }
 }

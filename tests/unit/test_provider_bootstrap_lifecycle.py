@@ -92,10 +92,21 @@ def test_unchanged_identity_has_no_resource_changes(configuration):
     assert all(change["actions"] == ["no-op"] for change in plan_for(result, "unchanged_identity").values())
 
 
+@pytest.mark.parametrize("run", ("single_key_list_keeps_node", "second_key_keeps_node"))
+def test_admin_key_list_edits_keep_the_node_and_key_resources(configuration, run):
+    provider, directory, _ = configuration
+    result = execute(directory, "test", "-json", "-verbose", "-filter=tests/lifecycle.tftest.hcl")
+    assert result.returncode == 0, result.stderr
+    changes = plan_for(result, run)
+    assert changes[SERVERS[provider]]["actions"] == ["no-op"]
+    key_resource = "hcloud_ssh_key.admin" if provider == "hetzner" else "terraform_data.admin_ssh_public_key"
+    assert changes[key_resource]["actions"] == ["no-op"]
+
+
 def test_identity_edits_are_blocked_by_exact_server_lifecycle(configuration):
     provider, directory, setup = configuration
     edits = {"admin_user": '"replacement-admin"', "ssh_port": "2222"}
-    edits["admin_ssh_public_key"] = '"ssh-ed25519 AAAACHANGEDKEY test@harness"'
+    edits["admin_ssh_public_keys"] = '["ssh-ed25519 AAAACHANGEDKEY test@harness"]'
     for input_name, new_value in edits.items():
         test = setup[:setup.index('run "unchanged_identity"')]
         test += f'''run "changed_identity" {{
@@ -118,12 +129,12 @@ def test_identity_edits_are_blocked_by_exact_server_lifecycle(configuration):
 
 def test_public_key_newline_respects_provider_identity_contract(configuration):
     provider, directory, setup = configuration
-    public_key = json.dumps("ssh-ed25519 AAAATESTKEY test@harness\n")
+    public_key = json.dumps(["ssh-ed25519 AAAATESTKEY test@harness\n"])
     initial = setup[:setup.index('run "unchanged_identity"')]
     # file() retains the final newline in a conventional public-key file.
     fresh = initial.replace(
         'run "create_node" {\n  command = apply',
-        f'run "create_node" {{\n  command = apply\n  variables {{ admin_ssh_public_key = {public_key} }}',
+        f'run "create_node" {{\n  command = apply\n  variables {{ admin_ssh_public_keys = {public_key} }}',
     )
     (directory / "tests" / "key-newline-fresh.tftest.hcl").write_text(fresh)
     result = execute(directory, "test", "-json", "-filter=tests/key-newline-fresh.tftest.hcl")
@@ -131,7 +142,7 @@ def test_public_key_newline_respects_provider_identity_contract(configuration):
 
     transition = initial + f'''run "key_newline" {{
   command = plan
-  variables {{ admin_ssh_public_key = {public_key} }}
+  variables {{ admin_ssh_public_keys = {public_key} }}
 }}
 '''
     (directory / "tests" / "key-newline-transition.tftest.hcl").write_text(transition)

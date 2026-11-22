@@ -130,7 +130,7 @@ esac
 
 
 def key_tfvars(key):
-    return f'server_name = "node"\nadmin_ssh_public_key = "{key}"\n'
+    return f'server_name = "node"\nadmin_ssh_public_keys = ["{key}"]\n'
 
 
 @pytest.mark.parametrize("green_key", ["ssh-ed25519 AAAABLUEKEY operator@laptop", "ssh-ed25519 AAAABLUEKEY other@host"])

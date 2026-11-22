@@ -53,7 +53,7 @@ No modules.
 | Name | Description | Type | Default | Required |
 | ---- | ----------- | ---- | ------- | :------: |
 | <a name="input_additional_public_ip"></a> [additional\_public\_ip](#input\_additional\_public\_ip) | Allocate a second public IPv4 to this server. Used by the honeypot<br/>role (vpn.enable\_honeypot) so the canary listener can bind to an IP<br/>that has no other service on it, separating its probe traffic from<br/>the real REALITY listener at the IP-reputation level. Off by default. | `bool` | `false` | no |
-| <a name="input_admin_ssh_public_key"></a> [admin\_ssh\_public\_key](#input\_admin\_ssh\_public\_key) | Public SSH key only. The matching private key stays outside this repo. | `string` | n/a | yes |
+| <a name="input_admin_ssh_public_keys"></a> [admin\_ssh\_public\_keys](#input\_admin\_ssh\_public\_keys) | Public SSH keys only; the matching private keys stay outside this repo. cloud-init and baseline write all of them to the admin account. The first entry is the operator key and the only one registered with the provider: changing it replaces the node, while adding, removing or reordering later entries does not. | `list(string)` | n/a | yes |
 | <a name="input_admin_user"></a> [admin\_user](#input\_admin\_user) | Non-root user created by cloud-init for SSH and Ansible access. | `string` | `"deploy"` | no |
 | <a name="input_allowed_ssh_cidrs"></a> [allowed\_ssh\_cidrs](#input\_allowed\_ssh\_cidrs) | Source CIDRs allowed to reach ssh\_port/tcp. | `list(string)` | n/a | yes |
 | <a name="input_build_env"></a> [build\_env](#input\_build\_env) | Free-form label baked into /etc/vpn-build-id by cloud-init. | `string` | `"prod"` | no |
