@@ -1,7 +1,7 @@
 ---
 task_id: OPS-1795327950629406
 change: ops-1795327950629406-private-ops-repository-w1
-commit_sha: null
+commit_sha: 686d8e6a506ef9d58a47781d58c977c3d51ef114
 local: not_applicable
 local_evidence: "Task dropped: Lifecycle cannot close: the evidence transfer committed in baa16596 omits REQ-OPSREPO-MERGE-GATE and taskctl validates every historical transfer. The implementation (PR 683) and the live ops repository work (PR 686) are merged; a replacement task carries the capability spec and the open dry-run evidence."
 remote_ci: not_applicable
