@@ -1217,6 +1217,7 @@ The separate prepared-executor verb requires the completed client receipt and
 unchanged final ciphertext, serializes profile ownership against binding, and
 retains removal intent for stopped/absent retry. Never fabricate a binding to
 remove a prepared VM or reuse a retired one-shot profile name.
+Refused onboarding can leave only the finalization prefix (authority, liveness config, executor manifest copy) before installation; retirement accepts that prefix only when it is exactly what the intent produces, binds the digests into the request when present (absent for clean runs, so older journals keep their request) and never moves or deletes them. With the manifest copy present it also refuses a non-retiring profile record: binding writes that record before the binding output, so a crash between them would otherwise retire the client and strand the executor.
 Snell is optional in issuance and unbound retirement. An absent section has no
 client edges; configured variants must still contain exactly one issued client.
 
