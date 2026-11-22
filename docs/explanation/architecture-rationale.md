@@ -9,7 +9,7 @@
 Every node is replaceable. When an IP burns or a configuration drifts, do not hand-repair a snowflake server; recreate it from git, the encrypted secrets and a Terraform plan. The state lives in two places:
 
 1. The encrypted secrets file outside Git tracking: normally under `~/.config/vpn-provision/`, or in the repository's git-ignored `secrets/local/config/` operator layout.
-2. The Terraform state file, local and scoped per provider and `ENV`. Back it up out of band. `prod` uses the legacy `default` workspace; other environments live in same-named Terraform workspaces.
+2. The OpenTofu state, encrypted in the remote backend and scoped per provider and `ENV`. `make backup-state` keeps an age snapshot out of band. `prod` uses the legacy `default` workspace; other environments live in same-named Terraform workspaces.
 
 Lose the secrets file and you must rotate every credential. Lose the Terraform state and you can re-import the VPS, but blue-green becomes manual. See [the incident runbook](../how-to/incident.md#state-loss).
 

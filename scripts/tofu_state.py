@@ -5,8 +5,11 @@ memory. Callers keep the bytes in memory and never write them to disk.
 """
 from __future__ import annotations
 
+import contextlib
 import os
+import signal
 import subprocess
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,13 +30,30 @@ def pull(provider: str, environment: str, *, env=None, timeout: float = 120) -> 
     child = dict(os.environ if env is None else env)
     child.update(PROVIDER=provider, ENV=environment, TF_IN_AUTOMATION="1", TF_INPUT="0")
     try:
-        result = subprocess.run([str(WRAPPER), "state", "pull"], cwd=ROOT, env=child,
-                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                stderr=subprocess.DEVNULL, timeout=timeout, check=False)
-    except (OSError, subprocess.TimeoutExpired):
+        process = subprocess.Popen([str(WRAPPER), "state", "pull"], cwd=ROOT, env=child,
+                                   stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                   stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
         raise StateError("state-pull-failed") from None
-    if result.returncode != 0:
+    def kill():
+        # The wrapper's tofu child keeps the pipe open; stop the whole session.
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+
+    timer = threading.Timer(timeout, kill)
+    timer.start()
+    try:
+        raw = process.stdout.read(MAX_STATE_BYTES + 1)
+        if len(raw) > MAX_STATE_BYTES:
+            kill()
+            raise StateError("state-too-large")
+        status = process.wait()
+    finally:
+        timer.cancel()
+        process.stdout.close()
+        if process.poll() is None:
+            kill()
+            process.wait()
+    if status != 0:
         raise StateError("state-pull-failed")
-    if len(result.stdout) > MAX_STATE_BYTES:
-        raise StateError("state-too-large")
-    return result.stdout if result.stdout.strip() else None
+    return raw if raw.strip() else None

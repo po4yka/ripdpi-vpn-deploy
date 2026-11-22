@@ -38,8 +38,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-import fleet_inspection
 import staging_lifecycle as lifecycle
+import tofu_state
 
 ROOT = Path(__file__).resolve().parents[1]
 TF_WRAPPER = ROOT / "scripts/terraform-env.sh"
@@ -126,7 +126,6 @@ EXPECTED_PROVIDER_KEYS = {
     "account_id",
     "project_id",
     "environment",
-    "state_path",
     "state_sha256",
     "destroy_plan_sha256",
     "terraform_addresses",
@@ -256,7 +255,6 @@ def _validate_provider(value: Any) -> None:
     if (
         not isinstance(value.get("account_id"), str)
         or not SAFE_ID_RE.fullmatch(value["account_id"])
-        or not _absolute(value.get("state_path"))
         or not isinstance(value.get("state_sha256"), str)
         or not SHA256_RE.fullmatch(value["state_sha256"])
         or not isinstance(value.get("destroy_plan_sha256"), str)
@@ -510,15 +508,11 @@ def _state_nonempty(raw: bytes) -> bool:
     return bool(resources)
 
 
-def validate_state_binding(
-    raw: bytes, provider_scope: Mapping[str, Any] | None, state_path: str
-) -> None:
+def validate_state_binding(raw: bytes, provider_scope: Mapping[str, Any] | None) -> None:
     if provider_scope is None:
         if _state_nonempty(raw):
             raise CleanupError("nonempty unbound state rejected")
         return
-    if provider_scope.get("state_path") != state_path:
-        raise CleanupError("Terraform state path drift")
     if not hmac.compare_digest(
         hashlib.sha256(raw).hexdigest(), str(provider_scope.get("state_sha256", ""))
     ):
@@ -781,6 +775,9 @@ def _filtered_environment(provider: str) -> dict[str, str]:
         "SSL_CERT_FILE",
         "SSL_CERT_DIR",
         "TF_CLI_CONFIG_FILE",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "TF_VAR_state_passphrase",
     }
     credentials = {
         "upcloud": {
@@ -973,51 +970,14 @@ def _run_tf(
     return completed.stdout
 
 
-def _expected_state_path(provider: str) -> Path:
-    return (
-        ROOT
-        / "terraform/providers"
-        / provider
-        / "terraform.tfstate.d/staging/terraform.tfstate"
-    )
-
-
 def _state_pull(provider: str) -> bytes:
-    # The local-backend bytes, not a reserialized stdout view, are the frozen
-    # identity.  Terraform still receives every operation through the routed
-    # wrapper; this read only fences the exact state artifact used by it.
-    path = _expected_state_path(provider)
+    # The decrypted bytes that `state pull` returns are the frozen identity; an
+    # existing workspace without state reads as an empty state document.
     try:
-        descriptor = fleet_inspection._open_local_file(path, private=True)
-    except fleet_inspection.InspectionError as exc:
-        try:
-            os.lstat(path)
-        except FileNotFoundError:
-            return b'{"version":4,"resources":[]}'
+        raw = tofu_state.pull(provider, "staging", env=_filtered_environment(provider))
+    except tofu_state.StateError as exc:
         raise CleanupError("Terraform state unavailable") from exc
-    try:
-        info = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(info.st_mode)
-            or info.st_uid != os.getuid()
-            or stat.S_IMODE(info.st_mode) & 0o077
-            or info.st_size > 64 * 1024 * 1024
-        ):
-            raise CleanupError("Terraform state ownership or mode rejected")
-        raw = b""
-        while len(raw) <= 64 * 1024 * 1024:
-            chunk = os.read(descriptor, min(65536, 64 * 1024 * 1024 + 1 - len(raw)))
-            if not chunk:
-                break
-            raw += chunk
-        if len(raw) > 64 * 1024 * 1024:
-            raise CleanupError("Terraform state size rejected")
-        current = path.stat(follow_symlinks=False)
-        if (current.st_dev, current.st_ino) != (info.st_dev, info.st_ino):
-            raise CleanupError("Terraform state changed during read")
-        return raw
-    finally:
-        os.close(descriptor)
+    return b'{"version":4,"resources":[]}' if raw is None else raw
 
 
 def _instance_address(resource: Mapping[str, Any], instance: Mapping[str, Any]) -> str:
@@ -1128,7 +1088,6 @@ def extract_provider_scope(
         "account_id": account_id,
         "project_id": project_id,
         "environment": "staging",
-        "state_path": str(_expected_state_path(provider)),
         "state_sha256": hashlib.sha256(raw).hexdigest(),
         "destroy_plan_sha256": "0" * 64,
         "terraform_addresses": sorted(addresses),
@@ -1513,9 +1472,6 @@ def execute_run(
                         for item in progress["providers"]
                         if item["provider"] == provider
                     )
-                    expected_path = _expected_state_path(scope["provider"])
-                    if Path(scope["state_path"]) != expected_path:
-                        raise CleanupError("Terraform state path drift")
                     _verify_account(scope)
                     if phase in {"apply-started", "absent"}:
                         observed = provider_presence(scope, _live_absence_status)
@@ -1530,16 +1486,16 @@ def execute_run(
                             raise CleanupError("provider recovery state ambiguous")
                         # The previous apply was interrupted before any provider
                         # resource disappeared. Retry only while the complete
-                        # frozen local state is still byte-identical.
+                        # frozen state is still byte-identical.
                         validate_manifest(manifest, now=current)
                         raw = _state_pull(provider)
-                        validate_state_binding(raw, scope, str(expected_path))
+                        validate_state_binding(raw, scope)
                         _verify_resources_exist(scope)
                         already_started = True
                     else:
                         validate_manifest(manifest, now=current)
                         raw = _state_pull(provider)
-                        validate_state_binding(raw, scope, str(expected_path))
+                        validate_state_binding(raw, scope)
                         _verify_resources_exist(scope)
                         already_started = False
                     descriptor, digest, summary_digest = _prepare_plan(scope, directory)
@@ -1617,7 +1573,7 @@ def execute_preflight(manifest_path: Path | None) -> None:
             scope = next(
                 item for item in manifest["providers"] if item["provider"] == provider
             )
-        validate_state_binding(raw, scope, str(_expected_state_path(provider)))
+        validate_state_binding(raw, scope)
 
 
 def _parser() -> argparse.ArgumentParser:

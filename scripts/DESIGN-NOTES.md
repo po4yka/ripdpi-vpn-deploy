@@ -92,7 +92,7 @@ contexts stay pinned.
 `ci-staging-*` guards. It is fixed to `ENV=staging` and consumes the exact
 completed acceptance journal. `snapshot` authenticates UpCloud, Hetzner, and
 Scaleway, derives the complete managed Terraform address and separately
-queryable provider-identity sets from routed local state, and records a stable
+queryable provider-identity sets from routed state (`state pull`), and records a stable
 delete-plan summary digest. `seal` accepts only a fresh separate approval bound
 to the canonical snapshot digest, complete scope digest, source, deployable
 generation, acceptance journal, expiry, and closed rollback/retention window.

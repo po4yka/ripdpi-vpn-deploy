@@ -30,3 +30,9 @@ def test_pull_refuses_failure_and_oversized_state(wrapper, body):
     wrapper(body)
     with pytest.raises(tofu_state.StateError):
         tofu_state.pull('upcloud', 'prod')
+
+
+def test_pull_kills_a_wrapper_that_exceeds_the_timeout(wrapper):
+    wrapper('sleep 30\n')
+    with pytest.raises(tofu_state.StateError):
+        tofu_state.pull('upcloud', 'prod', timeout=0.2)
