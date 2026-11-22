@@ -465,7 +465,6 @@ def publish(
                 before = {k: v for k, v in old.items() if k != "state"}
                 if (
                     stable != before
-                    or manifest["state"]["path"] != old["state"]["path"]
                     or manifest["state"]["sha256"] == old["state"]["sha256"]
                 ):
                     raise GuardError(
