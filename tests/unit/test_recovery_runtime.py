@@ -546,3 +546,24 @@ def test_restore_manifest_cannot_mix_alternate_target_or_restic(manifest, extra)
                             check=False, capture_output=True, text=True, timeout=10)
     assert result.returncode == 2
     assert 'exact UpCloud Path A only' in result.stderr
+
+
+def test_runtime_reads_state_through_the_backend_and_never_treats_failure_as_empty(manifest, monkeypatch):
+    import tofu_state
+    value, path = manifest
+    calls, replies = [], [None, tofu_state.StateError('state-pull-failed')]
+    def pull(provider, environment, *, env):
+        calls.append((provider, environment, env['ENV']))
+        reply = replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+    monkeypatch.setenv('TF_VAR_state_passphrase', 'fixture-passphrase-value')
+    monkeypatch.setattr(tofu_state, 'pull', pull)
+    with Journal(value) as journal:
+        runtime = Runtime(value, path, journal)
+        assert runtime.environment['TF_VAR_state_passphrase'] == 'fixture-passphrase-value'
+        assert runtime.state() is None
+        with pytest.raises(RecoveryError, match='state-unavailable'):
+            runtime.state()
+    assert calls == [('upcloud', value['environment'], value['environment'])] * 2

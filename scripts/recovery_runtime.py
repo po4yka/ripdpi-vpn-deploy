@@ -13,6 +13,7 @@ from pathlib import Path
 
 import bootstrap_readiness
 import fleet_inspection
+import tofu_state
 from recovery_io import (
     ROOT,
     RecoveryError,
@@ -35,7 +36,9 @@ class Runtime:
         self.environment = {key: os.environ[key] for key in (
             'PATH', 'HOME', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TMPDIR',
             'UPCLOUD_TOKEN', 'UPCLOUD_USERNAME', 'UPCLOUD_PASSWORD',
-            'UPCLOUD_API_USERNAME', 'UPCLOUD_API_PASSWORD', 'TAILSCALE_AUTH_KEY') if key in os.environ}
+            'UPCLOUD_API_USERNAME', 'UPCLOUD_API_PASSWORD', 'TAILSCALE_AUTH_KEY',
+            'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'TF_VAR_state_passphrase',
+            'TF_BACKEND_ROOT') if key in os.environ}
         self.cleanup_plaintext()
         self.environment.update({'PROVIDER': 'upcloud', 'ENV': manifest['environment'],
             'TF_IN_AUTOMATION': 'true', 'TF_INPUT': '0', 'PYTHONNOUSERSITE': '1',
@@ -122,12 +125,13 @@ class Runtime:
         return value
 
     def state(self):
-        # This provider root has a local backend. A missing local state is the only
-        # absent-state case; authentication/CLI failures are never treated as empty.
-        path = self.tfroot / 'terraform.tfstate.d' / self.manifest['environment'] / 'terraform.tfstate'
-        if not os.path.lexists(path):
-            return None
-        return server_from_state(json.loads(read(path, limit=16_777_216)), self.manifest)
+        # An existing workspace without state is the only absent-state case; a
+        # missing workspace, authentication or decryption failure is never empty.
+        try:
+            raw = tofu_state.pull('upcloud', self.manifest['environment'], env=self.environment)
+        except tofu_state.StateError:
+            raise RecoveryError('recovery-state-unavailable') from None
+        return None if raw is None else server_from_state(json.loads(raw), self.manifest)
 
     def inputs(self):
         return {'source': self.source(), 'tfvars_sha256': file_digest(

@@ -365,6 +365,9 @@ def test_scope_binds_real_journal_state_manifest_and_clean_source(cloud, manifes
     state_path.parent.mkdir(parents=True)
     state_path.write_bytes(canonical(state))
     state_path.chmod(0o600)
+    import tofu_state
+    monkeypatch.setattr(tofu_state, 'pull', lambda provider, environment: (
+        state_path.read_bytes() if (provider, environment) == ('upcloud', 'replacement') else None))
     monkeypatch.setattr(promotion, 'ROOT', root)
     deploy = promotion.module('deploy-controller')
     identity = {'DEPLOY_SOURCE_REVISION': value['source_revision'], 'DEPLOYABLE_SOURCE_DIGEST': target['deployable_digest']}

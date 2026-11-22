@@ -9,7 +9,8 @@ from pathlib import Path
 import re
 import shlex
 
-from recovery_io import ROOT, document, module, read
+from recovery_io import ROOT, document, module
+import tofu_state
 
 PROVIDERS = {'upcloud': ('upcloud_server', 'hostname'),
              'scaleway': ('scaleway_instance_server', 'name'),
@@ -39,11 +40,11 @@ def _state(row):
                 or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', row['inventory_alias'])
                 or not re.fullmatch(r'[0-9a-f]{64}', row['state_sha256'])):
             raise ValueError
-        root = ROOT / 'terraform/providers' / row['provider']
-        path = root / ('terraform.tfstate' if row['environment'] == 'prod'
-                       else f"terraform.tfstate.d/{row['environment']}/terraform.tfstate")
-        raw = read(path, limit=16_777_216)
-        if hashlib.sha256(raw).hexdigest() != row['state_sha256']:
+        try:
+            raw = tofu_state.pull(row['provider'], row['environment'])
+        except tofu_state.StateError:
+            raise ValueError('cloud-state-refused') from None
+        if raw is None or hashlib.sha256(raw).hexdigest() != row['state_sha256']:
             raise ValueError
         state = json.loads(raw)
         if type(state.get('version')) is not int or state['version'] != 4:
