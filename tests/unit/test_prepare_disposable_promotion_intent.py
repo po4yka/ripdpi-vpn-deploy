@@ -54,7 +54,7 @@ def test_publishes_valid_private_intent_and_exact_alias_mapping_without_key_read
     data = json.loads((output / "intent.json").read_bytes())
     assert helper.validate_intent(data) == data
     assert json.loads((output / "deployment-inputs.json").read_bytes()) == {
-        data["target_identity"]["inventory_alias"]: str(output / "intent.json")
+        data["target_identity"]["inventory_alias"]: data
     }
     assert "applied_at" not in data["target_identity"]
     assert outcome == {"status": "promotion-intent-prepared"}
