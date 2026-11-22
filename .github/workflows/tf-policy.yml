@@ -91,9 +91,10 @@ jobs:
                 ;;
             esac
             # The policy plan has no state; a local backend override replaces the
-            # partial S3 backend for this throwaway plan only.
+            # partial S3 backend for this throwaway plan only. Plan needs that
+            # backend initialized, so init must not pass -backend=false.
             printf 'terraform {\n  backend "local" {}\n}\n' > ci_policy_override.tf
-            tofu init -backend=false -input=false
+            tofu init -input=false
             tofu plan -input=false -refresh=false -lock=false \
               -var-file=environments/ci-policy.tfvars -out=ci-policy.tfplan
             tofu show -json ci-policy.tfplan > ci-policy.json
