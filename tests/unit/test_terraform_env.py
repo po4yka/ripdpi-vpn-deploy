@@ -169,3 +169,28 @@ def test_reserved_alias_refuses_backup_restore_and_cohort_before_private_inputs(
         assert result.returncode != 0
         assert "reserved" in result.stderr
         assert "missing" not in result.stderr
+
+
+def _planned_var_file(tfvars_root: str) -> str:
+    result = subprocess.run(
+        ["make", "-n", "--no-print-directory", "plan", "PROVIDER=upcloud", "ENV=prod", f"TFVARS_ROOT={tfvars_root}"],
+        cwd=REPO_ROOT, env={k: v for k, v in os.environ.items() if k not in ("MAKEFLAGS", "MAKEFILES")},
+        text=True, capture_output=True, check=True,
+    )
+    return next(part for part in result.stdout.split() if part.startswith("-var-file="))
+
+
+def test_plan_reads_tfvars_from_an_external_ops_checkout(tmp_path: Path) -> None:
+    assert _planned_var_file(str(tmp_path / "ops/tfvars")) == f'-var-file="{tmp_path}/ops/tfvars/upcloud/prod.tfvars"'
+
+
+def test_plan_keeps_the_provider_root_tfvars_by_default() -> None:
+    assert _planned_var_file("") == f'-var-file="{REPO_ROOT}/terraform/providers/upcloud/environments/prod.tfvars"'
+
+
+def test_relative_tfvars_root_is_refused() -> None:
+    result = subprocess.run(["make", "-n", "--no-print-directory", "plan", "TFVARS_ROOT=config/tfvars"], cwd=REPO_ROOT,
+                            env={k: v for k, v in os.environ.items() if k not in ("MAKEFLAGS", "MAKEFILES")},
+                            text=True, capture_output=True, check=False)
+    assert result.returncode != 0
+    assert "TFVARS_ROOT must be an absolute path" in result.stderr

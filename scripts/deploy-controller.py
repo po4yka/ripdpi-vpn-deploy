@@ -838,7 +838,8 @@ def controller(mode):
         environment.update(identity)
         validate_discovery_paths(root)
         hosts, memberships, metadata, _inventory, _rows, _global_lines = inventory_selection(
-            root / "ansible/inventory/generated.ini", os.environ.get("DEPLOY_LIMIT", ""), directory)
+            Path(os.environ.get("DEPLOY_INVENTORY") or root / "ansible/inventory/generated.ini"),
+            os.environ.get("DEPLOY_LIMIT", ""), directory)
         # One decrypted secrets file belongs to one environment; a mixed
         # inventory must never receive it on another environment's host.
         selected_environment = os.environ.get("DEPLOY_ENV", "")

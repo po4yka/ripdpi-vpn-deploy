@@ -1,0 +1,9 @@
+# Plaintext never enters this repository; scripts/validate-ops-repo.py also refuses it.
+*.tfstate
+*.tfstate.backup
+*.tfplan
+*.secrets.yaml
+*.secrets.yml
+*.dec
+.env
+runtime/

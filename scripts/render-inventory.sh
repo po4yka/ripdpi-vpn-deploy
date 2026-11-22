@@ -32,6 +32,12 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${INVENTORY_OUTPUT:-${REPO_ROOT}/ansible/inventory/generated.ini}"
+# Optional external tfvars tree laid out as <provider>/<env>.tfvars (the ops repository).
+TFVARS_ROOT="${TFVARS_ROOT:-}"
+if [[ -n "$TFVARS_ROOT" && "$TFVARS_ROOT" != /* ]]; then
+  echo "TFVARS_ROOT must be an absolute path" >&2
+  exit 1
+fi
 
 if [[ -z "${ANSIBLE_SSH_PRIVATE_KEY_FILE:-}" ]]; then
   echo "ANSIBLE_SSH_PRIVATE_KEY_FILE is not set" >&2
@@ -169,12 +175,12 @@ declare -A host_sources=()
 terraform_json_var() {
   local provider="$1"
   local env="$2"
-  local tfvars_rel="$3"
+  local tfvars_path="$3"
   local expr="$4"
   local raw
   local decoded
 
-  raw="$(PROVIDER="$provider" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" console -no-color -var-file="$tfvars_rel" <<< "jsonencode(${expr})")"
+  raw="$(PROVIDER="$provider" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" console -no-color -var-file="$tfvars_path" <<< "jsonencode(${expr})")"
   decoded="$(jq -r . <<< "$raw")"
   jq -c . <<< "$decoded"
 }
@@ -366,14 +372,18 @@ for i in "${!host_pairs[@]}"; do
   prov="${pair%:*}"
   env="${pair#*:}"
   tf_dir="${REPO_ROOT}/terraform/providers/${prov}"
-  tfvars_rel="environments/${env}.tfvars"
+  if [[ -n "$TFVARS_ROOT" ]]; then
+    tfvars_path="${TFVARS_ROOT}/${prov}/${env}.tfvars"
+  else
+    tfvars_path="${tf_dir}/environments/${env}.tfvars"
+  fi
 
   if [[ ! -d "$tf_dir" ]]; then
     echo "no terraform root for provider '${prov}'" >&2
     exit 1
   fi
-  if [[ ! -f "${tf_dir}/${tfvars_rel}" ]]; then
-    echo "missing ${tf_dir}/${tfvars_rel}" >&2
+  if [[ ! -f "$tfvars_path" ]]; then
+    echo "missing ${tfvars_path}" >&2
     exit 1
   fi
 
@@ -397,8 +407,8 @@ for i in "${!host_pairs[@]}"; do
   host_sources["$hostname"]="$pair"
   public_listeners="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -json public_listeners | jq -c .)"
   public_listeners_b64="$(printf '%s' "$public_listeners" | base64 | tr -d '\r\n')"
-  allowed_ssh_cidrs="$(terraform_json_var "$prov" "$env" "$tfvars_rel" "var.allowed_ssh_cidrs")"
-  build_environment_json="$(terraform_json_var "$prov" "$env" "$tfvars_rel" "var.build_env")"
+  allowed_ssh_cidrs="$(terraform_json_var "$prov" "$env" "$tfvars_path" "var.allowed_ssh_cidrs")"
+  build_environment_json="$(terraform_json_var "$prov" "$env" "$tfvars_path" "var.build_env")"
   if ! jq -e 'type == "string" and length > 0 and length <= 128' <<< "$build_environment_json" >/dev/null; then
     echo "invalid canonical build environment for ${prov}:${env}" >&2
     exit 1

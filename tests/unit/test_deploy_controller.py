@@ -377,6 +377,23 @@ def test_dry_run_checks_the_same_tags_as_the_deploy(workspace):
     assert site[-4:] == ["--check", "--diff", "--tags", "baseline,firewall,backup"]
 
 
+def test_dry_run_selects_the_ops_checkout_inventory_over_the_local_default(workspace, tmp_path):
+    inventory = workspace["inventory"]
+    ops_inventory = tmp_path / "ops" / "config/inventories/prod.ini"
+    ops_inventory.parent.mkdir(parents=True)
+    ops_inventory.write_text(inventory.read_text())
+    # The local default names another environment, so a fallback to it is refused.
+    inventory.write_text(inventory.read_text().replace("env=prod", "env=staging"))
+    refused = invoke(workspace, target="dry-run", limit="node-one")
+    assert refused.returncode != 0
+    assert "selected inventory hosts must belong to ENV" in refused.stderr
+    shutil.copy2(ROOT / "templates/ops-repo/fleet.mk", tmp_path / "ops/fleet.mk")
+    write(workspace["root"] / ".fleet.mk", f"include {tmp_path / 'ops/fleet.mk'}\n")
+    selected = invoke(workspace, target="dry-run", limit="node-one")
+    assert selected.returncode == 0, selected.stderr
+    assert [entry for entry in calls(workspace) if entry["program"] == "ansible-playbook"]
+
+
 @pytest.mark.parametrize("environment,expected", [("prod", ["validate-secrets.py"]), ("ci-staging-1", [])])
 def test_precheck_bypass_keeps_the_placeholder_check_outside_ci(workspace, environment, expected):
     inventory = workspace["inventory"]

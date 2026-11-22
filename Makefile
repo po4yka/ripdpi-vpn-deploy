@@ -773,7 +773,14 @@ RUNTIME_DIR   ?= $(if $(XDG_RUNTIME_DIR),$(XDG_RUNTIME_DIR),$(if $(TMPDIR),$(TMP
 CLOUD_INIT_IMAGE ?= ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90
 SECRETS_FILE  ?= $(RUNTIME_DIR)/vpn-$(ENV).secrets.yaml
 SOPS_FILE     ?= $(HOME)/.config/vpn-provision/$(ENV).secrets.sops.yaml
-TFVARS        := $(TF_ROOT)/environments/$(ENV).tfvars
+# Absolute directory holding <provider>/<env>.tfvars outside this checkout (the ops repository).
+TFVARS_ROOT   ?=
+TFVARS        := $(if $(TFVARS_ROOT),$(TFVARS_ROOT)/$(PROVIDER)/$(ENV).tfvars,$(TF_ROOT)/environments/$(ENV).tfvars)
+ifneq ($(TFVARS_ROOT),)
+ifeq ($(filter /%,$(TFVARS_ROOT)),)
+$(error TFVARS_ROOT must be an absolute path)
+endif
+endif
 TFPLAN        := $(TF_ROOT)/$(ENV).tfplan
 ZIZMOR_VERSION := 1.29.0
 PROMTOOL_VERSION := 3.15.1
@@ -1040,7 +1047,7 @@ decrypt:
 plan:
 	@test -f "$(TFVARS)" || { echo "missing $(TFVARS) — copy from .example and fill"; exit 1; }
 	PROVIDER=$(PROVIDER) ENV=$(ENV) $(TF_ENV) plan \
-	  -var-file=environments/$(ENV).tfvars \
+	  -var-file="$(abspath $(TFVARS))" \
 	  -out=$(ENV).tfplan
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/policy-plan.sh check
 
@@ -1048,7 +1055,8 @@ apply:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/policy-plan.sh apply
 
 inventory:
-	PROVIDER=$(PROVIDER) ENV=$(ENV) HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" ./scripts/render-inventory.sh
+	PROVIDER=$(PROVIDER) ENV=$(ENV) HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" \
+	  TFVARS_ROOT="$(TFVARS_ROOT)" INVENTORY_OUTPUT="$(ANSIBLE_INVENTORY)" ./scripts/render-inventory.sh
 
 network-exposure-review:
 	@exec /usr/bin/env -i \
@@ -1134,6 +1142,7 @@ override SKIP_PRECHECK := $(value SKIP_PRECHECK)
 override SECRETS_FILE := $(if $(filter file default undefined,$(origin SECRETS_FILE)),$(SECRETS_FILE),$(value SECRETS_FILE))
 override ANSIBLE_EXTRA_VARS_FILE := $(if $(filter file default undefined,$(origin ANSIBLE_EXTRA_VARS_FILE)),$(ANSIBLE_EXTRA_VARS_FILE),$(value ANSIBLE_EXTRA_VARS_FILE))
 override INSPECT_KNOWN_HOSTS := $(if $(filter file default undefined,$(origin INSPECT_KNOWN_HOSTS)),$(INSPECT_KNOWN_HOSTS),$(value INSPECT_KNOWN_HOSTS))
+override ANSIBLE_INVENTORY := $(if $(filter file default undefined,$(origin ANSIBLE_INVENTORY)),$(ANSIBLE_INVENTORY),$(value ANSIBLE_INVENTORY))
 override DEPLOY_SSH_CONTEXTS_FILE := $(value DEPLOY_SSH_CONTEXTS_FILE)
 override DEPLOY_CI_TAILNET_HANDOFF := $(value DEPLOY_CI_TAILNET_HANDOFF)
 override DEPLOY_PROMOTION_CONFIG_FILE := $(value DEPLOY_PROMOTION_CONFIG_FILE)
@@ -1149,6 +1158,7 @@ deploy dry-run: export DEPLOY_SKIP_PRECHECK = $(SKIP_PRECHECK)
 deploy dry-run: export DEPLOY_SECRETS_FILE = $(SECRETS_FILE)
 deploy dry-run: export DEPLOY_EXTRA_VARS_FILE = $(ANSIBLE_EXTRA_VARS_FILE)
 deploy dry-run: export DEPLOY_KNOWN_HOSTS = $(INSPECT_KNOWN_HOSTS)
+deploy dry-run: export DEPLOY_INVENTORY = $(ANSIBLE_INVENTORY)
 deploy dry-run: export DEPLOY_SSH_CONTEXTS_FILE := $(DEPLOY_SSH_CONTEXTS_FILE)
 deploy dry-run: export DEPLOY_CI_TAILNET_HANDOFF := $(DEPLOY_CI_TAILNET_HANDOFF)
 deploy dry-run: export DEPLOY_PROMOTION_CONFIG_FILE := $(DEPLOY_PROMOTION_CONFIG_FILE)

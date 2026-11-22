@@ -2,7 +2,7 @@
 id: OPS-1795327950629406
 title: Create the private ops repository and map the operator kit onto it
 kind: feature
-status: backlog
+status: doing
 area: operations
 priority: high
 risk: high

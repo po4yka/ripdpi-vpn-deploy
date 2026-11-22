@@ -7,7 +7,7 @@
 > [!WARNING]
 > The kit holds live credentials. Never print, quote or commit its secret values, and never put them in command arguments or logs.
 
-Use `secrets/local/` as the private operator kit on the deployment MacBook. The existing `.gitignore` rule for `secrets/*` covers the complete tree. This is an operator storage convention, not a new secrets schema or an automatic migration. Existing external paths remain supported; command defaults do not change.
+Use `secrets/local/` as the private operator kit on the deployment MacBook. The existing `.gitignore` rule for `secrets/*` covers the complete tree. This is an operator storage convention, not a new secrets schema or an automatic migration. Existing external paths remain supported; command defaults do not change. The kit is moving to the private [ops repository](../reference/ops-repository.md) plus a B2 recovery prefix so that CI can operate without the MacBook; [the mapping below](#mapping-to-the-ops-repository) gives each item its destination, and `secrets/local/` stays authoritative until the cut-over comparison passes.
 
 The kit must account for all material needed to manage, rebuild, revoke access to, and recover the service. Keep one authoritative copy of each item. Record working files that must stay at tool-specific paths instead of making competing copies. Git ignore prevents ordinary staging; it does not encrypt files, control agent reads, or provide a backup. Git still tracks a file that was already committed.
 
@@ -37,6 +37,29 @@ secrets/local/
 ```
 
 Only create files that are needed. `operator-access.sops.yaml` is a private operator document, separate from `secrets/schema.json`; do not pass it to Ansible or the deployment-secret validator. Keep provider/API credentials encrypted at rest. Expose them only through environment variables for the selected command, using an approved local credential loader. Keep values out of Make assignments, Terraform inputs, command arguments, shell history and committed examples.
+
+## Mapping to the ops repository
+
+Each kit item has exactly one authority after the move. The catalog records it in an `authority` field on every `credentials` entry: `ops-repo`, `b2-recovery`, `gh-environment`, `password-manager` or `temporary`. Operator break-glass identities never go into the ops repository or GitHub.
+
+| Kit path | Authority after the move | Notes |
+|---|---|---|
+| `README.md` | ops repository `README.md` | Recovery order rewritten for remote state. |
+| `catalog.json` | ops repository `catalog.json` | References only. |
+| `config/age.key` | password manager | Break-glass only; CI gets its own recipient. |
+| `config/.sops.yaml` | ops repository `config/.sops.yaml` | Public recipients only. |
+| `config/<scope>.secrets.sops.yaml` | ops repository `config/` | Re-encrypted to operator and CI recipients. |
+| `config/operator-access.sops.yaml` | B2 recovery prefix | Operator recipient only; Git history would keep every old ciphertext. |
+| `config/fleet.mk`, `ssh.conf`, `known_hosts` | ops repository | Reviewed as executable configuration; `fleet.mk` follows the template. |
+| `keys/` | password manager or hardware token | CI uses separate identities in GitHub environments. |
+| `plans/` | ops repository `plans/` | Saved tfplans stay temporary and encrypted. |
+| `clients/<device-id>/` | temporary | Delivered encrypted to the recipient. |
+| `state-backups/` | B2 recovery prefix | Replaced by versioned remote state. |
+| `receipts/` | ops repository `receipts/` | No token-bearing URLs. |
+| `recovery/` | B2 recovery prefix | Sealed archive; its unlock factor stays in the password manager. |
+| `runtime/` | temporary | Never committed or uploaded. |
+
+Before the cut-over, the private repository must show that a required reviewer blocks and releases a secret-free job. Then import the ops-repository items, run `scripts/validate-ops-repo.py` and gitleaks, and compare `make plan` inputs, `make inventory` output and `make dry-run` host selection between the kit and the ops clone. Roll back by pointing `.fleet.mk` at `secrets/local/` again.
 
 ## Coverage and authority
 
