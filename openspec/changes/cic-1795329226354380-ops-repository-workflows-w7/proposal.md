@@ -9,12 +9,12 @@ W1 to W6 give CI a private configuration home, encrypted remote state, scoped id
 ## What Changes
 
 - Request files: an operation is a reviewed file `requests/<request-id>.yaml` (operation, targets, parameters, public recipient key where needed) added by pull request. A Claude cloud session needs only to push a branch and open a pull request; no workflow dispatch is required.
-- Pull-request workflows (default-branch code, PR files as data): request and config validation, `tofu plan` per affected root and environment, and the canonical `make dry-run` for affected hosts, in no-reviewer environments. Plan and dry-run summaries are posted to the PR.
-- Merge workflows: on merge to the default branch, each new request runs once in its reviewer environment (`tofu-apply`, `deploy`, `ops-secrets`, `tailnet-policy`) after approval: apply or destroy (from an encrypted saved plan), dry-run then deploy as in `docs/how-to/deploy.md`, rotate and issue flows, DNS changes.
+- Automatic PR previews overlay only allowed typed fields on trusted targets. Other changes require review of the exact head before any credentialed preview.
+- Merged plan and dry-run requests stay read-only. Mutations require approval. The executor claims immutable requests, reconciles interrupted work and verifies the approved saved plan before apply.
 - Scheduled workflows: daily drift plan per root and daily verify and acceptance, writing receipts.
-- Secrets are generated or rotated only inside `ops-secrets` jobs; the job opens a pull request with the re-encrypted SOPS documents and a follow-up deploy request. Agents edit only non-secret settings.
+- CI prepares encrypted credential changes offline. A separate reviewed deploy activates them.
 - Device client configurations are encrypted to the recipient's age public key before upload; plaintext client artifacts are refused.
-- Receipts for every run are appended to an `ops-receipts` branch that the cloud session can read.
+- Record attempts on a protected, executor-written `ops-receipts` branch readable by the cloud session.
 - `workflow_dispatch` stays available for the operator and, if the proxy permits it, for read-only operations from the cloud session.
 - A Claude cloud environment with the ops and public repositories, no environment variables or secrets, a limited network allowlist and a toolchain setup script kept in the public repository.
 

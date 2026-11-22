@@ -24,4 +24,4 @@ A private ops repository holds inventories, tfvars, toggles, the catalog and rec
 
 - `scripts/validate-ops-repo.py` rejects a non-SHA pin, plaintext secrets, private keys, state and plan files, and catalog entries without an authority, with unit tests.
 - `docs/how-to/local-operator-kit.md` contains the kit mapping table.
-- Authorized: the private repository exists, passes the validator and gitleaks, and the inventory comparison receipt shows equality with the MacBook kit.
+- Prove rejection and approval on secret-free jobs in the intended private repository before importing inputs. Compare `plan`, `inventory` and dry-run selection from separate checkouts with the kit, and pass the validator and gitleaks.

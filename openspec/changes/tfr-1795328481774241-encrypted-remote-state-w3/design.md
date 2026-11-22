@@ -7,13 +7,13 @@ See `proposal.md`. W2 made OpenTofu the CLI. Today each root uses local state; `
 - Goal: CI and the MacBook use one encrypted remote state per root and workspace.
 - Goal: a stolen CI key cannot destroy history.
 - Non-goal: KMS or a secret server; the passphrase is a static secret in a GitHub environment (W4) and the operator password manager.
-- Non-goal: workflows (W7). This change defines the concurrency group contract that W7 must use.
+- W7 schedules work. The state backend arbitrates writes from both CI and the workstation, including during a GitHub outage.
 
 ## Decisions
 
 - Key provider `pbkdf2` with `passphrase = var.state_passphrase` (sensitive, from `TF_VAR_state_passphrase`), method `aes_gcm`, both `state` and `plan`. Rejected: `aws_kms`/`gcp_kms` (new cloud account), `openbao` (a server that holds secrets, against the secretless-egress decision), `external` (custom code).
 - Migration fallback: `method "unencrypted" "migrate" {}` and `fallback { method = method.unencrypted.migrate }`, removed with `enforced = true` once every workspace of the root is migrated. Method and provider names stay fixed after encryption, because OpenTofu needs a fallback for any rename.
-- Partial backend `backend "s3" {}`; per-root file `config/backend/<root>.s3.tfbackend` in the ops repository with `bucket`, `key = "<root>/terraform.tfstate"`, `workspace_key_prefix = "<root>/workspaces"`, `region`, `endpoints = { s3 = "https://s3.<region>.backblazeb2.com" }`, `use_path_style = true`, `skip_credentials_validation`, `skip_region_validation`, `skip_requesting_account_id`, `skip_metadata_api_check`, and no tags. `skip_s3_checksum` is set only if the probe shows B2 rejects the SDK checksum headers; a third-party report says Object Lock buckets require an MD5 or checksum header, so the default may be the right one.
+- Partial backend `backend "s3" {}`; per-root file `config/backend/<root>.s3.tfbackend` in the ops repository with `bucket`, `key = "state/<root>/terraform.tfstate"`, `workspace_key_prefix = "state/workspaces"`, `region`, `endpoints = { s3 = "https://s3.<region>.backblazeb2.com" }`, `use_path_style = true`, `skip_credentials_validation`, `skip_region_validation`, `skip_requesting_account_id`, `skip_metadata_api_check`, and no tags. `skip_s3_checksum` is set only if the probe shows B2 rejects the SDK checksum headers; a third-party report says Object Lock buckets require an MD5 or checksum header, so the default may be the right one.
 - Validation paths stay offline: `make validate` and `make tf-test` use `init -backend=false` as today.
 - Bucket: one private bucket, Object Lock on at creation, default retention governance 30 days, lifecycle `daysFromHidingToDeleting` greater than the retention. Prefixes: `state/` (state objects) and `recovery/` (sealed operator-kit archive, pre-migration backups).
 - Keys (B2 application keys, all bucket-restricted):
@@ -23,10 +23,11 @@ See `proposal.md`. W2 made OpenTofu the CLI. Today each root uses local state; `
 | `state-plan` | `state/` | listFiles, readFiles | `tofu-plan` environment (W4) |
 | `state-apply` | `state/` | listFiles, readFiles, writeFiles | `tofu-apply` environment (W4) |
 | `recovery-operator` | `recovery/` | listFiles, readFiles, writeFiles | operator password manager only |
+| `state-operator` | `state/` | listFiles, readFiles, writeFiles | operator password manager only, for state operations and restore |
 
-  Neither CI key has `deleteFiles` or `bypassGovernance`. The `state` prefix in the backend files becomes the `key` prefix (`state/<root>/...`).
-- Locking: `scripts/b2-backend-probe.py` writes a test object under `state/_probe/` with `If-None-Match: *` twice and expects 200 then 412. If B2 answers 412, set `use_lockfile = true`. If it answers 501 or 200, keep `use_lockfile` off and use writer serialization: every state-writing job uses `concurrency: { group: tofu-state-<root>-<workspace>, cancel-in-progress: false }`; plan jobs use `-lock=false` and the read-only key, so they cannot write. Break-glass hold: the operator sets the ops repository variable `STATE_HOLD=<root>` (or `all`); every write job checks it first and fails. Rejected: moving state to AWS S3 or Scaleway Object Storage only for locking (new account or unverified feature); rejected: DynamoDB-style lock table (not available on B2).
-- Backup and restore: `backup-state` copies the current object version ID and an age-encrypted (to the operator recipient) snapshot to `recovery/state/`. `restore-state` lists versions with `s3api list-object-versions`, checks lineage, and writes the chosen version as a new current version. Both run only with operator credentials.
+  No state writer receives permanent version deletion or governance bypass. Production uses `state/<root>/terraform.tfstate`. A named workspace uses `state/workspaces/<workspace>/state/<root>/terraform.tfstate`.
+- Require `use_lockfile = true` for every writer. Before migration, exercise the actual OpenTofu lock with the intended identities and bucket retention settings on disposable state: acquire, reject a concurrent writer, release and reacquire from the other client. A successful conditional PUT alone is insufficient. If this fails, keep local state authoritative and defer migration until a compatible backend or independent lock is approved and passes the same tests. Read-only plans use `-lock=false` with the read-only key.
+- `backup-state` reads the state version using `state-operator` and archives a sealed snapshot using `recovery-operator`. `restore-state` reads the selected retained version and writes through a lock-aware state operation using `state-operator`. Validate lineage and the expected current serial under the lock, preserve version history and advance the serial. The operator obtains both scoped keys and the passphrase independently of CI.
 
 ## Contracts and ownership
 
@@ -37,13 +38,13 @@ See `proposal.md`. W2 made OpenTofu the CLI. Today each root uses local state; `
 
 ## Risks / Trade-offs
 
-- No native lock → serialization relies on CI concurrency and the hold procedure; a MacBook write that skips the hold can race CI. Mitigation: break-glass runbook makes the hold step first and the receipt records it; Object Lock keeps the overwritten version.
+- A disconnected writer may still hold the backend lock. An operator write must wait or fail closed. Investigate a stale lock and verify the prior writer has stopped before any separately authorized unlock.
 - Passphrase loss makes state unreadable → passphrase in two independent places (GitHub environment secret and operator password manager); restore test reads a state with the password-manager copy.
 - B2 S3 incompatibility with SDK checksums → the probe tests both settings before migration.
 
 ## Migration Plan
 
-Per root, per workspace, from the MacBook, under authorization, with no CI writer configured yet:
+After a successful lock and recovery probe, migrate each root and workspace from the MacBook under authorization, with no CI writer configured yet:
 
 1. `make backup-state` (existing local age backup) and record `sha256` of the plaintext file, `tofu state list`, `lineage` and `serial` (values printed are addresses and metadata, not attributes) into a receipt.
 2. Commit the encryption block with fallback and the partial backend; run `tofu init -migrate-state -backend-config=<ops>/config/backend/<root>.s3.tfbackend` and accept the copy.
@@ -56,7 +57,7 @@ Rollback before step 5: `tofu init -migrate-state` back to `backend "local"` wit
 
 ## Open verification questions
 
-1. Does B2 honour `If-None-Match: *` on `PutObject` (needed for `use_lockfile`)? Research says probably not (HTTP 501); the probe answers it before any decision.
+1. Does B2 support the full OpenTofu lock lifecycle under the production key scopes and retention settings? Failure blocks migration.
 2. Does B2 accept OpenTofu's S3 SDK default checksum headers on an Object Lock bucket, or is `skip_s3_checksum` required? The probe tests both.
 3. Does B2 `PutBucketVersioning` behave as AWS does, or are versions always kept? Docs were not read; the probe lists versions after two writes.
 4. Does `tofu init -migrate-state` from local to S3 preserve every non-default workspace in one run? Check on a throwaway root first.

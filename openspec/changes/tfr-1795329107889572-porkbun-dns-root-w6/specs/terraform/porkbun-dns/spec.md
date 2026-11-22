@@ -33,9 +33,14 @@ API access MUST be enabled only for managed domains. The apply key MUST have DNS
 
 ### Requirement: REQ-PORKBUN-IMPORT — Adoption changes nothing
 
-Before the first apply, every existing record of each managed domain MUST be imported, and `tofu plan` MUST show no changes. A domain whose plan is not empty MUST NOT be applied.
+For each managed domain, the operator MUST reconcile the live inventory with the reviewed import set and explicit exclusions. The first saved plan MUST contain exactly those imports and zero creates, updates, replacements or deletes. Apply MUST use that reviewed plan. The next plan MUST be empty.
 
 #### Scenario: Unmanaged record found
 
 - **WHEN** the import list misses a live record
-- **THEN** the plan shows a delete or no-op mismatch and the adoption of that domain stops
+- **THEN** the live inventory comparison reports the missing record and adoption stops before apply
+
+#### Scenario: Reviewed records are adopted
+
+- **WHEN** the plan contains only the expected imports and no DNS changes
+- **THEN** CI applies the approved plan and verifies the following plan is empty

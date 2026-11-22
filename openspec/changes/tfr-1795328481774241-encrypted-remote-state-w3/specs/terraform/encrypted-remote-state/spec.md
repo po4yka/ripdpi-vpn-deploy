@@ -20,12 +20,17 @@ Every root MUST configure OpenTofu `encryption` for `state` and `plan` with an A
 
 ### Requirement: REQ-STATE-BACKEND — One private, versioned, object-locked bucket
 
-State MUST live in one private B2 bucket with file versions kept, Object Lock enabled with a governance default retention, and a lifecycle rule that removes hidden versions only after the retention ends. Each root and workspace MUST map to a distinct key; the production `default` workspace mapping of `scripts/terraform-env.sh` MUST be preserved. Backend files MUST NOT contain credentials.
+State MUST live in one private B2 bucket with file versions kept, Object Lock enabled with a governance default retention, and a lifecycle rule that removes hidden versions only after the retention ends. Each root and workspace MUST map to a distinct key; the production `default` workspace mapping of `scripts/terraform-env.sh` MUST be preserved. Backend files MUST NOT contain credentials. Both the default key and the workspace prefix MUST begin with `state/`.
 
 #### Scenario: Two roots
 
 - **WHEN** the Hetzner and Vultr roots are initialized for `ENV=prod`
 - **THEN** they use distinct object keys in the same bucket
+
+#### Scenario: Named workspace
+
+- **WHEN** the same root is initialized for production and staging with the prefix-scoped CI keys
+- **THEN** both keys resolve under `state/`, the plan identity reads each and the apply identity can lock and update each independently
 
 #### Scenario: Credential in backend file
 
@@ -34,7 +39,7 @@ State MUST live in one private B2 bucket with file versions kept, Object Lock en
 
 ### Requirement: REQ-STATE-KEYS — Keys are bucket-scoped and least-privilege
 
-The plan identity MUST be able to list and read state only. The apply identity MUST be able to list, read and write state but MUST NOT delete files or bypass governance retention. The recovery prefix MUST use a separate operator-only key that CI never holds.
+The plan identity MUST be able to list and read state only. The apply identity MUST be able to list, read and write state but MUST NOT delete files or bypass governance retention. The recovery prefix MUST use a separate operator-only key that CI never holds. The operator MUST have a separate state-prefix identity with version read, list and write access for locked restore.
 
 #### Scenario: Compromised apply key
 
@@ -43,7 +48,7 @@ The plan identity MUST be able to list and read state only. The apply identity M
 
 ### Requirement: REQ-STATE-SERIAL — Only one writer per state at a time
 
-Writes to the same root and workspace MUST be serialized. If the probe proves conditional writes on B2, `use_lockfile = true` MUST be enabled. Otherwise every CI job that can write state MUST share a non-cancelling concurrency group per root and workspace, read-only plans MUST run with `-lock=false`, and a break-glass write from the MacBook MUST first set the documented hold that stops CI writers.
+Every state mutation, including restore, MUST acquire the same backend lock for the selected root and workspace. Migration MUST stop unless the pinned OpenTofu client proves contention, release and reacquisition with the intended CI and operator credentials. Backend locking MUST work without GitHub.
 
 #### Scenario: Two applies queued
 
@@ -52,8 +57,8 @@ Writes to the same root and workspace MUST be serialized. If the probe proves co
 
 #### Scenario: Break-glass write
 
-- **WHEN** the operator applies from the MacBook
-- **THEN** the hold is set first, CI write jobs refuse to start, and the hold is cleared after the receipt is written
+- **WHEN** GitHub is unavailable and an in-flight CI apply holds the backend lock
+- **THEN** an operator restore or apply cannot change state until the CI writer releases it, after which the operator can acquire the lock without GitHub
 
 ### Requirement: REQ-STATE-MIGRATION — Local state moves exactly and reversibly
 
@@ -66,7 +71,7 @@ For each root and workspace the migration MUST record an encrypted backup, the r
 
 ### Requirement: REQ-STATE-RECOVERY — Restore from versions without CI
 
-The operator MUST be able to restore any retained state version from the MacBook with the break-glass passphrase and recovery key, without GitHub. Restore MUST refuse a version whose lineage differs from the current one unless the operator passes an explicit override.
+The operator MUST be able to restore any retained state version from the MacBook with the break-glass passphrase and operator state-prefix key, without GitHub. Restore MUST refuse a version whose lineage differs from the current one unless the operator passes an explicit override.
 
 #### Scenario: Bad apply
 

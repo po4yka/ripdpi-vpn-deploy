@@ -11,8 +11,8 @@ Every root keeps client-side encrypted state and plans in a versioned, object-lo
 ## Execution
 
 - [ ] TFR-1795328555023000 Add the state and plan encryption block with an unencrypted migration fallback to every root #feature !high @item:TFR-1795328481774241
-- [ ] TFR-1795328567014606 Add the partial B2 S3 backend, workspace key layout and the writer concurrency and hold contract #feature !high @item:TFR-1795328481774241
-- [ ] TFR-1795328578453594 Add the B2 backend probe for conditional writes, checksums, versions and encrypted payloads with tests #feature !high @item:TFR-1795328481774241
+- [ ] TFR-1795328567014606 Add the partial B2 S3 backend, workspace key layout and the shared backend lock for all writers #feature !high @item:TFR-1795328481774241
+- [ ] TFR-1795328578453594 Add the B2 backend probe for lock contention, release and reacquisition, checksums, versions and encrypted payloads with tests #feature !high @item:TFR-1795328481774241
 - [ ] TFR-1795328590452221 Create the bucket and bucket-scoped keys, then run the probe (authorized live step) #feature !high @item:TFR-1795328481774241
 - [ ] TFR-1795328602611143 Migrate each root with a verified backup and address, lineage and serial comparison (authorized live step) #feature !high @item:TFR-1795328481774241
 - [ ] TFR-1795328613654811 Enforce encryption, move backup and restore onto B2 versions, and document state break-glass #feature !high @item:TFR-1795328481774241

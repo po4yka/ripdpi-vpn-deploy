@@ -25,8 +25,8 @@ artifact_evidence: No release artifact.
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
 | REQ-STATE-ENCRYPTED | TFR-1795328555023000 | probe inspect report per root; missing-passphrase test | planned |
-| REQ-STATE-BACKEND | TFR-1795328567014606 | backend file validator test; `tofu init` receipt per root | planned |
+| REQ-STATE-BACKEND | TFR-1795328567014606 | Verify actual default and named workspace paths with scoped identities | planned |
 | REQ-STATE-KEYS | TFR-1795328590452221 | key capability listing receipt; delete attempt refused | planned |
-| REQ-STATE-SERIAL | TFR-1795328578453594 | probe conditional-write result; concurrency contract test in W7 | planned |
+| REQ-STATE-SERIAL | TFR-1795328578453594 | Two-client lock contention, release and reacquisition with GitHub unavailable and an active writer | planned |
 | REQ-STATE-MIGRATION | TFR-1795328602611143 | per-root migration receipts | planned |
-| REQ-STATE-RECOVERY | TFR-1795328613654811 | restore drill receipt | planned |
+| REQ-STATE-RECOVERY | TFR-1795328613654811 | Locked version restore and no-change plan using only documented operator material | planned |

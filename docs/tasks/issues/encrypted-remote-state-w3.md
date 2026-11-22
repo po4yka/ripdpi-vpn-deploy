@@ -23,6 +23,6 @@ OpenTofu state and saved plans of every root are encrypted on the client and kep
 ## Acceptance criteria
 
 - Every root has an enforced `encryption` block and a partial S3 backend; backend files hold no credentials.
-- The B2 probe result decides `use_lockfile`; otherwise the concurrency and hold contract is documented and tested.
+- Prove backend locking across CI and the operator workstation for default and named workspaces before migration. A failed lock probe keeps local state authoritative.
 - Authorized: per-root migration receipts show equal addresses and lineage, non-decreasing serial and a no-change plan.
-- A restore drill from a B2 version succeeds on the MacBook without GitHub.
+- Restore a retained state version without GitHub using the operator state key and passphrase. Verify a competing writer cannot change that workspace during restore.

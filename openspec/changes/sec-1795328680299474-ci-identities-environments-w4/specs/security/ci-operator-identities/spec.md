@@ -15,12 +15,12 @@ CI MUST use its own age recipient, admin SSH key, Tailnet identities and provide
 
 #### Scenario: Revoke the CI age recipient
 
-- **WHEN** the CI recipient is removed from `.sops.yaml` and `sops updatekeys` runs
-- **THEN** new ciphertext no longer decrypts with the CI identity, and the runbook requires rotation of every secret the CI identity could read, because Git history keeps old ciphertext
+- **WHEN** the operator removes the CI recipient, updates recipients, rotates each affected document's SOPS data key and then replaces exposed credentials
+- **THEN** neither the removed identity nor a data key recovered from a historical fixture can decrypt the replacement values, and the operator can decrypt them
 
 ### Requirement: REQ-CIID-ENV-MATRIX — Environments hold only their own credential classes
 
-Environments MUST hold only these classes: `tofu-plan` and `tofu-apply` hold the state passphrase, B2 state keys, provider tokens and the `tag:ci-tofu` Tailnet identity; `deploy-check`, `deploy` and `ops-secrets` hold the CI age identity, CI SSH key and `tag:ci-deploy` Tailnet identity; `tailnet-policy` holds only the policy-push identity. A job MUST NOT reference a secret outside its environment.
+Environments MUST hold only these classes: `tofu-plan` and `tofu-apply` hold the state passphrase, B2 state keys, provider tokens and the `tag:ci-tofu` Tailnet identity; `deploy-check` and `deploy` hold the CI age identity, CI SSH key and `tag:ci-deploy` Tailnet identity; `ops-secrets` holds only the CI age identity for offline preparation; `tailnet-policy` holds only the policy-push identity. A job MUST NOT reference a secret outside its environment.
 
 #### Scenario: Deploy job reads a provider token
 
@@ -43,12 +43,17 @@ Environments MUST hold only these classes: `tofu-plan` and `tofu-apply` hold the
 
 ### Requirement: REQ-CIID-UNTRUSTED-INPUT — No-reviewer jobs never run pull-request code with secrets
 
-No-reviewer jobs triggered by a pull request MUST run the default-branch workflow code, MUST treat pull-request files as data, and MUST refuse to load secrets when the pull request changes workflows, `fleet.mk`, `ssh.conf`, `upstream.lock` or any file that contains Jinja or Make syntax in a data field. Such pull requests MUST go through a reviewer environment. `upstream.lock` MUST name a commit that is an ancestor of the public repository's `main`.
+Automatic credentialed previews MUST use trusted default-branch code and trust settings. They MAY overlay only explicitly allowed typed fields on existing targets. All other changes MUST require review of the exact PR revision before credentials are released. These include changes to target addresses, SSH settings and host pins, backend endpoints, recipient policy, workflows, Make inputs and `upstream.lock`. The pin MUST be an ancestor of public `main`.
 
 #### Scenario: Jinja in inventory
 
 - **WHEN** a pull request adds `{{ lookup('pipe', ...) }}` to an inventory variable
 - **THEN** the PR dry-run job refuses to load secrets and asks for the reviewer path
+
+#### Scenario: Target and host pin change together
+
+- **WHEN** a PR replaces an inventory address and its `known_hosts` entry using plain values
+- **THEN** the automatic preview obtains no credential and opens no connection
 
 #### Scenario: Fork commit pinned
 
