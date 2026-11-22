@@ -582,7 +582,7 @@ endif
 ifneq ($(filter prepare-disposable-liveness,$(MAKECMDGOALS)),)
 _DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES := EXECUTOR_PROFILE EXECUTOR_MANIFEST
 else ifneq ($(filter provision-disposable-liveness-runtime,$(MAKECMDGOALS)),)
-_DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES := EXECUTOR_MANIFEST RUNTIME_WORK_DIR
+_DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES := EXECUTOR_MANIFEST RUNTIME_WORK_DIR STAGING_TRUST_ANCHOR
 else ifneq ($(filter install-disposable-liveness-sentinel,$(MAKECMDGOALS)),)
 _DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES := LIVENESS_CONFIG SENTINEL CLIENT EXECUTOR_MANIFEST EXECUTOR_BINDING STAGING_CLEANUP_MANIFEST HOSTS COHORTS
 ifneq ($(strip $(value SOPS_FILES)),)
@@ -598,9 +598,11 @@ _DISPOSABLE_LIVENESS_FORBIDDEN_COMMAND_VARIABLES := $(filter-out $(_DISPOSABLE_L
 ifneq ($(strip $(_DISPOSABLE_LIVENESS_FORBIDDEN_COMMAND_VARIABLES)),)
 $(error disposable liveness accepts only its documented command-line fields)
 endif
-_DISPOSABLE_LIVENESS_LITERAL_INPUTS := $(value EXECUTOR_PROFILE)$(value EXECUTOR_MANIFEST)$(value EXECUTOR_BINDING)$(value STAGING_CLEANUP_MANIFEST)$(value STAGING_POST_DESTROY_EVIDENCE)$(value DEONBOARD_EVIDENCE)$(value LIVENESS_CONFIG)$(value LIVENESS_SENTINEL_REGISTRY)$(value SENTINEL)$(value CLIENT)$(value SOPS_FILE)$(value HOSTS)$(value COHORTS)$(value ENV)$(value PROVIDER)$(value HOME)$(value DEPLOY_SOURCE_REVISION)$(value DEPLOYABLE_SOURCE_DIGEST)
+_DISPOSABLE_LIVENESS_LITERAL_INPUTS := $(value EXECUTOR_PROFILE)$(value EXECUTOR_MANIFEST)$(value EXECUTOR_BINDING)$(value STAGING_CLEANUP_MANIFEST)$(value STAGING_POST_DESTROY_EVIDENCE)$(value DEONBOARD_EVIDENCE)$(value LIVENESS_CONFIG)$(value LIVENESS_SENTINEL_REGISTRY)$(value SENTINEL)$(value CLIENT)$(value SOPS_FILE)$(value HOSTS)$(value COHORTS)$(value ENV)$(value PROVIDER)$(value HOME)$(value DEPLOY_SOURCE_REVISION)$(value DEPLOYABLE_SOURCE_DIGEST)$(value RUNTIME_WORK_DIR)$(value STAGING_TRUST_ANCHOR)
 override EXECUTOR_PROFILE := $(value EXECUTOR_PROFILE)
 override EXECUTOR_MANIFEST := $(value EXECUTOR_MANIFEST)
+override RUNTIME_WORK_DIR := $(value RUNTIME_WORK_DIR)
+override STAGING_TRUST_ANCHOR := $(value STAGING_TRUST_ANCHOR)
 override EXECUTOR_BINDING := $(value EXECUTOR_BINDING)
 override STAGING_CLEANUP_MANIFEST := $(value STAGING_CLEANUP_MANIFEST)
 override STAGING_POST_DESTROY_EVIDENCE := $(value STAGING_POST_DESTROY_EVIDENCE)
@@ -909,7 +911,7 @@ help:
 	@echo "  monitor-protocol-liveness LIVENESS_CONFIG=…  Persist and alert on protocol-liveness transitions"
 	@echo "  install-liveness-sentinel LIVENESS_CONFIG=… SENTINEL=… CLIENT=…  Secure sentinel onboarding"
 	@echo "  prepare-disposable-liveness EXECUTOR_PROFILE=… EXECUTOR_MANIFEST=…  Create one no-mount executor"
-	@echo "  provision-disposable-liveness-runtime EXECUTOR_MANIFEST=… RUNTIME_WORK_DIR=…  Install pinned sentinel runtimes into the executor"
+	@echo "  provision-disposable-liveness-runtime EXECUTOR_MANIFEST=… RUNTIME_WORK_DIR=… [STAGING_TRUST_ANCHOR=…]  Install pinned sentinel runtimes and an optional staging TLS anchor into the executor"
 	@echo "  prepare-disposable-promotion-intent  Assemble private intent/mapping locally from PROMOTION_* environment inputs"
 	@echo "  install-disposable-liveness-sentinel …  Bind and onboard one disposable sentinel from stdin"
 	@echo "  protocol-liveness-disposable …  Evaluate one exact executor-bound report"
@@ -1988,7 +1990,7 @@ install-liveness-sentinel:
 	  ./scripts/install-liveness-sentinel.sh --config "$(LIVENESS_CONFIG)" --sentinel "$(SENTINEL)" --client "$(CLIENT)" --awg-private-key-stdin
 
 ifneq ($(filter $(_DISPOSABLE_LIVENESS_GOALS),$(MAKECMDGOALS)),)
-export EXECUTOR_PROFILE EXECUTOR_MANIFEST EXECUTOR_BINDING STAGING_CLEANUP_MANIFEST STAGING_POST_DESTROY_EVIDENCE DEONBOARD_EVIDENCE LIVENESS_CONFIG LIVENESS_SENTINEL_REGISTRY SENTINEL CLIENT SOPS_FILE
+export EXECUTOR_PROFILE EXECUTOR_MANIFEST RUNTIME_WORK_DIR STAGING_TRUST_ANCHOR EXECUTOR_BINDING STAGING_CLEANUP_MANIFEST STAGING_POST_DESTROY_EVIDENCE DEONBOARD_EVIDENCE LIVENESS_CONFIG LIVENESS_SENTINEL_REGISTRY SENTINEL CLIENT SOPS_FILE
 unexport HOSTS COHORTS SOPS_FILES ANSIBLE_LIMIT ANSIBLE_EXTRA_VARS_FILE DESTROY_ARGS
 endif
 
@@ -2000,10 +2002,11 @@ prepare-disposable-liveness:
 	  --ttl-seconds 21600
 
 provision-disposable-liveness-runtime:
-	@test -n "$${EXECUTOR_MANIFEST}" -a -n "$${RUNTIME_WORK_DIR}" || { echo "usage: make provision-disposable-liveness-runtime EXECUTOR_MANIFEST=… RUNTIME_WORK_DIR=…"; exit 1; }
+	@test -n "$${EXECUTOR_MANIFEST}" -a -n "$${RUNTIME_WORK_DIR}" || { echo "usage: make provision-disposable-liveness-runtime EXECUTOR_MANIFEST=… RUNTIME_WORK_DIR=… [STAGING_TRUST_ANCHOR=…]"; exit 1; }
 	@python3 ./scripts/provision-disposable-liveness-runtime.py \
 	  --manifest "$${EXECUTOR_MANIFEST}" \
-	  --work-dir "$${RUNTIME_WORK_DIR}"
+	  --work-dir "$${RUNTIME_WORK_DIR}" \
+	  $${STAGING_TRUST_ANCHOR:+--trust-anchor "$${STAGING_TRUST_ANCHOR}"}
 
 install-disposable-liveness-sentinel: export HOSTS := $(HOSTS)
 install-disposable-liveness-sentinel: export COHORTS := $(COHORTS)
