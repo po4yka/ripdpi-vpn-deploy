@@ -164,10 +164,9 @@ def test_default_alias_refuses_before_terraform(tmp_path):
     assert not (tmp_path / "terraform.log").exists()
 
 
-def test_reserved_alias_refuses_backup_restore_and_cohort_before_private_inputs():
+def test_reserved_alias_refuses_backup_and_cohort_before_private_inputs():
     for script, arguments, settings in (
         ("backup-tf-state.sh", [], {"ENV": "default"}),
-        ("restore-tf-state.sh", [], {"ENV": "default"}),
         ("new-cohort.sh", ["default"], {"SOURCE_ENV": "prod"}),
         ("new-cohort.sh", ["green"], {"SOURCE_ENV": "default"}),
     ):

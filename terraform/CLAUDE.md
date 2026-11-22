@@ -24,7 +24,7 @@ later `user_data` drift, changing this creation-time input triggers node
 replacement and is held by `prevent_destroy`; use the normal disposable-node
 blue-green path rather than changing a live node in place.
 
-**Local state per provider and environment** — we don't trust remote state with VPN infrastructure. `ENV=prod` deliberately remains the legacy `default` workspace; every other `ENV` maps to its own same-named workspace. Initialize a new environment with `make PROVIDER=<provider> ENV=<env> init` before any plan, apply, or output. State is backed up via `make backup-state` (age-encrypted). Lose state → re-import (`docs/how-to/incident.md`).
+**Encrypted remote state per provider and environment** — state and saved plans are encrypted on the client (`state.tf`, enforced, passphrase in `TF_VAR_state_passphrase`) and kept in a versioned Object Lock bucket behind the backend lock; the backend files live in the ops repository (`TF_BACKEND_ROOT`). `ENV=prod` deliberately remains the legacy `default` workspace; every other `ENV` maps to its own same-named workspace. Initialize a new environment with `make PROVIDER=<provider> ENV=<env> init` before any plan, apply, or output. `make restore-state` restores a bucket version under the lock; `make backup-state` keeps an age snapshot outside the bucket (`docs/how-to/incident.md`, "State loss"). Scripts that still read `terraform.tfstate` paths directly do not see migrated state.
 
 **No `local-exec` / `remote-exec`** — Terraform stays declarative.
 cloud-init owns first-boot bootstrap; Ansible owns runtime state.

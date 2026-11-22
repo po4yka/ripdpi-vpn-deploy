@@ -805,7 +805,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
 .PHONY: help init validate plan apply inventory wait decrypt require-inventory require-exact-node require-clean-source validate-ansible-extra-vars dry-run deploy tailnet-network-promote backup-configure deploy-canary os-maintenance verify tag-known-good source-drift security-verify security-audit clean \
         pre-deploy-check network-exposure-review \
         rollback-xray rollback-config rotate-credentials rotate-credentials-check check-prereqs \
-        destroy backup-state burn-check diff-secrets emit-singbox emit-incy emit-incy-config emit-xray emit-awg emit-bundle install-hooks \
+        destroy backup-state restore-state burn-check diff-secrets emit-singbox emit-incy emit-incy-config emit-xray emit-awg emit-bundle install-hooks \
         molecule-test smoke-test validate-target monitor-reality-target renew-self-steal-cert probe-sni-survival scan-targets blue-green \
         spot-check-secrets bootstrap-secrets probe-asn probe-matrix-control probe-matrix-cell probe-matrix-tools emit-probe-matrix-profile emit-qr check-certs \
         audit-permissions asn-drift check-ip-reputation issue-bootstrap naive-issue naive-revoke naive-readout \
@@ -905,7 +905,8 @@ help:
 	@echo "  rollback-config            Revert Xray to .prev config on one node (ANSIBLE_LIMIT=<alias>)"
 	@echo "  rotate-credentials         Rotate per-client UUIDs / passwords / peer keys on one node (ANSIBLE_LIMIT=<alias>, repeat per node)"
 	@echo "  destroy                    Safe tofu destroy (double confirmation)"
-	@echo "  backup-state               age-encrypt the local OpenTofu state"
+	@echo "  backup-state               age-encrypt the current remote OpenTofu state"
+	@echo "  restore-state              list state versions; STATE_VERSION=<id> restores one"
 	@echo "  drift-since-tag            Diff fleet against last vpn-deploy-known-good-* tag"
 	@echo "  blue-green GREEN_ENV=… GREEN_SOPS_FILE=… DEVICE_MIGRATION_PLAN=…  Replace with device handover"
 	@echo "  recovery ACTION=… RECOVERY_MANIFEST=…  Execute or resume an exact reviewed replacement"
@@ -1417,6 +1418,9 @@ destroy:
 
 backup-state:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/backup-tf-state.sh
+
+restore-state:
+	PROVIDER=$(PROVIDER) ENV=$(ENV) TF_BACKEND_ROOT="$(TF_BACKEND_ROOT)" STATE_VERSION='$(subst ','',$(STATE_VERSION))' ./scripts/restore-tf-state.py
 
 burn-check:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/burn-check.sh

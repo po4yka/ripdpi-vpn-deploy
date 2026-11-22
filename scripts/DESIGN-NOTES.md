@@ -691,10 +691,13 @@ retention never sees an incomplete ciphertext. File sync precedes publication;
 directory sync follows removal of the private staging name. A sync failure refuses
 success and retention, while a complete published backup remains recoverable.
 Cleanup registers before allocation and removes only this invocation's pending file.
-`restore-tf-state.sh` selects the
-exact environment, decrypts into a private sibling, validates Terraform v4 state
-structure and replaces accepted state atomically. Failure removes only its own
-candidate; stop concurrent Terraform operations before recovery.
+The backup reads state through `terraform-env.sh state pull` and
+validates it inside the pipe, so plaintext never reaches disk and an empty pull
+publishes nothing. `restore-tf-state.py` lists versions of the exact state object
+with signed requests (key pair on curl stdin), lets OpenTofu decrypt the selected
+version in a private local root, refuses another lineage without
+`ALLOW_LINEAGE_CHANGE=1`, and pushes the next serial through the backend lock;
+it reports the serial read back, because OpenTofu may raise it again on persist.
 
 Recovery dry-run output and both runbook paths require authenticated host pins,
 installed recovery generation, Tailnet handoff, SSH ownership and all three private

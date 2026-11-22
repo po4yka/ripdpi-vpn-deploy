@@ -13,7 +13,7 @@ All OpenTofu state lives on the MacBook (local backend, one workspace per `PROVI
 - Use separate bucket-scoped identities for CI plan, CI apply, operator state access and the operator recovery archive.
 - Qualify native locking with concurrent CI and operator writers, including during a GitHub outage. Keep local state authoritative until the backend passes.
 - An exact, backed-up, per-root migration of the current local states with address, lineage and serial comparison and a no-change plan before and after.
-- `backup-state`/`restore-state` work against bucket object versions; the sealed operator-kit recovery archive and pre-migration backups move to the B2 recovery prefix.
+- `backup-state` seals an age snapshot of the remote state in the operator kit; `restore-state` lists and restores bucket object versions. Pre-migration backups stay in the operator kit.
 
 ## Capabilities
 
@@ -27,7 +27,7 @@ All OpenTofu state lives on the MacBook (local backend, one workspace per `PROVI
 
 ## Impact
 
-- Terraform layer: `versions.tf` (backend and encryption) of every root; `scripts/terraform-env.sh`, `policy-plan.sh`, `backup-tf-state.sh`, `restore-tf-state.sh`, new `scripts/state-lock-probe.sh`; `Makefile` (`init`, `backup-state`, `restore-state`, `tf-test` keeps `-backend=false`).
+- Terraform layer: `versions.tf` (backend and encryption) of every root; `scripts/terraform-env.sh`, `policy-plan.sh`, `backup-tf-state.sh`, `restore-tf-state.py` (replaces `restore-tf-state.sh`), new `scripts/state-lock-probe.sh`; `Makefile` (`init`, `backup-state`, `restore-state`, `tf-test` keeps `-backend=false`).
 - New external resources (authorized live steps): one Scaleway bucket with a bucket policy and three IAM applications (plan, apply, operator); one B2 bucket with an operator-only recovery key.
 - Secrets: one new state passphrase (CI environment secret in W4 plus operator password-manager copy).
 - Docs: `docs/reference/secrets.md`, `docs/how-to/deploy.md`, new break-glass section, `terraform/CLAUDE.md`.

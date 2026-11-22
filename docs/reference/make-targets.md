@@ -87,7 +87,8 @@ Variables (override on command line):
   rollback-config            Revert Xray to .prev config on one node (ANSIBLE_LIMIT=<alias>)
   rotate-credentials         Rotate per-client UUIDs / passwords / peer keys on one node (ANSIBLE_LIMIT=<alias>, repeat per node)
   destroy                    Safe tofu destroy (double confirmation)
-  backup-state               age-encrypt the local OpenTofu state
+  backup-state               age-encrypt the current remote OpenTofu state
+  restore-state              list state versions; STATE_VERSION=<id> restores one
   drift-since-tag            Diff fleet against last vpn-deploy-known-good-* tag
   blue-green GREEN_ENV=… GREEN_SOPS_FILE=… DEVICE_MIGRATION_PLAN=…  Replace with device handover
   recovery ACTION=… RECOVERY_MANIFEST=…  Execute or resume an exact reviewed replacement
