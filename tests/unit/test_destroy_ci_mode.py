@@ -37,6 +37,7 @@ def _test_repo(tmp_path: Path) -> Path:
         "destroy.sh",
         "staging-cleanup-guard.py",
         "staging_lifecycle.py",
+        "tofu_state.py",
         "vultr-staging-cleanup-guard.py",
         "terraform-env.sh",
     ):
@@ -159,7 +160,7 @@ def _make_staging_repo(tmp_path: Path) -> Path:
         "with open(os.environ['MAKE_STAGING_LOG'], 'a') as stream:\n"
         "    stream.write(json.dumps({'program': os.path.basename(sys.argv[0]), "
         "'argv': sys.argv[1:], 'env': {key: os.environ.get(key) for key in "
-        "['ENV', 'PROVIDER', 'STAGING_CLEANUP_MANIFEST', 'STAGING_CLEANUP_STATE', "
+        "['ENV', 'PROVIDER', 'STAGING_CLEANUP_MANIFEST', "
         "'STAGING_CLEANUP_HOSTNAME', "
         "'STAGING_POST_DESTROY_EVIDENCE', 'DEPLOY_SOURCE_REVISION', "
         "'DEPLOYABLE_SOURCE_DIGEST', 'UPCLOUD_USERNAME', 'UPCLOUD_PASSWORD', "
@@ -290,7 +291,6 @@ def test_staging_make_canonicalizes_one_literal_ambient_credential_mode(
         "ENV=ci-staging-make",
         "PROVIDER=upcloud",
         "STAGING_CLEANUP_MANIFEST=/private/manifest.json",
-        "STAGING_CLEANUP_STATE=/private/state.json",
         "STAGING_CLEANUP_HOSTNAME=vpn-ci-staging.test",
         "STAGING_POST_DESTROY_EVIDENCE=/private/evidence.json",
         extra_env=credential_env,
@@ -319,7 +319,6 @@ def test_staging_make_exports_only_the_selected_provider_credential(
     common = [
         "ENV=ci-staging-make",
         "STAGING_CLEANUP_MANIFEST=/private/manifest.json",
-        "STAGING_CLEANUP_STATE=/private/state.json",
         "STAGING_CLEANUP_HOSTNAME=vpn-ci-staging.test",
     ]
     result = _run_staging_make(
@@ -534,7 +533,6 @@ def test_staging_make_captures_labels_before_eager_path_expansion(
     ("goal", "field"),
     [
         ("staging-cleanup-manifest", "STAGING_CLEANUP_MANIFEST"),
-        ("staging-cleanup-manifest", "STAGING_CLEANUP_STATE"),
         ("staging-cleanup-manifest", "STAGING_CLEANUP_HOSTNAME"),
         ("staging-destroy", "STAGING_CLEANUP_MANIFEST"),
         ("staging-destroy", "STAGING_POST_DESTROY_EVIDENCE"),
@@ -550,7 +548,6 @@ def test_staging_make_never_executes_operator_field_as_make_or_shell_syntax(
         "ENV": "ci-staging-make",
         "PROVIDER": "upcloud",
         "STAGING_CLEANUP_MANIFEST": "/private/manifest.json",
-        "STAGING_CLEANUP_STATE": "/private/state.json",
         "STAGING_CLEANUP_HOSTNAME": "vpn-ci-staging.test",
         "STAGING_POST_DESTROY_EVIDENCE": "/private/evidence.json",
     }
@@ -579,7 +576,6 @@ def test_staging_manifest_make_passes_only_literal_operator_fields(
         "ENV=ci-staging-make",
         "PROVIDER=upcloud",
         f"STAGING_CLEANUP_MANIFEST={literal}",
-        "STAGING_CLEANUP_STATE=/private/state path",
         "STAGING_CLEANUP_HOSTNAME=vpn-ci-staging.test",
     ]
 
@@ -599,8 +595,6 @@ def test_staging_manifest_make_passes_only_literal_operator_fields(
         "ci-staging-make",
         "--workspace",
         "ci-staging-make",
-        "--state",
-        "/private/state path",
         "--hostname",
         "vpn-ci-staging.test",
     ]
@@ -715,23 +709,17 @@ def _real_staging_manifest(root: Path, private: Path, environment: str) -> Path:
             },
         ],
     }
-    state_path = private / "terraform.tfstate"
-    state_path.write_text(
+    state_bytes = (
         json.dumps(state, sort_keys=True, separators=(",", ":")) + "\n"
-    )
-    state_path.chmod(0o600)
+    ).encode()
     created = datetime.now(timezone.utc).replace(microsecond=0)
     manifest = private / "manifest.json"
-    state_bytes = state_path.read_bytes()
     payload = {
-        "schema_version": 3,
+        "schema_version": 4,
         "provider": "upcloud",
         "environment": environment,
         "workspace": environment,
-        "state": {
-            "path": str(state_path.absolute()),
-            "sha256": hashlib.sha256(state_bytes).hexdigest(),
-        },
+        "state": {"sha256": hashlib.sha256(state_bytes).hexdigest()},
         "hostname": "vpn-ci-staging.test",
         "provider_account_username": "staging-owner",
         "server_uuid": SERVER_UUID,
@@ -1834,7 +1822,6 @@ def test_staging_reissue_passes_previous_manifest_as_literal_argv(
         "ENV=ci-staging-reissue",
         "STAGING_CLEANUP_MANIFEST=/private/new.json",
         f"STAGING_CLEANUP_PREVIOUS_MANIFEST={previous}",
-        "STAGING_CLEANUP_STATE=/private/state.json",
         "STAGING_CLEANUP_HOSTNAME=vpn-ci-staging.test",
         extra_env=credentials,
     )
