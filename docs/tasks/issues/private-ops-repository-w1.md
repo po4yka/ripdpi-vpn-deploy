@@ -2,7 +2,7 @@
 id: OPS-1795327950629406
 title: Create the private ops repository and map the operator kit onto it
 kind: feature
-status: review
+status: dropped
 area: operations
 priority: high
 risk: high
@@ -14,6 +14,9 @@ openspec_change: ops-1795327950629406-private-ops-repository-w1
 created: 2026-11-22
 updated: 2026-11-22
 related_tasks: []
+closed_at: "2026-11-22T12:38:47Z"
+closed_reason: "Lifecycle cannot close: the evidence transfer committed in baa16596 omits REQ-OPSREPO-MERGE-GATE and taskctl validates every historical transfer. The implementation (PR 683) and the live ops repository work (PR 686) are merged; a replacement task carries the capability spec and the open dry-run evidence."
+evidence_summary: Implementation merged in PR 683 (aa46b097, 79 CI checks); private ops repository, owner-only merge gate and import recorded in PR 686
 ---
 
 ## Goal
