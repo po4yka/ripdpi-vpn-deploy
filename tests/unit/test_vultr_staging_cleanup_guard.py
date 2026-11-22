@@ -47,6 +47,30 @@ def test_operator_guard_is_executable() -> None:
     assert SCRIPT.stat().st_mode & stat.S_IXUSR
 
 
+SERVED: dict[str, object] = {}
+
+
+def _serve(state: object) -> None:
+    SERVED["state"] = (
+        state if state is None or isinstance(state, (bytes, Exception))
+        else guard.canonical_json(state)
+    )
+
+
+def _pull(provider: str, environment: str) -> bytes | None:
+    assert provider == "vultr"
+    if isinstance(SERVED["state"], Exception):
+        raise SERVED["state"]
+    return SERVED["state"]
+
+
+@pytest.fixture(autouse=True)
+def _served_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    (tmp_path / "private").mkdir(mode=0o700, exist_ok=True)
+    _serve(_state())
+    monkeypatch.setattr(guard.tofu_state, "pull", _pull)
+
+
 def _private(path: Path, data: bytes) -> Path:
     path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
     path.parent.chmod(0o700)
@@ -215,14 +239,14 @@ def _state(
 
 def _manifest(tmp_path: Path) -> tuple[Path, dict[str, object]]:
     private = tmp_path / "private"
-    state_path = _private(private / "terraform.tfstate", guard.canonical_json(_state()))
+    private.mkdir(mode=0o700, exist_ok=True)
+    _serve(_state())
     manifest_path = private / "manifest.json"
     return manifest_path, guard.create_manifest(
         output_path=manifest_path,
         provider="vultr",
         environment=ENV,
         workspace=ENV,
-        state_path=state_path,
         hostname=HOST,
         request_json=_request,
         now=NOW,
@@ -306,15 +330,12 @@ def test_manifest_binds_configured_ssh_port_and_decimal_firewall_rule_ids(
     tmp_path: Path,
 ) -> None:
     private = tmp_path / "private"
-    state_path = _private(
-        private / "terraform.tfstate", guard.canonical_json(_state(ssh_port=2222))
-    )
+    _serve(_state(ssh_port=2222))
     manifest = guard.create_manifest(
         output_path=private / "manifest.json",
         provider="vultr",
         environment=ENV,
         workspace=ENV,
-        state_path=state_path,
         hostname=HOST,
         request_json=_request,
         now=NOW,
@@ -341,7 +362,7 @@ def test_manifest_refuses_non_decimal_firewall_rule_ids(
     )["instances"][0]["attributes"]
     rule["id"] = rule_id
     private = tmp_path / "private"
-    state_path = _private(private / "state.json", guard.canonical_json(state))
+    _serve(state)
 
     with pytest.raises(guard.GuardError, match="positive decimal ID"):
         guard.create_manifest(
@@ -349,7 +370,6 @@ def test_manifest_refuses_non_decimal_firewall_rule_ids(
             provider="vultr",
             environment=ENV,
             workspace=ENV,
-            state_path=state_path,
             hostname=HOST,
             request_json=_request,
             now=NOW,
@@ -387,16 +407,13 @@ def test_manifest_refuses_resources_outside_owned_cleanup_set(
         },
     }
     private = tmp_path / "private"
-    state_path = _private(
-        private / "state.json", guard.canonical_json(_state(extras=[mapping[kind]]))
-    )
+    _serve(_state(extras=[mapping[kind]]))
     with pytest.raises(guard.GuardError):
         guard.create_manifest(
             output_path=private / "manifest.json",
             provider="vultr",
             environment=ENV,
             workspace=ENV,
-            state_path=state_path,
             hostname=HOST,
             request_json=_request,
             now=NOW,
@@ -414,14 +431,13 @@ def test_manifest_refuses_foreign_or_malformed_for_each_firewall_rules(
     )
     rules["name"] = "foreign_listener"
     private = tmp_path / "private"
-    state_path = _private(private / "state.json", guard.canonical_json(state))
+    _serve(state)
     with pytest.raises(guard.GuardError, match="firewall rule"):
         guard.create_manifest(
             output_path=private / "manifest.json",
             provider="vultr",
             environment=ENV,
             workspace=ENV,
-            state_path=state_path,
             hostname=HOST,
             request_json=_request,
             now=NOW,
@@ -437,14 +453,13 @@ def test_manifest_requires_both_exact_icmp_families(tmp_path: Path) -> None:
     )
     rules["instances"] = rules["instances"][:1]
     private = tmp_path / "private"
-    state_path = _private(private / "state.json", guard.canonical_json(state))
+    _serve(state)
     with pytest.raises(guard.GuardError, match="ICMP v4 and v6"):
         guard.create_manifest(
             output_path=private / "manifest.json",
             provider="vultr",
             environment=ENV,
             workspace=ENV,
-            state_path=state_path,
             hostname=HOST,
             request_json=_request,
             now=NOW,
@@ -464,7 +479,7 @@ def test_manifest_requires_every_firewall_rule_class(
         )
     ]
     private = tmp_path / "private"
-    state_path = _private(private / "state.json", guard.canonical_json(state))
+    _serve(state)
 
     with pytest.raises(guard.GuardError, match="firewall rule class"):
         guard.create_manifest(
@@ -472,7 +487,6 @@ def test_manifest_requires_every_firewall_rule_class(
             provider="vultr",
             environment=ENV,
             workspace=ENV,
-            state_path=state_path,
             hostname=HOST,
             request_json=_request,
             now=NOW,
@@ -498,7 +512,7 @@ def test_manifest_refuses_duplicate_normalized_public_listeners(tmp_path: Path) 
         }
     )
     private = tmp_path / "private"
-    state_path = _private(private / "state.json", guard.canonical_json(state))
+    _serve(state)
 
     with pytest.raises(guard.GuardError, match="listener rule is duplicated"):
         guard.create_manifest(
@@ -506,7 +520,6 @@ def test_manifest_refuses_duplicate_normalized_public_listeners(tmp_path: Path) 
             provider="vultr",
             environment=ENV,
             workspace=ENV,
-            state_path=state_path,
             hostname=HOST,
             request_json=_request,
             now=NOW,
@@ -524,7 +537,7 @@ def test_manifest_binds_single_family_listener_rules(tmp_path: Path, dropped) ->
     if dropped is not None:
         rules["instances"].pop(dropped)
     private = tmp_path / "private"
-    state_path = _private(private / "state.json", guard.canonical_json(state))
+    _serve(state)
 
     def create() -> None:
         guard.create_manifest(
@@ -532,7 +545,6 @@ def test_manifest_binds_single_family_listener_rules(tmp_path: Path, dropped) ->
             provider="vultr",
             environment=ENV,
             workspace=ENV,
-            state_path=state_path,
             hostname=HOST,
             request_json=_request,
             now=NOW,
@@ -551,14 +563,13 @@ def test_manifest_refuses_duplicate_provider_firewall_rule_ids(tmp_path: Path) -
         "attributes"
     ]["id"]
     private = tmp_path / "private"
-    state_path = _private(private / "state.json", guard.canonical_json(state))
+    _serve(state)
     with pytest.raises(guard.GuardError, match="firewall rule ID is duplicated"):
         guard.create_manifest(
             output_path=private / "manifest.json",
             provider="vultr",
             environment=ENV,
             workspace=ENV,
-            state_path=state_path,
             hostname=HOST,
             request_json=_request,
             now=NOW,
@@ -607,14 +618,13 @@ def test_manifest_refuses_malformed_firewall_subnet_sizes(
     )
     rules["instances"][index]["attributes"]["subnet_size"] = invalid_size
     private = tmp_path / "private"
-    state_path = _private(private / "state.json", guard.canonical_json(state))
+    _serve(state)
     with pytest.raises(guard.GuardError, match="rule is not exact"):
         guard.create_manifest(
             output_path=private / "manifest.json",
             provider="vultr",
             environment=ENV,
             workspace=ENV,
-            state_path=state_path,
             hostname=HOST,
             request_json=_request,
             now=NOW,
@@ -690,34 +700,6 @@ def test_plan_apply_and_typed_absence_are_bound_to_manifest_and_account(
     assert reserved["status"] == "reserved"
 
 
-def test_plan_refuses_byte_identical_state_inode_replacement_after_reservation(
-    tmp_path: Path,
-) -> None:
-    manifest_path, manifest = _manifest(tmp_path)
-    evidence_path = manifest_path.with_name("evidence.json")
-    guard.reserve_evidence(
-        manifest_path, evidence_path, now=NOW, expected_environment=ENV
-    )
-    state_path = Path(manifest["state"]["path"])
-    replacement = _private(
-        state_path.with_name("replacement.tfstate"), state_path.read_bytes()
-    )
-    replacement.replace(state_path)
-    _, fd = _plan_files(manifest_path.parent, _plan())
-    try:
-        with pytest.raises(guard.GuardError, match="state identity changed"):
-            guard.validate_destroy_plan(
-                manifest_path,
-                evidence_path,
-                request_json=_request,
-                plan_fd=fd,
-                now=NOW,
-                expected_environment=ENV,
-            )
-    finally:
-        os.close(fd)
-
-
 def test_apply_started_recovery_verifies_absence_without_a_second_plan_or_apply(
     tmp_path: Path,
 ) -> None:
@@ -790,9 +772,7 @@ def test_apply_started_recovery_accepts_destroyed_state_before_absence_verificat
     finally:
         os.close(fd)
 
-    state_path = Path(manifest["state"]["path"])
-    state_path.write_bytes(b'{"version":4,"resources":[]}\n')
-    state_path.chmod(0o600)
+    _serve(b'{"version":4,"resources":[]}\n')
 
     assert (
         guard.recover_reserved_evidence(
@@ -1027,13 +1007,12 @@ def test_manifest_accepts_a_terraform_valid_ssh_cidr_with_host_bits(
     ssh["instances"][instance_index]["attributes"]["subnet"] = subnet
     ssh["instances"][instance_index]["attributes"]["subnet_size"] = prefix
     private = tmp_path / "private"
-    state_path = _private(private / "state.json", guard.canonical_json(state))
+    _serve(state)
     manifest = guard.create_manifest(
         output_path=private / "manifest.json",
         provider="vultr",
         environment=ENV,
         workspace=ENV,
-        state_path=state_path,
         hostname=HOST,
         request_json=_request,
         now=NOW,
@@ -1391,10 +1370,7 @@ def test_post_apply_empty_terraform_state_does_not_block_typed_provider_absence(
         )
     finally:
         os.close(fd)
-    _private(
-        Path(manifest["state"]["path"]),
-        guard.canonical_json({"version": 4, "resources": []}),
-    )
+    _serve({"version": 4, "resources": []})
     verified = guard.verify_vultr_absence(
         manifest_path,
         evidence_path,
@@ -1422,13 +1398,12 @@ def test_manifest_deadlines_derive_from_delayed_provider_creation(
         raise AssertionError(path)
 
     private = tmp_path / "private"
-    state_path = _private(private / "terraform.tfstate", guard.canonical_json(_state()))
+    _serve(_state())
     manifest = guard.create_manifest(
         output_path=private / "manifest.json",
         provider="vultr",
         environment=ENV,
         workspace=ENV,
-        state_path=state_path,
         hostname=HOST,
         request_json=delayed,
         now=NOW,
@@ -2315,7 +2290,7 @@ def test_cli_create_manifest_uses_env_token_without_printing_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     private = tmp_path / "private"
-    state_path = _private(private / "state.json", guard.canonical_json(_state()))
+    _serve(_state())
     output = private / "manifest.json"
     monkeypatch.setenv("VULTR_API_KEY", "secret-token-must-not-print")
     monkeypatch.setattr(guard, "_vultr_https_request", lambda token: _request)
@@ -2331,8 +2306,6 @@ def test_cli_create_manifest_uses_env_token_without_printing_it(
                 ENV,
                 "--workspace",
                 ENV,
-                "--state",
-                str(state_path),
                 "--hostname",
                 HOST,
             ]
@@ -2387,76 +2360,6 @@ def test_release_recovery_finishes_after_first_inode_unlink(
     assert not guard._transition_path(evidence_path).exists()
 
 
-def test_direct_release_refuses_byte_identical_state_inode_replacement(
-    tmp_path: Path,
-) -> None:
-    manifest_path, manifest = _manifest(tmp_path)
-    evidence_path = manifest_path.with_name("evidence.json")
-    guard.reserve_evidence(
-        manifest_path, evidence_path, now=NOW, expected_environment=ENV
-    )
-    reservation_path = guard._reservation_path(evidence_path)
-    evidence_before = evidence_path.read_bytes()
-    reservation_before = reservation_path.read_bytes()
-    state_path = Path(manifest["state"]["path"])
-    replacement = _private(
-        state_path.with_name("replacement-before-release.tfstate"),
-        state_path.read_bytes(),
-    )
-    replacement.replace(state_path)
-
-    with pytest.raises(guard.GuardError, match="state identity changed"):
-        guard.release_evidence(
-            manifest_path, evidence_path, now=NOW, expected_environment=ENV
-        )
-
-    assert evidence_path.read_bytes() == evidence_before
-    assert reservation_path.read_bytes() == reservation_before
-    assert not guard._transition_path(evidence_path).exists()
-
-
-def test_release_journal_recovery_refuses_replaced_state_without_unlinking_pair(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    manifest_path, manifest = _manifest(tmp_path)
-    evidence_path = manifest_path.with_name("evidence.json")
-    guard.reserve_evidence(
-        manifest_path, evidence_path, now=NOW, expected_environment=ENV
-    )
-    reservation_path = guard._reservation_path(evidence_path)
-    original = guard._tombstone_unlink
-
-    def interrupt_before_unlink(*args: object, **kwargs: object) -> None:
-        raise guard.GuardError("simulated release interruption")
-
-    monkeypatch.setattr(guard, "_tombstone_unlink", interrupt_before_unlink)
-    with pytest.raises(guard.GuardError, match="simulated release interruption"):
-        guard.release_evidence(
-            manifest_path, evidence_path, now=NOW, expected_environment=ENV
-        )
-    monkeypatch.setattr(guard, "_tombstone_unlink", original)
-
-    journal_path = guard._transition_path(evidence_path)
-    evidence_before = evidence_path.read_bytes()
-    reservation_before = reservation_path.read_bytes()
-    journal_before = journal_path.read_bytes()
-    state_path = Path(manifest["state"]["path"])
-    replacement = _private(
-        state_path.with_name("replacement-before-recovery.tfstate"),
-        state_path.read_bytes(),
-    )
-    replacement.replace(state_path)
-
-    with pytest.raises(guard.GuardError, match="state identity changed"):
-        guard.recover_reserved_evidence(
-            manifest_path, evidence_path, now=NOW, expected_environment=ENV
-        )
-
-    assert evidence_path.read_bytes() == evidence_before
-    assert reservation_path.read_bytes() == reservation_before
-    assert journal_path.read_bytes() == journal_before
-
-
 def test_platform_without_nofollow_refuses_private_manifest_access(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2472,7 +2375,7 @@ def test_vultr_reissue_preserves_owned_resources_after_state_refresh(
     previous, before = _manifest(tmp_path)
     state = _state()
     state["serial"] = 17
-    state_path = _private(Path(before["state"]["path"]), guard.canonical_json(state))
+    _serve(state)
     output = previous.with_name("refreshed.json")
     after = guard.create_manifest(
         output_path=output,
@@ -2480,7 +2383,6 @@ def test_vultr_reissue_preserves_owned_resources_after_state_refresh(
         provider="vultr",
         environment=ENV,
         workspace=ENV,
-        state_path=state_path,
         hostname=HOST,
         request_json=_request,
         now=NOW,
@@ -2505,7 +2407,7 @@ def test_vultr_reservation_blocks_reissue_and_alternate_evidence(
         )
     state = _state()
     state["serial"] = 17
-    state_path = _private(Path(before["state"]["path"]), guard.canonical_json(state))
+    _serve(state)
     with pytest.raises(guard.GuardError, match="outstanding destruction reservation"):
         guard.create_manifest(
             output_path=previous.with_name("refreshed.json"),
@@ -2513,7 +2415,6 @@ def test_vultr_reservation_blocks_reissue_and_alternate_evidence(
             provider="vultr",
             environment=ENV,
             workspace=ENV,
-            state_path=state_path,
             hostname=HOST,
             request_json=_request,
             now=NOW,
@@ -2532,3 +2433,42 @@ def test_legacy_vultr_manifest_cannot_enter_registered_lifecycle(
     )
     with pytest.raises(guard.GuardError, match="schema"):
         guard.load_manifest(copied, now=NOW)
+
+
+def test_manifest_with_state_path_binding_is_refused(tmp_path: Path) -> None:
+    path, manifest = _manifest(tmp_path)
+    old_shape = {**manifest, "state": {"path": "/x/terraform.tfstate", **manifest["state"]}}
+    copied = _private(path.with_name("old-shape.json"), guard.canonical_json(old_shape))
+    with pytest.raises(guard.GuardError, match="state binding"):
+        guard.load_manifest(copied, now=NOW)
+
+
+@pytest.mark.parametrize(
+    "served",
+    [b"foreign state\n", None, guard.tofu_state.StateError("state-pull-failed")],
+    ids=["drifted", "empty", "pull-failed"],
+)
+def test_state_that_differs_or_cannot_be_pulled_refuses_load(
+    tmp_path: Path, served: object
+) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    _serve(served)
+    with pytest.raises(guard.GuardError, match="state"):
+        guard.load_manifest(manifest_path, now=NOW)
+
+
+@pytest.mark.parametrize("served", [None, guard.tofu_state.StateError("state-pull-failed")], ids=["empty", "pull-failed"])
+def test_state_that_cannot_be_pulled_refuses_manifest_creation(
+    tmp_path: Path, served: object
+) -> None:
+    _serve(served)
+    with pytest.raises(guard.GuardError, match="state"):
+        guard.create_manifest(
+            output_path=tmp_path / "private" / "manifest.json",
+            provider="vultr",
+            environment=ENV,
+            workspace=ENV,
+            hostname=HOST,
+            request_json=_request,
+            now=NOW,
+        )
