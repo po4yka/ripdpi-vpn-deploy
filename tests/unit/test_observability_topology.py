@@ -283,6 +283,7 @@ if [ "${1:-}" = console ]; then
   expression="$(cat)"
   case "$expression" in
     *var.build_env*) printf '%s\n' '"\"prod\""'; exit 0 ;;
+    *admin_ssh_public_keys*) printf '%s\n' '"[\"ssh-ed25519 AAAAOPERATOR op@fixture\"]"'; exit 0 ;;
   esac
   printf '"[\\"203.0.113.0/24\\"]"\n'; exit 0
 fi

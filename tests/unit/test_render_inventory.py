@@ -91,6 +91,7 @@ case "${{1:-}}" in
     case "$expression" in
       *var.enable_provider_firewall*) printf '%s\\n' "${{STUB_PROVIDER_FIREWALL:-false}}"; exit 0 ;;
       *var.build_env*) printf '"\\\\"prod\\\\""\\n'; exit 0 ;;
+      *admin_ssh_public_keys*) printf '"[\\\\"ssh-ed25519 AAAAOPERATOR op@fixture\\\\"]"\\n'; exit 0 ;;
     esac
     # Return a JSON-encoded JSON array for allowed_ssh_cidrs.
     # jq -r . decodes the outer quotes → ["203.0.113.0/24"]
@@ -956,3 +957,4 @@ def test_wrapped_base64_keeps_one_typed_host_line(tmp_path, line_ending, observa
         assert [node['node_id'] for node in topology['nodes']] == ['hetzner-test', 'upcloud-test', 'vultr-test']
     assert json.loads(variables['vpn_build_environment']) == 'prod'
     assert json.loads(variables['allowed_ssh_cidrs']) == ['203.0.113.0/24']
+    assert json.loads(variables['admin_ssh_public_keys']) == ['ssh-ed25519 AAAAOPERATOR op@fixture']
