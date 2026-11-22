@@ -287,7 +287,7 @@ def _run(setup, **kwargs):
 
 
 @pytest.fixture
-def prepared_executor(setup, monkeypatch):
+def executor_vm(setup, monkeypatch):
     monkeypatch.setenv("BUILD_GATE_HELD", "1")
     fixture_spec = importlib.util.spec_from_file_location(
         "executor_fixture", ROOT / "tests/unit/test_disposable_liveness_executor.py"
@@ -309,7 +309,10 @@ def prepared_executor(setup, monkeypatch):
     default = home / ".colima/default"
     default.mkdir()
     (default / "keep.txt").write_text("unrelated")
-    _run(setup)
+    return vm, home, fixture
+
+
+def _executor_remover(setup, vm, home):
     script_spec = importlib.util.spec_from_file_location(
         "retire_executor", ROOT / "scripts/retire-unbound-staging-executor.py"
     )
@@ -330,7 +333,160 @@ def prepared_executor(setup, monkeypatch):
             runner=runner,
         )
 
-    return vm, home, remove, fixture
+    return remove
+
+
+@pytest.fixture
+def prepared_executor(setup, executor_vm):
+    vm, home, fixture = executor_vm
+    _run(setup)
+    return vm, home, _executor_remover(setup, vm, home), fixture
+
+
+def _refused_onboarding(setup, names, *, applied_at=1_700_000_100):
+    """Write outputs exactly as finalization does before its installer step refuses."""
+    outputs = setup["intent"]["outputs"]
+    config = copy.deepcopy(setup["intent"]["liveness"])
+    config["sentinels"][0]["target"]["applied_at"] = applied_at
+    documents = {
+        "authority": {"schema_version": 1, "scope_sha256": "d" * 64, "applied_at": 1_700_000_100},
+        "liveness_config": config,
+        "executor_manifest": json.loads(
+            Path(setup["intent"]["inputs"]["executor_manifest"]).read_bytes()
+        ),
+    }
+    for name in names:
+        _load().executor._write_new(Path(outputs[name]), documents[name])
+    Path(outputs["authority"] + ".lock").touch(mode=0o600)
+    Path(outputs["registry"] + ".lock").touch(mode=0o600)
+    return {name: Path(outputs[name]).read_bytes() for name in names}
+
+
+@pytest.mark.parametrize(
+    "names",
+    [
+        ("authority",),
+        ("authority", "liveness_config"),
+        ("authority", "liveness_config", "executor_manifest"),
+    ],
+)
+def test_refused_onboarding_partial_state_retires_client_and_executor(
+    setup, executor_vm, names
+):
+    vm, home, _ = executor_vm
+    retained = _refused_onboarding(setup, names)
+    result = _run(setup)
+    removed = _executor_remover(setup, vm, home)()
+    assert result["status"] == "retired"
+    assert removed["status"] == "retired-prepared"
+    assert not (home / ".colima/vpn-liveness-unbound").exists()
+    journal = json.loads(setup["paths"]["journal_path"].read_bytes())
+    assert journal["request"]["partial_onboarding_sha256"] == {
+        name: hashlib.sha256(payload).hexdigest() for name, payload in retained.items()
+    }
+    receipt = json.loads(setup["paths"]["receipt_path"].read_bytes())
+    assert receipt["request_sha256"] == journal["request_sha256"]
+    for name, payload in retained.items():
+        assert Path(setup["intent"]["outputs"][name]).read_bytes() == payload
+    assert setup["client"] not in yaml.safe_load(
+        setup["paths"]["sops_file"].read_bytes()
+    )["client_registry"]
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "gap",
+        "epoch",
+        "manifest",
+        "authority-field",
+        "authority-integer-scope",
+        "binding",
+        "registry",
+        "promotion_config",
+        "pending",
+        "assignment",
+    ],
+)
+def test_refused_onboarding_partial_state_refuses_foreign_shapes(
+    setup, executor_vm, case
+):
+    outputs = setup["intent"]["outputs"]
+    full = ("authority", "liveness_config", "executor_manifest")
+    if case == "gap":
+        _refused_onboarding(setup, full)
+        Path(outputs["liveness_config"]).unlink()
+    elif case == "epoch":
+        _refused_onboarding(setup, full[:2], applied_at=1_700_000_101)
+    elif case == "manifest":
+        _refused_onboarding(setup, full[:2])
+        _private(Path(outputs["executor_manifest"]), _canonical({"profile": "other"}))
+    elif case.startswith("authority-"):
+        scope = int("1" * 64) if case == "authority-integer-scope" else "d" * 64
+        applied = 0 if case == "authority-field" else 1_700_000_100
+        _private(
+            Path(outputs["authority"]),
+            _canonical({"schema_version": 1, "scope_sha256": scope, "applied_at": applied}),
+        )
+    elif case == "pending":
+        _refused_onboarding(setup, full)
+        _private(Path(outputs["registry"] + ".pending.json"), b"{}\n")
+    elif case == "assignment":
+        # The installer assigns the profile before it writes the binding output.
+        _refused_onboarding(setup, full)
+        _vm, home, fixture = executor_vm
+        generation, provenance, target = fixture._identity()
+        _load().executor.bind_executor(
+            Path(setup["intent"]["inputs"]["executor_manifest"]),
+            setup["root"] / "unlisted-binding.json",
+            _private(setup["root"] / "other-config.yaml", b"sentinels:\n- id: other\n"),
+            setup["paths"]["cleanup_manifest_path"],
+            sentinel="other",
+            client="other",
+            generation_id=generation,
+            provenance=provenance,
+            target_identity=target,
+            home=home,
+            now=1_700_000_001,
+            runner=_vm,
+        )
+    else:
+        _refused_onboarding(setup, full)
+        _private(Path(outputs[case]), b"{}\n")
+    before = setup["paths"]["sops_file"].read_bytes()
+    with pytest.raises(_load().RetirementError, match="retirement-bound"):
+        _run(setup)
+    assert setup["paths"]["sops_file"].read_bytes() == before
+    assert not setup["paths"]["journal_path"].exists()
+
+
+@pytest.mark.parametrize(
+    ("change", "category"),
+    [("changed", "retirement-bound"), ("removed-last", "retirement-journal")],
+)
+def test_refused_onboarding_partial_state_change_refuses_resume(
+    setup, executor_vm, change, category
+):
+    class Crash(BaseException):
+        pass
+
+    outputs = setup["intent"]["outputs"]
+    _refused_onboarding(setup, ("authority", "liveness_config", "executor_manifest"))
+    with pytest.raises(Crash):
+        _run(
+            setup,
+            failpoint=lambda observed: (
+                (_ for _ in ()).throw(Crash()) if observed == "after-prepared" else None
+            ),
+        )
+    before = setup["paths"]["sops_file"].read_bytes()
+    manifest = Path(outputs["executor_manifest"])
+    manifest.unlink()
+    if change == "changed":
+        _private(manifest, _canonical({"profile": "other"}))
+    with pytest.raises(_load().RetirementError, match=category):
+        _run(setup)
+    assert setup["paths"]["sops_file"].read_bytes() == before
 
 
 def test_prepared_executor_retirement_is_owned_and_idempotent(setup, prepared_executor):

@@ -37,6 +37,8 @@ MAX_INPUT = 256 * 1024
 MAX_STATE = 64 * 1024 * 1024
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,63}\Z")
+# Finalization write order before installation (disposable_promotion.finalize).
+PARTIAL_ONBOARDING = ("authority", "liveness_config", "executor_manifest")
 Failpoint = Callable[[str], None]
 Runner = Callable[..., bytes]
 
@@ -112,7 +114,7 @@ def _read_json(
     payload, _ = _read_bytes(path, label, limit)
     try:
         value = json.loads(payload)
-    except (UnicodeError, json.JSONDecodeError) as exc:
+    except (UnicodeError, json.JSONDecodeError, RecursionError) as exc:
         raise RetirementError("retirement-input") from exc
     if not isinstance(value, dict) or _canonical(value) != payload:
         raise RetirementError("retirement-input")
@@ -439,12 +441,7 @@ def _validate_inputs(
         or state.get("outputs") not in (None, {})
     ):
         raise RetirementError("retirement-state")
-    for output in intent["outputs"].values():
-        if not _absent(Path(output)):
-            raise RetirementError("retirement-bound")
-    pending = Path(intent["outputs"]["registry"] + ".pending.json")
-    if not _absent(pending):
-        raise RetirementError("retirement-bound")
+    partial = _partial_onboarding(intent)
     request = {
         "schema_version": 1,
         "intent_sha256": _sha(intent_payload),
@@ -465,7 +462,73 @@ def _validate_inputs(
             )
         ),
     }
+    if partial:
+        # Absent for a clean run, so journals of runs without partial outputs keep their request.
+        request["partial_onboarding_sha256"] = partial
     return intent, request
+
+
+def _partial_onboarding(intent: dict[str, Any]) -> dict[str, str]:
+    """Digest the exact outputs a refused finalization writes before installation.
+
+    Finalization writes authority, then the liveness config, then the executor
+    manifest copy, and only then installs. Any other output, a pending registry,
+    a gap in that order or content that this intent would not produce refuses.
+    """
+    outputs = intent["outputs"]
+    order = [name for name in PARTIAL_ONBOARDING if name in outputs]
+    pending = Path(outputs["registry"] + ".pending.json")
+    if not _absent(pending) or any(
+        not _absent(Path(path)) for name, path in outputs.items() if name not in order
+    ):
+        raise RetirementError("retirement-bound")
+    present = [name for name in order if not _absent(Path(outputs[name]))]
+    if present != order[: len(present)]:
+        raise RetirementError("retirement-bound")
+    if not present:
+        return {}
+    try:
+        authority, authority_payload = _read_json(
+            Path(outputs["authority"]), "partial onboarding"
+        )
+        payloads = {"authority": authority_payload}
+        if (
+            set(authority) != {"schema_version", "scope_sha256", "applied_at"}
+            or type(authority["schema_version"]) is not int
+            or authority["schema_version"] != 1
+            or not isinstance(authority["scope_sha256"], str)
+            or not HEX64.fullmatch(authority["scope_sha256"])
+            or type(authority["applied_at"]) is not int
+            or authority["applied_at"] < 1
+        ):
+            raise RetirementError("retirement-bound")
+        expected = {"liveness_config": copy.deepcopy(intent["liveness"])}
+        expected["liveness_config"]["sentinels"][0]["target"]["applied_at"] = authority[
+            "applied_at"
+        ]
+        for name in present[1:]:
+            payloads[name], _ = _read_bytes(
+                Path(outputs[name]), "partial onboarding", MAX_INPUT
+            )
+            wanted = (
+                _canonical(expected[name])
+                if name == "liveness_config"
+                else _read_bytes(
+                    Path(intent["inputs"]["executor_manifest"]),
+                    "executor manifest",
+                    MAX_INPUT,
+                )[0]
+            )
+            if payloads[name] != wanted:
+                raise RetirementError("retirement-bound")
+        # The installer assigns the profile before it writes the binding; a crash between leaves only this record.
+        if "executor_manifest" in present and executor.profile_claimed(
+            Path(intent["inputs"]["executor_manifest"]), Path.home()
+        ):
+            raise RetirementError("retirement-bound")
+    except (RetirementError, executor.ExecutorError, KeyError, IndexError, TypeError, RecursionError) as exc:
+        raise RetirementError("retirement-bound") from exc
+    return {name: _sha(payload) for name, payload in payloads.items()}
 
 
 def _xray_cohort_references(

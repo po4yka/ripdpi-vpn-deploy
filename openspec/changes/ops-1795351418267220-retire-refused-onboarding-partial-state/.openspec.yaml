@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-22
+goal: OPS-1795351418267220 Retire a refused-onboarding partial staging state
+  through unbound retirement

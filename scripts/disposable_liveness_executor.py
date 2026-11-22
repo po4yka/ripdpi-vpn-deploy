@@ -104,12 +104,29 @@ def _canonical(value: Any) -> bytes:
     )
 
 
+def _profile_record_path(home: Path, profile: str) -> Path:
+    profile = _profile(profile)
+    root = lifecycle.private_registry(home, "liveness-executors")
+    return root / (hashlib.sha256(profile.encode("ascii")).hexdigest() + ".json")
+
+
+def profile_claimed(manifest_path: Path, home: Path) -> bool:
+    """Report an assignment (or any non-retiring record) for a prepared profile.
+
+    Lock-free: callers hold the SOPS project lock that onboarding holds while binding.
+    """
+    manifest, _payload = _read_private(manifest_path)
+    try:
+        record = _profile_record(_profile_record_path(home, manifest["profile"]))
+    except lifecycle.GuardError as exc:
+        raise ExecutorError("executor-lock") from exc
+    return record is not None and record.get("state") != "retiring"
+
+
 @contextmanager
 def _profile_lock(home: Path, profile: str):
-    profile = _profile(profile)
     try:
-        root = lifecycle.private_registry(home, "liveness-executors")
-        record = root / (hashlib.sha256(profile.encode("ascii")).hexdigest() + ".json")
+        record = _profile_record_path(home, profile)
         with lifecycle._parent(record.with_suffix(".lock")) as (parent, name):
             descriptor = os.open(
                 name,
