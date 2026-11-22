@@ -109,31 +109,28 @@ After the authorized Terraform state transition, use the explicit reissue verb:
 PROVIDER=upcloud ENV="$ENV" \
 STAGING_CLEANUP_PREVIOUS_MANIFEST=/absolute/private/path/cleanup-manifest.json \
 STAGING_CLEANUP_MANIFEST=/absolute/private/path/cleanup-manifest-refreshed.json \
-STAGING_CLEANUP_STATE="$STATE_PATH" \
 STAGING_CLEANUP_HOSTNAME=vpn-ci-staging-<run> \
 make staging-cleanup-reissue
 ```
 
-The previous generation must be the registered current manifest, at its original inode, and the refreshed state must remain at its original path. Initial `staging-cleanup-manifest` refuses a previously registered node. Repeating an interrupted publication must use the exact same request and output path; a different path cannot bypass its intent. The new UpCloud v3 and Vultr v2 manifests require this journal; legacy manifests are not accepted or migrated implicitly. Preserve legacy artifacts and resolve their existing lifecycle before starting a node under the new contract.
+The previous generation must be the registered current manifest, at its original inode. The guard reads the refreshed state from the encrypted remote backend for the same `PROVIDER` and `ENV`; no state path is passed. Initial `staging-cleanup-manifest` refuses a previously registered node. Repeating an interrupted publication must use the exact same request and output path; a different path cannot bypass its intent. The new UpCloud v4 and Vultr v3 manifests require this journal; legacy manifests are not accepted or migrated implicitly. Preserve legacy artifacts and resolve their existing lifecycle before starting a node under the new contract.
 
 The private staging tfvars must explicitly keep `enable_backups=false` and `additional_public_ip=false`. The guard refuses a server state with a provider backup rule, more than one public IPv4 interface, any nested additional IP, or any additional Terraform resource outside the exact owned cleanup set.
 
 ```bash
 ENV=ci-staging-<run>
-STATE_PATH="$PWD/terraform/providers/upcloud/terraform.tfstate.d/${ENV}/terraform.tfstate"
 umask 077
 PROVIDER=upcloud ENV="$ENV" \
 STAGING_CLEANUP_MANIFEST=/absolute/private/path/cleanup-manifest.json \
-STAGING_CLEANUP_STATE="$STATE_PATH" \
 STAGING_CLEANUP_HOSTNAME=vpn-ci-staging-<run> \
 make staging-cleanup-manifest
 ```
 
-The exact state must contain only `upcloud_server.vpn`, its `upcloud_firewall_rules.vpn` resource, `terraform_data.ssh_port`, and optionally the single `upcloud_storage.ci_ssh_seed[0]` resource. A seed must match its filesystem UUID and image digest. The guard extracts the owned UUIDs and calculates the state digest from those same state bytes; an operator does not type either UUID or account identity into the manifest. Every path ancestor is opened without following symlinks, and final files are accessed relative to a held parent directory descriptor.
+The guard pulls the state of `ENV` from the encrypted backend into memory and never writes it to disk. The exact state must contain only `upcloud_server.vpn`, its `upcloud_firewall_rules.vpn` resource, `terraform_data.ssh_port`, and optionally the single `upcloud_storage.ci_ssh_seed[0]` resource. A seed must match its filesystem UUID and image digest. The guard extracts the owned UUIDs and calculates the state digest from those same state bytes; an operator does not type either UUID or account identity into the manifest. The manifest `state` block holds only that digest. A missing workspace, an empty state or a backend failure refuses.
 
 Destroy the staging environment through the guarded path. A verified inherited lock descriptor holds the resource lock across the entire shell and Terraform operation, so a second controller process cannot recover a still-running reservation. Do not set `VPN_STAGING_LOCK_FD` manually. On retry after process loss, recovery uses only the journaled evidence path; a started apply resumes absence observation and never starts Terraform again. A released reservation's receipt remains archived in the journal.
 
-One authorization step validates the same manifest/state inodes and bytes, rechecks its authenticated account username, and reserves evidence before creating the lifecycle override or allowing Terraform to refresh provider state. Plan validation requires that exact reservation. Immediately before apply, the controller rechecks the account, reservation, state and exclusive hard deadline, then durably changes the same evidence inode to `apply_started`. Only exact deletes of the manifest-bound server, root storage, optional seed storage, server firewall resource and local SSH-port identity are accepted. Create, update, replacement, foreign deletion, changed state or an expired deadline refuses before apply. The post-destroy evidence path is reserved as a new `0600` inode before the lifecycle override or Terraform plan is created. Existing paths, symlinks in any ancestor, unsafe parent permissions and a manifest whose environment differs from the command's exact `ENV` refuse without any Terraform invocation. An interactive refusal before apply removes only an unchanged exact reservation; a started or failed apply retains it for manual inspection.
+One authorization step validates the same manifest inode and bytes and the same state bytes, rechecks its authenticated account username, and reserves evidence before creating the lifecycle override or allowing Terraform to refresh provider state. Plan validation requires that exact reservation. Immediately before apply, the controller rechecks the account, reservation, state and exclusive hard deadline, then durably changes the same evidence inode to `apply_started`. Only exact deletes of the manifest-bound server, root storage, optional seed storage, server firewall resource and local SSH-port identity are accepted. Create, update, replacement, foreign deletion, changed state or an expired deadline refuses before apply. The post-destroy evidence path is reserved as a new `0600` inode before the lifecycle override or Terraform plan is created. Existing paths, symlinks in any ancestor, unsafe parent permissions and a manifest whose environment differs from the command's exact `ENV` refuse without any Terraform invocation. An interactive refusal before apply removes only an unchanged exact reservation; a started or failed apply retains it for manual inspection.
 
 An apply that started before the hard deadline may finish read-only provider absence verification after expiry, but evidence is then explicitly `verified_after_expiry` / `expired_after_apply`; an expired reserved operation cannot begin or query resources.
 
