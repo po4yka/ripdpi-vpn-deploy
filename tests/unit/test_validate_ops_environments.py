@@ -199,7 +199,12 @@ def test_untrusted_input_previews_a_boolean_toggle(ops):
     ({"config/tfvars/upcloud/new-node.tfvars": TFVARS}, "A change needs the operator's merge"),
     ({"config/tfvars/upcloud/p0-upcloud.tfvars": None}, "D change needs the operator's merge"),
     ({".sops.yaml": "creation_rules: []\n"}, ".sops.yaml: A change needs the operator's merge"),
-], ids=["jinja-inventory", "target-and-pin", "other-field", "non-boolean", "new-line", "new-target", "deletion", "recipients"])
+    ({"config/tfvars/upcloud/p0-upcloud.tfvars": TFVARS.replace("enable_hysteria = false", "enable_hysteria = true\rssh_port = 2222")},
+     "control or non-ASCII bytes need the operator's merge"),
+    ({"config/tfvars/upcloud/p0-upcloud.tfvars": TFVARS.replace("enable_hysteria = false", "enable_hysteria = true\u2028ssh_port = 2222")},
+     "control or non-ASCII bytes need the operator's merge"),
+], ids=["jinja-inventory", "target-and-pin", "other-field", "non-boolean", "new-line", "new-target", "deletion", "recipients",
+        "carriage-return", "unicode-separator"])
 def test_untrusted_input_defers_everything_else(ops, files, reason):
     base = git(ops, "rev-parse", "HEAD")
     head = commit(ops, files)

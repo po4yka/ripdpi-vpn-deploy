@@ -186,6 +186,11 @@ def git(repository: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["git", "-C", str(repository), *args], capture_output=True, text=True, check=False)
 
 
+def blob(repository: Path, revision: str, path: str) -> bytes:
+    return subprocess.run(["git", "-C", str(repository), "show", f"{revision}:{path}"],
+                          capture_output=True, check=True).stdout
+
+
 def check_pin(root: Path, revision_ref: str | None, public: Path, public_ref: str) -> list[str]:
     text = git(root, "show", f"{revision_ref}:upstream.lock").stdout if revision_ref else \
         (root / "upstream.lock").read_text() if (root / "upstream.lock").exists() else ""
@@ -198,8 +203,11 @@ def check_pin(root: Path, revision_ref: str | None, public: Path, public_ref: st
     return []
 
 
-def tfvars_toggles(base_text: str, head_text: str, path: str) -> tuple[list[dict], list[str]]:
-    base, head = base_text.splitlines(), head_text.splitlines()
+def tfvars_toggles(base_bytes: bytes, head_bytes: bytes, path: str) -> tuple[list[dict], list[str]]:
+    # Split on \n only: other separators (\r, \v, U+2028) would let this parser and HCL disagree on lines.
+    if any(re.search(rb"[^\x20-\x7e\t\n]", data) for data in (base_bytes, head_bytes)):
+        return [], [f"{path}: control or non-ASCII bytes need the operator's merge"]
+    base, head = base_bytes.decode("ascii").split("\n"), head_bytes.decode("ascii").split("\n")
     if len(base) != len(head):
         return [], [f"{path}: lines were added or removed"]
     toggles, reasons = [], []
@@ -244,8 +252,7 @@ def classify(root: Path, base: str, head: str) -> dict:
         elif not TFVARS_PATH.fullmatch(path):
             reasons.append(f"{path}: changes to this path need the operator's merge")
         else:
-            found, refused = tfvars_toggles(git(root, "show", f"{base}:{path}").stdout,
-                                            git(root, "show", f"{head}:{path}").stdout, path)
+            found, refused = tfvars_toggles(blob(root, base, path), blob(root, head, path), path)
             toggles += found
             reasons += refused
     if not toggles and not reasons:
