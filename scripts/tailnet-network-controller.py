@@ -216,7 +216,6 @@ def load_config(path: Path):
         "mode",
         "promotion_config_path",
         "provider_target_path",
-        "provider_state_path",
         "terraform_path",
         "terraform_sha256",
         "known_hosts_path",
@@ -690,19 +689,17 @@ def run(config):
     )
     if len(aliases) != 1:
         raise ControllerError("selection-refused")
-    target, state, terraform = (
-        Path(config[k])
-        for k in ("provider_target_path", "provider_state_path", "terraform_path")
+    target, terraform = (
+        Path(config[k]) for k in ("provider_target_path", "terraform_path")
     )
-    target_fd = state_fd = terraform_fd = -1
+    target_fd = terraform_fd = -1
     validated_target = validated_tf = None
     try:
         target_fd = private(target)
-        state_fd = private(state)
         terraform_fd = private(terraform, executable=True)
-        # Validate the three opened inodes in this composition root before daemon spawn.
-        validated_target = p.ProviderTarget(target_fd, state_fd)
-        target_fd = state_fd = -1
+        # Validate the opened inodes in this composition root before daemon spawn.
+        validated_target = p.ProviderTarget(target_fd)
+        target_fd = -1
         validated_tf = p.TrustedTerraform(terraform_fd, config["terraform_sha256"])
         terraform_fd = -1
         target_digest = validated_target.digest
@@ -715,8 +712,6 @@ def run(config):
             validated_tf.close()
         if target_fd >= 0:
             os.close(target_fd)
-        if state_fd >= 0:
-            os.close(state_fd)
         if terraform_fd >= 0:
             os.close(terraform_fd)
     candidate_fd = private(Path(config["candidate_fragment_path"]))
@@ -740,6 +735,8 @@ def run(config):
         ROOT, snapshot_path, target_environment
     )
     token = os.environ.get("UPCLOUD_TOKEN")
+    # Plan and state pull read the encrypted backend even in a dry run.
+    backend = p.backend_environment()
     process = None
     if config["mode"] == "apply":
         if not token:
@@ -762,8 +759,6 @@ def run(config):
                     "serve",
                     "--target",
                     str(target),
-                    "--state",
-                    str(state),
                     "--terraform",
                     str(terraform),
                     "--terraform-sha256",
@@ -787,17 +782,17 @@ def run(config):
                     "LC_ALL": "C",
                     "TZ": "UTC",
                     "UPCLOUD_TOKEN": token,
+                    **backend,
                 },
             )
             _wait_or_reap_spawned_executor(process, sock, identity)
-    target_fd = state_fd = terraform_fd = -1
+    target_fd = terraform_fd = -1
     provider_target = trusted_terraform = adapter = None
     try:
         target_fd = private(target)
-        state_fd = private(state)
         terraform_fd = private(terraform, executable=True)
-        provider_target = p.ProviderTarget(target_fd, state_fd)
-        target_fd = state_fd = -1
+        provider_target = p.ProviderTarget(target_fd)
+        target_fd = -1
         trusted_terraform = p.TrustedTerraform(terraform_fd, config["terraform_sha256"])
         terraform_fd = -1
         adapter = p.TerraformAdapter(
@@ -819,16 +814,14 @@ def run(config):
     finally:
         if target_fd >= 0:
             os.close(target_fd)
-        if state_fd >= 0:
-            os.close(state_fd)
         if terraform_fd >= 0:
             os.close(terraform_fd)
     try:
-        if token:
-            adapter.environment_map = {
-                **adapter.environment_map,
-                "UPCLOUD_TOKEN": token,
-            }
+        adapter.environment_map = {
+            **adapter.environment_map,
+            **backend,
+            **({"UPCLOUD_TOKEN": token} if token else {}),
+        }
 
         def return_path(action, identity):
             if action not in {"forward", "readback"}:
