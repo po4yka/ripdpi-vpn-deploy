@@ -27,4 +27,4 @@ artifact_evidence: No release artifact.
 | REQ-PORKBUN-PROVIDER | TFR-1795329159424429 | vetting record; toolchain-pin test | planned |
 | REQ-PORKBUN-SCOPE | TFR-1795329172302386 | `make tf-policy-verify` porkbun_scope tests | planned |
 | REQ-PORKBUN-ACCESS | TFR-1795329184961660 | key scope receipt and off-egress negative call | planned |
-| REQ-PORKBUN-IMPORT | TFR-1795329184961660 | no-op plan receipt per domain | planned |
+| REQ-PORKBUN-IMPORT | TFR-1795329184961660 | Inventory reconciliation, import-only plan and empty follow-up plan per domain | planned |

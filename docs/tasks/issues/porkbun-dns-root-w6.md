@@ -24,4 +24,4 @@ DNS records of the fleet's managed Porkbun domains are managed by an OpenTofu ro
 
 - The provider vetting record and exact pin with lock hashes are committed.
 - `make tf-test` and `make tf-policy-verify` cover the root and the scope policy.
-- Authorized: existing records are adopted with a no-op plan per domain.
+- Authorized adoption applies exactly the reviewed imports with zero DNS changes, then produces an empty plan per domain.

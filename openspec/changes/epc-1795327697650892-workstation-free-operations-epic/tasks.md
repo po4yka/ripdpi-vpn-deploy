@@ -6,7 +6,7 @@ Coordinate W1 to W7 so a Claude cloud session with no secrets, the private ops r
 
 ## Ownership
 
-The planner owns the epic and its dependency edges. Each child task owns its own paths. Shared files (`Makefile`, `mise.toml`, `docs/reference/testing.md`) are serialized in the order W2, W3, W4, W5, W6, W7.
+The planner owns the epic and its dependency edges. Each child task owns its own paths. Shared files (`Makefile`, `mise.toml`, `docs/reference/testing.md`) are serialized in the order W1, W2, W3, W4, W5, W6, W7.
 
 ## Execution
 

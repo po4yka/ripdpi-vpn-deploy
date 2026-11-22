@@ -1,6 +1,6 @@
 ## Context
 
-See `proposal.md`. The kit contract in `docs/how-to/local-operator-kit.md` defines the layout under `secrets/local/` and the catalog fields. `.fleet.mk` already lets Make read configuration from another path, so the public Make targets can consume an ops repository checkout without code changes.
+The kit layout and catalog fields are defined in `docs/how-to/local-operator-kit.md`. The current plan recipe selects a provider-relative tfvars file. The deploy controller opens `ansible/inventory/generated.ini` in the public checkout. W1 must change both consumers.
 
 ## Goals / Non-Goals
 
@@ -22,7 +22,7 @@ See `proposal.md`. The kit contract in `docs/how-to/local-operator-kit.md` defin
   config/
     .sops.yaml                 # recipient policy: operator break-glass + CI (W4)
     <scope>.secrets.sops.yaml  # existing deployment schema per scope, encrypted
-    inventories/<env>.yml
+    inventories/<env>.ini       # canonical generated INI format consumed by deploy
     tfvars/<root>/<env>.tfvars
     backend/<root>.s3.tfbackend   # W3, no credentials
     group_vars/                # operator profile overrides
@@ -53,13 +53,13 @@ See `proposal.md`. The kit contract in `docs/how-to/local-operator-kit.md` defin
 | `recovery/` | B2 recovery prefix | Sealed archive; unlock factor in the password manager. |
 | `runtime/` | temporary | Runner temp directory only. |
 
-- Public checkout wiring: CI checks out the public repository at the `upstream.lock` SHA into `upstream/` and the ops repository at the triggering commit. `upstream/.fleet.mk` contains one `include` of the ops `fleet.mk`, which sets `SOPS_FILE(S)`, inventory and tfvars paths. Rejected: copying config into the public checkout, because a stray file could be committed publicly.
+- W1 owns the external paths end to end. The reviewed `fleet.mk` supplies absolute paths to the selected tfvars and canonical INI inventory. `make plan` validates and passes the same tfvars path to the CLI. `make inventory` writes the selected inventory, and `make dry-run` and `make deploy` pass that path to the controller's existing snapshot and validation code. Preserve local defaults and keep operator files in the ops checkout. Test separate checkouts with conflicting local defaults so a fallback cannot pass by accident.
 - Validator: `scripts/validate-ops-repo.py` in the public repository (stdlib only) checks the pin format, rejects private-key and age-identity markers, plaintext secret files, `*.tfstate`, `*.tfplan`, SOPS files without metadata or with recipients outside `.sops.yaml`, and catalog entries without an allowed `authority`. Gitleaks runs beside it. Rejected: a new dependency for YAML parsing; SOPS metadata detection needs only a key check and PyYAML is already in `requirements.txt`.
 - Pin updates: a cloud session or Dependabot-like workflow opens a PR that changes `upstream.lock`; W7 runs plan and dry-run on the PR.
 
 ## Contracts and ownership
 
-- Owned paths: `docs/how-to/local-operator-kit.md`, `docs/reference/ops-repository.md`, `templates/ops-repo/**`, `scripts/validate-ops-repo.py`, `tests/unit/test_validate_ops_repo.py`, `docs/README.md` index entry.
+- Owned paths: `docs/how-to/local-operator-kit.md`, `docs/reference/ops-repository.md`, `templates/ops-repo/**`, `scripts/validate-ops-repo.py`, `tests/unit/test_validate_ops_repo.py`, `docs/README.md` index entry. Include `Makefile`, `scripts/render-inventory.sh`, `scripts/deploy-controller.py` and their matching tests.
 - The deployment secrets schema (`secrets/schema.json`) is unchanged.
 
 ## Risks / Trade-offs
@@ -71,8 +71,8 @@ See `proposal.md`. The kit contract in `docs/how-to/local-operator-kit.md` defin
 ## Migration Plan
 
 1. Land template, validator and docs (local, reversible).
-2. Authorized live step: create the private repository (no Actions secrets yet), push the template, import the non-secret kit files listed above, run the validator and gitleaks.
-3. On the MacBook, point `.fleet.mk` at the ops clone and compare `make inventory` output and the `make dry-run` input list with the kit; record the receipt.
+2. With operator authorization, create or select the intended private repository. Run a secret-free default-branch job behind an environment with a required reviewer. Verify it waits, rejection prevents execution, and approval releases a fresh run. Record the result before importing operator data, provisioning credentials or migrating state. If the repository lacks this entitlement, pause for the operator to select an eligible owner or plan.
+3. Import the non-secret kit material, run the validator and gitleaks, then compare the two-checkout plan inputs, rendered inventory and dry-run selection against the kit.
 4. Rollback: point `.fleet.mk` back at `secrets/local/`; the kit was not modified.
 
 ## Open verification questions

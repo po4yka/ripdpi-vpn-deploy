@@ -30,7 +30,7 @@ The operator chose: GitHub Actions on GitHub-hosted runners as the executor; a d
 
 ## Contracts and ownership
 
-- Public repository: `terraform/` (renamed tool, same layout), `mise.toml`, `.github/workflows/{ci,tf-policy,daily-security,drift}.yml`, `Makefile`, `scripts/*tf*`, new `ansible/roles/egress-proxy/`, new `terraform/dns/porkbun/`, docs. Each child owns its own paths; shared files (`Makefile`, `mise.toml`, `docs/reference/testing.md`, `.sops.yaml` examples) are edited in the order W2, W3, W4, W5, W6, W7.
+- Public repository: `terraform/` (renamed tool, same layout), `mise.toml`, `.github/workflows/{ci,tf-policy,daily-security,drift}.yml`, `Makefile`, `scripts/*tf*`, new `ansible/roles/egress-proxy/`, new `terraform/dns/porkbun/`, docs. Each child owns its own paths; shared files (`Makefile`, `mise.toml`, `docs/reference/testing.md`, `.sops.yaml` examples) are edited in the order W1, W2, W3, W4, W5, W6, W7.
 - Private ops repository: config, receipts, workflows, environment definitions. Defined in W1.
 
 ## Risks / Trade-offs
@@ -48,5 +48,5 @@ Children land in the table order. Live steps (creating the ops repository, bucke
 The children list their own open questions; the program-level ones are:
 
 1. Can a Claude cloud session dispatch a workflow, or only push and open pull requests? W7 designs the PR/push-triggered path either way.
-2. Does Backblaze B2 accept the conditional writes that the OpenTofu S3 lockfile needs? W3 has a fallback.
+2. Can B2 enforce the W3 lock across CI and workstation writes under the intended key scopes and retention policy? W3 keeps local state authoritative until the full probe succeeds.
 3. Does every provider client honour `HTTPS_PROXY` when it runs under OpenTofu? W5 proves it per provider before enabling allowlists.

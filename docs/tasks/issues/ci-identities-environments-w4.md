@@ -22,6 +22,6 @@ CI has its own age, SSH, Tailnet and provider identities, each only in the GitHu
 
 ## Acceptance criteria
 
-- `scripts/validate-ops-environments.py` enforces the environment matrix, reviewer rules and untrusted-input rule, with unit tests.
+- `scripts/validate-ops-environments.py` enforces the environment matrix, reviewer rules and untrusted-input rule, with unit tests. Cover a combined address and host-pin change and revoke a CI recipient against a retained fixture data key.
 - `admin_ssh_public_keys` and the exclusive `baseline` authorized_keys pass Molecule add and revoke.
 - Authorized: environments, CI identities, re-encrypted SOPS files, Tailnet tags and grants, and least-privilege provider tokens exist and are catalogued.

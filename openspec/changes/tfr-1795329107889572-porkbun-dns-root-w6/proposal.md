@@ -12,7 +12,7 @@ The fleet's domains are registered at Porkbun, but the repository has no Porkbun
 - A vetted community Porkbun provider pinned to one exact version with lock-file hashes.
 - A conftest policy that refuses records outside the managed domains and TTLs below Porkbun's minimum.
 - Per-domain API access: API access is turned on only for managed domains, and the CI keys are limited to those domains, to DNS (apply) or read (plan) permission, and to the egress address (W5).
-- Existing records are imported so the first plan is a no-op.
+- Adopt existing records with a reviewed import-only plan and verify an empty follow-up plan.
 
 ## Capabilities
 

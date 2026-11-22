@@ -23,6 +23,11 @@ The proxy MUST accept only the HTTP `CONNECT` method, only to port 443, and only
 - **WHEN** a client sends `CONNECT api.vultr.com:80`
 - **THEN** the proxy answers 403
 
+#### Scenario: Numeric target has an allowlisted reverse DNS name
+
+- **WHEN** an IP-literal target has a PTR record for an allowed hostname
+- **THEN** the proxy refuses the request without contacting the upstream
+
 ### Requirement: REQ-EGRESS-TAILNET-ONLY — The proxy is reachable only from granted Tailnet tags
 
 The proxy MUST listen only on the node's Tailnet address. nftables MUST drop the proxy port on every other interface, and the Tailnet policy MUST grant the port only to `tag:ci-tofu` and optionally one named operator device. The node MUST expose no public inbound service.
@@ -84,9 +89,14 @@ The Vultr API access control MUST list only the egress IPv4 (and IPv6 if used) a
 
 ### Requirement: REQ-EGRESS-BREAK-GLASS — Documented recovery when the proxy, VPS or GitHub is down
 
-The how-to MUST describe recovery for: proxy down but server up (redeploy role through `deploy`), server lost (recreate through the egress root, which needs only the Hetzner API that has no IP allowlist), and GitHub down (operator MacBook joins the Tailnet and uses the proxy with operator tokens; if the proxy is also down, the operator adds a temporary address in the Vultr console behind MFA and removes it after, with a receipt).
+The runbook MUST repair a stopped proxy through pinned management SSH on the Tailnet. For a lost server it MUST recreate only the egress root using direct Hetzner and B2 access with the W3 lock, retain its IP, verify the new host identity and enroll it before restoring proxied jobs. The operator MUST be able to perform this recovery without GitHub. Emergency Vultr console access MUST be time-limited and recorded.
 
 #### Scenario: Proxy and GitHub both down
 
 - **WHEN** the operator must recreate a Vultr node with GitHub and the proxy unavailable
 - **THEN** the runbook leads to a successful apply from the MacBook and a receipt that records the temporary allowlist entry and its removal
+
+#### Scenario: Proxy process and server recovery
+
+- **WHEN** separate drills stop the service and remove a disposable egress server
+- **THEN** the first drill restores the service through management SSH and the second restores the retained address and provider connectivity without depending on the lost proxy

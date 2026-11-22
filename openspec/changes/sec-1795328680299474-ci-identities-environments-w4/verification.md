@@ -24,8 +24,8 @@ artifact_evidence: No release artifact.
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-CIID-SEPARATE | SEC-1795328879513998 | Molecule add and revoke; staging revoke drill receipt | planned |
+| REQ-CIID-SEPARATE | SEC-1795328913746423 | SSH revoke drill and SOPS rotation test with historical fixture data key | planned |
 | REQ-CIID-ENV-MATRIX | SEC-1795328868236026 | `pytest tests/unit/test_validate_ops_environments.py -k matrix` | planned |
 | REQ-CIID-REVIEWERS | SEC-1795328902011315 | environment check receipt; validator `-k reviewer` | planned |
-| REQ-CIID-UNTRUSTED-INPUT | SEC-1795328868236026 | validator `-k pr_input` and `-k ancestor` | planned |
+| REQ-CIID-UNTRUSTED-INPUT | SEC-1795328868236026 | Positive typed-toggle test and negative target, pin, endpoint, recipient and revision-change tests before credential access | planned |
 | REQ-CIID-LEAST-PRIVILEGE | SEC-1795328913746423 | catalog entries and token scope receipts | planned |

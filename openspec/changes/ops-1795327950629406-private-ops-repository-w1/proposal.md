@@ -9,7 +9,7 @@ The operator kit (`secrets/local/`, `docs/how-to/local-operator-kit.md`) exists 
 ## What Changes
 
 - Define a private GitHub ops repository that holds non-secret but sensitive operator configuration: inventories, tfvars, profile toggles, `fleet.mk`, SSH config and `known_hosts`, the SOPS recipient policy, SOPS-encrypted deployment documents, the catalog, plans and receipts.
-- The ops repository pins the public repository by a full commit SHA in `upstream.lock` and runs the public Make targets from that checkout.
+- The ops repository pins the public repository by a full commit SHA in `upstream.lock` and runs the public Make targets from that checkout. W1 wires the external tfvars and inventory through their Make targets and consumers.
 - Define where every kit item goes: the ops repository, a B2 recovery prefix (W3), a GitHub environment secret (W4), the operator's password manager, or nowhere (temporary only).
 - Add an ops repository template and a validator to the public repository that rejects plaintext secrets, unencrypted SOPS documents, state or plan files, and a non-SHA pin.
 - BREAKING: the kit contract changes from "one physical kit on the MacBook" to "ops repository plus B2 recovery prefix"; the MacBook keeps a clone and the break-glass identities.
@@ -27,5 +27,5 @@ The operator kit (`secrets/local/`, `docs/how-to/local-operator-kit.md`) exists 
 ## Impact
 
 - Public repository: `docs/how-to/local-operator-kit.md`, new `docs/reference/ops-repository.md`, new `templates/ops-repo/`, new `scripts/validate-ops-repo.py` with `tests/unit/test_validate_ops_repo.py`.
-- New private GitHub repository (live step, needs authorization).
-- No Terraform, Ansible or secrets schema change.
+- Creation and approval testing in the intended private repository require operator authorization. Verify the gate before importing operator data.
+- W1 changes the Make plan recipe, inventory renderer and deploy controller to accept the selected external paths.

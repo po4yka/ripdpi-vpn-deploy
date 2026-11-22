@@ -6,10 +6,10 @@ local: required
 local_evidence: null
 remote_ci: required
 remote_ci_evidence: null
-dry_run: not_applicable
-dry_run_evidence: No deploy input changes; the inventory equality check is the live gate.
-staging: not_applicable
-staging_evidence: No runtime change.
+dry_run: required
+dry_run_evidence: null
+staging: required
+staging_evidence: null
 live: required
 live_evidence: null
 client: not_applicable
@@ -28,4 +28,4 @@ artifact_evidence: No release artifact.
 | REQ-OPSREPO-NO-PLAINTEXT | OPS-1795328289814121 | `pytest tests/unit/test_validate_ops_repo.py -k plaintext`; gitleaks in the ops repo | planned |
 | REQ-OPSREPO-KIT-MAP | OPS-1795328275356745 | mapping table in `docs/how-to/local-operator-kit.md`; validator `-k authority` test | planned |
 | REQ-OPSREPO-PUBLIC-HYGIENE | OPS-1795328289814121 | template placeholder test; review of `templates/ops-repo/` | planned |
-| REQ-OPSREPO-ROLLBACK | OPS-1795328305307912 | inventory comparison receipt in the ops repository | planned |
+| REQ-OPSREPO-ROLLBACK | OPS-1795328305307912 | Two-checkout plan and inventory selection tests, kit comparison and private-repository reject/approve runs | planned |

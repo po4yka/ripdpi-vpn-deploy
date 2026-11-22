@@ -17,14 +17,14 @@ See `proposal.md`. The public repository already gates credentialed CI with the 
 | `tofu-apply` | yes | passphrase, B2 `state-apply` key, provider write tokens, `tag:ci-tofu` join | apply, destroy |
 | `deploy-check` | no | CI age identity, CI SSH key, `tag:ci-deploy` join | dry-run, verify, acceptance |
 | `deploy` | yes | same classes as `deploy-check` | deploy |
-| `ops-secrets` | yes | same classes as `deploy-check` | rotate-*, issue-* |
+| `ops-secrets` | yes | CI age identity only | offline credential preparation |
 | `tailnet-policy` | yes | policy-file push identity | Tailnet policy apply |
 
-  All have deployment branch policy "default branch only". The same CI SSH key and age identity sit in three environments; revoking them means removing all three copies, which the runbook lists. Rejected: one key per environment (`deploy-check` and `deploy` both need root via become for check mode, so separate keys add no privilege boundary).
+  Restrict each environment to the default branch. Revocation removes the age identity from all three holders and the SSH key from both deploy environments.
 - Untrusted pull-request input: PR-time jobs use `pull_request_target` from same-repository branches, check out the PR head only as data in a separate directory, and run `scripts/validate-ops-environments.py --pr` before any secret step. Rejected: `pull_request` with environment secrets, because the PR could edit the workflow; GitHub's branch policy blocks it anyway.
-- Executable configuration (`fleet.mk`, `ssh.conf`, `upstream.lock`, `.github/**`, anything with `{{`, `{%` or `$(` in a data value) in a PR forces the reviewer path: the PR job stops and W7 runs the same plan or dry-run under `deploy`/`tofu-apply` approval instead.
-- CI age identity: generated once in the `ops-secrets` job context (authorized live step), public recipient committed to `.sops.yaml`, private identity stored as an environment secret in the three deploy environments and nowhere else. `sops updatekeys` over every `config/*.secrets.sops.yaml`.
-- CI SSH key: ed25519, generated the same way; public half in the ops repository tfvars `admin_ssh_public_keys` and in group vars. `baseline` writes the admin `authorized_keys` with `exclusive: true` from the list. Molecule proves add and revoke. Rejected: SSH certificates with a CA, because there is no CA in the fleet today and it adds a signing service.
+- Classify the complete diff against the trusted base before starting a credentialed job. Automatic previews accept only enumerated, typed fields (for example a boolean protocol toggle) on existing trusted targets. Reject unexpected paths, field changes, renames, deletions and symlinks from that path. Inventory targets, SSH config and host pins, backend endpoints, recipient policy, workflows, Make inputs and the upstream pin require approval bound to the exact revision. A new revision needs a new decision. Build the automatic preview from base trust data plus the validated values.
+- CI age identity: generated once in the `ops-secrets` job context (authorized live step), public recipient committed to `.sops.yaml`, private identity stored as an environment secret in the three age-key environments and nowhere else. `sops updatekeys` over every `config/*.secrets.sops.yaml`. On removal, update the recipients and rotate the SOPS data key in every affected document before replacing exposed credential values. Verify with a retained pre-revocation fixture data key.
+- CI SSH key: ed25519, generated in a separately approved deploy bootstrap job; public half in the ops repository tfvars `admin_ssh_public_keys` and in group vars. `baseline` writes the admin `authorized_keys` with `exclusive: true` from the list. Molecule proves add and revoke. Rejected: SSH certificates with a CA, because there is no CA in the fleet today and it adds a signing service.
 - Tailnet: prefer workload identity federation in `tailscale/github-action` (`id-token: write`, no stored secret); fall back to OAuth clients with the `auth_keys` scope bound to one tag. Policy additions:
 
 ```json
@@ -32,7 +32,8 @@ See `proposal.md`. The public repository already gates credentialed CI with the 
   "tagOwners": { "tag:ci-tofu": ["autogroup:admin"], "tag:ci-deploy": ["autogroup:admin"], "tag:egress": ["autogroup:admin"] },
   "grants": [
     { "src": ["tag:ci-tofu"], "dst": ["tag:egress"], "ip": ["tcp:3128"] },
-    { "src": ["tag:ci-deploy"], "dst": ["tag:vpn-node"], "ip": ["tcp:<management-ssh-port>"] }
+    { "src": ["tag:ci-deploy"], "dst": ["tag:vpn-node"], "ip": ["tcp:<management-ssh-port>"] },
+    { "src": ["tag:ci-deploy"], "dst": ["tag:egress"], "ip": ["tcp:<management-ssh-port>"] }
   ]
 }
 ```
@@ -66,7 +67,7 @@ See `proposal.md`. The public repository already gates credentialed CI with the 
 
 1. Land validator, Terraform list input, baseline role change and docs (offline checks: unit tests, `make tf-test`, `make molecule-test ROLE=baseline`, `make snapshot-check`).
 2. Authorized live steps, in order: create environments with reviewers and branch policies; generate CI age and SSH identities inside CI; `sops updatekeys` and commit; deploy baseline with both admin keys (dry-run first); import the Tailnet policy and add tags and grants; issue provider tokens; record catalog entries and receipts.
-3. Rollback: remove CI keys from lists and recipients, delete environments; operator identities were never changed.
+3. Rollback: remove the CI SSH key and age recipient, rotate affected SOPS data keys and exposed credentials, then remove the environments. Verify operator access.
 
 ## Open verification questions
 
