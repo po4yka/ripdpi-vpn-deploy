@@ -26,6 +26,7 @@ artifact_evidence: No release artifact.
 |---|---|---|---|
 | REQ-CIID-SEPARATE | SEC-1795328913746423 | SSH revoke drill and SOPS rotation test with historical fixture data key | planned |
 | REQ-CIID-ENV-MATRIX | SEC-1795328868236026 | `pytest tests/unit/test_validate_ops_environments.py -k matrix` | planned |
-| REQ-CIID-REVIEWERS | SEC-1795328902011315 | environment check receipt; validator `-k reviewer` | planned |
+| REQ-CIID-MERGE-GATE | SEC-1795328902011315 | ruleset and environment check receipt; non-owner merge rejection; validator `-k merge_gate` | planned |
+| REQ-CIID-MUTATION-TRIGGER | SEC-1795328868236026 | validator `-k trigger`; environment branch policy receipt | planned |
 | REQ-CIID-UNTRUSTED-INPUT | SEC-1795328868236026 | Positive typed-toggle test and negative target, pin, endpoint, recipient and revision-change tests before credential access | planned |
 | REQ-CIID-LEAST-PRIVILEGE | SEC-1795328913746423 | catalog entries and token scope receipts | planned |

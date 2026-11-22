@@ -8,10 +8,10 @@ Every credential that operates the fleet today is the operator's own: the age id
 
 ## What Changes
 
-- A fixed matrix of GitHub environments in the ops repository, with the secrets each may hold and whether it needs a required reviewer:
-  - `tofu-plan` (no reviewer), `tofu-apply` (reviewer): state and provider credentials only.
-  - `deploy-check` and `deploy` hold age, SSH and Tailnet identities. `ops-secrets` holds the CI age identity for offline preparation. Deployment and secret preparation require reviewers.
-  - `tailnet-policy` (reviewer): Tailnet policy push only.
+- A fixed matrix of GitHub environments in the ops repository, with the secrets each may hold and whether it runs only after the operator merges:
+  - `tofu-plan` (previews), `tofu-apply` (after merge): state and provider credentials only.
+  - `deploy-check` and `deploy` hold age, SSH and Tailnet identities. `ops-secrets` holds the CI age identity for offline preparation. Deployment and secret preparation run only after merge.
+  - `tailnet-policy` (after merge): Tailnet policy push only.
 - A validator enforces the environment matrix and allows automatic credentialed previews only for approved types and fields on trusted targets.
 - A separate CI age recipient added to the recipient policy; every scoped SOPS file is re-encrypted to operator plus CI. The operator identity becomes break-glass in the password manager.
 - BREAKING: the admin SSH key input becomes a list (`admin_ssh_public_keys`) in every root and cloud-init, and the `baseline` role manages the admin account's `authorized_keys` exclusively from that list, so a CI key can be added and revoked by deploy.
@@ -22,7 +22,7 @@ Every credential that operates the fleet today is the operator's own: the age id
 
 ### New Capabilities
 
-- `security/ci-operator-identities`: CI identities, environment matrix, reviewer rules and revocation.
+- `security/ci-operator-identities`: CI identities, environment matrix, the merge gate and revocation.
 
 ### Modified Capabilities
 

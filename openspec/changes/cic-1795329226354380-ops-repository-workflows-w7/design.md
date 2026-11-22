@@ -24,7 +24,7 @@ See `proposal.md`. Cloud-session research (2026-11-22, Claude Code cloud docs): 
 | `tailnet-policy` | GitOps action test | `tailnet-policy` |
 | `none` | validation only | nothing |
 
-- Use the trusted workflow and the W4 classifier. For automatic PR previews, overlay only validated typed values on the base configuration. Run reviewer previews only for the approved PR head. For merged requests use the exact ops commit and validated public SHA. Load the job's minimum credentials, use W1's external input paths, and route backend initialization and normal provider requests through W5. Offline preparation needs no Tailnet access.
+- Use the trusted workflow and the W4 classifier. For automatic PR previews, overlay only validated typed values on the base configuration. Run the first credentialed preview of other changes only after the operator merges them, and refuse a mutation in the same push. For merged requests use the exact ops commit and validated public SHA. Load the job's minimum credentials, use W1's external input paths, and route backend initialization and normal provider requests through W5. Offline preparation needs no Tailnet access.
 - Serialize deploys for the same environment. Every state writer uses the W3 backend lock, including during recovery. Scan merged requests for outstanding work after each push and on resume so a cancelled pending workflow cannot drop a request.
 - Bind a saved plan's digest, operation, targets, input revision and public SHA to the approval. On merge, invalidate the preview if any effective input changed. Verify the approved digest immediately before applying the encrypted artifact.
 - Serialize attempts for the same request ID. Resume an existing claim only after the previous worker has stopped. Claim a request by a compare-and-swap update on the protected execution branch before its first side effect. Bind the ID to the immutable request digest, operation and targets. Persist phase and outcome under that ID. A matching verified success skips execution. After interruption reconcile the operation's durable result (for example its encrypted preparation commit or applied state) before resuming. Reuse prepared material. If the outcome is ambiguous, halt for operator reconciliation. Reject ID reuse with different contents.
@@ -42,7 +42,7 @@ See `proposal.md`. Cloud-session research (2026-11-22, Claude Code cloud docs): 
 ## Risks / Trade-offs
 
 - Two approvals for issuance and rotation (merge of the encrypted PR and the deploy request) → slower but each step is reviewed; both are phone-friendly.
-- Before releasing preview credentials, classify all changed paths and values against the W4 allowlist and bind reviewer approval to the immutable revision.
+- Before releasing preview credentials, classify all changed paths and values against the W4 allowlist and treat the operator merge of the immutable revision as the approval.
 - GitHub outage stops everything → MacBook break-glass from W3 and W5.
 
 ## Migration Plan
@@ -56,6 +56,6 @@ See `proposal.md`. Cloud-session research (2026-11-22, Claude Code cloud docs): 
 1. Does the cloud session's GitHub proxy allow `gh workflow run` (REST `POST /actions/workflows/{id}/dispatches`) with a token that has `actions: write`? Test with a no-op workflow; the design does not depend on it.
 2. Can the cloud session read workflow run status and logs through REST (`gh run view`), or only the `ops-receipts` branch?
 3. Can the cloud session open pull requests in the ops repository whose head branch is in the same repository, so `pull_request_target` previews apply?
-4. Do GitHub Mobile deployment-review approvals work for all four reviewer environments?
+4. Does merging from GitHub Mobile respect the owner-only merge ruleset, and can the Claude GitHub App be shown to lack merge rights?
 5. Does a two-repository cloud environment check out both repositories side by side so the setup script path resolves?
 6. Are workflow run logs of a private repository visible to anyone outside the collaborator list (for example through Actions log retention or forks)? Confirm fork policy is "no forks" for the ops repository.

@@ -16,7 +16,7 @@ The ops repository MUST record the public repository URL and a 40-character comm
 #### Scenario: Pin bump
 
 - **WHEN** a pull request changes the SHA in `upstream.lock`
-- **THEN** the W4 gate requires approval for that exact revision before W7 runs a credentialed preview
+- **THEN** W7 runs no credentialed preview of the new pin before the operator merges it
 
 ### Requirement: REQ-OPSREPO-NO-PLAINTEXT — No plaintext secret enters the ops repository
 
@@ -52,19 +52,23 @@ Node addresses, inventories, tfvars values, receipts and deploy output MUST appe
 
 ### Requirement: REQ-OPSREPO-ROLLBACK — The MacBook kit stays usable until cut-over is verified
 
-The migration MUST keep the existing `secrets/local/` kit unchanged until the ops repository clone, used through `.fleet.mk`, produces the same rendered inventory and the same `make dry-run` input set as the kit. W1 MUST prove required-reviewer enforcement in the intended private repository before importing operator inputs. Plan, inventory generation and the deploy controller MUST honor the selected external input paths through the normal Make targets.
+The migration MUST keep the existing `secrets/local/` kit unchanged until the ops repository clone, used through `.fleet.mk`, produces the same rendered inventory and the same `make dry-run` input set as the kit. Plan, inventory generation and the deploy controller MUST honor the selected external input paths through the normal Make targets.
 
 #### Scenario: Import mismatch
 
 - **WHEN** the rendered inventory from the ops repository differs from the kit's
 - **THEN** cut-over stops and the kit remains the authority
 
-#### Scenario: Private repository cannot enforce approvals
-
-- **WHEN** a secret-free job cannot demonstrate both rejection and approval in the intended repository
-- **THEN** W1 stops before cut-over, credential provisioning or state migration
-
 #### Scenario: Separate checkouts
 
 - **WHEN** both checkouts contain different fixture inputs and the ops paths are selected
 - **THEN** the CLI receives the ops tfvars, inventory generation writes the selected INI file and the deploy controller validates and selects its hosts
+
+### Requirement: REQ-OPSREPO-MERGE-GATE — Only the operator can land changes
+
+Before operator inputs are imported, W1 MUST prove the owner-only merge gate in the intended private repository: a secret-free job using the workflow `GITHUB_TOKEN` MUST be refused when it pushes to the default branch, and the operator MUST still be able to merge.
+
+#### Scenario: Private repository cannot enforce the merge gate
+
+- **WHEN** the workflow token can update the default branch, or the operator cannot merge
+- **THEN** W1 stops before cut-over, credential provisioning or state migration

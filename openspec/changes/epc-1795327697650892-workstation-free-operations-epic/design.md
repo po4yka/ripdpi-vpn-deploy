@@ -36,7 +36,7 @@ The operator chose: GitHub Actions on GitHub-hosted runners as the executor; a d
 ## Risks / Trade-offs
 
 - GitHub becomes a single point of control → `REQ-WFO-BREAK-GLASS`; W3 and W5 document break-glass from the MacBook.
-- A compromised CI environment can mutate the fleet → required reviewers on every mutating environment (W4) and per-identity revocation.
+- A compromised CI environment can mutate the fleet → mutations run only after the operator merges, enforced by an owner-only merge ruleset (W4), and per-identity revocation.
 - More moving parts (B2, egress VPS) → each has a documented failure mode and a fallback path.
 
 ## Migration Plan
