@@ -12,7 +12,7 @@ A private ops repository holds every non-secret operator input needed to run the
 
 - [x] OPS-1795328275356745 Document the ops repository contract and the kit mapping onto the ops repository and B2 #feature !high @item:OPS-1795327950629406
 - [x] OPS-1795328289814121 Add the ops repository template with the public SHA pin and a layout validator with tests and wire external inputs through Make and the deploy controller with two-checkout tests #feature !high @item:OPS-1795327950629406
-- [ ] OPS-1795328305307912 Create the private repository and prove the owner-only merge gate before importing the non-secret kit material (authorized live step) #feature !high @item:OPS-1795327950629406
+- [x] OPS-1795328305307912 Create the private repository and prove the owner-only merge gate before importing the non-secret kit material (authorized live step) #feature !high @item:OPS-1795327950629406
 
 ## Verification
 

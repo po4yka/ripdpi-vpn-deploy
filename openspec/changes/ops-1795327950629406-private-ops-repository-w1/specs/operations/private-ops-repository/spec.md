@@ -66,9 +66,9 @@ The migration MUST keep the existing `secrets/local/` kit unchanged until the op
 
 ### Requirement: REQ-OPSREPO-MERGE-GATE — Only the operator can land changes
 
-Before operator inputs are imported, W1 MUST prove the owner-only merge gate in the intended private repository: a secret-free job using the workflow `GITHUB_TOKEN` MUST be refused when it pushes to the default branch, and the operator MUST still be able to merge.
+Before operator inputs are imported, the effective rules of the default branch MUST block deletion, force pushes and direct updates and require a pull request, a direct push by the operator MUST be refused, and the operator MUST be able to merge a pull request. The workflow-token refusal is proven under `REQ-CIID-MERGE-GATE` once Actions run.
 
 #### Scenario: Private repository cannot enforce the merge gate
 
-- **WHEN** the workflow token can update the default branch, or the operator cannot merge
+- **WHEN** the effective rules allow a direct update of the default branch, or the operator cannot merge
 - **THEN** W1 stops before cut-over, credential provisioning or state migration
