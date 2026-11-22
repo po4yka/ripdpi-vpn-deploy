@@ -62,3 +62,11 @@ Rollback before step 5: `tofu init -migrate-state` back to `backend "local"` wit
 3. Does B2 `PutBucketVersioning` behave as AWS does, or are versions always kept? Docs were not read; the probe lists versions after two writes.
 4. Does `tofu init -migrate-state` from local to S3 preserve every non-default workspace in one run? Check on a throwaway root first.
 5. Is a 30-day governance retention compatible with the B2 lifecycle rule and with cost? Confirm in the bucket settings during the live step.
+
+## Implementation findings (2026-11-22)
+
+- Backblaze B2 rejects the conditional `PutObject` of the OpenTofu lock with HTTP 501 NotImplemented, so no B2 client can take the backend lock. B2 prefix-scoped keys also need `listBuckets` and `readBucketEncryption`, or the S3 `HeadObject` returns 403 on an SSE-B2 bucket. B2 keeps the `recovery/` prefix with the operator-only `tofu-recovery-operator` key; its state keys were deleted.
+- Scaleway Object Storage (`fr-par`, bucket `vpn-service-tofu-state-3c5994bc6fde`, versioning, Object Lock governance 30 days) passes the probe with the intended identities: the apply client creates encrypted state, the operator client is refused while the lock is held, the lock releases and the operator re-acquires it, the plan identity reads with `-lock=false` but its lock attempt gets 403, and the apply identity cannot delete the state object or write outside `state/`. The stored object holds only `encrypted_data`, `encryption_version`, `lineage`, `meta` and `serial`. Default SDK checksums work, so `skip_s3_checksum` is not set.
+- Identities replace the B2 key table: Scaleway IAM applications `tofu-state-plan` (ObjectStorageObjectsRead, ObjectStorageBucketsRead), `tofu-state-apply` and `tofu-state-operator` (plus ObjectStorageObjectsWrite and ObjectStorageObjectsDelete). IAM policies apply to the whole project; the bucket policy narrows them: plan may get and list `state/`, writers may get, put and list `state/` and delete only `state/*.tflock`, and the operator user keeps full access. Backend files use `endpoints = { s3 = "https://s3.fr-par.scw.cloud" }` and `region = "fr-par"`.
+- Scaleway lifecycle rules do not replace the B2 hidden-version rule; versions accumulate (small objects). A retention cleanup is a later decision, not a migration gate.
+- Open questions 1 to 3 are answered by the findings above.
