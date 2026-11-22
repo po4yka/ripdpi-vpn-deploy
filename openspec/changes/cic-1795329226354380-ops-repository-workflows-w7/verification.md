@@ -27,6 +27,7 @@ artifact_evidence: Client artifacts are covered by the client gate; no release a
 | REQ-OPSWF-REQUEST | CIC-1795329330531652 | `pytest tests/unit/test_validate_ops_request.py` | planned |
 | REQ-OPSWF-PREVIEW | CIC-1795329344563256 | staging toggle PR preview run | planned |
 | REQ-OPSWF-EXECUTE-ONCE | CIC-1795329358597258 | Merge plan/dry-run with pending changes, conflicting claims, post-effect crash, resume and approved-plan mismatch tests | planned |
+| REQ-OPSWF-PREVIEWED-INPUTS | CIC-1795329358597258 | merged request with unpreviewed address change refuses to deploy | planned |
 | REQ-OPSWF-SECRETS-IN-CI | CIC-1795329376420274 | Offline issuance and rotation with host access denied, encrypted diff, stdout/stderr and artifact checks, followed by approved staging deployment | planned |
 | REQ-OPSWF-CLIENT-ENCRYPTION | CIC-1795329399536234 | `pytest tests/unit/test_encrypt_client_artifact.py`; test client decrypt | planned |
 | REQ-OPSWF-SCHEDULED | CIC-1795329376420274 | scheduled run receipts | planned |

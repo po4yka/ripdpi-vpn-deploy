@@ -29,3 +29,4 @@ artifact_evidence: No release artifact.
 | REQ-OPSREPO-KIT-MAP | OPS-1795328275356745 | mapping table in `docs/how-to/local-operator-kit.md`; validator `-k authority` test | planned |
 | REQ-OPSREPO-PUBLIC-HYGIENE | OPS-1795328289814121 | template placeholder test; review of `templates/ops-repo/` | planned |
 | REQ-OPSREPO-ROLLBACK | OPS-1795328305307912 | Two-checkout plan and inventory selection tests, kit comparison and private-repository reject/approve runs | planned |
+| REQ-OPSREPO-MERGE-GATE | OPS-1795328305307912 | ruleset receipt; secret-free job push refused; operator merge succeeds | planned |

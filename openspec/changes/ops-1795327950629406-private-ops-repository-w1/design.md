@@ -72,7 +72,7 @@ The kit layout and catalog fields are defined in `docs/how-to/local-operator-kit
 ## Migration Plan
 
 1. Land template, validator and docs (local, reversible).
-2. With operator authorization, create or select the intended private repository. Run a secret-free default-branch job behind an environment with a required reviewer. Verify it waits, rejection prevents execution, and approval releases a fresh run. Record the result before importing operator data, provisioning credentials or migrating state. If the repository lacks this entitlement, pause for the operator to select an eligible owner or plan.
+2. With operator authorization, create the intended private repository (forking disabled). Environment required reviewers are not available for private repositories on the operator's GitHub Pro plan (GitHub documentation, checked 2026-11-22), so the operator chose the merge as the approval. Add a default-branch ruleset that blocks direct pushes, force pushes and deletion and lets only repository administrators bypass it, by pull request. Prove it with a secret-free job: the workflow `GITHUB_TOKEN` (`contents: write`) must be refused when it pushes to the default branch, and the operator must still be able to merge. Record the result before importing operator data, provisioning credentials or migrating state.
 3. Import the non-secret kit material, run the validator and gitleaks, then compare the two-checkout plan inputs, rendered inventory and dry-run selection against the kit.
 4. Rollback: point `.fleet.mk` back at `secrets/local/`; the kit was not modified.
 

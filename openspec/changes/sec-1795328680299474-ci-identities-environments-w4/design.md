@@ -11,16 +11,16 @@ See `proposal.md`. The public repository already gates credentialed CI with the 
 
 - Environment matrix:
 
-| Environment | Reviewer | Secrets | Used by |
+| Environment | Runs on | Secrets | Used by |
 |---|---|---|---|
-| `tofu-plan` | no | `TF_VAR_state_passphrase`, B2 `state-plan` key, read-only provider tokens (write tokens where no read-only exists), `tag:ci-tofu` join | PR plan, scheduled drift |
-| `tofu-apply` | yes | passphrase, B2 `state-apply` key, provider write tokens, `tag:ci-tofu` join | apply, destroy |
-| `deploy-check` | no | CI age identity, CI SSH key, `tag:ci-deploy` join | dry-run, verify, acceptance |
-| `deploy` | yes | same classes as `deploy-check` | deploy |
-| `ops-secrets` | yes | CI age identity only | offline credential preparation |
-| `tailnet-policy` | yes | policy-file push identity | Tailnet policy apply |
+| `tofu-plan` | PR preview, schedule | `TF_VAR_state_passphrase`, B2 `state-plan` key, read-only provider tokens (write tokens where no read-only exists), `tag:ci-tofu` join | PR plan, scheduled drift |
+| `tofu-apply` | push to default branch | passphrase, B2 `state-apply` key, provider write tokens, `tag:ci-tofu` join | apply, destroy |
+| `deploy-check` | PR preview, schedule | CI age identity, CI SSH key, `tag:ci-deploy` join | dry-run, verify, acceptance |
+| `deploy` | push to default branch | same classes as `deploy-check` | deploy |
+| `ops-secrets` | push to default branch | CI age identity only | offline credential preparation |
+| `tailnet-policy` | push to default branch | policy-file push identity | Tailnet policy apply |
 
-  Restrict each environment to the default branch. Revocation removes the age identity from all three holders and the SSH key from both deploy environments.
+  Restrict each environment to the default branch. The merge gate replaces required reviewers, which GitHub Pro does not offer for private repositories: a default-branch ruleset blocks direct pushes, force pushes and deletion and lets only repository administrators merge, so the Claude GitHub App and `GITHUB_TOKEN` can open pull requests but cannot land them. Revocation removes the age identity from all three holders and the SSH key from both deploy environments.
 - Untrusted pull-request input: PR-time jobs use `pull_request_target` from same-repository branches, check out the PR head only as data in a separate directory, and run `scripts/validate-ops-environments.py --pr` before any secret step. Rejected: `pull_request` with environment secrets, because the PR could edit the workflow; GitHub's branch policy blocks it anyway.
 - Classify the complete diff against the trusted base before starting a credentialed job. Automatic previews accept only enumerated, typed fields (for example a boolean protocol toggle) on existing trusted targets. Reject unexpected paths, field changes, renames, deletions and symlinks from that path. Inventory targets, SSH config and host pins, backend endpoints, recipient policy, workflows, Make inputs and the upstream pin require approval bound to the exact revision. A new revision needs a new decision. Build the automatic preview from base trust data plus the validated values.
 - CI age identity: generated once in the `ops-secrets` job context (authorized live step), public recipient committed to `.sops.yaml`, private identity stored as an environment secret in the three age-key environments and nowhere else. `sops updatekeys` over every `config/*.secrets.sops.yaml`. On removal, update the recipients and rotate the SOPS data key in every affected document before replacing exposed credential values. Verify with a retained pre-revocation fixture data key.
@@ -59,14 +59,14 @@ See `proposal.md`. The public repository already gates credentialed CI with the 
 
 ## Risks / Trade-offs
 
-- A no-reviewer environment still holds write-capable tokens for providers without read-only tokens → workflow code always comes from the default branch, PR data is validated, and W5 restricts provider APIs to the egress IP so a leaked token is less useful.
-- Re-encrypting to a CI recipient widens who can decrypt deployment secrets → the CI identity lives only in reviewer-gated or default-branch-only environments; revocation implies rotation.
+- A preview environment still holds write-capable tokens for providers without read-only tokens → workflow code always comes from the default branch, PR data is validated, and W5 restricts provider APIs to the egress IP so a leaked token is less useful.
+- Re-encrypting to a CI recipient widens who can decrypt deployment secrets → the CI identity lives only in default-branch-only environments; revocation implies rotation.
 - Moving the Tailnet policy into Git can lock the operator out by a bad push → the GitOps action's test step plus `tailnet-policy` approval; the admin console stays the break-glass path.
 
 ## Migration Plan
 
 1. Land validator, Terraform list input, baseline role change and docs (offline checks: unit tests, `make tf-test`, `make molecule-test ROLE=baseline`, `make snapshot-check`).
-2. Authorized live steps, in order: create environments with reviewers and branch policies; generate CI age and SSH identities inside CI; `sops updatekeys` and commit; deploy baseline with both admin keys (dry-run first); import the Tailnet policy and add tags and grants; issue provider tokens; record catalog entries and receipts.
+2. Authorized live steps, in order: create environments with default-branch policies and the owner-only merge ruleset; generate CI age and SSH identities inside CI; `sops updatekeys` and commit; deploy baseline with both admin keys (dry-run first); import the Tailnet policy and add tags and grants; issue provider tokens; record catalog entries and receipts.
 3. Rollback: remove the CI SSH key and age recipient, rotate affected SOPS data keys and exposed credentials, then remove the environments. Verify operator access.
 
 ## Open verification questions

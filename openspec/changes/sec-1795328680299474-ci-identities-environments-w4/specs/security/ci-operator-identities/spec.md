@@ -27,28 +27,37 @@ Environments MUST hold only these classes: `tofu-plan` and `tofu-apply` hold the
 - **WHEN** a workflow job in `deploy` references `secrets.VULTR_API_KEY`
 - **THEN** `scripts/validate-ops-environments.py` fails and names the job and secret
 
-### Requirement: REQ-CIID-REVIEWERS — Mutations need a required reviewer
+### Requirement: REQ-CIID-MERGE-GATE — Mutations run only after the operator merges
 
-`tofu-apply`, `deploy`, `ops-secrets` and `tailnet-policy` MUST have a required reviewer and a deployment branch policy limited to the default branch. `tofu-plan` and `deploy-check` MUST have no reviewer and the same branch policy. apply, destroy, deploy, rotate and issue MUST run only in reviewer environments; plan, dry-run and verify MAY run in no-reviewer environments.
+A ruleset on the ops repository's default branch MUST forbid direct pushes, force pushes and deletion and MUST let only repository administrators, which means the operator, merge into it. GitHub App and workflow identities, including the Claude GitHub App and `GITHUB_TOKEN`, MUST NOT be able to update the default branch. The operator's merge is the approval.
 
-#### Scenario: Apply in a no-reviewer environment
+#### Scenario: Non-owner merge
+
+- **WHEN** the Claude GitHub App or a workflow `GITHUB_TOKEN` tries to merge a pull request into, or push to, the default branch
+- **THEN** the ruleset rejects the update
+
+### Requirement: REQ-CIID-MUTATION-TRIGGER — Mutations run from the default branch only
+
+Every environment MUST have a deployment branch policy limited to the default branch. apply, destroy, deploy, rotate, issue and Tailnet policy pushes MUST run only from workflows triggered by a push to the default branch, in `tofu-apply`, `deploy`, `ops-secrets` or `tailnet-policy`. Plan, dry-run and verify MAY run in `tofu-plan` and `deploy-check` from pull-request previews or schedules.
+
+#### Scenario: Apply in a preview environment
 
 - **WHEN** a workflow runs `make apply` in `tofu-plan`
 - **THEN** the validator fails
 
-#### Scenario: Reviewer missing
+#### Scenario: Mutation on a pull-request event
 
-- **WHEN** the live environment `deploy` has no required reviewer
-- **THEN** the read-only environment check (reusing `scripts/check-ci-deploy-gate.py`) fails
+- **WHEN** a job in `deploy` is triggered by `pull_request_target`
+- **THEN** the validator fails, and the environment branch policy refuses the job
 
-### Requirement: REQ-CIID-UNTRUSTED-INPUT — No-reviewer jobs never run pull-request code with secrets
+### Requirement: REQ-CIID-UNTRUSTED-INPUT — Pull-request jobs never run pull-request code with secrets
 
-Automatic credentialed previews MUST use trusted default-branch code and trust settings. They MAY overlay only explicitly allowed typed fields on existing targets. All other changes MUST require review of the exact PR revision before credentials are released. These include changes to target addresses, SSH settings and host pins, backend endpoints, recipient policy, workflows, Make inputs and `upstream.lock`. The pin MUST be an ancestor of public `main`.
+Automatic credentialed previews MUST use trusted default-branch code and trust settings. They MAY overlay only explicitly allowed typed fields on existing targets. Other changes MUST NOT receive credentials before the operator merges them. These include changes to target addresses, SSH settings and host pins, backend endpoints, recipient policy, workflows, Make inputs and `upstream.lock`. The pin MUST be an ancestor of public `main`.
 
 #### Scenario: Jinja in inventory
 
 - **WHEN** a pull request adds `{{ lookup('pipe', ...) }}` to an inventory variable
-- **THEN** the PR dry-run job refuses to load secrets and asks for the reviewer path
+- **THEN** the PR dry-run job refuses to load secrets and defers the preview until after merge
 
 #### Scenario: Target and host pin change together
 

@@ -42,7 +42,7 @@ After the program closes, the operator MUST still be able to plan, apply, deploy
 
 ### Requirement: REQ-WFO-ACCEPT — The program is proven with the workstation off
 
-The program MUST NOT close until one recorded drill, with the MacBook powered off, shows a Claude cloud session change a non-secret setting through a pull request, and CI plan, apply, dry-run, deploy, verify and issue one device without operator workstation involvement other than required-reviewer approvals from a phone.
+The program MUST NOT close until one recorded drill, with the MacBook powered off, shows a Claude cloud session change a non-secret setting through a pull request, and CI plan, apply, dry-run, deploy, verify and issue one device without operator workstation involvement other than merges from a phone.
 
 #### Scenario: Workstation-off drill
 

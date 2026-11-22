@@ -20,16 +20,16 @@ Every operation MUST come from a file `requests/<request-id>.yaml` that names on
 
 ### Requirement: REQ-OPSWF-PREVIEW — Preview approved fields on trusted targets
 
-For a same-repository PR, trusted default-branch code MUST plan and dry-run the affected targets and post a redacted summary. Only the typed changes permitted by `REQ-CIID-UNTRUSTED-INPUT` qualify for automatic credentialed previews. Any other change MUST pass the exact-revision reviewer gate.
+For a same-repository PR, trusted default-branch code MUST plan and dry-run the affected targets and post a redacted summary. Only the typed changes permitted by `REQ-CIID-UNTRUSTED-INPUT` qualify for automatic credentialed previews. Any other change MUST wait for the operator to merge it and gets its first credentialed preview after merge.
 
 #### Scenario: Toggle change
 
 - **WHEN** a cloud session opens a pull request that changes a protocol toggle for one node
 - **THEN** the PR shows a dry-run summary for that node within the same run and no secret appears in the log
 
-### Requirement: REQ-OPSWF-EXECUTE-ONCE — Merged requests run once behind a reviewer
+### Requirement: REQ-OPSWF-EXECUTE-ONCE — Merged requests run once after the operator merges
 
-Merged `plan` and `dry-run` requests MUST remain read-only. A mutation MUST claim its immutable request on the protected branch and verify approval for the operation, targets and inputs. Deploy MUST run dry-run first. Apply and destroy MUST use the approved encrypted plan. Only verified success permits skipping. A retry MUST reconcile the durable outcome or stop for operator review.
+Merged `plan` and `dry-run` requests MUST remain read-only. A mutation MUST claim its immutable request on the protected branch and verify that the operator merged it. Deploy MUST run dry-run first. Apply and destroy MUST use the approved encrypted plan. Only verified success permits skipping. A retry MUST reconcile the durable outcome or stop for operator review.
 
 #### Scenario: Re-run of a merged workflow
 
@@ -50,6 +50,15 @@ Merged `plan` and `dry-run` requests MUST remain read-only. A mutation MUST clai
 
 - **WHEN** the saved plan hash differs from the approved one at apply time
 - **THEN** apply stops and asks for a new plan
+
+### Requirement: REQ-OPSWF-PREVIEWED-INPUTS — Mutations act only on previewed inputs
+
+A mutation MUST act only when its operation, targets and inputs equal those of its merged pull-request preview. A request merged together with configuration that had no credentialed preview MUST NOT mutate; it needs a later request.
+
+#### Scenario: Request merged with an unpreviewed address change
+
+- **WHEN** a pull request changes a target address and adds a `deploy` request, and the operator merges it
+- **THEN** the post-merge run previews the change, refuses the deploy and records that a new request is needed
 
 ### Requirement: REQ-OPSWF-SECRETS-IN-CI — Secrets are created and rotated only inside CI
 
@@ -77,7 +86,7 @@ An `issue-device` request MUST carry the recipient's age public key. Every clien
 
 ### Requirement: REQ-OPSWF-SCHEDULED — Drift, verify and acceptance run on a schedule
 
-A scheduled workflow MUST run a drift `tofu plan` for every root and `make verify` and the acceptance checks for the fleet daily, in no-reviewer environments, and record receipts. A non-empty drift plan or a failed verify MUST fail the run so GitHub notifies the operator.
+A scheduled workflow MUST run a drift `tofu plan` for every root and `make verify` and the acceptance checks for the fleet daily, in the preview environments, and record receipts. A non-empty drift plan or a failed verify MUST fail the run so GitHub notifies the operator.
 
 #### Scenario: Drift found
 
