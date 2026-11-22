@@ -998,7 +998,7 @@ def verify_report_binding(
 def _verified_absence(path: Path) -> dict[str, Any]:
     value, _ = _read_private(path)
     if (
-        value.get("schema_version") != 3
+        value.get("schema_version") != 4
         or value.get("provider") != "upcloud"
         or not isinstance(value.get("environment"), str)
         or ENVIRONMENT.fullmatch(value["environment"]) is None
@@ -1087,7 +1087,7 @@ def _deonboard_locked(
         reissued, reissued_payload = _read_private(reissued_cleanup_manifest_path)
         immutable = set(bound) - {"state"}
         if (
-            bound.get("schema_version") != 3
+            bound.get("schema_version") != 4
             or set(bound) != set(reissued)
             or hashlib.sha256(bound_payload).hexdigest()
             != binding["cleanup_manifest_sha256"]
@@ -1096,9 +1096,8 @@ def _deonboard_locked(
             or any(bound[key] != reissued[key] for key in immutable)
             or not isinstance(bound.get("state"), dict)
             or not isinstance(reissued.get("state"), dict)
-            or set(bound["state"]) != {"path", "sha256"}
-            or set(reissued["state"]) != {"path", "sha256"}
-            or bound["state"]["path"] != reissued["state"]["path"]
+            or set(bound["state"]) != {"sha256"}
+            or set(reissued["state"]) != {"sha256"}
             or any(
                 absence.get(receipt_key) != reissued.get(manifest_key)
                 for receipt_key, manifest_key in (
