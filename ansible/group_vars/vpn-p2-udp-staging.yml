@@ -1,0 +1,38 @@
+---
+# Profile: vpn-p2-udp transports for a disposable staging dry-run; not
+# monitoring, watchdog or backup acceptance. The vpn map equals vpn-p2-udp's
+# with those three roles off, so scripts/ci-bootstrap-secrets.sh output is the
+# only secrets input. tests/unit/test_deploy_profile_guard.py pins the map.
+
+vpn:
+  enable_destination_filter: true
+  enable_xray_reality: false
+  enable_nginx_xhttp: false
+  enable_naive: false
+  enable_hysteria: true
+  enable_amneziawg: true
+  enable_geodata: false
+  enable_monitoring: false
+  enable_watchdog: false
+  enable_backup: false
+  enable_tailnet_management: true
+  enable_subscription_host: false
+  enable_policy_ratelimit: false
+  enable_cdn_front: false
+  enable_honeypot: false
+  enable_warp_outbound: false
+  enable_dns_morph_bridge: false
+  enable_hysteria_realm: false
+  enable_split_hop_egress: false
+  enable_snell: false
+
+# Same listener surface as vpn-p2-udp: Terraform `public_listeners` must carry
+# `hysteria-masquerade` tcp/443 and tcp/80 beside the Hysteria and AWG UDP ports.
+hysteria_masquerade_tcp: true
+hysteria_resource_profile_default: bbr-conservative
+
+# The generated origin that scripts/ci-bootstrap-secrets.sh writes to
+# hysteria.masquerade_url for disposable staging. Supply hysteria_public_site_dir
+# through ANSIBLE_EXTRA_VARS_FILE to serve the node's own site bundle.
+public_site_canonical_url: >-
+  https://{{ nginx_xhttp.server_name }}{{ ':' ~ nginx_xhttp_public_port if nginx_xhttp_public_port | int != 443 else '' }}

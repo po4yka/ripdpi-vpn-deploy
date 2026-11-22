@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-11-22
+goal: ANS-1795351855549662 Add a disposable staging profile for the p2-udp transports

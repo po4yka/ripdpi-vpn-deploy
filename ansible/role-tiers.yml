@@ -123,6 +123,7 @@ family_profiles:
   - group_vars/vpn-device-full-staging.yml
   - group_vars/vpn-p1-web.yml
   - group_vars/vpn-p2-udp.yml
+  - group_vars/vpn-p2-udp-staging.yml
   - group_vars/vpn-prod-hardened.yml
   - group_vars/vpn-p0.yml
   - group_vars/vpn-p1p2.yml
