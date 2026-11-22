@@ -198,8 +198,10 @@ def trust_anchor(path: Path) -> tuple[bytes, str]:
         names = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
     except x509.ExtensionNotFound:
         names = None
-    if names is None or not names.get_values_for_type(x509.DNSName):
-        raise ProvisionError("trust-anchor: DNS subject alternative name required")
+    # One exact staging host name keeps the trusted scope to the disposable node.
+    dns = names.get_values_for_type(x509.DNSName) if names is not None else []
+    if names is None or len(list(names)) != 1 or len(dns) != 1 or "*" in dns[0]:
+        raise ProvisionError("trust-anchor: exactly one non-wildcard DNS subject alternative name required")
     return cert.public_bytes(Encoding.PEM), hashlib.sha256(cert.public_bytes(Encoding.DER)).hexdigest()
 
 

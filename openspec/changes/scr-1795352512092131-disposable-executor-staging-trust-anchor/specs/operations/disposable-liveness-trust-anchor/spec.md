@@ -10,7 +10,7 @@ The implementation MUST install a certificate named by `STAGING_TRUST_ANCHOR` in
 
 #### Scenario: Valid self-signed staging certificate
 
-- **WHEN** the operator passes `STAGING_TRUST_ANCHOR` naming one self-signed, currently valid PEM certificate with a DNS subject alternative name
+- **WHEN** the operator passes `STAGING_TRUST_ANCHOR` naming one self-signed, currently valid PEM certificate with exactly one non-wildcard DNS subject alternative name
 - **THEN** the executor trusts the certificate for TLS verification and the result carries `trust_anchor_sha256`
 
 #### Scenario: No anchor
@@ -20,7 +20,7 @@ The implementation MUST install a certificate named by `STAGING_TRUST_ANCHOR` in
 
 ### Requirement: REQ-STAGING-TRUST-ANCHOR-VALIDATION — Refuse an unsuitable anchor before executor changes
 
-The implementation MUST refuse, before it runs any command in the executor, a trust anchor file that does not hold exactly one PEM certificate, whose certificate is not self-signed, is outside its validity period, or has no DNS subject alternative name.
+The implementation MUST refuse, before it runs any command in the executor, a trust anchor file that does not hold exactly one PEM certificate, whose certificate is not self-signed, is outside its validity period, or whose subject alternative names are not exactly one non-wildcard DNS name.
 
 #### Scenario: Bundle or CA-issued certificate
 

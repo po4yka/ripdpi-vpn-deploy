@@ -23,6 +23,6 @@ A disposable staging node serves the self-signed certificate that its generated 
 ## Acceptance criteria
 
 - `STAGING_TRUST_ANCHOR` is an optional command-line field of `make provision-disposable-liveness-runtime`; without it the command behaves as before.
-- The script refuses a file that is not exactly one PEM certificate, is not self-signed, is expired, or has no DNS subject alternative name, before it changes the executor.
+- The script refuses a file that is not exactly one PEM certificate, is not self-signed, is expired, or whose subject alternative names are not exactly one non-wildcard DNS name, before it changes the executor.
 - An accepted anchor is installed under `/usr/local/share/ca-certificates/` in the executor and `update-ca-certificates` runs; the printed result names the anchor's SHA-256 fingerprint.
 - A disposable staging node reaches fresh `ok` on all four liveness profiles with this anchor.
