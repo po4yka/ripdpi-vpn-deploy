@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-22
+goal: OPS-1795351496232576 Carry the ops repository capability and prove its
+  inputs with a dry-run

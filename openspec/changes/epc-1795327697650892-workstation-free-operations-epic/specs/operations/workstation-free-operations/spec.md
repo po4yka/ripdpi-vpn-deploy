@@ -6,7 +6,7 @@ Define the ordering, secret-placement and acceptance rules that let a Claude clo
 
 ### Requirement: REQ-WFO-ORDER — Child changes respect dependencies
 
-The program MUST keep these `blocked_by` edges: W2 none; W1 none; W3 on W1 and W2; W4 on W1; W5 on W2, W3 and W4; W6 on W2, W3 and W5; W7 on W1, W3, W4, W5 and W6.
+The program MUST keep these `blocked_by` edges: W2 none; W1b (`OPS-1795351496232576`, which replaced the dropped W1 after its live ops repository work merged) none; W3 on W2; W4 none; W5 on W2, W3 and W4; W6 on W2, W3 and W5; W7 on W1b, W3, W4, W5 and W6.
 
 #### Scenario: Dependent starts early
 
