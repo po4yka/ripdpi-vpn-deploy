@@ -116,7 +116,8 @@ def test_committed_profiles_that_need_a_layout_change_or_an_exception_on_product
     refused = {name for name, message in evaluate(tmp_path, cases).items() if message}
     assert refused == {
         "all", "vpn", "vpn-ci-p0p1", "vpn-ci-p0p1p2", "vpn-device-full", "vpn-device-full-staging",
-        "vpn-device-full-tailnet", "vpn-family-standard", "vpn-fullstack", "vpn-lab", "vpn-prod-hardened",
+        "vpn-device-full-tailnet", "vpn-device-full-warp-staging", "vpn-family-standard", "vpn-fullstack", "vpn-lab",
+        "vpn-prod-hardened",
         "vpn-split-hop-family-egress-staging",
         "vpn-split-hop-ingress-live", "vpn-split-hop-ingress-staging",
     }

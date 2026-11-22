@@ -66,6 +66,7 @@ def test_live_fleet_profiles_enable_only_reviewed_tailnet_management_sources() -
         "vpn-p2-udp.yml",
         "vpn-p2-udp-staging.yml",
         "vpn-device-full-staging.yml",
+        "vpn-device-full-warp-staging.yml",
         "vpn-device-full-tailnet.yml",
         "vpn-split-hop-egress-staging.yml",
         "vpn-split-hop-ingress-staging.yml",
