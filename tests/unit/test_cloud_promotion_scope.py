@@ -15,6 +15,20 @@ import install_liveness_sentinel as installer
 from recovery_io import canonical
 
 
+def _stored(root, provider, environment):
+    return root / 'terraform/providers' / provider / ('terraform.tfstate' if environment == 'prod'
+             else f'terraform.tfstate.d/{environment}/terraform.tfstate')
+
+
+@pytest.fixture(autouse=True)
+def remote_state(monkeypatch):
+    # The fixture file stands in for the encrypted backend that `state pull` reads.
+    def pull(provider, environment):
+        path = _stored(scope.ROOT, provider, environment)
+        return path.read_bytes() if path.exists() else None
+    monkeypatch.setattr(scope.tofu_state, 'pull', pull)
+
+
 def state_file(root, provider, environment, alias, address):
     kind, name = scope.PROVIDERS[provider]
     server = {'id': '00000000-0000-4000-8000-000000000001', name: alias}
@@ -27,8 +41,7 @@ def state_file(root, provider, environment, alias, address):
     data = {'version': 4, 'resources': [{'mode': 'managed', 'type': kind, 'name': 'vpn', 'instances': [{'attributes': server}]}],
             'outputs': {key: {'value': value} for key, value in
                         {'server_ipv4': address, 'server_hostname': alias, 'ssh_port': 22, 'admin_user': 'deploy'}.items()}}
-    path = root / 'terraform/providers' / provider / ('terraform.tfstate' if environment == 'prod'
-             else f'terraform.tfstate.d/{environment}/terraform.tfstate')
+    path = _stored(root, provider, environment)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(canonical(data))
     path.chmod(0o600)

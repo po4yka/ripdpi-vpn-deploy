@@ -147,8 +147,14 @@ def _scope(value, environment):
     if journal['manifest_sha256'] != digest(manifest):
         raise PromotionError('recovery-promotion-journal-mismatch')
     server = journal['observed']['server']
-    state_path = ROOT / 'terraform/providers/upcloud/terraform.tfstate.d' / manifest['environment'] / 'terraform.tfstate'
-    state = server_from_state(json.loads(read(state_path, limit=16_777_216)), manifest)
+    import tofu_state
+    try:
+        raw = tofu_state.pull('upcloud', manifest['environment'])
+    except tofu_state.StateError:
+        raw = None
+    if raw is None:
+        raise PromotionError('recovery-promotion-state-unavailable')
+    state = server_from_state(json.loads(raw), manifest)
     from recovery import matching_server
     matching_server(manifest, state, {'servers': [server]}, server)
     source = value.get('prepared', {}).get('source_inputs', value['inputs'])
