@@ -55,6 +55,28 @@ def _fresh_creation_get(path: str) -> tuple[int, dict[str, object]]:
     raise AssertionError(path)
 
 
+SERVED: dict[str, object] = {}
+
+
+def _serve(state: object) -> None:
+    SERVED["state"] = state if state is None or isinstance(state, Exception) else (
+        state if isinstance(state, bytes) else guard.canonical_json(state)
+    )
+
+
+def _pull(provider: str, environment: str) -> bytes | None:
+    assert provider == "upcloud"
+    if isinstance(SERVED["state"], Exception):
+        raise SERVED["state"]
+    return SERVED["state"]
+
+
+@pytest.fixture(autouse=True)
+def _served_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    _serve(_state_view())
+    monkeypatch.setattr(guard.tofu_state, "pull", _pull)
+
+
 def _private_file(path: Path, data: bytes) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     path.write_bytes(data)
@@ -169,15 +191,12 @@ def _manifest(
 ) -> tuple[Path, dict[str, object]]:
     private = tmp_path / "private"
     private.mkdir(mode=0o700)
-    state_bytes = guard.canonical_json(_state_view())
-    state_path = _private_file(private / "terraform.tfstate", state_bytes)
     manifest_path = private / "cleanup-manifest.json"
     manifest = guard.create_manifest(
         output_path=manifest_path,
         provider="upcloud",
         environment="ci-staging-20260829",
         workspace="ci-staging-20260829",
-        state_path=state_path,
         hostname=HOSTNAME,
         request_json=_creation_get,
         now=now,
@@ -280,9 +299,7 @@ def test_manifest_refuses_ambiguous_authenticated_server_creation(
 ) -> None:
     private = tmp_path / "private"
     private.mkdir(mode=0o700)
-    state_path = _private_file(
-        private / "terraform.tfstate", guard.canonical_json(_state_view())
-    )
+    _serve(_state_view())
 
     def request(path: str) -> tuple[int, dict[str, object]]:
         if path == "/1.3/account":
@@ -296,7 +313,6 @@ def test_manifest_refuses_ambiguous_authenticated_server_creation(
             provider="upcloud",
             environment="ci-staging-created",
             workspace="ci-staging-created",
-            state_path=state_path,
             hostname=HOSTNAME,
             request_json=request,
             now=CREATED,
@@ -310,9 +326,7 @@ def test_create_manifest_cli_authenticates_without_printing_account_identity(
 ) -> None:
     private = tmp_path / "private"
     private.mkdir(mode=0o700)
-    state_path = _private_file(
-        private / "terraform.tfstate", guard.canonical_json(_state_view())
-    )
+    _serve(_state_view())
     output = private / "manifest.json"
     monkeypatch.setenv("UPCLOUD_USERNAME", "secret-api-user")
     monkeypatch.setenv("UPCLOUD_PASSWORD", "secret-api-password")
@@ -331,8 +345,6 @@ def test_create_manifest_cli_authenticates_without_printing_account_identity(
             "ci-staging-cli",
             "--workspace",
             "ci-staging-cli",
-            "--state",
-            str(state_path),
             "--hostname",
             HOSTNAME,
         ]
@@ -350,9 +362,7 @@ def test_create_manifest_cli_accepts_only_one_complete_api_alias_pair(
 ) -> None:
     private = tmp_path / "private"
     private.mkdir(mode=0o700)
-    state_path = _private_file(
-        private / "terraform.tfstate", guard.canonical_json(_state_view())
-    )
+    _serve(_state_view())
     monkeypatch.delenv("UPCLOUD_USERNAME", raising=False)
     monkeypatch.delenv("UPCLOUD_PASSWORD", raising=False)
     monkeypatch.setenv("UPCLOUD_API_USERNAME", "secret-api-user")
@@ -376,8 +386,6 @@ def test_create_manifest_cli_accepts_only_one_complete_api_alias_pair(
             "ci-staging-alias",
             "--workspace",
             "ci-staging-alias",
-            "--state",
-            str(state_path),
             "--hostname",
             HOSTNAME,
         ]
@@ -394,9 +402,7 @@ def test_create_manifest_cli_accepts_one_literal_bearer_token(
 ) -> None:
     private = tmp_path / "private"
     private.mkdir(mode=0o700)
-    state_path = _private_file(
-        private / "terraform.tfstate", guard.canonical_json(_state_view())
-    )
+    _serve(_state_view())
     for name in (
         "UPCLOUD_USERNAME",
         "UPCLOUD_PASSWORD",
@@ -424,8 +430,6 @@ def test_create_manifest_cli_accepts_one_literal_bearer_token(
             "ci-staging-token",
             "--workspace",
             "ci-staging-token",
-            "--state",
-            str(state_path),
             "--hostname",
             HOSTNAME,
         ]
@@ -462,9 +466,7 @@ def test_create_manifest_cli_refuses_partial_or_ambiguous_credential_pairs(
 ) -> None:
     private = tmp_path / "private"
     private.mkdir(mode=0o700)
-    state_path = _private_file(
-        private / "terraform.tfstate", guard.canonical_json(_state_view())
-    )
+    _serve(_state_view())
     for name in (
         "UPCLOUD_USERNAME",
         "UPCLOUD_PASSWORD",
@@ -488,38 +490,10 @@ def test_create_manifest_cli_refuses_partial_or_ambiguous_credential_pairs(
                 "ci-staging-ambiguous",
                 "--workspace",
                 "ci-staging-ambiguous",
-                "--state",
-                str(state_path),
                 "--hostname",
                 HOSTNAME,
             ]
         )
-
-
-def test_manifest_accepts_owned_state_under_non_writable_repository_directory(
-    tmp_path: Path,
-) -> None:
-    repo_state = tmp_path / "terraform.tfstate.d" / "ci-staging-20260829"
-    repo_state.mkdir(parents=True, mode=0o755)
-    repo_state.chmod(0o755)
-    state_path = _private_file(
-        repo_state / "terraform.tfstate", guard.canonical_json(_state_view())
-    )
-    private = tmp_path / "private"
-    private.mkdir(mode=0o700)
-
-    manifest = guard.create_manifest(
-        output_path=private / "manifest.json",
-        provider="upcloud",
-        environment="ci-staging-20260829",
-        workspace="ci-staging-20260829",
-        state_path=state_path,
-        hostname=HOSTNAME,
-        request_json=_creation_get,
-        now=CREATED,
-    )
-
-    assert manifest["state"]["path"] == str(state_path.absolute())
 
 
 @pytest.mark.parametrize("bad_mode", [0o400, 0o640, 0o644])
@@ -585,15 +559,16 @@ def test_authorize_reservation_refuses_same_bytes_replacement_during_account_che
 ) -> None:
     manifest_path, manifest = _manifest(tmp_path)
     evidence_path = manifest_path.with_name("evidence.json")
-    target = (
-        manifest_path if replaced == "manifest" else Path(manifest["state"]["path"])
-    )
 
     def replace_during_account(path: str) -> tuple[int, dict[str, object]]:
         assert path == "/1.3/account"
-        replacement = target.with_name(f".{target.name}.replacement")
-        _private_file(replacement, target.read_bytes())
-        os.replace(replacement, target)
+        if replaced == "state":
+            _serve(b"drifted state\n")
+        else:
+            target = manifest_path
+            replacement = target.with_name(f".{target.name}.replacement")
+            _private_file(replacement, target.read_bytes())
+            os.replace(replacement, target)
         return 200, {"account": {"username": ACCOUNT_USERNAME}}
 
     with pytest.raises(guard.GuardError, match="changed during provider authorization"):
@@ -690,7 +665,7 @@ def test_manifest_refuses_noncanonical_cleanup_schedule(tmp_path: Path) -> None:
         guard.load_manifest(manifest_path, now=CREATED)
 
 
-@pytest.mark.parametrize("kind", ["manifest", "state", "evidence"])
+@pytest.mark.parametrize("kind", ["manifest", "evidence"])
 def test_private_paths_refuse_symlinked_higher_ancestor(
     tmp_path: Path, kind: str
 ) -> None:
@@ -699,34 +674,14 @@ def test_private_paths_refuse_symlinked_higher_ancestor(
     private.mkdir(parents=True, mode=0o700)
     alias = tmp_path / "alias"
     alias.symlink_to(real_root, target_is_directory=True)
-    state_path = _private_file(
-        private / "terraform.tfstate", guard.canonical_json(_state_view())
-    )
+    _serve(_state_view())
     manifest_path = private / "manifest.json"
-
-    if kind == "state":
-        with pytest.raises(
-            guard.GuardError,
-            match="ancestor.*symlink|lifecycle artifact parent is unavailable or unsafe",
-        ):
-            guard.create_manifest(
-                output_path=manifest_path,
-                provider="upcloud",
-                environment="ci-staging-ancestor",
-                workspace="ci-staging-ancestor",
-                state_path=alias / "private/terraform.tfstate",
-                hostname=HOSTNAME,
-                request_json=_creation_get,
-                now=CREATED,
-            )
-        return
 
     guard.create_manifest(
         output_path=manifest_path,
         provider="upcloud",
         environment="ci-staging-ancestor",
         workspace="ci-staging-ancestor",
-        state_path=state_path,
         hostname=HOSTNAME,
         request_json=_creation_get,
         now=CREATED,
@@ -765,7 +720,7 @@ def test_manifest_refuses_different_destroy_environment(tmp_path: Path) -> None:
 
 def test_manifest_refuses_state_drift(tmp_path: Path) -> None:
     manifest_path, manifest = _manifest(tmp_path)
-    Path(manifest["state"]["path"]).write_bytes(b"foreign state\n")
+    _serve(b"foreign state\n")
 
     with pytest.raises(guard.GuardError, match="state digest"):
         guard.load_manifest(manifest_path, now=CREATED)
@@ -780,9 +735,7 @@ def test_manifest_refuses_malformed_authenticated_account_identity(
 ) -> None:
     private = tmp_path / "private"
     private.mkdir(mode=0o700)
-    state_path = _private_file(
-        private / "terraform.tfstate", guard.canonical_json(_state_view())
-    )
+    _serve(_state_view())
 
     def malformed_account(path: str) -> tuple[int, dict[str, object]]:
         assert path == "/1.3/account"
@@ -794,7 +747,6 @@ def test_manifest_refuses_malformed_authenticated_account_identity(
             provider="upcloud",
             environment="ci-staging-account",
             workspace="ci-staging-account",
-            state_path=state_path,
             hostname=HOSTNAME,
             request_json=malformed_account,
             now=CREATED,
@@ -817,9 +769,7 @@ def test_manifest_refuses_provider_backups_outside_exact_cleanup_scope(
         server["template"][0]["backup_rule"] = [{"interval": "daily"}]
     else:
         server["simple_backup"] = [{"plan": "daily", "time": "2200"}]
-    state_path = _private_file(
-        private / "terraform.tfstate", guard.canonical_json(state)
-    )
+    _serve(state)
 
     with pytest.raises(guard.GuardError, match="provider backups"):
         guard.create_manifest(
@@ -827,7 +777,6 @@ def test_manifest_refuses_provider_backups_outside_exact_cleanup_scope(
             provider="upcloud",
             environment="ci-staging-with-backup",
             workspace="ci-staging-with-backup",
-            state_path=state_path,
             hostname=HOSTNAME,
             request_json=_creation_get,
             now=CREATED,
@@ -848,9 +797,7 @@ def test_manifest_refuses_secondary_public_ipv4_outside_exact_cleanup_scope(
     server["network_interface"].insert(
         1, {"type": "public", "ip_address_family": "IPv4"}
     )
-    state_path = _private_file(
-        private / "terraform.tfstate", guard.canonical_json(state)
-    )
+    _serve(state)
 
     with pytest.raises(guard.GuardError, match="network interfaces exceed"):
         guard.create_manifest(
@@ -858,7 +805,6 @@ def test_manifest_refuses_secondary_public_ipv4_outside_exact_cleanup_scope(
             provider="upcloud",
             environment="ci-staging-secondary-ip",
             workspace="ci-staging-secondary-ip",
-            state_path=state_path,
             hostname=HOSTNAME,
             request_json=_creation_get,
             now=CREATED,
@@ -1047,14 +993,14 @@ def test_mark_apply_refuses_replacement_during_account_without_rewrite(
     manifest_path, manifest = _manifest(tmp_path)
     evidence_path = _reserved_evidence_path(manifest_path)
     reserved = evidence_path.read_bytes()
-    target = (
-        manifest_path if replaced == "manifest" else Path(manifest["state"]["path"])
-    )
 
     def replace_during_account(path: str) -> tuple[int, dict[str, object]]:
-        replacement = target.with_name(f".{target.name}.replacement")
-        _private_file(replacement, target.read_bytes())
-        os.replace(replacement, target)
+        if replaced == "state":
+            _serve(b"drifted state\n")
+        else:
+            replacement = manifest_path.with_name(f".{manifest_path.name}.replacement")
+            _private_file(replacement, manifest_path.read_bytes())
+            os.replace(replacement, manifest_path)
         return 200, {"account": {"username": ACCOUNT_USERNAME}}
 
     with pytest.raises(guard.GuardError, match="pre-apply authorization"):
@@ -1665,11 +1611,10 @@ def test_new_manifest_path_cannot_bypass_node_reservation(
     evidence_path = _reserved_evidence_path(manifest_path)
     if started:
         _mark_started(manifest_path, evidence_path)
-    state_path = Path(before["state"]["path"])
     refreshed = _state_view()
     refreshed["serial"] += 1
     refreshed["resources"][1]["instances"][0]["attributes"]["firewall"] = True
-    _private_file(state_path, guard.canonical_json(refreshed))
+    _serve(refreshed)
     output = manifest_path.with_name("refreshed.json")
     with pytest.raises(guard.GuardError):
         guard.create_manifest(
@@ -1677,7 +1622,6 @@ def test_new_manifest_path_cannot_bypass_node_reservation(
             provider="upcloud",
             environment="ci-staging-20260829",
             workspace="ci-staging-20260829",
-            state_path=state_path,
             hostname=HOSTNAME,
             request_json=_creation_get,
             now=CREATED,
@@ -1695,11 +1639,12 @@ def test_same_node_cannot_reserve_a_second_evidence_path(tmp_path: Path) -> None
     assert not second.exists()
 
 
-def _refresh_manifest_state(manifest: dict[str, object]) -> Path:
+def _refresh_manifest_state(manifest: dict[str, object]) -> dict[str, object]:
     state = _state_view()
     state["serial"] += 1
     state["resources"][1]["instances"][0]["attributes"]["firewall"] = True
-    return _private_file(Path(manifest["state"]["path"]), guard.canonical_json(state))
+    _serve(state)
+    return state
 
 
 def _reissue(previous: Path, before: dict[str, object], output: Path | None = None):
@@ -1709,7 +1654,6 @@ def _reissue(previous: Path, before: dict[str, object], output: Path | None = No
         provider="upcloud",
         environment="ci-staging-20260829",
         workspace="ci-staging-20260829",
-        state_path=Path(before["state"]["path"]),
         hostname=HOSTNAME,
         request_json=_creation_get,
         now=CREATED,
@@ -1760,21 +1704,18 @@ def test_explicit_reissue_refuses_outstanding_cleanup(
 
 
 def test_reissue_refuses_changed_storage_identity(tmp_path: Path) -> None:
-    import json
-
     previous, before = _manifest(tmp_path)
-    state_path = _refresh_manifest_state(before)
-    state = json.loads(state_path.read_bytes())
+    state = _refresh_manifest_state(before)
     state["resources"][1]["instances"][0]["attributes"]["template"][0]["id"] = (
         SERVER_UUID
     )
-    _private_file(state_path, guard.canonical_json(state))
+    _serve(state)
     with pytest.raises(guard.GuardError, match="preserve identity"):
         _reissue(previous, before)
     assert not previous.with_name("refreshed.json").exists()
 
 
-def test_manifest_and_state_copies_do_not_change_node_coordination(
+def test_manifest_copy_does_not_change_node_coordination(
     tmp_path: Path,
 ) -> None:
     previous, before = _manifest(tmp_path)
@@ -1786,17 +1727,12 @@ def test_manifest_and_state_copies_do_not_change_node_coordination(
         guard.reserve_evidence(
             copied_manifest, previous.with_name("other.json"), now=CREATED
         )
-    copied_state = _private_file(
-        previous.with_name("copied-state.json"),
-        Path(before["state"]["path"]).read_bytes(),
-    )
     with pytest.raises(guard.GuardError, match="outstanding destruction reservation"):
         guard.create_manifest(
             output_path=previous.with_name("new.json"),
             provider="upcloud",
             environment="ci-staging-20260829",
             workspace="ci-staging-20260829",
-            state_path=copied_state,
             hostname=HOSTNAME,
             request_json=_creation_get,
             now=CREATED,
@@ -1850,7 +1786,6 @@ def test_committed_manifest_publication_retry_acknowledges_exact_request(
         provider="upcloud",
         environment="ci-staging-20260829",
         workspace="ci-staging-20260829",
-        state_path=Path(before["state"]["path"]),
         hostname=HOSTNAME,
         request_json=_creation_get,
         now=CREATED,
@@ -1949,6 +1884,7 @@ sys.path.insert(0, str(Path(sys.argv[1]).parent))
 spec = importlib.util.spec_from_file_location('guard', sys.argv[1])
 g = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(g)
+g.tofu_state.pull = lambda *args, **kwargs: bytes.fromhex(sys.argv[5])
 g._private_write_new = lambda *args, **kwargs: os._exit(73)
 g.reserve_evidence(Path(sys.argv[2]), Path(sys.argv[3]), now=datetime.fromisoformat(sys.argv[4]))
 """
@@ -1962,6 +1898,7 @@ g.reserve_evidence(Path(sys.argv[2]), Path(sys.argv[3]), now=datetime.fromisofor
             str(previous),
             str(evidence),
             CREATED.isoformat(),
+            SERVED['state'].hex(),
         ],
         capture_output=True,
         timeout=10,
@@ -1994,6 +1931,7 @@ sys.path.insert(0, str(Path(sys.argv[1]).parent))
 spec = importlib.util.spec_from_file_location('guard', sys.argv[1])
 g = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(g)
+g.tofu_state.pull = lambda *args, **kwargs: bytes.fromhex(sys.argv[5])
 g.reserve_evidence(Path(sys.argv[2]), Path(sys.argv[3]), now=datetime.fromisoformat(sys.argv[4]))
 """
     real_run = subprocess.run
@@ -2014,6 +1952,7 @@ g.reserve_evidence(Path(sys.argv[2]), Path(sys.argv[3]), now=datetime.fromisofor
             str(previous),
             str(evidence),
             CREATED.isoformat(),
+            SERVED['state'].hex(),
         ]
         accepted = real_run(
             arguments, env=env, pass_fds=pass_fds, capture_output=True, timeout=10
@@ -2093,16 +2032,14 @@ def test_initial_manifest_accepts_explicitly_disabled_provider_firewall(
 ) -> None:
     state = _state_view()
     state["resources"][1]["instances"][0]["attributes"]["firewall"] = False
-    state_path = _private_file(
-        tmp_path / "private" / "terraform.tfstate", guard.canonical_json(state)
-    )
-    output = state_path.with_name("manifest.json")
+    _serve(state)
+    (tmp_path / "private").mkdir(mode=0o700)
+    output = tmp_path / "private" / "manifest.json"
     manifest = guard.create_manifest(
         output_path=output,
         provider="upcloud",
         environment="ci-staging-disabled",
         workspace="ci-staging-disabled",
-        state_path=state_path,
         hostname=HOSTNAME,
         request_json=_creation_get,
         now=CREATED,
@@ -2120,6 +2057,34 @@ def test_legacy_upcloud_manifest_cannot_enter_registered_lifecycle(
         guard.load_manifest(copied, now=CREATED)
 
 
+def test_manifest_with_state_path_binding_is_refused(tmp_path: Path) -> None:
+    path, manifest = _manifest(tmp_path)
+    old_shape = {**manifest, "state": {"path": "/x/terraform.tfstate", **manifest["state"]}}
+    copied = _private_file(path.with_name("old-shape.json"), guard.canonical_json(old_shape))
+    with pytest.raises(guard.GuardError, match="state binding"):
+        guard.load_manifest(copied, now=CREATED)
+
+
+@pytest.mark.parametrize("served", [None, guard.tofu_state.StateError("state-pull-failed")], ids=["empty", "pull-failed"])
+def test_state_pull_failure_or_empty_state_refuses_manifest_creation_and_load(
+    tmp_path: Path, served: object
+) -> None:
+    manifest_path, _ = _manifest(tmp_path)
+    _serve(served)
+    with pytest.raises(guard.GuardError, match="state"):
+        guard.load_manifest(manifest_path, now=CREATED)
+    with pytest.raises(guard.GuardError, match="state"):
+        guard.create_manifest(
+            output_path=tmp_path / "private" / "second.json",
+            provider="upcloud",
+            environment="ci-staging-20260829",
+            workspace="ci-staging-20260829",
+            hostname=HOSTNAME,
+            request_json=_creation_get,
+            now=CREATED,
+        )
+
+
 @pytest.mark.parametrize("failure", [None, "foreign-plan-seed", "seed-still-present"])
 def test_seed_storage_is_bound_through_manifest_plan_and_absence(tmp_path: Path, failure) -> None:
     seed_uuid = "11223344-5566-4788-99aa-bbccddeeff00"
@@ -2134,9 +2099,9 @@ def test_seed_storage_is_bound_through_manifest_plan_and_absence(tmp_path: Path,
     state["resources"][1]["instances"][0]["attributes"]["storage_devices"] = [{"storage": seed_uuid}]
     private = tmp_path / "private"
     private.mkdir(mode=0o700)
-    state_path = _private_file(private / "state.json", guard.canonical_json(state))
+    _serve(state)
     manifest_path = private / "manifest.json"
-    manifest = guard.create_manifest(output_path=manifest_path, provider="upcloud", environment="ci-staging-20260829", workspace="ci-staging-20260829", state_path=state_path, hostname=HOSTNAME, request_json=_creation_get, now=CREATED)
+    manifest = guard.create_manifest(output_path=manifest_path, provider="upcloud", environment="ci-staging-20260829", workspace="ci-staging-20260829", hostname=HOSTNAME, request_json=_creation_get, now=CREATED)
     assert manifest["ssh_seed"] == {"uuid": seed_uuid, "filesystem_uuid": filesystem_uuid, "image_sha256": "a" * 64}
     evidence = _reserved_evidence_path(manifest_path)
     plan = _destroy_plan()
