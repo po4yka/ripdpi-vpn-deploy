@@ -639,7 +639,7 @@ ifneq ($(filter retire-unbound-staging-client retire-unbound-staging-executor,$(
 ifneq ($(words $(MAKECMDGOALS)),1)
 $(error unbound staging client retirement requires exactly one Make goal)
 endif
-_UNBOUND_RETIRE_ALLOWED_COMMAND_VARIABLES := UNBOUND_STAGING_INTENT STAGING_CLEANUP_MANIFEST STAGING_POST_DESTROY_EVIDENCE STAGING_CLEANUP_STATE SOPS_FILE UNBOUND_CLIENT_JOURNAL UNBOUND_CLIENT_RECEIPT
+_UNBOUND_RETIRE_ALLOWED_COMMAND_VARIABLES := UNBOUND_STAGING_INTENT STAGING_CLEANUP_MANIFEST STAGING_POST_DESTROY_EVIDENCE SOPS_FILE UNBOUND_CLIENT_JOURNAL UNBOUND_CLIENT_RECEIPT
 ifeq ($(MAKECMDGOALS),retire-unbound-staging-executor)
 _UNBOUND_RETIRE_ALLOWED_COMMAND_VARIABLES += UNBOUND_EXECUTOR_RECEIPT
 endif
@@ -651,16 +651,15 @@ endif
 ifneq ($(strip $(_UNBOUND_RETIRE_FORBIDDEN_COMMAND_VARIABLES)),)
 $(error unbound staging client retirement accepts only its documented command-line fields)
 endif
-_UNBOUND_RETIRE_LITERAL_INPUTS := $(value UNBOUND_STAGING_INTENT)$(value STAGING_CLEANUP_MANIFEST)$(value STAGING_POST_DESTROY_EVIDENCE)$(value STAGING_CLEANUP_STATE)$(value SOPS_FILE)$(value UNBOUND_CLIENT_JOURNAL)$(value UNBOUND_CLIENT_RECEIPT)$(value UNBOUND_EXECUTOR_RECEIPT)$(value ENV)$(value PROVIDER)$(value HOME)$(value DEPLOY_SOURCE_REVISION)$(value DEPLOYABLE_SOURCE_DIGEST)
+_UNBOUND_RETIRE_LITERAL_INPUTS := $(value UNBOUND_STAGING_INTENT)$(value STAGING_CLEANUP_MANIFEST)$(value STAGING_POST_DESTROY_EVIDENCE)$(value SOPS_FILE)$(value UNBOUND_CLIENT_JOURNAL)$(value UNBOUND_CLIENT_RECEIPT)$(value UNBOUND_EXECUTOR_RECEIPT)$(value ENV)$(value PROVIDER)$(value HOME)$(value DEPLOY_SOURCE_REVISION)$(value DEPLOYABLE_SOURCE_DIGEST)
 override UNBOUND_STAGING_INTENT := $(value UNBOUND_STAGING_INTENT)
 override STAGING_CLEANUP_MANIFEST := $(value STAGING_CLEANUP_MANIFEST)
 override STAGING_POST_DESTROY_EVIDENCE := $(value STAGING_POST_DESTROY_EVIDENCE)
-override STAGING_CLEANUP_STATE := $(value STAGING_CLEANUP_STATE)
 override SOPS_FILE := $(value SOPS_FILE)
 override UNBOUND_CLIENT_JOURNAL := $(value UNBOUND_CLIENT_JOURNAL)
 override UNBOUND_CLIENT_RECEIPT := $(value UNBOUND_CLIENT_RECEIPT)
 override UNBOUND_EXECUTOR_RECEIPT := $(value UNBOUND_EXECUTOR_RECEIPT)
-export UNBOUND_STAGING_INTENT STAGING_CLEANUP_MANIFEST STAGING_POST_DESTROY_EVIDENCE STAGING_CLEANUP_STATE SOPS_FILE UNBOUND_CLIENT_JOURNAL UNBOUND_CLIENT_RECEIPT UNBOUND_EXECUTOR_RECEIPT
+export UNBOUND_STAGING_INTENT STAGING_CLEANUP_MANIFEST STAGING_POST_DESTROY_EVIDENCE SOPS_FILE UNBOUND_CLIENT_JOURNAL UNBOUND_CLIENT_RECEIPT UNBOUND_EXECUTOR_RECEIPT
 override ENV := $(value ENV)
 override PROVIDER := $(value PROVIDER)
 override HOME := $(value HOME)
@@ -1383,14 +1382,13 @@ DESTROY_ARGS ?=
 # These staging goals treat caller fields as literal data. Keep them separate
 # from the free-form generic destroy surface and reject mixed goal execution.
 ifneq ($(filter staging-cleanup-manifest staging-cleanup-reissue staging-destroy,$(MAKECMDGOALS)),)
-export STAGING_CLEANUP_MANIFEST STAGING_CLEANUP_PREVIOUS_MANIFEST STAGING_CLEANUP_STATE STAGING_CLEANUP_HOSTNAME STAGING_POST_DESTROY_EVIDENCE
+export STAGING_CLEANUP_MANIFEST STAGING_CLEANUP_PREVIOUS_MANIFEST STAGING_CLEANUP_HOSTNAME STAGING_POST_DESTROY_EVIDENCE
 unexport MAKEFLAGS MFLAGS
 MAKEOVERRIDES :=
 endif
 
 .PHONY: staging-cleanup-manifest staging-cleanup-reissue staging-destroy
 staging-cleanup-manifest staging-cleanup-reissue: override STAGING_CLEANUP_MANIFEST := $(value STAGING_CLEANUP_MANIFEST)
-staging-cleanup-manifest staging-cleanup-reissue: override STAGING_CLEANUP_STATE := $(value STAGING_CLEANUP_STATE)
 staging-cleanup-manifest staging-cleanup-reissue: override STAGING_CLEANUP_HOSTNAME := $(value STAGING_CLEANUP_HOSTNAME)
 staging-cleanup-reissue: override STAGING_CLEANUP_PREVIOUS_MANIFEST := $(value STAGING_CLEANUP_PREVIOUS_MANIFEST)
 staging-destroy: override STAGING_CLEANUP_MANIFEST := $(value STAGING_CLEANUP_MANIFEST)
@@ -1407,7 +1405,6 @@ staging-cleanup-manifest staging-cleanup-reissue:
 	  --provider "$${PROVIDER}" \
 	  --environment "$${ENV}" \
 	  --workspace "$${ENV}" \
-	  --state "$${STAGING_CLEANUP_STATE}" \
 	  --hostname "$${STAGING_CLEANUP_HOSTNAME}"
 
 staging-destroy:
@@ -2061,14 +2058,13 @@ deonboard-disposable-liveness:
 .PHONY: retire-unbound-staging-client
 retire-unbound-staging-client:
 	@test -n "$${UNBOUND_STAGING_INTENT}" -a -n "$${STAGING_CLEANUP_MANIFEST}" \
-	  -a -n "$${STAGING_POST_DESTROY_EVIDENCE}" -a -n "$${STAGING_CLEANUP_STATE}" \
+	  -a -n "$${STAGING_POST_DESTROY_EVIDENCE}" \
 	  -a -n "$${SOPS_FILE}" -a -n "$${UNBOUND_CLIENT_JOURNAL}" \
-	  -a -n "$${UNBOUND_CLIENT_RECEIPT}" || { echo "usage: make retire-unbound-staging-client UNBOUND_STAGING_INTENT=… STAGING_CLEANUP_MANIFEST=… STAGING_POST_DESTROY_EVIDENCE=… STAGING_CLEANUP_STATE=… SOPS_FILE=… UNBOUND_CLIENT_JOURNAL=… UNBOUND_CLIENT_RECEIPT=…"; exit 1; }
+	  -a -n "$${UNBOUND_CLIENT_RECEIPT}" || { echo "usage: make retire-unbound-staging-client UNBOUND_STAGING_INTENT=… STAGING_CLEANUP_MANIFEST=… STAGING_POST_DESTROY_EVIDENCE=… SOPS_FILE=… UNBOUND_CLIENT_JOURNAL=… UNBOUND_CLIENT_RECEIPT=…"; exit 1; }
 	@build-gate -- python3 ./scripts/retire-unbound-staging-client.py \
 	  --intent "$${UNBOUND_STAGING_INTENT}" \
 	  --cleanup-manifest "$${STAGING_CLEANUP_MANIFEST}" \
 	  --absence-evidence "$${STAGING_POST_DESTROY_EVIDENCE}" \
-	  --state "$${STAGING_CLEANUP_STATE}" \
 	  --sops-file "$${SOPS_FILE}" \
 	  --journal "$${UNBOUND_CLIENT_JOURNAL}" \
 	  --receipt "$${UNBOUND_CLIENT_RECEIPT}"
@@ -2076,14 +2072,13 @@ retire-unbound-staging-client:
 .PHONY: retire-unbound-staging-executor
 retire-unbound-staging-executor:
 	@test -n "$${UNBOUND_STAGING_INTENT}" -a -n "$${STAGING_CLEANUP_MANIFEST}" \
-	  -a -n "$${STAGING_POST_DESTROY_EVIDENCE}" -a -n "$${STAGING_CLEANUP_STATE}" \
+	  -a -n "$${STAGING_POST_DESTROY_EVIDENCE}" \
 	  -a -n "$${SOPS_FILE}" -a -n "$${UNBOUND_CLIENT_JOURNAL}" \
 	  -a -n "$${UNBOUND_CLIENT_RECEIPT}" -a -n "$${UNBOUND_EXECUTOR_RECEIPT}" || { echo "usage: make retire-unbound-staging-executor with the unbound-client inputs and UNBOUND_EXECUTOR_RECEIPT"; exit 1; }
 	@build-gate -- python3 ./scripts/retire-unbound-staging-executor.py \
 	  --intent "$${UNBOUND_STAGING_INTENT}" \
 	  --cleanup-manifest "$${STAGING_CLEANUP_MANIFEST}" \
 	  --absence-evidence "$${STAGING_POST_DESTROY_EVIDENCE}" \
-	  --state "$${STAGING_CLEANUP_STATE}" \
 	  --sops-file "$${SOPS_FILE}" \
 	  --journal "$${UNBOUND_CLIENT_JOURNAL}" \
 	  --receipt "$${UNBOUND_CLIENT_RECEIPT}" \
