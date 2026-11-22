@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-22
+goal: ANS-1795357817411977 Add a device-full staging cohort with WARP outbound
+  for refresh acceptance

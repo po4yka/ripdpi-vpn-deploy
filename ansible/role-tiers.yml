@@ -121,6 +121,7 @@ family_profiles:
   - group_vars/vpn-device-full.yml
   - group_vars/vpn-device-full-tailnet.yml
   - group_vars/vpn-device-full-staging.yml
+  - group_vars/vpn-device-full-warp-staging.yml
   - group_vars/vpn-p1-web.yml
   - group_vars/vpn-p2-udp.yml
   - group_vars/vpn-p2-udp-staging.yml

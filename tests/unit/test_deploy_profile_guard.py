@@ -85,6 +85,7 @@ def test_live_family_profile_list_includes_explicit_profiles():
         "group_vars/vpn-p1-web.yml",
         "group_vars/vpn-p2-udp.yml",
         "group_vars/vpn-p2-udp-staging.yml",
+        "group_vars/vpn-device-full-warp-staging.yml",
         "group_vars/vpn-p0.yml",
         "group_vars/vpn-p1p2.yml",
         "group_vars/vpn-fullstack.yml",
@@ -149,6 +150,13 @@ def test_live_explicit_profile_surfaces_are_locked():
                                      "enable_backup": False}
     for key in ("hysteria_masquerade_tcp", "hysteria_resource_profile_default"):
         assert p2_udp_staging[key] == p2_udp_data[key]
+
+    # Disposable staging checks the WARP namespace refresh on the device-full transports.
+    staging = yaml.safe_load((group_vars / "vpn-device-full-staging.yml").read_text())
+    warp_staging = yaml.safe_load((group_vars / "vpn-device-full-warp-staging.yml").read_text())
+    assert warp_staging["vpn"] == {**staging["vpn"], "enable_warp_outbound": True,
+                                   "warp_outbound_routes": [{"domain": ["full:www.cloudflare.com"]}]}
+    assert warp_staging["public_site_canonical_url"] == staging["public_site_canonical_url"]
 
     assert lab["allow_research_roles"] == []
     assert lab["vpn"]["enable_split_hop_egress"] is False

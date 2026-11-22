@@ -51,6 +51,7 @@ Deployment profile files make public listener surfaces explicit:
 | `vpn-device-full.yml` | family-standard + P2 AmneziaWG |
 | `vpn-device-full-tailnet.yml` | device-full surface; SSH over the Tailnet |
 | `vpn-device-full-staging.yml` | device-full transports for recovery rehearsal; monitoring and backup off |
+| `vpn-device-full-warp-staging.yml` | device-full-staging plus the WARP outbound backend, for a disposable WARP refresh check |
 | `vpn-p2-udp-staging.yml` | p2-udp transports for a disposable staging dry-run; monitoring, watchdog and backup off |
 | `vpn-prod-hardened.yml` | device-full surface + stricter host hardening |
 | `vpn-lab.yml` | lab/pilot surface; research roles require `allow_research_roles` |

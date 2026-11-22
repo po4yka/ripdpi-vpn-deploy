@@ -172,6 +172,8 @@ its complete `vpn` map follows the controller's replacement semantics. This
 profile does not establish monitoring or backup acceptance. `vpn-p2-udp-staging`
 is the `vpn-p2-udp` map with monitoring, watchdog and backup off and the
 generated staging origin, for p2-udp dry-runs with staging secrets only.
+`vpn-device-full-warp-staging` is `vpn-device-full-staging` with the WARP
+outbound on and one route, for a disposable check of the WARP namespace refresh.
 `vpn-device-full-tailnet` retains the complete device-full service set with Tailnet management enabled for
 blue-green replacements; it still requires exact approved controller sources.
 
