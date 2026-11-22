@@ -142,7 +142,8 @@ def prepare(environment):
                 raise PreparationError("intent-output-not-empty")
             for name, value in (
                 ("intent.json", intent),
-                ("deployment-inputs.json", {target["inventory_alias"]: str(intent_path)}),
+                # The deploy controller takes the intent object itself as the alias value, not its path.
+                ("deployment-inputs.json", {target["inventory_alias"]: intent}),
             ):
                 _bound_directory(output, directory)
                 publishing = True
