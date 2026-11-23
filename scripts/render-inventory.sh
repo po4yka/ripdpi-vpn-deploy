@@ -177,12 +177,9 @@ terraform_json_var() {
   local env="$2"
   local tfvars_path="$3"
   local expr="$4"
-  local raw
-  local decoded
-
-  raw="$(PROVIDER="$provider" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" console -no-color -var-file="$tfvars_path" <<< "jsonencode(${expr})")"
-  decoded="$(jq -r . <<< "$raw")"
-  jq -c . <<< "$decoded"
+  PROVIDER="$provider" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" console \
+    -lock=false -no-color -var-file="$tfvars_path" <<< "jsonencode(${expr})" | \
+    jq -cs 'if length == 1 then .[0] | fromjson else error("expected one console value") end'
 }
 
 confirm_vultr_guest_ipv4() {
