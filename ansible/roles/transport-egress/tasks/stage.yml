@@ -319,9 +319,13 @@
             (_transport_egress_namespace_policy.stdout | from_json).changed | default(false) | bool
           no_log: true
           when: transport_egress_warp_enabled | bool
+        # The WARP gateway Requires= the vendor unit, which stays masked until guarded activation;
+        # every unit checked here is named, so dependency start jobs are not part of this syntax check.
         - name: Verify actual published unit syntax
           ansible.builtin.command:
-            argv: '{{ [''systemd-analyze'', ''verify'', ''/etc/systemd/system/ripdpi-transport-normalizer.service'']
+            argv: '{{ [''systemd-analyze'', ''verify'']
+              + ([''--recursive-errors=no''] if transport_egress_warp_enabled | bool else [])
+              + [''/etc/systemd/system/ripdpi-transport-normalizer.service'']
               + (_transport_egress_runtime_unit_candidates | map(attribute=''path'') | map(''basename'')
               | map(''regex_replace'', ''^'', _transport_egress_candidate_dir.path ~ ''/'') | list) }}'
           changed_when: false

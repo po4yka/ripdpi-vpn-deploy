@@ -1168,3 +1168,6 @@ def test_generation_units_have_one_publication_lane():
     assert names.index('Publish the complete validated candidate') < names.index('Verify actual published unit syntax')
     verify = next(task for task in publish if task['name'] == 'Verify actual published unit syntax')
     assert '_transport_egress_candidate_dir.path' in verify['ansible.builtin.command']['argv']
+    # Only WARP keeps a masked vendor dependency at this point; other egress stays fully recursive.
+    assert "([''--recursive-errors=no''] if transport_egress_warp_enabled | bool else [])" in \
+        (ROOT / 'ansible/roles/transport-egress/tasks/stage.yml').read_text()
