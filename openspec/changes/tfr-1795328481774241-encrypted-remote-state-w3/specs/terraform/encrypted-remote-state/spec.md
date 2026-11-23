@@ -71,7 +71,7 @@ For each root and workspace the migration MUST record an encrypted backup, the r
 
 ### Requirement: REQ-STATE-RECOVERY — Restore from versions without CI
 
-The operator MUST be able to restore any retained state version from the MacBook with the break-glass passphrase and operator state-prefix key, without GitHub. Restore MUST refuse a version whose lineage differs from the current one unless the operator passes an explicit override.
+The operator MUST be able to restore any retained state version from the MacBook with the break-glass passphrase and operator state-prefix key, without GitHub. Restore MUST refuse a version whose lineage differs from the current one unless the operator passes an explicit override. Both ordinary and forced restores MUST hold the workspace state lock from the current-state read through verification of the new version.
 
 #### Scenario: Bad apply
 

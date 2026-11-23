@@ -25,7 +25,7 @@ GREEN_KEY = "state/workspaces/versionId-green/state/upcloud/terraform.tfstate"
 
 # Serves the version listing and objects from STUB_STORE; logs argv and stdin.
 CURL = """#!/usr/bin/env python3
-import json, os, sys, urllib.parse
+import base64, hashlib, json, os, sys, urllib.parse
 store = os.environ["STUB_STORE"]
 next_page = os.path.join(store, "next-page")
 if "key-marker=" in sys.argv[-1]:
@@ -39,6 +39,23 @@ if os.environ.get("REPLACE_SOURCE"):
 if os.environ.get("STUB_DIAGNOSTIC"):
     sys.stdout.write("<Error><Code>" + os.environ["STUB_DIAGNOSTIC"] + "</Code></Error>")
     sys.exit(22)
+if "--request" in sys.argv:
+    assert sys.argv[sys.argv.index("--request") + 1] == "PUT"
+    assert "If-None-Match: *" in sys.argv and url.path.endswith(".tflock")
+    raw = sys.argv[sys.argv.index("--data-binary") + 1]
+    assert "x-amz-checksum-sha256: " + base64.b64encode(hashlib.sha256(raw.encode()).digest()).decode() in sys.argv
+    assert url.path == "/" + json.loads(raw)["Path"] + ".tflock"
+    if os.environ.get("STUB_REDIRECT"):
+        print("301", end="")
+        sys.exit(0)
+    try:
+        with open(os.path.join(store, "native.lock"), "x") as lock:
+            lock.write(raw)
+    except FileExistsError:
+        print("<Error><Code>PreconditionFailed</Code></Error>")
+        sys.exit(22)
+    print("200", end="")
+    sys.exit(0)
 if "versions" in query:
     sys.stdout.write(open(os.path.join(store, "listing.xml")).read())
     sys.exit(0)
@@ -77,13 +94,25 @@ with open(os.path.join(store, "wrapper.log"), "a") as log:
     log.write(json.dumps(sys.argv[1:]) + "\\n")
 if sys.argv[1] == "init":
     sys.exit(0)
+lock = os.path.join(store, "native.lock")
+if sys.argv[1] == "force-unlock":
+    assert sys.argv[2] == "-force" and json.load(open(lock))["ID"] == sys.argv[3]
+    os.unlink(lock)
+    sys.exit(0)
+assert os.path.exists(lock)
 if sys.argv[1:3] == ["state", "pull"]:
     if os.path.exists(current):
         sys.stdout.write(open(current).read())
     sys.exit(0)
-assert sys.argv[1:3] == ["state", "push"] and sys.argv[-1] == "-"
+assert sys.argv[1:3] == ["state", "push"] and sys.argv[-1] == "-" and "-lock=false" in sys.argv
+if os.environ.get("STUB_DESTROY"):
+    try:
+        with open(lock, "x"):
+            open(current, "w").write(json.dumps({"resources": []}))
+    except FileExistsError:
+        open(os.path.join(store, "destroy-refused"), "w").close()
 if os.environ.get("STUB_PUSH_FAIL"):
-    print("Error: Error acquiring the state lock", file=sys.stderr)
+    print("Error: cannot write", file=sys.stderr)
     sys.exit(1)
 pushed = sys.stdin.read()
 with open(os.path.join(store, "push.log"), "a") as log:
@@ -203,7 +232,7 @@ def test_restore_pushes_the_version_as_the_next_serial(restore, tmp_path):
     result = run(STATE_VERSION="v-good")
     assert result.returncode == 0, result.stderr
     [push] = pushes(store)
-    assert push["args"] == ["-no-color", "-"] and push["env"] == "prod"
+    assert push["args"] == ["-lock=false", "-no-color", "-"] and push["env"] == "prod"
     assert push["state"] == state(44, resources=3)
     assert "serial 44" in result.stdout
     assert f"{BUCKET}/state/upcloud/terraform.tfstate?versionId=v-good" in (store / "curl.log").read_text()
@@ -211,6 +240,35 @@ def test_restore_pushes_the_version_as_the_next_serial(restore, tmp_path):
     assert wrapper[0] == ["init", "-input=false", "-no-color", "-reconfigure"]
     assert PASSPHRASE not in (store / "tofu.log").read_text() + json.dumps(wrapper)
     assert not list(tmp_path.glob("state-restore.*"))
+
+
+def test_restore_excludes_a_destroy_between_pull_and_push(restore):
+    store, run = restore
+    (store / "objects/v-good").write_text(sealed(state(40)))
+    (store / "current.json").write_text(json.dumps(state(43)))
+    result = run("v-good", STUB_DESTROY="1")
+    assert result.returncode == 0, result.stderr
+    assert (store / "destroy-refused").exists()
+    assert not (store / "native.lock").exists()
+
+
+@pytest.mark.parametrize("force", ["", "1"])
+def test_held_lock_refuses_restore_before_reading_live_state(restore, force):
+    store, run = restore
+    (store / "objects/v-good").write_text(sealed(state(40)))
+    (store / "native.lock").write_text("other writer")
+    result = run("v-good", ALLOW_LINEAGE_CHANGE=force)
+    assert result.returncode and "PreconditionFailed" in result.stderr
+    assert (store / "native.lock").read_text() == "other writer"
+    assert "pull" not in (store / "wrapper.log").read_text() and pushes(store) == []
+
+
+def test_redirect_does_not_confirm_lock_acquisition(restore):
+    store, run = restore
+    (store / "objects/v-good").write_text(sealed(state(40)))
+    result = run("v-good", STUB_REDIRECT="1")
+    assert result.returncode and "did not confirm" in result.stderr
+    assert "pull" not in (store / "wrapper.log").read_text() and pushes(store) == []
 
 
 def test_restore_refuses_concurrent_replacement_after_push(restore):
@@ -253,7 +311,7 @@ def test_other_lineage_needs_the_explicit_override(restore):
     accepted = run("v-other", ALLOW_LINEAGE_CHANGE="1")
     assert accepted.returncode == 0, accepted.stderr
     [push] = pushes(store)
-    assert push["args"] == ["-no-color", "-force", "-"]
+    assert push["args"] == ["-lock=false", "-no-color", "-force", "-"]
     assert push["state"] == state(44, lineage="lineage-b")
 
 
@@ -295,8 +353,9 @@ def test_missing_version_and_refused_push_report_failure(restore):
     missing = run("v-missing")
     assert missing.returncode == 1 and "NoSuchVersion" in missing.stderr
     (store / "objects/v-good").write_text(sealed(state(40)))
-    locked = run("v-good", STUB_PUSH_FAIL="1")
-    assert locked.returncode == 1 and "acquiring the state lock" in locked.stderr
+    failed = run("v-good", STUB_PUSH_FAIL="1")
+    assert failed.returncode == 1 and "state push refused" in failed.stderr
+    assert not (store / "native.lock").exists()
 
 
 @pytest.mark.parametrize(("arguments", "overrides", "message"), [
