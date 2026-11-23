@@ -29,7 +29,7 @@ make tf-test
 
 ## State
 
-OpenTofu encrypts state on the client and stores it in the S3 backend selected by `TF_BACKEND_ROOT`. Set this absolute directory in the fleet Make configuration or export it for direct script calls. Each provider's backend file must set `use_lockfile = true`. `ENV=prod` selects the legacy `default` workspace. Other environments select a workspace with the same name. Initialize the workspace before its first plan.
+OpenTofu encrypts state on the client and stores it in the S3 backend selected by `TF_BACKEND_ROOT`. Set this absolute directory in the fleet Make configuration or export it for direct script calls. Each provider's backend file must set `use_lockfile = true`, `key = "state/<provider>/terraform.tfstate"` and `workspace_key_prefix = "state/workspaces"`. Replace `<provider>` with the provider directory name. `ENV=prod` selects the legacy `default` workspace. Other environments select a workspace with the same name. Initialize the workspace before its first plan.
 
 ```bash
 make PROVIDER=upcloud ENV=green init

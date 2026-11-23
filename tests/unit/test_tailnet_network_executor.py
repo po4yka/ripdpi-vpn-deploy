@@ -1780,7 +1780,7 @@ def test_daemon_partial_client_is_bounded_and_remains_reachable(tmp_path, monkey
     monkeypatch.setenv("TF_BACKEND_ROOT", str(runtime))
     monkeypatch.delenv("TFVARS_ROOT", raising=False)
     backend = runtime / "upcloud.s3.tfbackend"
-    backend.write_text("use_lockfile = true\n")
+    backend.write_text('key = "state/upcloud/terraform.tfstate"\nworkspace_key_prefix = "state/workspaces"\nuse_lockfile = true\n')
     data = data_directory(provider, "default", backend)
     data.mkdir(parents=True)
     (source / "terraform/shared").mkdir(parents=True)

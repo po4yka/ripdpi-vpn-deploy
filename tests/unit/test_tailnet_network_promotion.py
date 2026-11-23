@@ -269,13 +269,20 @@ def test_adapter_refuses_plan_without_a_reviewed_executable_capability(tmp_path)
         adapter.plan("forward")
 
 
+UPCLOUD_BACKEND = (
+    'key = "state/upcloud/terraform.tfstate"\n'
+    'workspace_key_prefix = "state/workspaces"\n'
+    'use_lockfile = true\n'
+)
+
+
 @pytest.fixture
 def snapshot_source(tmp_path, monkeypatch):
     from tofu_backend import data_directory
     monkeypatch.setenv("TF_BACKEND_ROOT", str(tmp_path))
     monkeypatch.delenv("TFVARS_ROOT", raising=False)
     backend = tmp_path / "upcloud.s3.tfbackend"
-    backend.write_text("use_lockfile = true\n")
+    backend.write_text(UPCLOUD_BACKEND)
     source = tmp_path / "source"
     (source / "scripts").mkdir(parents=True)
     provider = source / "terraform/providers/upcloud"
@@ -331,10 +338,10 @@ def test_terraform_snapshot_binds_full_selected_config_and_ignores_live_drift(
     ]
     assert environment == {
         "TF_DATA_DIR": str(destination / "terraform-data"),
-        "TF_VAR_plan_backend_scope": "upcloud/default/" + hashlib.sha256(b"use_lockfile = true\n").hexdigest(),
+        "TF_VAR_plan_backend_scope": "upcloud/default/" + hashlib.sha256(UPCLOUD_BACKEND.encode()).hexdigest(),
     }
     assert str(source) not in " ".join(command)
-    (tmp_path / "upcloud.s3.tfbackend").write_text("use_lockfile = true\nkey = \"other\"\n")
+    (tmp_path / "upcloud.s3.tfbackend").write_text(UPCLOUD_BACKEND + 'bucket = "other"\n')
     with pytest.raises(m.PromotionError, match="terraform-snapshot-invalid"):
         m.TerraformConfigSnapshot.create(source, destination, "prod")
 

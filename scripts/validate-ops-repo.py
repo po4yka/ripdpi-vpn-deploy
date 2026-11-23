@@ -132,7 +132,7 @@ def validate(root: Path) -> list[str]:
             continue
         if path.name.endswith(".s3.tfbackend"):
             try:
-                s3_settings(path.read_bytes())
+                s3_settings(path.read_bytes(), path.name.removesuffix(".s3.tfbackend"))
             except ValueError as error:
                 findings.append(f"{relative}: {error}")
             continue

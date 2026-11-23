@@ -67,7 +67,9 @@ def fixture_document() -> dict:
 
 def fixture_backend(directory: Path) -> str:
     """Select only the throwaway configuration for the stub OpenTofu client."""
-    (directory / "upcloud.s3.tfbackend").write_text('bucket = "fixture"\nuse_lockfile = true\n')
+    (directory / "upcloud.s3.tfbackend").write_text(
+        'bucket = "fixture"\nuse_lockfile = true\nkey = "state/upcloud/terraform.tfstate"\n'
+        'workspace_key_prefix = "state/workspaces"\n')
     return str(directory)
 
 

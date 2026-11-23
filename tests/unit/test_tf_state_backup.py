@@ -430,7 +430,7 @@ def test_cron_backs_up_state_only_through_both_sops_documents(tmp_path):
         (tools / name).chmod(0o700)
     backend = tmp_path / "config"
     backend.mkdir()
-    (backend / "upcloud.s3.tfbackend").write_text("use_lockfile = true\n")
+    (backend / "upcloud.s3.tfbackend").write_text('key = "state/upcloud/terraform.tfstate"\nworkspace_key_prefix = "state/workspaces"\nuse_lockfile = true\n')
     child = {"HOME": str(tmp_path), "PATH": f"{tools}:{os.environ['PATH']}", "TF_BACKEND_ROOT": str(backend)}
     for status in ("0", "1"):
         run = subprocess.run(["sh", "-c", "cd " + command], env=dict(child, TOFU_STATUS=status),

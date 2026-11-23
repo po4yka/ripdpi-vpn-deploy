@@ -23,7 +23,7 @@ setup() {
   export PROVIDER="upcloud"
   export TF_BACKEND_ROOT="$BATS_TEST_TMPDIR/backend"
   mkdir -p "$TF_BACKEND_ROOT"
-  printf 'use_lockfile = true\n' > "$TF_BACKEND_ROOT/upcloud.s3.tfbackend"
+  printf 'key = "state/upcloud/terraform.tfstate"\nworkspace_key_prefix = "state/workspaces"\nuse_lockfile = true\n' > "$TF_BACKEND_ROOT/upcloud.s3.tfbackend"
   export SOPS_FILE="${FAKE_SOPS}"
   export GREEN_SOPS_FILE="${BATS_TEST_TMPDIR}/target.sops.yaml"
   export DEVICE_MIGRATION_PLAN="${BATS_TEST_TMPDIR}/migration.json"

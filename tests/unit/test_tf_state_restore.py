@@ -141,6 +141,16 @@ def pushes(store: Path) -> list[dict]:
     return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
 
 
+@pytest.mark.parametrize(("old", "new"), [(PROD_KEY, "state/vultr/terraform.tfstate"), ("state/workspaces", "env:")])
+def test_wrong_backend_address_refused_before_network(restore, old, new):
+    store, run = restore
+    config = store.parent / "backend/upcloud.s3.tfbackend"
+    config.write_text(config.read_text().replace(old, new))
+    result = run(ENV="green")
+    assert result.returncode == 2 and "backend requires" in result.stderr
+    assert not (store / "curl.log").exists()
+
+
 def test_listing_shows_only_the_selected_workspace_object(restore):
     store, run = restore
     (store / "listing.xml").write_text(
