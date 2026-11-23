@@ -6,6 +6,14 @@
 # Exact approved Tailnet sources remain inherited from all.yml.
 # Served XHTTP origin; matches the hysteria.masquerade_url that
 # scripts/ci-bootstrap-secrets.sh writes for disposable staging.
+# Complete role map (group vars replace the role default map): the role
+# defaults plus the exact vendor package pin that isolated WARP requires.
+warp_outbound:
+  install_warp_cli: true
+  package_version: "2026.8.2115.0"
+  pubkey_sha256: "0f37fc298c98e88ee3c0ee68c95b69f1dba9eb477abe3167e13982105911264d"
+  mode: tunnel_only
+  routing_tag: warp-out
 public_site_canonical_url: >-
   https://{{ nginx_xhttp.server_name }}{{ ':' ~ nginx_xhttp_public_port if nginx_xhttp_public_port | int != 443 else '' }}
 vpn:
