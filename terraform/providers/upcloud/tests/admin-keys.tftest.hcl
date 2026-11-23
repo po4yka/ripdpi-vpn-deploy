@@ -66,3 +66,23 @@ run "multiline_key_refused" {
 
   expect_failures = [var.admin_ssh_public_keys]
 }
+
+run "key_without_comment_separator_refused" {
+  command = plan
+
+  variables {
+    admin_ssh_public_keys = ["ssh-ed25519 AAAATESTKEY;junk"]
+  }
+
+  expect_failures = [var.admin_ssh_public_keys]
+}
+
+run "apostrophe_in_comment_refused" {
+  command = plan
+
+  variables {
+    admin_ssh_public_keys = ["ssh-ed25519 AAAATESTKEY operator's laptop"]
+  }
+
+  expect_failures = [var.admin_ssh_public_keys]
+}

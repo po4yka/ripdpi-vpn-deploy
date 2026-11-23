@@ -17,14 +17,23 @@
 - name: Require the admin SSH key list before host changes
   ansible.builtin.assert:
     that:
+      - ansible_user is defined
       - admin_ssh_public_keys is defined
       - admin_ssh_public_keys is sequence
       - admin_ssh_public_keys is not string
+      - admin_ssh_public_keys is not mapping
       - admin_ssh_public_keys | length > 0
-      - admin_ssh_public_keys | map('trim') | unique | list | length == admin_ssh_public_keys | length
-      - admin_ssh_public_keys | map('trim') | select('match', '^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh\.com) [A-Za-z0-9+/]+=*( [^\r\n]*)?$') | list | length == admin_ssh_public_keys | length
-    fail_msg: admin_ssh_public_keys must be a non-empty list of unique single-line OpenSSH public keys; an empty list would lock the operator out.
+      - _admin_keys | select('match', _admin_key_pattern) | list | length == _admin_keys | length
+      # Duplicates compare key type and body; the comment does not count.
+      - _admin_keys | map('regex_replace', '^([^ ]+ [^ ]+).*$', '\\1') | unique(case_sensitive=true) | list | length
+        == _admin_keys | length
+    fail_msg: >-
+      admin_ssh_public_keys must be a non-empty list of unique single-line OpenSSH public keys;
+      an empty list would lock the operator out.
     quiet: true
+  vars:
+    _admin_keys: "{{ admin_ssh_public_keys | map('trim') | list }}"
+    _admin_key_pattern: '^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh\.com) [A-Za-z0-9+/]+=*( [^\r\n'']*)?$'
   tags: [always]
 
 - name: Admit the unused kernel module policy before host changes
@@ -118,14 +127,29 @@
     remove: true
   loop: "{{ baseline_stock_accounts | difference([ansible_user] + baseline_ssh_extra_allowed_users) }}"
 
+- name: Read the admin account entry
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ ansible_user }}"
+
+- name: Create the admin SSH directory
+  ansible.builtin.file:
+    path: "{{ ansible_facts.getent_passwd[ansible_user][4] }}/.ssh"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_facts.getent_passwd[ansible_user][2] }}"
+    mode: "0700"
+
 # The list is the whole truth: a key removed from it (for example the CI key) is
 # removed from every node by the next converge. cloud-init writes the same list.
+# copy replaces the file atomically, so a failed write never leaves a partial list.
 - name: Write the admin authorized_keys exclusively from admin_ssh_public_keys
-  ansible.posix.authorized_key:
-    user: "{{ ansible_user }}"
-    key: "{{ admin_ssh_public_keys | map('trim') | join('\n') }}"
-    exclusive: true
-    manage_dir: true
+  ansible.builtin.copy:
+    dest: "{{ ansible_facts.getent_passwd[ansible_user][4] }}/.ssh/authorized_keys"
+    content: "{{ admin_ssh_public_keys | map('trim') | join('\n') }}\n"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_facts.getent_passwd[ansible_user][2] }}"
+    mode: "0600"
 
 # Providers can set a root password at creation; SSH never uses it, the console can.
 - name: Lock the root account password
