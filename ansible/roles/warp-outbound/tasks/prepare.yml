@@ -195,7 +195,8 @@
   ansible.builtin.systemd_service:
     name: warp-svc.service
     masked: true
-    state: stopped
+    # Masking works before installation; stopping a unit that does not exist yet fails.
+    state: "{{ 'stopped' if _warp_before_version.rc == 0 else omit }}"
   when:
     - not ansible_check_mode
     - _warp_before_version.rc != 0 or _warp_before_version.stdout != warp_outbound.package_version

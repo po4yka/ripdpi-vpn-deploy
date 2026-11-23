@@ -284,6 +284,11 @@ def test_vendor_role_never_creates_registration_and_suppresses_autostart():
     assert 'policy_rc_d: 101' in sources
     prepare = (role/'tasks/prepare.yml').read_text()
     assert prepare.index('masked: true') < prepare.index('- name: Install cloudflare-warp package')
+    suppress = next(task for task in yaml.safe_load(prepare)
+                    if task['name'].startswith('Suppress direct and maintainer-script vendor autostart'))
+    # A first install has no unit to stop; only an installed package is stopped before replacement.
+    assert suppress['ansible.builtin.systemd_service']['state'] == \
+        "{{ 'stopped' if _warp_before_version.rc == 0 else omit }}"
     mode = next(task for task in tasks if task['name'].startswith('Select tunnel_only'))
     assert mode['ansible.builtin.command']['argv'][-2:] == ['mode', 'tunnel_only']
     dropin = (role/'templates/vendor-namespace.conf.j2').read_text()
