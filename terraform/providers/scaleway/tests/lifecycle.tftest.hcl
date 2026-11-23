@@ -29,7 +29,7 @@ run "create_node" {
   }
 
   assert {
-    condition     = terraform_data.admin_ssh_public_key.output == sha256(trimspace(var.admin_ssh_public_keys[0]))
+    condition     = terraform_data.admin_ssh_public_key.output == sha256("ssh-ed25519 AAAATESTKEY")
     error_message = "Creation must record the administrator public-key digest guard."
   }
 }
@@ -51,7 +51,7 @@ run "same_public_key_with_file_newline" {
   }
 
   assert {
-    condition     = terraform_data.admin_ssh_public_key.output == sha256(trimspace(var.admin_ssh_public_keys[0]))
+    condition     = terraform_data.admin_ssh_public_key.output == sha256("ssh-ed25519 AAAATESTKEY")
     error_message = "The same key with a file newline must retain its bootstrap identity."
   }
 }
@@ -82,5 +82,18 @@ run "second_key_keeps_node" {
   assert {
     condition     = scaleway_instance_server.vpn.id != ""
     error_message = "Adding a second key must retain the node."
+  }
+}
+
+run "edited_comment_keeps_identity" {
+  command = plan
+
+  variables {
+    admin_ssh_public_keys = ["ssh-ed25519 AAAATESTKEY renamed label"]
+  }
+
+  assert {
+    condition     = terraform_data.admin_ssh_public_key.output == sha256("ssh-ed25519 AAAATESTKEY")
+    error_message = "Editing a key comment must retain the node identity."
   }
 }

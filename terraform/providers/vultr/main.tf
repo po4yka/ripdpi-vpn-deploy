@@ -1,4 +1,6 @@
 locals {
+  bootstrap_key = regex("^[^ ]+ [^ ]+", trimspace(var.admin_ssh_public_keys[0]))
+
   user_data = templatefile("${path.module}/../../shared/cloud-init.yaml.tftpl", {
     admin_user                  = var.admin_user
     admin_ssh_public_keys       = var.admin_ssh_public_keys
@@ -26,12 +28,12 @@ resource "terraform_data" "admin_user" {
 }
 
 resource "terraform_data" "admin_ssh_public_key" {
-  input = sha256(trimspace(var.admin_ssh_public_keys[0]))
+  input = sha256(local.bootstrap_key)
 }
 
 resource "vultr_ssh_key" "admin" {
   name    = "${var.server_name}-${var.admin_user}"
-  ssh_key = var.admin_ssh_public_keys[0]
+  ssh_key = local.bootstrap_key
 }
 
 resource "vultr_firewall_group" "vpn" {
@@ -91,7 +93,7 @@ resource "vultr_instance" "vpn" {
     postcondition {
       condition = try(
         yamldecode(self.user_data).users[length(yamldecode(self.user_data).users) - 1].name == var.admin_user
-        && trimspace(tolist(yamldecode(self.user_data).users[length(yamldecode(self.user_data).users) - 1].ssh_authorized_keys)[0]) == trimspace(var.admin_ssh_public_keys[0]),
+        && regex("^[^ ]+ [^ ]+", trimspace(tolist(yamldecode(self.user_data).users[length(yamldecode(self.user_data).users) - 1].ssh_authorized_keys)[0])) == local.bootstrap_key,
         false,
       )
       error_message = "Bootstrap administrator identity differs from the requested username or first key; provision a replacement node instead of adopting divergent identity."
