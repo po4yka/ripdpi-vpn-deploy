@@ -137,3 +137,25 @@ def test_record_refuses_a_selection_without_vpn_hosts(repo, tmp_path):
                  "--receipts", str(tmp_path / "receipts"))
     assert result.returncode == 1 and "selected no vpn hosts" in result.stderr
     assert not (tmp_path / "receipts").exists()
+
+
+def test_drift_report_uses_a_read_only_refresh(repo, monkeypatch):
+    subprocess.run(["git", "-C", str(repo), "tag", "vpn-deploy-known-good-test"], check=True)
+    for name in ("drift-since-tag.sh", "tofu_tfvars.py"):
+        shutil.copy2(ROOT / "scripts" / name, repo / "scripts" / name)
+    provider = repo / "terraform/providers/upcloud"
+    provider.mkdir(parents=True)
+    wrapper = repo / "scripts/terraform-env.sh"
+    wrapper.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$TOFU_ARGS"\n')
+    wrapper.chmod(0o755)
+    args = repo / "tofu-args"
+    monkeypatch.setenv("TOFU_ARGS", str(args))
+    monkeypatch.setenv("PROVIDER", "upcloud")
+    monkeypatch.setenv("ENV", "prod")
+    monkeypatch.setenv("VPN_SECRETS_FILE", str(repo / "absent"))
+    result = subprocess.run(["bash", str(repo / "scripts/drift-since-tag.sh")],
+                            cwd=repo, capture_output=True, text=True)
+    assert "VPN_SECRETS_FILE missing" in result.stdout
+    flags = args.read_text().splitlines()
+    assert flags[0] == "plan"
+    assert "-refresh-only" in flags and "-lock=false" in flags

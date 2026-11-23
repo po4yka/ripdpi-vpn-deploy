@@ -64,7 +64,7 @@ else
   if [[ -d "$TF_DIR" ]]; then
     tfvars="$(python3 "${REPO_ROOT}/scripts/tofu_tfvars.py" "$PROVIDER" "$ENV")"
     env PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" plan \
-      -refresh-only \
+      -refresh-only -lock=false \
       -var-file="$tfvars" \
       -no-color 2>&1 | sed 's/^/  /'
   else

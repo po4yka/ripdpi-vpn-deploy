@@ -45,7 +45,7 @@ def _build_terraform_stub(bin_dir: Path, fixture: Path) -> None:
     The standard stub handles `output -raw <key>` and `output -json` but
     returns nothing for `console`.  render-inventory.sh calls:
 
-        terraform -chdir=<dir> console -no-color -var-file=<f> <<< "jsonencode(var.allowed_ssh_cidrs)"
+        terraform -chdir=<dir> console -lock=false -no-color -var-file=<f> <<< "jsonencode(var.allowed_ssh_cidrs)"
 
     and pipes the result through `jq -r .` then `jq -c .`.
     We return `"[\\"203.0.113.0/24\\"]"` (a JSON-encoded JSON string) so that
@@ -132,6 +132,7 @@ def test_external_tfvars_root_and_inventory_output_stay_in_the_ops_checkout(tmp_
     assert result.returncode == 0, result.stderr
     consoles = [line for line in (tmp_path / "stub.log").read_text().splitlines() if " console " in line]
     assert consoles and all(f"-var-file={tfvars}" in line for line in consoles)
+    assert all("-lock=false" in line.split() for line in consoles)
     assert "[vpn]" in output.read_text()
     assert (local_inventory.read_bytes() if local_inventory.exists() else None) == local_before
 
@@ -794,6 +795,19 @@ def test_failed_optional_address_read_stops_before_the_inventory_changes(tmp_pat
     )
     assert result.returncode == 1
     assert "cannot read Terraform outputs for upcloud:test" in result.stderr
+    assert (root / "ansible/inventory/generated.ini").read_text() == "last-good\n"
+
+
+@pytest.mark.parametrize("response", ["exit 37", "exit 0", "echo invalid-json"])
+def test_failed_console_read_preserves_last_inventory(tmp_path, response):
+    root, env = _isolated_inventory_repo(tmp_path)
+    bindir = tmp_path / "bin"
+    (bindir / "tofu").rename(bindir / "tofu.real")
+    _make_stub(bindir, "tofu", f'case "$*" in *" console "*) {response} ;; esac\n'
+               f'exec "{bindir}/tofu.real" "$@"')
+    result = subprocess.run(["bash", str(root / "scripts/render-inventory.sh")],
+                            env=env, capture_output=True, text=True, timeout=20)
+    assert result.returncode != 0
     assert (root / "ansible/inventory/generated.ini").read_text() == "last-good\n"
 
 
