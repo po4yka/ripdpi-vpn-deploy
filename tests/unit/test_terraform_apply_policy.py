@@ -1,6 +1,7 @@
 """Exercise the operator saved-plan gate without provider access."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -15,14 +16,14 @@ pytestmark = pytest.mark.usefixtures("stub_tofu_backend")
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def _setup(tmp_path: Path) -> tuple[Path, dict[str, str]]:
+def _setup(tmp_path: Path, provider_name: str = "upcloud") -> tuple[Path, dict[str, str]]:
     repo = tmp_path / "repo"
     scripts = repo / "scripts"
     scripts.mkdir(parents=True)
     for name in ("policy-plan.sh", "check-tf-plan.sh", "terraform-env.sh", "tofu_backend.py", "terraform-plan-policy.py"):
         shutil.copy2(ROOT / "scripts" / name, scripts / name)
     shutil.copytree(ROOT / "terraform/policy", repo / "terraform/policy")
-    provider = repo / "terraform/providers/upcloud"
+    provider = repo / "terraform/providers" / provider_name
     provider.mkdir(parents=True)
     (provider / "prod.tfplan").write_text("original saved plan")
     private = tmp_path / "private"
@@ -54,7 +55,7 @@ if args[0]=='apply': sys.exit(int(os.environ.get('APPLY_EXIT','0')))
     }
     env = os.environ | {
         "PATH": f"{bins}:{os.environ['PATH']}", "CALL_LOG": str(tmp_path / "calls.jsonl"),
-        "STUB_PLAN_JSON": json.dumps(doc), "PROVIDER": "upcloud", "ENV": "prod",
+        "STUB_PLAN_JSON": json.dumps(doc), "PROVIDER": provider_name, "ENV": "prod",
         "TMPDIR": str(private), "SOURCE_PLAN": str(provider / "prod.tfplan"),
     }
     return repo, env
@@ -72,7 +73,11 @@ def _calls(env: dict[str, str]) -> list[dict]:
 
 def test_safe_plan_applies_same_private_snapshot_and_cleans_up(tmp_path: Path) -> None:
     repo, env = _setup(tmp_path)
-    env["CHANGE_SOURCE"] = "1"
+    private_plan = tmp_path / "private/green.tfplan"
+    original = Path(env["SOURCE_PLAN"])
+    original.rename(private_plan)
+    original.write_text("competing shared plan")
+    env.update(TF_PLAN_FILE=str(private_plan), SOURCE_PLAN=str(private_plan), CHANGE_SOURCE="1")
     result = _run(repo, env)
     assert result.returncode == 0, result.stderr
     calls = _calls(env)
@@ -80,7 +85,46 @@ def test_safe_plan_applies_same_private_snapshot_and_cleans_up(tmp_path: Path) -
     assert calls[0]["path"] == calls[1]["path"]
     assert calls[1]["content"] == "original saved plan"
     assert all(call["mode"] == 0o400 and call["parent_mode"] == 0o700 for call in calls)
-    assert list(Path(env["TMPDIR"]).iterdir()) == []
+    assert list(Path(env["TMPDIR"]).iterdir()) == [private_plan]
+    assert private_plan.read_text() == "changed after policy snapshot"
+    assert original.read_text() == "competing shared plan"
+
+
+@pytest.mark.parametrize("case", ["selected-second", "unrelated", "missing-file", "existing", "missing-server", "registered-blue", "configured-blue"])
+def test_green_apply_requires_selected_management_identity(tmp_path, case):
+    repo, env = _setup(tmp_path, "hetzner")
+    private = tmp_path / "management key"
+    subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "fixture",
+                    "-f", str(private)], check=True)
+    public = private.with_suffix(".pub").read_text().strip()
+    # The generated public sidecar does not authorize access by itself.
+    keys = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIACuqbmHay9Ja1UTyK6Xs0ld57/VDX6uINKx2394i/LI bootstrap"]
+    if case != "unrelated":
+        keys.append(public.replace("fixture", "inventory"))
+    if case == "missing-file":
+        private.unlink()
+    plan = json.loads(env["STUB_PLAN_JSON"])
+    plan["variables"]["admin_ssh_public_keys"] = {"value": keys}
+    plan["resource_changes"] = [{"address": "hcloud_server.vpn", "type": "hcloud_server",
+                                 "change": {"actions": ["no-op" if case == "existing" else "create"],
+                                            "after": {"firewall_ids": [1001]}}}]
+    if case == "missing-server":
+        plan["resource_changes"].clear()
+    blue_key = keys[0] if case == "registered-blue" else public
+    blue_digest = hashlib.sha256(" ".join(blue_key.split()[:2]).encode()).hexdigest()
+    configured_key = keys[0] if case == "configured-blue" else public
+    configured_digest = hashlib.sha256(" ".join(configured_key.split()[:2]).encode()).hexdigest()
+    env.update(BLUE_GREEN_MANAGEMENT_KEY_FILE=str(private),
+               BLUE_GREEN_RESERVED_KEY_DIGESTS=f"{configured_digest}:{blue_digest}",
+               STUB_PLAN_JSON=json.dumps(plan))
+    result = _run(repo, env)
+    accepted = case in ("selected-second", "existing")
+    assert (result.returncode == 0) == accepted, result.stderr
+    assert [row["command"] for row in _calls(env)] == (["show", "apply"] if accepted else ["show"])
+    assert public.split()[1] not in result.stdout + result.stderr
+    if case == "missing-file":
+        assert "Cannot verify the Green plan or read the selected SSH identity" in result.stderr
+        assert str(private) not in result.stderr
 
 
 def test_denied_policy_never_invokes_apply(tmp_path: Path) -> None:

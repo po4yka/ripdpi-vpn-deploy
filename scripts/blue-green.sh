@@ -199,6 +199,7 @@ umask 077
 SECRETS_DIR="$(mktemp -d -t vpn-blue-green.XXXXXX)"
 SECRETS_FILE="${SECRETS_DIR}/secrets.yaml"
 GREEN_SECRETS_FILE="${SECRETS_DIR}/green.yaml"
+GREEN_PLAN_FILE="$(cd "$SECRETS_DIR" && pwd -P)/${GREEN_ENV}.tfplan"
 cleanup_secrets() {
   local file
   for file in "$SECRETS_FILE" "$GREEN_SECRETS_FILE"; do
@@ -206,6 +207,7 @@ cleanup_secrets() {
       shred -u -- "$file" 2>/dev/null || rm -f -- "$file"
     fi
   done
+  rm -f -- "$GREEN_PLAN_FILE"
   rmdir "$SECRETS_DIR" 2>/dev/null || true
 }
 trap cleanup_secrets EXIT
@@ -236,19 +238,25 @@ fi
 
 # Hetzner keeps one SSH key per fingerprint in a project and every root creates
 # its own key, so the green apply would fail on blue's key. Refuse before plan.
+green_management_key=
+blue_first_key=
+registered_blue_key=
 if [[ "$PROVIDER" == hetzner ]]; then
+  green_management_key="$ANSIBLE_SSH_PRIVATE_KEY_FILE"
   BLUE_TFVARS="$(python3 "${REPO_ROOT}/scripts/tofu_tfvars.py" "$PROVIDER" "$BLUE_ENV")"
   # Blue is already initialized. Its provider root can evaluate either explicit
   # tfvars file before Green has a workspace. Ignore the OpenSSH comment.
-  first_key() {
-    local expression='jsonencode(slice(split(" ", trimspace(nonsensitive(var.admin_ssh_public_keys[0]))), 0, 2))'
+  key_digest() {
+    local expression
+    printf -v expression 'nonsensitive(sha256(join(" ", slice(regexall("[^[:space:]]+", %s), 0, 2))))' "$2"
     PROVIDER="$PROVIDER" ENV="$BLUE_ENV" "$REPO_ROOT/scripts/terraform-env.sh" \
       console -lock=false -input=false -no-color -var-file="$1" <<< "$expression" |
-      jq -er 'fromjson | select(type == "array" and length == 2 and all(type == "string" and length > 0)) | join(" ")'
+      jq -er 'strings | select(test("^[0-9a-f]{64}$"))'
   }
-  blue_first_key="$(first_key "$BLUE_TFVARS")"
-  green_first_key="$(first_key "$GREEN_TFVARS")"
-  if [[ "$blue_first_key" == "$green_first_key" ]]; then
+  blue_first_key="$(key_digest "$BLUE_TFVARS" 'var.admin_ssh_public_keys[0]')"
+  green_first_key="$(key_digest "$GREEN_TFVARS" 'var.admin_ssh_public_keys[0]')"
+  registered_blue_key="$(key_digest "$BLUE_TFVARS" hcloud_ssh_key.admin.public_key)"
+  if [[ "$blue_first_key" == "$green_first_key" || "$registered_blue_key" == "$green_first_key" ]]; then
     echo "Hetzner keeps one SSH key per fingerprint in a project: set a separate first admin_ssh_public_keys entry in $GREEN_TFVARS" >&2
     exit 1
   fi
@@ -260,14 +268,22 @@ fi
 step "3/8  Provision green (ENV=${GREEN_ENV})"
 : "${GREEN_TAILNET_HANDOFF:?set the private GREEN_TAILNET_HANDOFF output path before provisioning}"
 : "${DEPLOY_SSH_CONTEXTS_FILE:?set the private DEPLOY_SSH_CONTEXTS_FILE path before provisioning}"
-for goal in init plan; do
-  SOPS_FILE="$GREEN_SOPS_FILE" ENV="$GREEN_ENV" PROVIDER="$PROVIDER" run_make "$goal"
-done
+green_provision() {
+  if [[ "$PROVIDER" == hetzner && "$1" == apply ]]; then
+    blue_first_key="$(key_digest "$BLUE_TFVARS" 'var.admin_ssh_public_keys[0]')"
+    registered_blue_key="$(key_digest "$BLUE_TFVARS" hcloud_ssh_key.admin.public_key)"
+  fi
+  BLUE_GREEN_MANAGEMENT_KEY_FILE="$green_management_key" BLUE_GREEN_RESERVED_KEY_DIGESTS="$blue_first_key:$registered_blue_key" \
+    SOPS_FILE="$GREEN_SOPS_FILE" \
+    ENV="$GREEN_ENV" PROVIDER="$PROVIDER" run_make "$1" "TF_PLAN_FILE=$GREEN_PLAN_FILE"
+}
+green_provision init
+green_provision plan
 if ! confirm "Review the green plan above. Apply it?"; then
   echo "Aborting before apply; no green resources were changed." >&2
   exit 1
 fi
-SOPS_FILE="$GREEN_SOPS_FILE" ENV="$GREEN_ENV" PROVIDER="$PROVIDER" run_make apply
+green_provision apply
 
 # ---------------------------------------------------------------------------
 # 4. Render multi-host inventory and deploy green

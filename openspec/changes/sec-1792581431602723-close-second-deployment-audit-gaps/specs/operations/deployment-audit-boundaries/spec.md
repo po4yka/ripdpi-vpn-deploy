@@ -54,6 +54,9 @@ refuse an empty `ENV`. Tag selection MUST NOT skip this check.
 Blue-green on Hetzner MUST evaluate the first entry of `admin_ssh_public_keys`
 in both tfvars files with OpenTofu. It MUST refuse before the green plan if
 either entry cannot be evaluated or the entries have the same key type and body.
+Green's first key MUST also differ from the registered Blue key in state.
+The apply gate MUST repeat both comparisons against the saved per-run plan
+and require that its key list authorizes the selected management identity.
 
 #### Scenario: The green tfvars copy the blue key
 
@@ -63,5 +66,12 @@ either entry cannot be evaluated or the entries have the same key type and body.
 
 #### Scenario: The green environment has its own key
 
-- **WHEN** the green tfvars hold a different key
-- **THEN** blue-green provisions green as before
+- **WHEN** Green has a distinct first key and its planned key list includes the
+  shared inventory management identity
+- **THEN** blue-green can provision Green
+
+#### Scenario: The selected SSH key is absent
+
+- **WHEN** the saved Hetzner provisioning plan omits the selected management
+  public key or cannot identify a new or retained Green server
+- **THEN** the apply policy refuses that snapshot before OpenTofu can apply it

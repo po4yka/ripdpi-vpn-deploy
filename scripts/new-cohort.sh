@@ -109,5 +109,5 @@ Next steps:
   4. Follow docs/how-to/deploy.md for separate dry-run, deploy and verify steps.
 EOF
 if [[ "$PROVIDER" == hetzner ]]; then
-  echo "Hetzner keeps one SSH key per fingerprint in a project: set a separate first admin_ssh_public_keys entry in $DST."
+  echo "Hetzner keeps one SSH key per fingerprint in a project: set a distinct first admin_ssh_public_keys entry in $DST. Keep the shared inventory management public key in the list for Green SSH."
 fi

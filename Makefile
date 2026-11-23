@@ -1063,14 +1063,20 @@ validate: terraform-init ansible-syntax-check
 decrypt:
 	SECRETS_FILE="$(SECRETS_FILE)" SOPS_FILE="$(SOPS_FILE)" ./scripts/decrypt-secrets.sh
 
+# Blue-green passes one absolute saved-plan path for its review and apply.
+ifneq ($(filter command line environment,$(origin TF_PLAN_FILE)),)
+override TF_PLAN_FILE := $(value TF_PLAN_FILE)
+endif
+plan apply: export TF_PLAN_FILE := $(TF_PLAN_FILE)
 plan: export PROVIDER := $(PROVIDER)
 plan: export ENV := $(ENV)
 plan:
 	@tfvars="$$(python3 scripts/tofu_tfvars.py "$$PROVIDER" "$$ENV")" || exit 2; \
 	  test -f "$$tfvars" || { echo "missing $$tfvars — copy from .example and fill"; exit 1; }; \
+	  case "$$TF_PLAN_FILE" in ""|/*) ;; *) echo 'TF_PLAN_FILE must be absolute' >&2; exit 2 ;; esac; \
 	  $(TF_ENV) plan -lock=false \
 	  -var-file="$$tfvars" \
-	  -out=$(ENV).tfplan
+	  -out="$${TF_PLAN_FILE:-$$ENV.tfplan}"
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/policy-plan.sh check
 
 apply:
