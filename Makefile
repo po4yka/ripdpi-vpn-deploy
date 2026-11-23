@@ -2118,10 +2118,15 @@ check-killswitch:
 	@test -n "$(BUNDLE)" || { echo "usage: make check-killswitch BUNDLE=phone.singbox.json"; exit 1; }
 	python3 ./scripts/check-singbox-killswitch.py $(BUNDLE)
 
+# The fleet file is the persistent configuration for this host's entire cron block.
+ifneq ($(filter install-operator-crons,$(MAKECMDGOALS)),)
+export WARM_SPARE_ENV PAYLOAD_THROTTLE_HOST STATE_IDENTITY_SOPS_FILE MONITOR_STATE_IDENTITY_SOPS_FILE
+export STATE_PASSPHRASE_SOPS_FILE SELF_STEAL_SOPS_FILE SELF_STEAL_DNS_ENV_FILE SOPS_FILE SOPS_AGE_KEY_FILE
+export NTFY_URL DOH_URL OPERATOR_PATH
+endif
 install-operator-crons:
-	PROVIDER=$(PROVIDER) ENV=$(ENV) LIVENESS_CONFIG="$(LIVENESS_CONFIG)" SOPS_FILE="$(SOPS_FILE)" \
-	  SOPS_AGE_KEY_FILE="$${SOPS_AGE_KEY_FILE:-}" ./scripts/install-operator-crons.sh \
-	  $(if $(filter 1 yes true,$(DRY_RUN)),--dry-run)
+	./scripts/install-operator-crons.sh $(if $(filter 1 yes true,$(DRY_RUN)),--preview) \
+	  $(if $(filter 1 yes true,$(ALLOW_CRON_REMOVALS)),--allow-removals)
 
 remove-operator-crons:
 	./scripts/install-operator-crons.sh --remove

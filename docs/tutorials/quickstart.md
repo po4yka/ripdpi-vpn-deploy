@@ -247,21 +247,35 @@ Then connect with the real client and run a real-life traffic test (curl through
 
 ## 9. Recurring operator-side automation
 
-Add to your operator's cron / launchd:
+Keep the complete watcher configuration in the operator checkout's ignored `.fleet.mk` or the private fleet file that it includes. Use absolute paths to the approved files. For example:
 
-```bash
-# Use the read-only state identity for scheduled address and administrator lookups.
-make install-operator-crons \
-  MONITOR_STATE_IDENTITY_SOPS_FILE=/absolute/path/to/state-reader.sops.json \
-  STATE_PASSPHRASE_SOPS_FILE=/absolute/path/to/state-passphrase.sops.json
-# Add STATE_IDENTITY_SOPS_FILE=/absolute/path/to/state-backup.sops.json for backups.
+```make
+TF_BACKEND_ROOT = /absolute/path/to/ops/config/backend
+MONITOR_STATE_IDENTITY_SOPS_FILE = /absolute/path/to/state-reader.sops.json
+STATE_IDENTITY_SOPS_FILE = /absolute/path/to/state-backup.sops.json
+STATE_PASSPHRASE_SOPS_FILE = /absolute/path/to/state-passphrase.sops.json
+SOPS_AGE_KEY_FILE = /absolute/path/to/age.key
+export AGE_RECIPIENT_FILE = /absolute/path/to/backup-recipients.txt
+NTFY_URL = https://alerts.example.com
+DOH_URL = https://resolver.example.com/dns-query
+REALITY_TARGET_VANTAGE = filtered-cohort-a
 ```
 
-The scheduled checks give the node address to no probe service. The reputation and ASN checks (`make check-ip-reputation`, `make asn-drift`) send it only inside DNS-over-HTTPS queries and stop when that lookup fails; set `DOH_URL` to choose the resolver. Spamhaus does not answer public resolvers, so with the default resolver that check ends as incomplete, not clean; it needs a resolver of your own. Operator alerts go only to the service that `NTFY_URL` names. `make install-operator-crons NTFY_URL=… DOH_URL=…` writes both into the cron block, so that the scheduled monitors can deliver alerts. `TCP_PORT` selects the port for `make burn-check` when REALITY does not listen on 443.
+Set `REALITY_TARGET_VANTAGE` only on the filtered probe host. To enable protocol monitoring, add `LIVENESS_CONFIG` to this same file. Add `WARM_SPARE_ENV` when the warm-spare watcher owns the probe. Configure `PAYLOAD_THROTTLE_HOST` for the payload probe and both `SELF_STEAL_SOPS_FILE` and `SELF_STEAL_DNS_ENV_FILE` for certificate renewal when needed. Initialize the OpenTofu workspace before enabling state jobs. The backup recipients file contains the approved public age recipients.
+
+Preview and install the full configuration together:
+
+```bash
+make install-operator-crons DRY_RUN=1 && make install-operator-crons
+```
+
+The preview lists the jobs missing from the proposed schedule and compares it with the installed block. For example, removing both identity settings above drops `burn-check`, `asn-drift`, `check-ip-reputation`, `probing-summary` and `backup-state`. Installation stops if an existing job, protocol quorum or configured service URL would be dropped. For an intentional removal, review the preview, then run `make install-operator-crons ALLOW_CRON_REMOVALS=1`. Other crontab entries stay in place.
+
+The reputation and ASN checks send the node address only inside DNS-over-HTTPS queries. Set `DOH_URL` to a resolver you control. Spamhaus can refuse queries from a public resolver. Failed lookups mark the check incomplete. Alerts go to `NTFY_URL`.
 
 The VPS itself runs a local watchdog every 5 minutes (the `watchdog` Ansible role) that probes the transports and restarts a failed one. It sends no alert until you set `watchdog.provider`, `watchdog.node_alias` and, for ntfy, `watchdog.ntfy_url` and `watchdog_secrets.ntfy_topic`; production refuses the public ntfy service, because it would receive the node address with every alert. The local watchdog covers process, listener, and configuration state only. Configure at least two client-path sentinels per `docs/reference/protocol-liveness.md` before treating liveness as an infrastructure-rotation signal.
 
-On a filtered probe host, install daily active-target ASN/path monitoring with `make install-operator-crons REALITY_TARGET_VANTAGE=filtered-cohort-a`. The label must describe a technical cohort, not a carrier, operator, or geography. See `docs/reference/reality-target-monitoring.md` for the two-strike alert and acknowledgement flow.
+Use a technical cohort label for the filtered probe. See `docs/reference/reality-target-monitoring.md` for the two-strike alert and acknowledgement flow.
 
 ## 10. Optional — split the age key for k-of-n recovery
 

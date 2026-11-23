@@ -9,7 +9,9 @@
 #
 # Usage:
 #   PROVIDER=upcloud ENV=prod scripts/install-operator-crons.sh
-#   scripts/install-operator-crons.sh --dry-run        # print plan
+#   scripts/install-operator-crons.sh --dry-run        # render without reading crontab
+#   scripts/install-operator-crons.sh --preview        # compare with installed jobs
+#   scripts/install-operator-crons.sh --allow-removals # install a reviewed smaller block
 #   scripts/install-operator-crons.sh --remove         # uninstall
 #
 # What gets installed:
@@ -56,10 +58,14 @@ NTFY_URL="${NTFY_URL:-}"
 DOH_URL="${DOH_URL:-}"
 
 DRY_RUN=0
+PREVIEW=0
+ALLOW_REMOVALS=0
 REMOVE=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) DRY_RUN=1; shift ;;
+    --preview) PREVIEW=1; shift ;;
+    --allow-removals) ALLOW_REMOVALS=1; shift ;;
     --remove)  REMOVE=1;  shift ;;
     -h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d' >&2; exit 1 ;;
     *) echo "unknown arg: $1" >&2; exit 1 ;;
@@ -156,8 +162,8 @@ make_block() {
   fi
   cat <<EOF
 ${MARKER_BEGIN}
-# Operator-side cron jobs for ${PROVIDER}:${ENV}. Re-run
-# scripts/install-operator-crons.sh to refresh, --remove to uninstall.
+# Operator-side cron jobs for ${PROVIDER}:${ENV}.
+# Refresh with make install-operator-crons or uninstall with make remove-operator-crons.
 PATH="${path_escaped}"
 ${service_env}
 27 3 * * *     cd ${repo_q} && ./scripts/cron-log.sh vpn-canary make tspu-canary
@@ -177,7 +183,7 @@ EOF
     state_monitor_job '17 3 * * *' check-ip-reputation vpn-iprep
     state_monitor_job '37 3 * * *' probing-summary vpn-probing
   else
-    echo "state monitors skipped: set MONITOR_STATE_IDENTITY_SOPS_FILE and STATE_PASSPHRASE_SOPS_FILE" >&2
+    echo "state monitors skipped (burn-check, asn-drift, check-ip-reputation, probing-summary): set MONITOR_STATE_IDENTITY_SOPS_FILE and STATE_PASSPHRASE_SOPS_FILE" >&2
   fi
   if [[ -n "$WARM_SPARE_ENV" ]]; then
     [[ -n "$monitor_env" || -n "$LIVENESS_CONFIG" ]] || { echo "warm spare requires state reader or liveness config" >&2; return 1; }
@@ -192,12 +198,16 @@ EOF
     cat <<EOF
 */2 * * * *    cd ${repo_q} && ${monitor_env} PROVIDER=${PROVIDER} ENV=${ENV} GREEN_ENV=${WARM_SPARE_ENV}${liveness_env} ./scripts/cron-log.sh vpn-spare make watch-spare
 EOF
+    echo "standalone monitor-protocol-liveness omitted: watch-spare owns this schedule" >&2
   elif [[ -n "$LIVENESS_CONFIG" ]]; then
+    echo "watch-spare omitted: set WARM_SPARE_ENV to select the warm-spare watcher" >&2
     [[ -f "$LIVENESS_CONFIG" ]] || { echo "LIVENESS_CONFIG not found: $LIVENESS_CONFIG" >&2; return 1; }
     printf -v liveness_q '%q' "$LIVENESS_CONFIG"
     cat <<EOF
 */2 * * * *    cd ${repo_q} && SOPS_FILE=${sops_q} SOPS_AGE_KEY_FILE=${age_key_q} ./scripts/cron-log.sh vpn-liveness make monitor-protocol-liveness LIVENESS_CONFIG=${liveness_q}
 EOF
+  else
+    echo "watch-spare and monitor-protocol-liveness omitted: set WARM_SPARE_ENV or LIVENESS_CONFIG" >&2
   fi
   if [[ -n "$PAYLOAD_THROTTLE_HOST" ]]; then
     # Owner-only state directory instead of a predictable name in
@@ -205,15 +215,17 @@ EOF
     # real install path only, so a --dry-run never mutates the filesystem.
     printf -v log_dir_q '%q' "$(payload_throttle_log_dir)"
     cat <<EOF
-7 4 * * *      cd ${repo} && make probe-payload-throttle HOST=${PAYLOAD_THROTTLE_HOST} >>${log_dir_q}/payload-throttle.log 2>&1
+7 4 * * *      cd ${repo_q} && make probe-payload-throttle HOST=${PAYLOAD_THROTTLE_HOST} >>${log_dir_q}/payload-throttle.log 2>&1
 EOF
+  else
+    echo "probe-payload-throttle omitted: set PAYLOAD_THROTTLE_HOST" >&2
   fi
   if [[ -n "$REALITY_TARGET_VANTAGE" ]]; then
     cat <<EOF
 17 4 * * *     cd ${repo_q} && ENV=${env_q} VANTAGE=${vantage_q} ./scripts/cron-log.sh vpn-reality-target make monitor-reality-target
 EOF
   else
-    echo "REALITY target monitor skipped: set REALITY_TARGET_VANTAGE to a filtered technical label" >&2
+    echo "REALITY target monitor skipped (monitor-reality-target): set REALITY_TARGET_VANTAGE to a filtered technical label" >&2
   fi
   if [[ -n "$STATE_IDENTITY_SOPS_FILE" ]]; then
     local identity_q passphrase_q backup_q inner_q
@@ -232,7 +244,7 @@ EOF
 47 3 * * *     cd ${repo_q} && SOPS_AGE_KEY_FILE=${age_key_q} ./scripts/cron-log.sh vpn-state sops exec-env ${identity_q} ${inner_q}
 EOF
   else
-    echo "state backup skipped: set STATE_IDENTITY_SOPS_FILE and STATE_PASSPHRASE_SOPS_FILE" >&2
+    echo "state backup skipped (backup-state): set STATE_IDENTITY_SOPS_FILE and STATE_PASSPHRASE_SOPS_FILE" >&2
   fi
   if [[ -n "$SELF_STEAL_SOPS_FILE" || -n "$SELF_STEAL_DNS_ENV_FILE" ]]; then
     local steal_q steal_dns_q renewal_q
@@ -254,7 +266,7 @@ EOF
 27 4 * * *     cd ${repo_q} && SOPS_AGE_KEY_FILE=${age_key_q} ./scripts/cron-log.sh vpn-self-steal-renewal sops exec-env ${steal_dns_q} ${renewal_q}
 EOF
   else
-    echo "self-steal renewal skipped: set SELF_STEAL_SOPS_FILE and SELF_STEAL_DNS_ENV_FILE" >&2
+    echo "self-steal renewal skipped (renew-self-steal-cert): set SELF_STEAL_SOPS_FILE and SELF_STEAL_DNS_ENV_FILE" >&2
   fi
   echo "${MARKER_END}"
 }
@@ -269,9 +281,28 @@ strip_block() {
   '
 }
 
+# Both the previous and current installer invoke one Make goal per entry. Nested
+# sops commands quote spaces, so unescape them before reading the goal name.
+managed_features() {
+  awk -v b="$MARKER_BEGIN" -v e="$MARKER_END" '
+    $0 == b { inside = 1; next }
+    $0 == e { inside = 0; next }
+    inside && /^(NTFY_URL|DOH_URL)=/ { sub(/=.*/, ""); print "setting " $0 }
+    inside && /^[0-9*]/ {
+      gsub(/\\/, "")
+      if (match($0, /(^|[[:space:]\047])make[[:space:]]+[a-z][a-z0-9-]*/)) {
+        goal = substr($0, RSTART, RLENGTH)
+        sub(/^.*make[[:space:]]+/, "", goal)
+        print goal
+        if (goal == "watch-spare" && /LIVENESS_CONFIG=/) print "watch-spare protocol quorum"
+      }
+    }
+  ' | LC_ALL=C sort -u
+}
+
 if (( ! REMOVE )); then
   block="$(make_block "$REPO_ROOT")"
-  if (( DRY_RUN )); then
+  if (( DRY_RUN && ! PREVIEW )); then
     echo "[dry-run] would write the following block to crontab:"
     echo
     echo "$block"
@@ -301,7 +332,7 @@ fi
 
 strip_block < "$work/current" > "$work/next"
 if (( REMOVE )); then
-  if (( DRY_RUN )); then
+  if (( DRY_RUN || PREVIEW )); then
     echo "[dry-run] would strip vpn-deploy block from crontab"
     cat "$work/next"
   elif cmp -s "$work/current" "$work/next"; then
@@ -313,6 +344,22 @@ if (( REMOVE )); then
   exit 0
 fi
 
+managed_features < "$work/current" > "$work/installed"
+managed_features <<< "$block" > "$work/proposed"
+removed="$(LC_ALL=C comm -23 "$work/installed" "$work/proposed")"
+if [[ -n "$removed" ]]; then
+  printf 'Removed by this configuration:\n%s\n' "$removed" >&2
+else
+  echo 'No scheduled jobs or settings will be removed.' >&2
+fi
+if (( PREVIEW )); then
+  printf '%s\n' "$block"
+  exit 0
+fi
+if [[ -n "$removed" && "$ALLOW_REMOVALS" == 0 ]]; then
+  echo "restore the missing settings or confirm the preview with --allow-removals" >&2
+  exit 1
+fi
 [[ -n "$PAYLOAD_THROTTLE_HOST" ]] && ensure_log_dir
 printf '%s\n' "$block" >> "$work/next"
 crontab - < "$work/next"
