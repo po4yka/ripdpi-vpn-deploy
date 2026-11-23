@@ -10,11 +10,7 @@ User=root
 ExecStart=/usr/bin/python3 -Es /usr/local/libexec/ripdpi-warp/namespace.py prepare
 RemainAfterExit=true
 NoNewPrivileges=true
-ProtectHome=true
-ProtectSystem=strict
-ProtectKernelTunables=true
-ProtectKernelModules=true
-ProtectControlGroups=true
+# No mount sandboxing: a private mount namespace hides the `ip netns add` handle from the host and from warp-svc.
 LockPersonality=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
@@ -23,7 +19,6 @@ RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 # Namespace and nft ownership are the purpose of this root lifecycle job.
 RestrictNamespaces=net mnt
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_ADMIN CAP_DAC_OVERRIDE
-ReadWritePaths=/run /var/lib/ripdpi /etc/ripdpi/transport-egress
 
 [Install]
 WantedBy=multi-user.target

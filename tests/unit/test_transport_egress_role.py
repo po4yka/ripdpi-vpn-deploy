@@ -291,6 +291,20 @@ def test_vendor_role_never_creates_registration_and_suppresses_autostart():
     assert 'InaccessiblePaths=-/run/dbus' in dropin
 
 
+def test_namespace_owner_unit_publishes_its_netns_handle_in_the_host_mount_namespace():
+    # Any of these makes systemd run the unit in a private mount namespace, so the
+    # `ip netns add` bind mount never reaches the host and warp-svc cannot join it.
+    unit = (ROOT / 'ansible/roles/warp-outbound/templates/namespace.service.j2').read_text()
+    directives = {line.split('=', 1)[0] for line in unit.splitlines() if '=' in line and not line.startswith('#')}
+    mount_sandboxing = {'ProtectSystem', 'ProtectHome', 'ProtectKernelTunables', 'ProtectKernelModules',
+                        'ProtectControlGroups', 'ProtectKernelLogs', 'ProtectClock', 'ProtectHostname',
+                        'ProtectProc', 'ProcSubset', 'PrivateTmp', 'PrivateDevices', 'PrivateMounts',
+                        'ReadWritePaths', 'ReadOnlyPaths', 'InaccessiblePaths', 'BindPaths',
+                        'BindReadOnlyPaths', 'TemporaryFileSystem', 'MountFlags', 'RootDirectory'}
+    assert not directives & mount_sandboxing
+    assert {'CapabilityBoundingSet', 'NoNewPrivileges', 'RestrictNamespaces', 'SystemCallArchitectures'} <= directives
+
+
 def test_vendor_resolver_has_canonical_directives_and_identical_publication_bytes(monkeypatch, capsys):
     import io
     from jinja2 import Environment, FileSystemLoader
