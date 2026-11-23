@@ -405,9 +405,10 @@ def test_cron_backs_up_state_only_through_both_sops_documents(tmp_path):
     (tools / "make").write_text("#!/usr/bin/env python3\nimport json, os, sys\n"
                                 f"json.dump({{'argv': sys.argv[1:], 'env': {{k: os.environ.get(k) for k in "
                                 f"('AWS_SECRET_ACCESS_KEY', 'TF_VAR_state_passphrase', 'PROVIDER', 'ENV')}}}}, open({str(record)!r}, 'w'))\n")
+    (tools / "logger").write_text('#!/bin/sh\ncat >/dev/null\n')
     for tool in tools.iterdir():
         tool.chmod(0o700)
-    command = line.removeprefix("47 3 * * *").split("  2>&1 |")[0]
+    command = line.removeprefix("47 3 * * *")
     run = subprocess.run(["sh", "-c", command], env=dict(os.environ, PATH=f"{tools}:{os.environ['PATH']}"),
                          capture_output=True, text=True, timeout=20)
     assert run.returncode == 0, run.stderr
@@ -418,8 +419,8 @@ def test_cron_backs_up_state_only_through_both_sops_documents(tmp_path):
     monitors = cron(MONITOR_STATE_IDENTITY_SOPS_FILE=str(identity), STATE_PASSPHRASE_SOPS_FILE=str(passphrase))
     assert monitors.returncode == 0, monitors.stderr
     for goal in ("burn-check", "asn-drift", "check-ip-reputation", "probing-summary"):
-        assert sum(f"make {goal} " in line for line in monitors.stdout.splitlines()) == 1
-    [entry] = [line for line in monitors.stdout.splitlines() if "make burn-check " in line]
+        assert sum(line.endswith(f"make {goal}") for line in monitors.stdout.splitlines()) == 1
+    [entry] = [line for line in monitors.stdout.splitlines() if line.endswith("make burn-check")]
     command = entry.split(" cd ", 1)[1]
     (tools / "make").write_text('#!/bin/sh\nset -eu\ntest -z "${AWS_SECRET_ACCESS_KEY:-}${TF_VAR_state_passphrase:-}"\n'
                                 'exec ./scripts/terraform-env.sh output -raw server_ipv4\n')
