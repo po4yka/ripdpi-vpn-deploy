@@ -13,6 +13,20 @@ set -euo pipefail
 # State, its backups and saved plans can hold provider-generated credentials.
 umask 077
 
+# Cron supplies encrypted documents only to these two public output reads.
+# The monitor, its probes and its notification clients never inherit state credentials.
+if [[ -n "${MONITOR_STATE_IDENTITY_SOPS_FILE:-}" && "${1:-}" == output ]]; then
+  case "$*" in
+    "output -raw server_ipv4"|"output -raw admin_user") ;;
+    *) echo "unsupported scheduled state output" >&2; exit 2 ;;
+  esac
+  printf -v output_command '%q ' "$0" "$@"
+  printf -v passphrase_command '%q ' sops exec-env "${STATE_PASSPHRASE_SOPS_FILE:?}" "$output_command"
+  identity="$MONITOR_STATE_IDENTITY_SOPS_FILE"
+  unset MONITOR_STATE_IDENTITY_SOPS_FILE
+  exec sops exec-env "$identity" "$passphrase_command"
+fi
+
 PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -38,22 +52,32 @@ TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
 
 workspace="$ENV"
 [[ "$ENV" == "prod" ]] && workspace="default"
-export TF_DATA_DIR="${TF_DIR}/.terraform-env/${workspace}"
+[[ "${TF_BACKEND_ROOT:-}" == /* ]] || {
+  echo "TF_BACKEND_ROOT must be the absolute directory of ${PROVIDER}.s3.tfbackend" >&2
+  exit 2
+}
+backend_config="${TF_BACKEND_ROOT}/${PROVIDER}.s3.tfbackend"
+[[ -f "$backend_config" ]] || { echo "missing backend file: $backend_config" >&2; exit 2; }
+snapshot=""
+if [[ "$1" == "init" ]]; then
+  snapshot="$(mktemp "${TMPDIR:-/tmp}/tofu-backend.XXXXXXXX")"
+  trap 'rm -f -- "$snapshot"' EXIT
+fi
+TF_DATA_DIR="$(python3 "${REPO_ROOT}/scripts/tofu_backend.py" "$TF_DIR" "$workspace" "$backend_config" "$snapshot")" || exit 2
+export TF_DATA_DIR
+export TF_VAR_plan_backend_scope="${PROVIDER}/${workspace}/${TF_DATA_DIR##*/}"
 
 tf() {
   tofu "-chdir=${TF_DIR}" "$@"
 }
 
 if [[ "$1" == "init" ]]; then
-  # Every provider root declares a partial S3 backend; its settings live in the
-  # ops repository as <provider>.s3.tfbackend and persist in TF_DATA_DIR.
-  [[ "${TF_BACKEND_ROOT:-}" == /* ]] || {
-    echo "TF_BACKEND_ROOT must be the absolute directory of ${PROVIDER}.s3.tfbackend" >&2
-    exit 2
-  }
-  backend_config="${TF_BACKEND_ROOT}/${PROVIDER}.s3.tfbackend"
-  [[ -f "$backend_config" ]] || { echo "missing backend file: $backend_config" >&2; exit 2; }
-  tf "$@" "-backend-config=${backend_config}"
+  backend_args=("-backend-config=$snapshot")
+  if [[ ! -f "${TF_DIR}/ci_backend_override.tf" ]]; then
+    # The S3 backend must lock even if a backend file contains an HCL override.
+    backend_args+=("-backend-config=use_lockfile=true")
+  fi
+  tf "$@" "${backend_args[@]}"
   if ! tf workspace select "$workspace" >/dev/null 2>&1; then
     tf workspace new "$workspace"
   fi

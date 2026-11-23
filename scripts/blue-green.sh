@@ -50,7 +50,6 @@ GREEN_ZONE="${GREEN_ZONE:-}"
 BLUE_COHORT="${BLUE_COHORT:-fullstack}"
 GREEN_COHORT="${GREEN_COHORT:-device-full-tailnet}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
 SOPS_FILE="${SOPS_FILE:-${HOME}/.config/vpn-provision/${BLUE_ENV}.secrets.sops.yaml}"
 
 for environment in "$BLUE_ENV" "$GREEN_ENV"; do
@@ -75,7 +74,7 @@ if (( DRY_RUN )); then
 
   1/8  Verify blue health  (sops --decrypt, make verify) — read-only
   2/8  Bootstrap green tfvars if missing  (scripts/new-cohort.sh)
-  3/8  tofu plan via workspace wrapper: PROVIDER=${PROVIDER} ENV=${GREEN_ENV} scripts/terraform-env.sh plan -var-file=environments/${GREEN_ENV}.tfvars, then apply after a typed yes
+  3/8  tofu plan via workspace wrapper: PROVIDER=${PROVIDER} ENV=${GREEN_ENV} make plan, then apply after a typed yes
   4/8  Establish pinned SSH + Tailnet ownership; review DEVICE_MIGRATION_PLAN and approve its exact digest; device-migration prepare, then decrypt separate GREEN_SOPS_FILE; make dry-run (--check) and, after a typed yes, deploy for the exact green alias
   5/8  make verify and smoke-test for the exact green alias, then device-migration publish through unchanged subscription URLs
   6/8  Operator origin pivot and explicit per-device receipt/attestation — manual step
@@ -225,7 +224,7 @@ python3 "$REPO_ROOT/scripts/device_migration_inventory.py" check --plan "$DEVICE
 # ---------------------------------------------------------------------------
 # 2. Bootstrap green tfvars from blue (if missing)
 # ---------------------------------------------------------------------------
-GREEN_TFVARS="${TF_DIR}/environments/${GREEN_ENV}.tfvars"
+GREEN_TFVARS="$(python3 "${REPO_ROOT}/scripts/tofu_tfvars.py" "$PROVIDER" "$GREEN_ENV")"
 if [[ ! -f "$GREEN_TFVARS" ]]; then
   step "2/8  Generate green tfvars from blue"
   PROVIDER="$PROVIDER" SOURCE_ENV="$BLUE_ENV" \
@@ -238,7 +237,8 @@ fi
 # Hetzner keeps one SSH key per fingerprint in a project and every root creates
 # its own key, so the green apply would fail on blue's key. Refuse before plan.
 if [[ "$PROVIDER" == hetzner ]]; then
-  python3 - "${TF_DIR}/environments/${BLUE_ENV}.tfvars" "$GREEN_TFVARS" <<'PY'
+  BLUE_TFVARS="$(python3 "${REPO_ROOT}/scripts/tofu_tfvars.py" "$PROVIDER" "$BLUE_ENV")"
+  python3 - "$BLUE_TFVARS" "$GREEN_TFVARS" <<'PY'
 import re
 import sys
 

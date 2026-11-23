@@ -254,8 +254,12 @@ def test_init_contains_init_subcommand():
 
 
 # Rust test: vpnd/src/runner/terraform.rs::plan_contains_var_file_for_env
-def test_plan_contains_var_file_for_env():
-    assert "prod.tfvars" in terraform.plan(fake_ctx()).explain()
+def test_plan_contains_var_file_for_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("TFVARS_ROOT", str(tmp_path))
+    assert f"-var-file={tmp_path}/upcloud/prod.tfvars" in terraform.plan(fake_ctx()).argv
+    monkeypatch.setenv("TFVARS_ROOT", "relative")
+    with pytest.raises(ValueError, match="absolute path"):
+        terraform.plan(fake_ctx())
 
 
 # Rust test: vpnd/src/runner/terraform.rs::plan_contains_out_flag

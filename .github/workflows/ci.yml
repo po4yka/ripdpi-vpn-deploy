@@ -198,7 +198,7 @@ jobs:
 
       - name: tofu init -backend=false
         working-directory: terraform/providers/${{ matrix.provider }}
-        run: tofu init -backend=false
+        run: tofu init -lockfile=readonly -backend=false
 
       - name: tofu validate
         working-directory: terraform/providers/${{ matrix.provider }}
@@ -224,7 +224,7 @@ jobs:
         run: tofu fmt -check
       - name: tofu init without backend
         working-directory: terraform/exception/cascade-ingress
-        run: tofu init -backend=false
+        run: tofu init -lockfile=readonly -backend=false
       - name: tofu validate
         working-directory: terraform/exception/cascade-ingress
         run: tofu validate
@@ -931,12 +931,13 @@ jobs:
           checksums: bc44eb6b06446ba83bd4072114891987f590f66cca712737a7f1147c50c539ce
       - name: tofu init -backend=false
         working-directory: terraform/providers/${{ matrix.provider }}
-        run: tofu init -backend=false
+        run: tofu init -lockfile=readonly -backend=false
       - name: tofu test
         working-directory: terraform/providers/${{ matrix.provider }}
         env:
           # Fixed, public value: tests encrypt only throwaway in-memory state.
           TF_VAR_state_passphrase: tf-test-passphrase-not-a-secret
+          TF_VAR_plan_backend_scope: offline-provider-tests
         run: tofu test
 
   vpnd-test:

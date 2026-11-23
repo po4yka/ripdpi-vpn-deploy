@@ -1,3 +1,6 @@
+from pathlib import Path
+import os
+
 from .process import Cmd
 
 
@@ -14,9 +17,14 @@ def init(ctx):
 
 
 def plan(ctx):
+    external = os.environ.get("TFVARS_ROOT")
+    if external and not Path(external).is_absolute():
+        raise ValueError("TFVARS_ROOT must be an absolute path")
+    directory = Path(external) / ctx.provider if external else Path("environments")
+    tfvars = directory / f"{ctx.env}.tfvars"
     return (
         base(ctx)
-        .args(["plan", f"-var-file=environments/{ctx.env}.tfvars", f"-out={ctx.env}.tfplan"])
+        .args(["plan", f"-var-file={tfvars}", f"-out={ctx.env}.tfplan"])
         .describe(f"tofu plan -out={ctx.env}.tfplan")
     )
 

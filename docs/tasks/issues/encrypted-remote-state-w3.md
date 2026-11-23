@@ -18,11 +18,11 @@ related_tasks: []
 
 ## Goal
 
-OpenTofu state and saved plans of every root are encrypted on the client and kept in a versioned, object-locked Scaleway Object Storage bucket with scoped keys and serialized writers, migrated exactly from the current local files.
+Every root encrypts state and saved plans. Fleet provider roots keep state in the versioned, object-locked Scaleway bucket. Migrate each workspace with scoped keys and serialized writers.
 
 ## Acceptance criteria
 
-- Every root has an enforced `encryption` block and a partial S3 backend; backend files hold no credentials.
+- Every root enforces encryption. Fleet provider roots use a partial S3 backend. The inert exception root and the disposable CI checkout use isolated encrypted local state. Backend files hold no credentials.
 - Prove backend locking across CI and the operator workstation for default and named workspaces before migration. A failed lock probe keeps local state authoritative.
 - Authorized: per-root migration receipts show equal addresses and lineage, non-decreasing serial and a no-change plan.
 - Restore a retained state version without GitHub using the operator state key and passphrase. Verify a competing writer cannot change that workspace during restore.

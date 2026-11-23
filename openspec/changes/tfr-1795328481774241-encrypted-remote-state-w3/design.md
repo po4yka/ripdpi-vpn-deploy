@@ -53,7 +53,7 @@ After a successful lock and recovery probe, migrate each root and workspace from
 5. After all workspaces of the root pass, remove the fallback, set `enforced = true`, plan again with no changes.
 6. Rename the local state file to `*.migrated` (no delete) until the epic drill passes; then move its encrypted backup to `recovery/` and remove the local copy.
 
-Rollback before step 5: `tofu init -migrate-state` back to `backend "local"` with the fallback still present, or restore the step 1 backup. Rollback after step 5: restore from a B2 version with the passphrase. Order: cascade-ingress (smallest), then hetzner, scaleway, upcloud, vultr.
+Rollback before step 5: `tofu init -migrate-state` back to `backend "local"` with the fallback still present, or restore the step 1 backup. Rollback after step 5: restore from a retained Scaleway version with the passphrase. The inert cascade root has an encrypted local backend and no live resource to migrate. Disposable CI uses an isolated encrypted local backend.
 
 ## Open verification questions
 

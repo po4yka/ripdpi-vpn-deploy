@@ -321,9 +321,14 @@ def finalize(intent, environment, *, clock=None):
                         raise ValueError
             if entry is None:
                 key = None if value['inputs']['awg_key_file'] is None else read(value['inputs']['awg_key_file'], limit=128).decode('ascii')
+                addresses = [address for address in server['public_ipv4']
+                             if hashlib.sha256(address.encode()).hexdigest() ==
+                             value['target_identity']['public_service_address_sha256']]
+                if len(addresses) != 1:
+                    raise PromotionError('recovery-promotion-target-mismatch')
                 with io.StringIO(key or '') as stream:
                     receipt = installer.install(paths['liveness'], sid, value['client'], paths['registry'],
-                        read_awg_stdin=key is not None, stdin=stream, environment=env)
+                        read_awg_stdin=key is not None, stdin=stream, environment=env, server_ipv4=addresses[0])
                 if receipt.get('status') != 'committed':
                     raise ValueError
             proof = {'schema_version': 1, 'liveness_config': str(paths['liveness']),

@@ -181,6 +181,7 @@ def test_blue_green_uses_exact_alias_and_separate_target_secrets_through_make(tm
     scripts = tmp_path / 'scripts'
     scripts.mkdir()
     shutil.copy(ROOT / 'scripts/blue-green.sh', scripts)
+    shutil.copy(ROOT / 'scripts/tofu_tfvars.py', scripts)
     tfvars = tmp_path / 'terraform/providers/upcloud/environments/green.tfvars'
     tfvars.parent.mkdir(parents=True)
     tfvars.write_text('# synthetic input\n')

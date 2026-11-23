@@ -346,7 +346,7 @@ def _merge(base, override):
     return base
 
 
-def _awg_context(secrets, sentinel, mapping, environment):
+def _awg_context(secrets, sentinel, mapping, environment, endpoint=None):
     binding = sentinel["awg_target"]
     pair = f'{binding["provider"]}:{binding["environment"]}'
     role = REPO / "ansible/roles/amneziawg"
@@ -366,10 +366,11 @@ def _awg_context(secrets, sentinel, mapping, environment):
         if not isinstance(slug, str) or not NAME.fullmatch(slug):
             raise InstallError("invalid-awg-cohort")
         cohort = _yaml(role / "vars/cohorts" / (slug + ".yml")).get("amneziawg_cohort", {})
-    output = _run([str(REPO / "scripts/terraform-env.sh"), "output", "-raw", "server_ipv4"],
-                  environment={**environment, "PROVIDER": binding["provider"], "ENV": binding["environment"]})
+    if endpoint is None:
+        endpoint = _run([str(REPO / "scripts/terraform-env.sh"), "output", "-raw", "server_ipv4"],
+                        environment={**environment, "PROVIDER": binding["provider"], "ENV": binding["environment"]})
     try:
-        endpoint = str(ipaddress.IPv4Address(output.decode().strip()))
+        endpoint = str(ipaddress.IPv4Address(endpoint.decode().strip() if isinstance(endpoint, bytes) else endpoint))
     except (ValueError, UnicodeError):
         raise InstallError("invalid-awg-endpoint") from None
     return merged["amneziawg"], cohort, endpoint
@@ -643,9 +644,12 @@ def _require_pending_executor(previous, current_binding_digest):
 
 
 def install(config_path, sid, client, registry_path, *, read_awg_stdin=False, stdin=None, environment=None,
-            executor_manifest=None, executor_binding=None, cleanup_manifest=None):
+            executor_manifest=None, executor_binding=None, cleanup_manifest=None, server_ipv4=None):
     environment = dict(os.environ if environment is None else environment)
     config, sentinel, required, mapping, expected = _selection(config_path, sid, client, environment)
+    if server_ipv4 is not None and (len(mapping) != 1 or
+            hashlib.sha256(server_ipv4.encode()).hexdigest() != sentinel["target"]["public_service_address_sha256"]):
+        raise InstallError("target-profile-address-mismatch")
     registry_path = Path(registry_path).expanduser().absolute()
     pending_path = registry_path.with_name(registry_path.name + ".pending.json")
     transport = {key: sentinel[key] for key in ("ssh_target", "ssh_transport_host", "ssh_host_key_alias", "policy", "vantage") if key in sentinel}
@@ -718,11 +722,13 @@ def install(config_path, sid, client, registry_path, *, read_awg_stdin=False, st
                     # XHTTP is consumed by Xray, independently of the official
                     # sing-box ECH/BBR recipient. Select that intermediate explicitly.
                     selection = ["--xhttp-only"] if fmt == "ripdpi" else []
+                    if server_ipv4 is not None:
+                        selection.extend(["--server-ipv4", server_ipv4])
                     emitted[fmt] = _json(_run([str(REPO / "scripts/emit-singbox.sh"), client, *selection, "--profile-format", fmt],
                                              environment=emit_env, timeout=120, refusals=EMITTER_REFUSALS))
             defaults, cohort, endpoint = {}, {}, None
             if "p2-amneziawg" in required:
-                defaults, cohort, endpoint = _awg_context(secrets, sentinel, mapping, env)
+                defaults, cohort, endpoint = _awg_context(secrets, sentinel, mapping, env, server_ipv4)
             profiles = build_profiles(emitted.get("sing-box"), emitted.get("ripdpi"), secrets, client, required,
                                       sentinel.get("awg_target"), endpoint, private,
                                       lambda key: _derive(key, env), f"/etc/vpn-liveness/generations/{generation}/profiles",

@@ -54,7 +54,7 @@ def render_profiles(directory: Path, *, document: dict | None = None) -> dict[st
         environment.pop(name, None)
     environment.update(PATH=f"{ROOT / 'tests/stubs/bin'}:{environment.get('PATH', '')}",
                        VPN_SECRETS_FILE=str(secrets), HOSTS="upcloud:fixture", COHORTS="fullstack",
-                       STUB_LOG=str(directory / "stub.log"))
+                       STUB_LOG=str(directory / "stub.log"), TF_BACKEND_ROOT=module.fixture_backend(directory))
     outputs = []
     for profile_format in ("sing-box", "ripdpi"):
         try:

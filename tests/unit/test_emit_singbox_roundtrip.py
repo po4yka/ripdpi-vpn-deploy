@@ -21,6 +21,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+pytestmark = pytest.mark.usefixtures("stub_tofu_backend")
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = REPO_ROOT / "tests" / "fixtures"
 STUBS_BIN = REPO_ROOT / "tests" / "stubs" / "bin"
@@ -178,7 +180,7 @@ def _run_snell_only_script(
     (repo / "ansible/roles/snell/defaults").mkdir(parents=True)
     (repo / "terraform/providers/upcloud").mkdir(parents=True)
     shutil.copy2(SCRIPT, repo / "scripts/emit-singbox.sh")
-    for module in ("client_payload.py", "payload_failover_policy.py", "bundle_health.py", "fleet_inspection.py", "awg_client.py", "awg_device_binding.py", "encrypted_client_document.py", "ripdpi_cohort_fingerprint.py"):
+    for module in ("tofu_backend.py", "client_payload.py", "payload_failover_policy.py", "bundle_health.py", "fleet_inspection.py", "awg_client.py", "awg_device_binding.py", "encrypted_client_document.py", "ripdpi_cohort_fingerprint.py"):
         shutil.copy2(REPO_ROOT / "scripts" / module, repo / "scripts" / module)
     shutil.copy2(REPO_ROOT / "scripts/transport_semantics.py", repo / "scripts/transport_semantics.py")
     shutil.copy2(
@@ -275,7 +277,7 @@ def _run_shape_only_emitter(
     (repo / "ansible/roles/snell/defaults").mkdir(parents=True)
     (repo / "terraform/providers/upcloud").mkdir(parents=True)
     shutil.copy2(SCRIPT, repo / "scripts/emit-singbox.sh")
-    for module in ("client_payload.py", "payload_failover_policy.py", "bundle_health.py", "fleet_inspection.py", "awg_client.py", "awg_device_binding.py", "encrypted_client_document.py", "ripdpi_cohort_fingerprint.py"):
+    for module in ("tofu_backend.py", "client_payload.py", "payload_failover_policy.py", "bundle_health.py", "fleet_inspection.py", "awg_client.py", "awg_device_binding.py", "encrypted_client_document.py", "ripdpi_cohort_fingerprint.py"):
         shutil.copy2(REPO_ROOT / "scripts" / module, repo / "scripts" / module)
     shutil.copy2(REPO_ROOT / "scripts/transport_semantics.py", repo / "scripts/transport_semantics.py")
     shutil.copy2(
@@ -419,6 +421,20 @@ def _run_plaintext_emitter(env):
         cwd=REPO_ROOT,
         timeout=20,
     )
+
+
+def test_emit_profile_for_bound_endpoint_without_state_access(tmp_path):
+    _, env = _plaintext_emitter(tmp_path)
+    env.update(HOSTS="upcloud:prod", COHORTS="p0")
+    (tmp_path / "bin/tofu").write_text("#!/bin/sh\nexit 70\n")
+    args = ["bash", str(SCRIPT), "laptop", "--server-ipv4", "192.0.2.230"]
+    result = subprocess.run(args, capture_output=True, text=True, env=env, cwd=REPO_ROOT, timeout=20)
+    assert result.returncode == 0, result.stderr
+    servers = [row["server"] for row in json.loads(result.stdout)["outbounds"] if "server" in row]
+    assert servers and set(servers) == {"192.0.2.230"}
+    env.update(HOSTS="upcloud:prod,hetzner:prod", COHORTS="p0,p0")
+    ambiguous = subprocess.run(args, capture_output=True, env=env, cwd=REPO_ROOT, timeout=20)
+    assert ambiguous.returncode and not ambiguous.stdout
 
 
 @pytest.mark.parametrize("mode", [0o600, 0o400])

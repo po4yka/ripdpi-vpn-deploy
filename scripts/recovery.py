@@ -31,6 +31,7 @@ def provision(manifest, runtime, journal, approval):
     runtime.source()
     inputs = runtime.inputs()
     observed = runtime.observe()
+    runtime.make('init')
     state = runtime.state()
     retained = journal.state['observed'].get('provision_plan')
     attempt = journal.state['observed'].get('apply_attempt')
@@ -60,7 +61,6 @@ def provision(manifest, runtime, journal, approval):
             journal.observe('provision_plan', retained)
     else:
         if retained is None:
-            runtime.make('init')
             retained = runtime.plan(None)
             journal.observe('provision_plan', retained)
         elif retained['inputs'] != inputs:

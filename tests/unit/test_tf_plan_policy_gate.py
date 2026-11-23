@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 
 import pytest
@@ -82,7 +83,31 @@ def test_malformed_report_is_rejected(tmp_path, reports):
     assert "invalid or missing" in result.stderr
 
 
-def test_operator_plan_uses_the_shared_saved_plan_gate():
-    source = (ROOT / "scripts/tf-policy-test.sh").read_text()
-    assert '"${REPO_ROOT}/scripts/check-tf-plan.sh" "$PLAN_JSON"' in source
-    assert "\nconftest test" not in source
+def test_operator_policy_uses_the_selected_tfvars_and_checks_its_plan(tmp_path):
+    scripts = tmp_path / "repo/scripts"
+    scripts.mkdir(parents=True)
+    for name in ("tf-policy-test.sh", "tofu_tfvars.py"):
+        shutil.copy2(ROOT / "scripts" / name, scripts)
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    for name in ("conftest", "tofu"):
+        (bindir / name).symlink_to("/usr/bin/true")
+    wrapper = scripts / "terraform-env.sh"
+    wrapper.write_text(
+        '#!/bin/sh\ncase "$1" in\n'
+        '  plan) printf "%s\\n" "$@" > "$LOG" ;;\n'
+        '  show) echo generated-plan ;;\nesac\n'
+    )
+    wrapper.chmod(0o755)
+    check = scripts / "check-tf-plan.sh"
+    check.write_text('#!/bin/sh\ntest "$(cat "$1")" = generated-plan\n')
+    check.chmod(0o755)
+    ops = tmp_path / "ops checkout"
+    selected = ops / "hetzner/dev.tfvars"
+    selected.parent.mkdir(parents=True)
+    selected.touch()
+    log = tmp_path / "args"
+    subprocess.run([str(scripts / "tf-policy-test.sh"), "-p", "hetzner", "-e", "dev"],
+                   check=True, env={**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}",
+                                    "TFVARS_ROOT": str(ops), "LOG": str(log)})
+    assert f"-var-file={selected}" in log.read_text().splitlines()

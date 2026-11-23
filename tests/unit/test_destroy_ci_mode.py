@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("stub_tofu_backend")
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SERVER_UUID = "00112233-4455-4677-8899-aabbccddeeff"
 STORAGE_UUID = "ffeeddcc-bbaa-4988-8766-554433221100"
@@ -38,8 +40,10 @@ def _test_repo(tmp_path: Path) -> Path:
         "staging-cleanup-guard.py",
         "staging_lifecycle.py",
         "tofu_state.py",
+        "tofu_tfvars.py",
         "vultr-staging-cleanup-guard.py",
         "terraform-env.sh",
+        "tofu_backend.py",
     ):
         shutil.copy2(REPO_ROOT / "scripts" / name, scripts / name)
     for provider in ("upcloud", "hetzner", "vultr", "scaleway"):
@@ -66,7 +70,7 @@ def _terraform_stub(tmp_path: Path, *, fail_apply: bool = False) -> Path:
     python = tmp_path / "python3"
     python.write_text(
         "#!/usr/bin/env bash\n"
-        f'if [[ "${{1##*/}}" == staging_lifecycle.py ]]; then exec {shlex.quote(sys.executable)} "$@"; fi\n'
+        f'if [[ "${{1##*/}}" == staging_lifecycle.py || "${{1##*/}}" == tofu_backend.py || "${{1##*/}}" == tofu_tfvars.py ]]; then exec {shlex.quote(sys.executable)} "$@"; fi\n'
         '[[ -n "${PYTHON_STUB_LOG:-}" ]] && printf \'%s\\n\' "$*" >> "$PYTHON_STUB_LOG"\n'
         'if [[ "${FAIL_CONTROL_PLANE:-false}" == true ]]; then\n'
         '  count=0; [[ ! -f "$CONTROL_PLANE_COUNT" ]] || read -r count < "$CONTROL_PLANE_COUNT"\n'
@@ -740,7 +744,10 @@ def test_ci_destroy_skips_prompts_and_cleans_inventory_after_apply(
 ) -> None:
     root = _test_repo(tmp_path)
     env_name = "ci-123-cleanup"
-    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text(
+    external = tmp_path / "private ops"
+    (external / "upcloud").mkdir(parents=True)
+    tfvars = external / "upcloud" / f"{env_name}.tfvars"
+    tfvars.write_text(
         'server_name = "vpn-ci.test"\n'
     )
     inventory = root / "ansible/inventory/generated.ini"
@@ -748,13 +755,13 @@ def test_ci_destroy_skips_prompts_and_cleans_inventory_after_apply(
     inventory.write_text("[vpn]\n")
     stub = _terraform_stub(tmp_path)
 
-    result = _run(root, stub.parent, env_name)
+    result = _run(root, stub.parent, env_name, extra_env={"TFVARS_ROOT": str(external)})
 
     assert result.returncode == 0, result.stderr
     assert "CI destroy authorization accepted" in result.stdout
     assert not inventory.exists()
     assert not (root / "terraform/providers/upcloud/_destroy_override.tf").exists()
-    assert "plan -destroy" in (stub.parent / "terraform.log").read_text()
+    assert f"plan -destroy -var-file={tfvars}" in (stub.parent / "terraform.log").read_text()
     assert "apply" in (stub.parent / "terraform.log").read_text()
 
 

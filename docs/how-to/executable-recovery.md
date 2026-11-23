@@ -10,9 +10,11 @@ This workflow supports UpCloud and a separate surviving subscription publisher. 
 
 ## Preconditions
 
-Use a clean exact source revision and pinned tools. Read [the local operator kit contract](local-operator-kit.md) before collecting recovery inputs. Prepare a new, explicitly named replacement environment and its Terraform variables. The environment must not be `prod`, `default`, `staging` or a disposable CI environment. The planned server must have the operation's recovery label and the canonical managed label.
+Use a clean exact source revision and pinned tools. Read [the local operator kit contract](local-operator-kit.md) before collecting recovery inputs. Export the reviewed absolute `TF_BACKEND_ROOT` and, when using external variables, `TFVARS_ROOT` before starting the isolated recovery controller. Prepare a new, explicitly named replacement environment and its Terraform variables. The environment must not be `prod`, `default`, `staging` or a disposable CI environment. The planned server must have the operation's recovery label and the canonical managed label.
 
 Create an empty owner-only state directory with mode `0700`. Keep its private journal, saved plans, review artifacts and command diagnostics together. They may contain sensitive data. Manifest and private input files need mode `0600`. The controller never prints their contents.
+
+Recovery runs made before the ephemeral state-passphrase change may have written the passphrase into `approved-plan.json`, `apply-policy.json` or `command-*.stdout`. Locate old journals and their archives by filename. Restrict access to them. Check for the JSON field `variables.state_passphrase.value` locally without printing its value. If a journal reached another recipient, treat the passphrase and the retained state versions it protects as exposed. Coordinate key rotation, recovery access and retention before removing any evidence.
 
 Prepare these exact manifest fields:
 

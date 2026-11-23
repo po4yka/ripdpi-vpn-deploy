@@ -30,9 +30,8 @@ if [[ ! "$SOURCE_ENV" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ || "$SOURCE_ENV" == "default
 fi
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
-SRC="${TF_DIR}/environments/${SOURCE_ENV}.tfvars"
-DST="${TF_DIR}/environments/${NEW_ENV}.tfvars"
+SRC="$(python3 "${REPO_ROOT}/scripts/tofu_tfvars.py" "$PROVIDER" "$SOURCE_ENV")"
+DST="$(python3 "${REPO_ROOT}/scripts/tofu_tfvars.py" "$PROVIDER" "$NEW_ENV")"
 
 if [[ ! -f "$SRC" ]]; then
   echo "missing source tfvars: $SRC" >&2
