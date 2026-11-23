@@ -6,7 +6,7 @@ Define client-side encryption for state and saved plans. Define storage, locking
 
 ### Requirement: REQ-STATE-ENCRYPTED — State and plans are encrypted before they leave the client
 
-Every root MUST configure OpenTofu `encryption` for `state` and `plan` with an AES-GCM method keyed by a PBKDF2 key provider whose passphrase comes only from an environment variable. After migration each root MUST set `enforced = true` and have no `unencrypted` fallback. A stored state object MUST NOT contain resource attributes in plaintext. The passphrase MUST be ephemeral and absent from the saved plan JSON and command journal. A fleet plan MUST be usable only with its original provider, workspace and backend settings.
+Every root MUST enforce OpenTofu AES-GCM encryption for state and plans with PBKDF2 and no unencrypted fallback. The passphrase MUST come from an ephemeral environment input and stay out of plan JSON and journals. Stored state MUST contain no plaintext resource attributes. A fleet plan MUST be usable only with its original provider, workspace and backend settings.
 
 #### Scenario: Object inspection
 
@@ -20,7 +20,7 @@ Every root MUST configure OpenTofu `encryption` for `state` and `plan` with an A
 
 ### Requirement: REQ-STATE-BACKEND — One private, versioned, object-locked bucket
 
-Fleet provider state MUST live in one private bucket that supports the OpenTofu lock, with versioning, Object Lock governance retention and a bucket policy limiting state identities to `state/`. Each root and workspace MUST map to a distinct key under `state/`, keeping the production `default` workspace mapping of `scripts/terraform-env.sh`. Backend files MUST NOT contain credentials. The inert cascade exception root MUST keep its isolated encrypted local backend while apply is disabled. Disposable CI MUST use a run-specific encrypted local backend.
+Fleet state MUST use one private bucket with versioning, OpenTofu locking and Object Lock governance retention. Policy MUST restrict state identities to `state/`. Each root and workspace MUST have a distinct key there. Production MUST use the default workspace. Backend files MUST exclude credentials. The inert cascade root MUST keep an encrypted local backend while apply is disabled. Disposable CI MUST use a run-specific encrypted local backend.
 
 #### Scenario: Two roots
 

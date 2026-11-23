@@ -140,6 +140,7 @@ def test_inventory_path_and_schema_are_explicit(controller, inputs, monkeypatch,
         load(controller, inputs, monkeypatch, **changes)
 
 
+@pytest.mark.usefixtures("stub_tofu_backend")
 def test_named_permanent_workspace_keeps_identity(controller, inputs, monkeypatch):
     """Consume the real renderer's typed label through the bootstrap parser."""
     spec = importlib.util.spec_from_file_location(
