@@ -122,7 +122,19 @@
     dest: /usr/share/keyrings/cloudflare-warp-archive-keyring.asc
     mode: '0644'
     force: false
+  register: _warp_gpg_download
   when: warp_outbound.install_warp_cli | default(true)
+# Check mode does not write the key, so read the same upstream bytes to keep the pin check.
+- name: Read the upstream WARP GPG key that check mode would install
+  ansible.builtin.uri:
+    url: https://pkg.cloudflareclient.com/pubkey.gpg
+    return_content: true
+  register: _warp_gpg_upstream
+  check_mode: false
+  when:
+    - warp_outbound.install_warp_cli | default(true)
+    - ansible_check_mode
+    - _warp_gpg_download.changed
 - name: Verify Cloudflare WARP GPG key checksum against the pin
   ansible.builtin.stat:
     path: /usr/share/keyrings/cloudflare-warp-archive-keyring.asc
@@ -132,10 +144,14 @@
 - name: Assert GPG key matches pinned sha256
   ansible.builtin.assert:
     that:
-      - _warp_gpg_stat.stat.checksum == warp_outbound.pubkey_sha256
-    fail_msg: 'Cloudflare WARP GPG key checksum mismatch: got {{ _warp_gpg_stat.stat.checksum }} but warp_outbound.pubkey_sha256
+      - _warp_gpg_checksum == warp_outbound.pubkey_sha256
+    fail_msg: 'Cloudflare WARP GPG key checksum mismatch: got {{ _warp_gpg_checksum }} but warp_outbound.pubkey_sha256
       pins {{ warp_outbound.pubkey_sha256 }}. Verify the key has not been rotated upstream and update the pin if
       intentional.'
+  vars:
+    _warp_gpg_checksum: >-
+      {{ (_warp_gpg_upstream.content | hash('sha256')) if _warp_gpg_upstream is not skipped
+         else (_warp_gpg_stat.stat.checksum | default('')) }}
   when: warp_outbound.install_warp_cli | default(true)
 - name: Add Cloudflare WARP apt source
   ansible.builtin.copy:
@@ -189,7 +205,10 @@
     state: present
     update_cache: true
     policy_rc_d: 101
-  when: warp_outbound.install_warp_cli | default(true)
+  when:
+    - warp_outbound.install_warp_cli | default(true)
+    # Check mode cannot resolve the package before the repository source exists.
+    - not ansible_check_mode or not _warp_apt_source.changed
 - name: Read installed WARP package identity before configuration
   ansible.builtin.command:
     argv:
