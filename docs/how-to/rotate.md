@@ -150,20 +150,18 @@ If the operator workstation is compromised:
 # Generate a new key
 ssh-keygen -t ed25519 -f ~/.ssh/vpn_deploy_new -N '' -C 'vpn-deploy operator'
 
-# Edit tfvars to put the new public key in admin_ssh_public_key
+# Add the new public key to admin_ssh_public_keys, keeping the old one listed.
+# The list is the full set of admin keys: baseline writes authorized_keys
+# exclusively from it, and cloud-init uses it for new nodes. Only the first
+# entry is registered with the provider; changing the first entry replaces the
+# node, so keep it and add the new key after it for an in-place rotation.
 $EDITOR terraform/providers/upcloud/environments/prod.tfvars
 
-# cloud-init.user_data is ignored by lifecycle, so the new key won't apply
-# automatically. Instead, push it via Ansible by adding a temporary one-off
-# task — or, faster, SSH in once with the OLD key and run:
-ssh-copy-id -i ~/.ssh/vpn_deploy_new.pub deploy@<vps>
+# Converge: the new key is added to every node's admin authorized_keys.
+make deploy
 
-# Then revoke the old key on the server
-ssh -i ~/.ssh/vpn_deploy_new deploy@<vps>
-# remove the old key line
-$EDITOR ~/.ssh/authorized_keys
-exit
-
+# Switch to the new key, then delete the old entry from admin_ssh_public_keys
+# and run make deploy again: baseline removes the old key from every node.
 # From now on, use the new key
 export ANSIBLE_SSH_PRIVATE_KEY_FILE=~/.ssh/vpn_deploy_new
 shred -u ~/.ssh/vpn_deploy
