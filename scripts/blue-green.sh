@@ -238,23 +238,20 @@ fi
 # its own key, so the green apply would fail on blue's key. Refuse before plan.
 if [[ "$PROVIDER" == hetzner ]]; then
   BLUE_TFVARS="$(python3 "${REPO_ROOT}/scripts/tofu_tfvars.py" "$PROVIDER" "$BLUE_ENV")"
-  python3 - "$BLUE_TFVARS" "$GREEN_TFVARS" <<'PY'
-import re
-import sys
-
-pattern = re.compile(r'^\s*admin_ssh_public_keys\s*=\s*\[\s*"([^"]*)"', re.MULTILINE)
-keys = []
-for path in sys.argv[1:]:
-    try:
-        match = pattern.search(open(path, encoding="utf-8").read())
-    except OSError:
-        match = None
-    # Key type and body; a comment does not change the fingerprint.
-    keys.append(" ".join(match.group(1).split()[:2]) if match else None)
-if keys[0] is not None and keys[0] == keys[1]:
-    sys.exit("Hetzner keeps one SSH key per fingerprint in a project: set a separate "
-             f"admin_ssh_public_keys first entry (a new operator key pair) in {sys.argv[2]}")
-PY
+  # Blue is already initialized. Its provider root can evaluate either explicit
+  # tfvars file before Green has a workspace. Ignore the OpenSSH comment.
+  first_key() {
+    local expression='jsonencode(slice(split(" ", trimspace(nonsensitive(var.admin_ssh_public_keys[0]))), 0, 2))'
+    PROVIDER="$PROVIDER" ENV="$BLUE_ENV" "$REPO_ROOT/scripts/terraform-env.sh" \
+      console -lock=false -input=false -no-color -var-file="$1" <<< "$expression" |
+      jq -er 'fromjson | select(type == "array" and length == 2 and all(type == "string" and length > 0)) | join(" ")'
+  }
+  blue_first_key="$(first_key "$BLUE_TFVARS")"
+  green_first_key="$(first_key "$GREEN_TFVARS")"
+  if [[ "$blue_first_key" == "$green_first_key" ]]; then
+    echo "Hetzner keeps one SSH key per fingerprint in a project: set a separate first admin_ssh_public_keys entry in $GREEN_TFVARS" >&2
+    exit 1
+  fi
 fi
 
 # ---------------------------------------------------------------------------

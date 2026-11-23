@@ -54,6 +54,10 @@ def run_blue_green(tmp_path, failed_phase=None, answers=APPROVE_ALL, provider="u
     environments.mkdir(parents=True)
     for name, text in (tfvars or {"green": "# synthetic input\n"}).items():
         (environments / f"{name}.tfvars").write_text(text)
+    (environments.parent / "variables.tf").write_text(
+        'variable "server_name" { type = string }\n'
+        'variable "admin_ssh_public_keys" {\n  type = list(string)\n  sensitive = true\n}\n'
+    )
     phases = ("init", "plan", "apply", "wait", "dry-run", "deploy", "verify", "smoke-test")
     (root / "Makefile").write_text(
         ".PHONY: " + " ".join(phases) + "\n" + "".join(
@@ -102,6 +106,9 @@ if action == 'ready':
 (root / ('migration-' + action + '.complete')).touch()
 """)
     executable(scripts / "terraform-env.sh", """#!/bin/sh
+case "$1" in
+  console) exec tofu "-chdir=$(dirname "$0")/../terraform/providers/$PROVIDER" "$@" ;;
+esac
 case "$*" in
   *server_hostname*) printf 'node-%s\n' "$ENV" ;;
   *server_ipv4*) echo 192.0.2.7 ;;
@@ -131,7 +138,7 @@ esac
 
 
 def key_tfvars(key):
-    return f'server_name = "node"\nadmin_ssh_public_keys = ["{key}"]\n'
+    return f'server_name = "node"\nadmin_ssh_public_keys = [\n  # Bootstrap identity\n  "{key}",\n]\n'
 
 
 @pytest.mark.parametrize("green_key", ["ssh-ed25519 AAAABLUEKEY operator@laptop", "ssh-ed25519 AAAABLUEKEY other@host"])
@@ -140,6 +147,14 @@ def test_hetzner_green_with_the_blue_key_refuses_before_plan(tmp_path, green_key
     result, calls = run_blue_green(tmp_path, provider="hetzner", tfvars=tfvars)
     assert result.returncode != 0, result.stdout + result.stderr
     assert "one SSH key per fingerprint" in result.stderr
+    assert calls == [["prod", "verify"]]
+
+
+def test_hetzner_unreadable_key_list_refuses_before_plan(tmp_path):
+    result, calls = run_blue_green(tmp_path, provider="hetzner", tfvars={
+        "prod": key_tfvars("ssh-ed25519 AAAABLUEKEY operator"), "green": "admin_ssh_public_keys = ["
+    })
+    assert result.returncode != 0
     assert calls == [["prod", "verify"]]
 
 
