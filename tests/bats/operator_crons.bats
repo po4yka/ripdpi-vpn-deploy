@@ -84,3 +84,61 @@ STUB
     [ "$count" -eq 9 ]
   done
 }
+
+@test "Make previews the complete fleet configuration and protects installed jobs on refresh" {
+  repo="$PWD"
+  work="$BATS_TEST_TMPDIR/checkout"
+  mkdir "$work"
+  ln -s "$repo/scripts" "$work/scripts"
+  config="$BATS_TEST_TMPDIR/state.sops.json"
+  touch "$config"
+  cat > "$work/.fleet.mk" <<CONFIG
+PROVIDER = upcloud
+ENV = test
+MONITOR_STATE_IDENTITY_SOPS_FILE = $config
+STATE_PASSPHRASE_SOPS_FILE = $config
+STATE_IDENTITY_SOPS_FILE = $config
+NTFY_URL = https://alerts.invalid
+DOH_URL = https://resolver.invalid/query
+REALITY_TARGET_VANTAGE = filtered-test
+CONFIG
+  runner=(make -s -C "$work" -f "$repo/Makefile" install-operator-crons)
+  run "${runner[@]}" DRY_RUN=1
+  [ "$status" -eq 0 ]
+  [ ! -e "$TABLE" ]
+  for job in backup-state burn-check monitor-reality-target; do [[ "$output" == *"$job"* ]]; done
+  run "${runner[@]}"
+  [ "$status" -eq 0 ]
+  cp "$TABLE" "$TABLE.before"
+  run "${runner[@]}"
+  [ "$status" -eq 0 ]
+  cmp "$TABLE" "$TABLE.before"
+  cat > "$work/.fleet.mk" <<CONFIG
+REALITY_TARGET_VANTAGE = filtered-test
+CONFIG
+  run "${runner[@]}" DRY_RUN=1
+  [ "$status" -eq 0 ]
+  for name in backup-state burn-check asn-drift check-ip-reputation probing-summary 'setting DOH_URL' 'setting NTFY_URL'; do
+    [[ "$output" == *$'\n'"$name"$'\n'* ]]
+  done
+  cmp "$TABLE" "$TABLE.before"
+  run "${runner[@]}"
+  [ "$status" -ne 0 ]
+  cmp "$TABLE" "$TABLE.before"
+  run "${runner[@]}" ALLOW_CRON_REMOVALS=1
+  [ "$status" -eq 0 ]
+  grep -q 'make monitor-reality-target' "$TABLE"
+  ! grep -q 'burn-check\|backup-state' "$TABLE"
+}
+
+@test "preview recognizes jobs generated before the logging change" {
+  cat > "$TABLE" <<'TABLE'
+# vpn-deploy: BEGIN — managed block, do not edit
+47 3 * * * cd /checkout && sops exec-env /identity sops\ exec-env\ /phrase\ make\\\ backup-state | logger -t vpn-state
+*/30 * * * * cd /checkout && bash -o pipefail -c 'make burn-check 2>&1 | logger -t vpn-burn'
+# vpn-deploy: END
+TABLE
+  run scripts/install-operator-crons.sh --preview
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'Removed by this configuration:\nbackup-state\nburn-check'* ]]
+}

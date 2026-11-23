@@ -252,7 +252,7 @@ A sentinel fails its policy only when every required logical profile is blocked.
 
 `make promote-spare PROVIDER=… BLUE_ENV=… GREEN_ENV=… OTP=… LIVENESS_CONFIG=…` (the watcher prints the first four) reruns the probes before consuming the OTP. Promotion is refused if liveness recovered, evidence became indeterminate, the candidate policy changed, the configuration hash changed, or provider/environment binding changed. Blue-green verification and the existing operator traffic-pivot confirmation remain mandatory.
 
-Configure the managed cron block with `LIVENESS_CONFIG=~/.config/vpn-provision/liveness.yaml make install-operator-crons`. Without `WARM_SPARE_ENV`, it runs the standalone monitor every two minutes. With `WARM_SPARE_ENV=spare`, the warm-spare watcher owns the same probe cycle and retains the OTP-gated promotion flow. Omitting `LIVENESS_CONFIG` preserves the legacy TCP-only watcher and prints a warning; that compatibility mode cannot detect targeted protocol blocking.
+Add `LIVENESS_CONFIG = $(HOME)/.config/vpn-provision/liveness.yaml` to the complete private fleet Make configuration. Preview and install it with `make install-operator-crons DRY_RUN=1 && make install-operator-crons`. Without `WARM_SPARE_ENV`, it runs the standalone monitor every two minutes. With `WARM_SPARE_ENV=spare`, the warm-spare watcher owns the same probe cycle and retains the OTP-gated promotion flow. Omitting `LIVENESS_CONFIG` preserves the legacy TCP-only watcher and prints a warning; that compatibility mode cannot detect targeted protocol blocking.
 
 ## Staging acceptance
 
