@@ -134,7 +134,7 @@ def prepare(environment):
         intent = validate_intent({
             "schema_version": 1, "kind": KIND, "target_identity": target,
             "host": awg["provider"] + ":" + awg["environment"],
-            "cohort": "device-full-staging", "client": field("PROMOTION_CLIENT"),
+            "cohort": field("PROMOTION_COHORT"), "client": field("PROMOTION_CLIENT"),
             "liveness": config, "inputs": inputs, "outputs": outputs,
         })
         directory = _directory(output)

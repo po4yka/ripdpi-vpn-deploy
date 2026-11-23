@@ -10,6 +10,7 @@ SEC-1795260492741288 needs a staging check that the bounded transport generation
 
 - New family cohort `vpn-device-full-warp-staging`: the `vpn-device-full-staging` map with `enable_warp_outbound: true` and one `warp_outbound_routes` entry (`full:www.cloudflare.com`). A test keeps the two maps equal otherwise.
 - Docs name the operator registration step the role leaves to the operator.
+- Disposable onboarding intents admit `device-full-warp-staging`, and intent preparation takes a required `PROMOTION_COHORT` input. This breaks the preparation contract: callers must now name the cohort.
 - Production profiles and validation are unchanged.
 
 ## Capabilities
@@ -24,4 +25,4 @@ SEC-1795260492741288 needs a staging check that the bounded transport generation
 
 ## Impact
 
-- `ansible/group_vars/vpn-device-full-warp-staging.yml`, `ansible/role-tiers.yml` family list, `ansible/CLAUDE.md`, `docs/reference/deploy-profiles.md`, `docs/reference/architecture.md`, profile tests.
+- `ansible/group_vars/vpn-device-full-warp-staging.yml`, `ansible/role-tiers.yml` family list, `ansible/CLAUDE.md`, `docs/reference/deploy-profiles.md`, `docs/reference/architecture.md`, profile tests, disposable promotion intent validator and preparer, their Make inputs and docs.
