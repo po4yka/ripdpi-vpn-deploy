@@ -124,6 +124,23 @@ def test_matrix_rejects_unverifiable_secret_use(ops, change, message):
     assert result.returncode == 1 and message in result.stderr
 
 
+@pytest.mark.parametrize(("environment", "event", "message"), [
+    ("ci-bootstrap", "push", None),
+    ("deploy", "push", "secret CI_BOOTSTRAP_TOKEN does not belong to environment deploy"),
+    ("ci-bootstrap", "pull_request_target", "mutating environment ci-bootstrap must not run on pull_request_target"),
+], ids=["own-environment", "other-environment", "pull-request"])
+def test_bootstrap_token_stays_in_its_mutating_environment(ops, environment, event, message):
+    text = APPLY.replace("tofu-apply", environment).replace("push:", f"{event}:").replace("make apply", "gh secret set")
+    text = text.replace("VULTR_API_KEY: ${{ secrets.VULTR_API_KEY }}", "GH_TOKEN: ${{ secrets.CI_BOOTSTRAP_TOKEN }}")
+    text = text.replace("          TF_VAR_state_passphrase: ${{ secrets.STATE_PASSPHRASE }}\n", "")
+    workflow(ops, text, [entry(environment, "CI_BOOTSTRAP_TOKEN")])
+    result = run(ops)
+    if message is None:
+        assert result.returncode == 0, result.stderr
+    else:
+        assert result.returncode == 1 and message in result.stderr
+
+
 def test_trigger_rejects_apply_in_a_preview_environment(ops):
     workflow(ops, PREVIEW.replace("make plan", "make apply"), [entry("tofu-plan", "VULTR_API_KEY")])
     result = run(ops)
