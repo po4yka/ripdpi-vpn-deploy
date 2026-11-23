@@ -50,7 +50,7 @@ off under the restic+age backup contract.
 - **Administrator identity is creation-time state** — username/key edits hit
   replacement guards and `prevent_destroy`. First adoption compares retained
   cloud-init identity, normalizing surrounding key whitespace while checking the
-  complete key list, so mismatched inputs fail during planning. Helper and
+  first key of the list, so mismatched inputs fail during planning. Helper and
   build-label updates remain ignored; these checks do not observe guest drift.
 
 - **OS IDs identify actual provider images** — Debian 13 x64 is 2625 and

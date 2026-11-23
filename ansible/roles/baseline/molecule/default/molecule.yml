@@ -32,6 +32,15 @@ provisioner:
   env:
     ANSIBLE_ROLES_PATH: ../../..
   inventory:
+    # Throwaway fixture public keys. The scenario writes both, then revokes the
+    # second one (the CI key) and expects the operator key to remain.
+    group_vars:
+      all:
+        fixture_operator_key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIACuqbmHay9Ja1UTyK6Xs0ld57/VDX6uINKx2394i/LI operator@fixture
+        fixture_ci_key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG+8VoYO+6vtXu/2l7zZRRVQIn+9VtZyMU3jpV5zwvzQ ci@fixture
+        admin_ssh_public_keys:
+          - "{{ fixture_operator_key }}"
+          - "{{ fixture_ci_key }}"
     host_vars:
       vpn-baseline-debian13:
         ansible_user: root

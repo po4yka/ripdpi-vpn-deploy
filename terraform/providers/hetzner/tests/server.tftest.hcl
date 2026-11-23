@@ -13,13 +13,13 @@ mock_provider "hcloud" {
 }
 
 variables {
-  server_name          = "vpn-test"
-  location             = "hel1"
-  server_type          = "cpx22"
-  image                = "debian-13"
-  admin_ssh_public_key = "ssh-ed25519 AAAATESTKEY test@harness"
-  allowed_ssh_cidrs    = ["203.0.113.42/32"]
-  build_env            = "test"
+  server_name           = "vpn-test"
+  location              = "hel1"
+  server_type           = "cpx22"
+  image                 = "debian-13"
+  admin_ssh_public_keys = ["ssh-ed25519 AAAATESTKEY test@harness"]
+  allowed_ssh_cidrs     = ["203.0.113.42/32"]
+  build_env             = "test"
   public_listeners = [
     { name = "xray", protocol = "tcp", port = 443 },
     { name = "xray-fallback", protocol = "tcp", port = 2053 },

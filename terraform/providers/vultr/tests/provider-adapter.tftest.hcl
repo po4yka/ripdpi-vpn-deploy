@@ -2,13 +2,13 @@
 mock_provider "vultr" {}
 
 variables {
-  server_name          = "vpn-adapter-test"
-  region               = "ams"
-  plan                 = "vc2-1c-1gb"
-  os_id                = 2625
-  admin_ssh_public_key = "ssh-ed25519 AAAATESTKEY test@harness"
-  allowed_ssh_cidrs    = ["203.0.113.42/32"]
-  build_env            = "test"
+  server_name           = "vpn-adapter-test"
+  region                = "ams"
+  plan                  = "vc2-1c-1gb"
+  os_id                 = 2625
+  admin_ssh_public_keys = ["ssh-ed25519 AAAATESTKEY test@harness"]
+  allowed_ssh_cidrs     = ["203.0.113.42/32"]
+  build_env             = "test"
   public_listeners = [
     { name = "tcp-window", protocol = "tcp", port_range = "4433-4443" },
     { name = "udp-window", protocol = "udp", port_range = "51820-51822" },

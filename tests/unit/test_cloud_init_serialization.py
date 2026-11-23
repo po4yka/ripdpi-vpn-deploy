@@ -19,14 +19,16 @@ spec.loader.exec_module(renderer)
 
 CASES = (
     {},
-    {"admin_ssh_public_key": 'ssh-ed25519 AAAATESTKEY owner: laptop # "quoted" \\ path'},
+    {"admin_ssh_public_keys": ['ssh-ed25519 AAAATESTKEY owner: laptop # "quoted" \\ path']},
     {
         "admin_user": 'deploy: "quoted" \\ user',
-        "admin_ssh_public_key": "ssh-ed25519 AAAATESTKEY note\nruncmd: [unexpected]",
+        "admin_ssh_public_keys": ["ssh-ed25519 AAAATESTKEY note\nruncmd: [unexpected]"],
         "build_env": 'ci\nruncmd: [unexpected]\nlabel: "quoted" \\ ${literal}',
     },
-    {"admin_ssh_public_key": "ssh-ed25519 AAAATESTKEY <>& unicode \u2028 \u2029"},
+    {"admin_ssh_public_keys": ["ssh-ed25519 AAAATESTKEY <>& unicode \u2028 \u2029"]},
+    {"admin_ssh_public_keys": ["ssh-ed25519 AAAAOPERATOR op@fixture", "ssh-ed25519 AAAACI ci@fixture"]},
 )
+CASE_IDS = ("ordinary", "key-comment", "multiline", "unicode", "two-keys")
 
 
 def assert_scalar_document(document, values):
@@ -35,7 +37,7 @@ def assert_scalar_document(document, values):
     assert document["runcmd"] == baseline["runcmd"]
     assert len(document["users"]) == 1
     assert document["users"][0]["name"] == values["admin_user"]
-    assert document["users"][0]["ssh_authorized_keys"] == [values["admin_ssh_public_key"]]
+    assert document["users"][0]["ssh_authorized_keys"] == values["admin_ssh_public_keys"]
     files = {item["path"]: item for item in document["write_files"]}
     assert set(files) == {item["path"] for item in baseline["write_files"]}
     assert files["/etc/vpn-build-id"]["content"] == (
@@ -47,7 +49,7 @@ def assert_scalar_document(document, values):
     )
 
 
-@pytest.mark.parametrize("edits", CASES, ids=("ordinary", "key-comment", "multiline", "unicode"))
+@pytest.mark.parametrize("edits", CASES, ids=CASE_IDS)
 def test_ci_renderer_preserves_scalar_values(edits):
     values = dict(renderer.VALUES, **edits)
     assert_scalar_document(yaml.safe_load(renderer.render(values)), values)
@@ -61,10 +63,16 @@ def test_ci_renderer_refuses_unrecognized_template_expression(monkeypatch, tmp_p
         renderer.render()
 
 
-@pytest.mark.parametrize("name", ("admin_user", "admin_ssh_public_key", "build_env"))
+@pytest.mark.parametrize("name", ("admin_user", "build_env"))
 def test_ci_renderer_refuses_null_bootstrap_scalars(name):
     with pytest.raises(TypeError, match="scalar inputs must be strings"):
         renderer.render(dict(renderer.VALUES, **{name: None}))
+
+
+@pytest.mark.parametrize("keys", (None, "ssh-ed25519 AAAATESTKEY", [None]))
+def test_ci_renderer_refuses_non_list_admin_keys(keys):
+    with pytest.raises(TypeError, match="must be a list of strings"):
+        renderer.render(dict(renderer.VALUES, admin_ssh_public_keys=keys))
 
 
 def terraform_render(values, tmp_path):
@@ -93,7 +101,7 @@ def terraform_render(values, tmp_path):
 
 
 @pytest.mark.native_runtime
-@pytest.mark.parametrize("edits", CASES, ids=("ordinary", "key-comment", "multiline", "unicode"))
+@pytest.mark.parametrize("edits", CASES, ids=CASE_IDS)
 def test_actual_terraform_render_matches_ci_scalar_document(edits, tmp_path):
     values = dict(renderer.VALUES, **edits)
     result = terraform_render(values, tmp_path)
@@ -105,7 +113,7 @@ def test_actual_terraform_render_matches_ci_scalar_document(edits, tmp_path):
 
 
 @pytest.mark.native_runtime
-@pytest.mark.parametrize("name", ("admin_user", "admin_ssh_public_key", "build_env"))
+@pytest.mark.parametrize("name", ("admin_user", "admin_ssh_public_keys", "build_env"))
 def test_actual_terraform_render_refuses_null_bootstrap_scalars(name, tmp_path):
     result = terraform_render(dict(renderer.VALUES, **{name: None}), tmp_path)
     assert result.returncode != 0

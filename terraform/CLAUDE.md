@@ -51,6 +51,8 @@ so the existing key-name attribute guards first adoption; its combined name
 makes server-name changes creation-time edits too. Unchanged nodes migrate
 without replacement, while `prevent_destroy` blocks identity edits.
 
+**`admin_ssh_public_keys` is a list; only the first entry is node identity** — cloud-init writes the whole list, but each root registers only the first key with the provider and hashes only the first key into its replacement guard, so adding or revoking a later key (the CI key) never replaces a node. The `single_key_list_keeps_node` and `second_key_keeps_node` lifecycle runs (and the UpCloud `admin-keys` test) prove it. Existing nodes keep their retained user_data (`ignore_changes`); `baseline` converges the live `authorized_keys` from the same list.
+
 **Provider adapters preserve canonical listeners** — integer singleton and
 legacy XHTTP ports are validated in every root. Vultr converts hyphen ranges to
 colon ranges only in its resource port input, keeping output values and resource

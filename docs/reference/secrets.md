@@ -164,7 +164,7 @@ Without it you cannot decrypt the SOPS file. Three options:
 
 ### Operator workstation lost
 
-If the age private key was in `~/.config/vpn-provision/age.key`, treat as "lost the age key" plus the SSH private key. Add: rotate SSH access on the VPS (`make deploy` with a new `admin_ssh_public_key` in tfvars), and if Terraform state was on that workstation, see `../how-to/incident.md` § "State loss".
+If the age private key was in `~/.config/vpn-provision/age.key`, treat as "lost the age key" plus the SSH private key. Add: rotate SSH access on the VPS (`make deploy` with the new key in `admin_ssh_public_keys` in tfvars and the old one removed), and if Terraform state was on that workstation, see `../how-to/incident.md` § "State loss".
 
 ## Hard rules
 

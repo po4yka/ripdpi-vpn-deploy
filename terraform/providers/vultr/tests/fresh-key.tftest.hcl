@@ -4,13 +4,13 @@
 mock_provider "vultr" {}
 
 variables {
-  server_name          = "vpn-test"
-  region               = "ams"
-  plan                 = "vc2-1c-1gb"
-  os_id                = 2625
-  admin_ssh_public_key = "ssh-ed25519 AAAATESTKEY test@harness"
-  allowed_ssh_cidrs    = ["203.0.113.42/32"]
-  build_env            = "test"
+  server_name           = "vpn-test"
+  region                = "ams"
+  plan                  = "vc2-1c-1gb"
+  os_id                 = 2625
+  admin_ssh_public_keys = ["ssh-ed25519 AAAATESTKEY test@harness"]
+  allowed_ssh_cidrs     = ["203.0.113.42/32"]
+  build_env             = "test"
   public_listeners = [
     { name = "xray", protocol = "tcp", port = 443 },
     { name = "xray-fallback", protocol = "tcp", port = 2053 },
@@ -24,11 +24,11 @@ run "fresh_public_key_with_file_newline" {
   command = apply
 
   variables {
-    admin_ssh_public_key = "ssh-ed25519 AAAATESTKEY test@harness\n"
+    admin_ssh_public_keys = ["ssh-ed25519 AAAATESTKEY test@harness\n"]
   }
 
   assert {
-    condition     = terraform_data.admin_ssh_public_key.output == sha256(trimspace(var.admin_ssh_public_key))
+    condition     = terraform_data.admin_ssh_public_key.output == sha256(trimspace(var.admin_ssh_public_keys[0]))
     error_message = "A fresh node must accept a newline-terminated public key."
   }
 }

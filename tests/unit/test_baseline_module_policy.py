@@ -177,7 +177,8 @@ def test_real_tasks_retry_failed_initramfs_before_acknowledgement(tmp_path):
 
 def test_admission_precedes_first_mutation_and_remains_active_in_check_mode():
     main = yaml.safe_load((ROLE / 'tasks/main.yml').read_text())
-    assert main[1]['ansible.builtin.import_tasks'] == 'module-admission.yml'
+    first = next(i for i, task in enumerate(main) if 'ansible.builtin.assert' not in task)
+    assert main[first]['ansible.builtin.import_tasks'] == 'module-admission.yml'
     admission = yaml.safe_load((ROLE / 'tasks/module-admission.yml').read_text())[0]
     assert admission['check_mode'] is False
     assert admission['tags'] == ['always']

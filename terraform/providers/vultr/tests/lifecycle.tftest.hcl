@@ -3,13 +3,13 @@
 mock_provider "vultr" {}
 
 variables {
-  server_name          = "vpn-test"
-  region               = "ams"
-  plan                 = "vc2-1c-1gb"
-  os_id                = 2625
-  admin_ssh_public_key = "ssh-ed25519 AAAATESTKEY test@harness"
-  allowed_ssh_cidrs    = ["203.0.113.42/32"]
-  build_env            = "test"
+  server_name           = "vpn-test"
+  region                = "ams"
+  plan                  = "vc2-1c-1gb"
+  os_id                 = 2625
+  admin_ssh_public_keys = ["ssh-ed25519 AAAATESTKEY test@harness"]
+  allowed_ssh_cidrs     = ["203.0.113.42/32"]
+  build_env             = "test"
   public_listeners = [
     { name = "xray", protocol = "tcp", port = 443 },
     { name = "xray-fallback", protocol = "tcp", port = 2053 },
@@ -29,7 +29,7 @@ run "create_node" {
   }
 
   assert {
-    condition     = terraform_data.admin_ssh_public_key.output == sha256(trimspace(var.admin_ssh_public_key))
+    condition     = terraform_data.admin_ssh_public_key.output == sha256(trimspace(var.admin_ssh_public_keys[0]))
     error_message = "Creation must record the administrator public-key digest guard."
   }
 }
@@ -47,11 +47,11 @@ run "same_public_key_with_file_newline" {
   command = plan
 
   variables {
-    admin_ssh_public_key = "ssh-ed25519 AAAATESTKEY test@harness\n"
+    admin_ssh_public_keys = ["ssh-ed25519 AAAATESTKEY test@harness\n"]
   }
 
   assert {
-    condition     = terraform_data.admin_ssh_public_key.output == sha256(trimspace(var.admin_ssh_public_key))
+    condition     = terraform_data.admin_ssh_public_key.output == sha256(trimspace(var.admin_ssh_public_keys[0]))
     error_message = "The same key with a file newline must retain its bootstrap identity."
   }
 }
@@ -64,4 +64,33 @@ run "os_change_refuses_in_place_reinstall" {
   }
 
   expect_failures = [vultr_instance.vpn]
+}
+
+# A migrated tfvars file lists the existing key alone; the plan must not touch the node.
+run "single_key_list_keeps_node" {
+  command = plan
+
+  variables {
+    admin_ssh_public_keys = ["ssh-ed25519 AAAATESTKEY test@harness"]
+  }
+
+  assert {
+    condition     = vultr_instance.vpn.id != ""
+    error_message = "A single-entry key list must retain the node."
+  }
+}
+
+# Adding a key (for example the CI key) after the first entry updates cloud-init and
+# baseline only. The provider receives the first key, so the node stays.
+run "second_key_keeps_node" {
+  command = plan
+
+  variables {
+    admin_ssh_public_keys = ["ssh-ed25519 AAAATESTKEY test@harness", "ssh-ed25519 AAAACIKEY ci@harness"]
+  }
+
+  assert {
+    condition     = vultr_instance.vpn.id != ""
+    error_message = "Adding a second key must retain the node."
+  }
 }

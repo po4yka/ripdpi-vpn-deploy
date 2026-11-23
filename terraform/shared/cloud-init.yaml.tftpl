@@ -13,8 +13,7 @@ users:
     shell: /bin/bash
     lock_passwd: true
     sudo: "ALL=(ALL) NOPASSWD:ALL"
-    ssh_authorized_keys:
-      - ${jsonencode(format("%s", admin_ssh_public_key))}
+    ssh_authorized_keys: ${jsonencode(formatlist("%s", admin_ssh_public_keys))}
 
 ssh_pwauth: false
 disable_root: true

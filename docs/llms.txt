@@ -19,6 +19,7 @@
 - [age key recovery — Shamir split](/md/how-to/age-recovery.md)
 - [Repository rules and merge policy](/md/how-to/branch-protection.md)
 - [Certificate preflight and public HTTPS renewal](/md/how-to/certificates.md)
+- [CI identities and environments](/md/how-to/ci-identities.md)
 - [Disposable real-VPS CI deployment](/md/how-to/ci-real-deploy.md)
 - [Recurring real-VPS AWG/NAT evidence lane](/md/how-to/ci-real-vps-awg-nat.md)
 - [Runbook — deploy](/md/how-to/deploy.md)

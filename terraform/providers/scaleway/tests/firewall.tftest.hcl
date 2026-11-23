@@ -3,12 +3,12 @@
 mock_provider "scaleway" {}
 
 variables {
-  server_name          = "vpn-test"
-  zone                 = "pl-waw-1"
-  server_type          = "DEV1-S"
-  image                = "ubuntu_noble"
-  admin_ssh_public_key = "ssh-ed25519 AAAATESTKEY test@harness"
-  allowed_ssh_cidrs    = ["203.0.113.42/32"]
+  server_name           = "vpn-test"
+  zone                  = "pl-waw-1"
+  server_type           = "DEV1-S"
+  image                 = "ubuntu_noble"
+  admin_ssh_public_keys = ["ssh-ed25519 AAAATESTKEY test@harness"]
+  allowed_ssh_cidrs     = ["203.0.113.42/32"]
   public_listeners = [
     { name = "xray", protocol = "tcp", port = 443 },
     { name = "xray-fallback", protocol = "tcp", port = 2053 },

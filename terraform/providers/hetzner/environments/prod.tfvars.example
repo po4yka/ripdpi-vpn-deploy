@@ -6,7 +6,7 @@ server_type = "cpx22"
 image       = "debian-13"
 
 admin_user           = "deploy"
-admin_ssh_public_key = "ssh-ed25519 AAAA_PROD_PUBLIC_KEY operator@laptop"
+admin_ssh_public_keys = ["ssh-ed25519 AAAA_PROD_PUBLIC_KEY operator@laptop"]
 ssh_port             = 22
 
 allowed_ssh_cidrs = [

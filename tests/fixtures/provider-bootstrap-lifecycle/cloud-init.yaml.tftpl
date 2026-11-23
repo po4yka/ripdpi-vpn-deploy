@@ -1,0 +1,52 @@
+#cloud-config
+
+package_update: true
+package_upgrade: false
+package_reboot_if_required: false
+
+# No `default` entry: the image's stock account would keep passwordless sudo and
+# any provider-injected key beside the one admin user this stack manages.
+users:
+  - name: ${jsonencode(format("%s", admin_user))}
+    gecos: VPN Deploy User
+    groups: [sudo]
+    shell: /bin/bash
+    lock_passwd: true
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    ssh_authorized_keys:
+      - ${jsonencode(format("%s", admin_ssh_public_key))}
+
+ssh_pwauth: false
+disable_root: true
+
+packages:
+  - python3
+  - python3-apt
+  - sudo
+  - ca-certificates
+  - curl
+  - jq
+
+write_files:
+  - path: /usr/local/libexec/vpn-bootstrap-sshd-ownership.py
+    owner: root:root
+    permissions: "0700"
+    encoding: b64
+    content: ${bootstrap_ssh_ownership_b64}
+
+  - path: /etc/vpn-build-id
+    owner: root:root
+    permissions: "0644"
+    content: ${jsonencode(format("provisioned_by=cloud-init\nnext_stage=ansible\nbuild_env=%s\n", build_env))}
+
+runcmd:
+  # Validate and reload sshd only on first boot so subsequent reboots do not
+  # drop active tunnels. Newer distro images ship socket-activated SSH with
+  # the service inactive on first boot, where a bare reload fails. Regenerate
+  # socket units and restart an active SSH socket and its service so both use
+  # the configured port. Ensure the service is enabled and started before reload.
+  # Keep the marker in the same success chain: external waiters must never observe completion after
+  # a failed validation or activation.
+  - [sh, -c, "test -f /var/lib/cloud-init-vpn-bootstrap.done || { install -d -m 0755 /run/sshd && /usr/bin/python3 -I -B /usr/local/libexec/vpn-bootstrap-sshd-ownership.py --config-dir /etc/ssh --ssh-port ${ssh_port} && /usr/sbin/sshd -t && systemctl daemon-reload && { ! systemctl is-active --quiet ssh.socket || { systemctl restart ssh.socket && systemctl restart ssh.service; }; } && systemctl enable --now ssh && systemctl reload ssh && touch /var/lib/cloud-init-vpn-bootstrap.done; }"]
+
+final_message: "VPN VPS bootstrap complete after $UPTIME seconds"

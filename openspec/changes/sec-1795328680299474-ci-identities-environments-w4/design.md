@@ -13,8 +13,8 @@ See `proposal.md`. The public repository already gates credentialed CI with the 
 
 | Environment | Runs on | Secrets | Used by |
 |---|---|---|---|
-| `tofu-plan` | PR preview, schedule | `TF_VAR_state_passphrase`, B2 `state-plan` key, read-only provider tokens (write tokens where no read-only exists), `tag:ci-tofu` join | PR plan, scheduled drift |
-| `tofu-apply` | push to default branch | passphrase, B2 `state-apply` key, provider write tokens, `tag:ci-tofu` join | apply, destroy |
+| `tofu-plan` | PR preview, schedule | `TF_VAR_state_passphrase`, state bucket `tofu-state-plan` identity, read-only provider tokens (write tokens where no read-only exists), `tag:ci-tofu` join | PR plan, scheduled drift |
+| `tofu-apply` | push to default branch | passphrase, state bucket `tofu-state-apply` identity, provider write tokens, `tag:ci-tofu` join | apply, destroy |
 | `deploy-check` | PR preview, schedule | CI age identity, CI SSH key, `tag:ci-deploy` join | dry-run, verify, acceptance |
 | `deploy` | push to default branch | same classes as `deploy-check` | deploy |
 | `ops-secrets` | push to default branch | CI age identity only | offline credential preparation |
@@ -47,7 +47,7 @@ See `proposal.md`. The public repository already gates credentialed CI with the 
 | Scaleway | IAM application, read-only permission sets, project-scoped | IAM application, write sets for the used products, project-scoped |
 | UpCloud | sub-account with API access (read-only if offered) | sub-account with server, storage, network and firewall rights |
 | Vultr | sub-user API key (read-only ACL if offered) | sub-user API key with server, firewall, reserved-IP ACLs |
-| Backblaze | `state-plan` key | `state-apply` key |
+| State bucket (Scaleway, W3) | `tofu-state-plan` identity | `tofu-state-apply` identity |
 | Porkbun | key with read permission on managed domains (W6) | key with DNS permission on managed domains |
 | Tailscale | none | policy-push identity only in `tailnet-policy` |
 

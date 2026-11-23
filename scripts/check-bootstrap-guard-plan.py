@@ -22,7 +22,11 @@ def admit(plan, provider):
     resources = {row["address"]: row["values"] for row in plan["prior_state"]["values"]["root_module"]["resources"]}
     server = resources[SERVERS[provider]]
     port = resources["terraform_data.ssh_port"]
-    name, user, key = (inputs[field] for field in ("server_name", "admin_user", "admin_ssh_public_key"))
+    name, user = inputs["server_name"], inputs["admin_user"]
+    keys = inputs["admin_ssh_public_keys"]
+    if not isinstance(keys, list) or len(keys) != 1:
+        return False
+    key = keys[0]
     if (not server["id"] or server["hostname" if provider == "vultr" else "name"] != name
             or port["input"] != inputs["ssh_port"] or port["output"] != inputs["ssh_port"]):
         return False

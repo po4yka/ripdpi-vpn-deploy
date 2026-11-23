@@ -50,7 +50,7 @@ Every target below that uses cloud credentials, inventory, SSH or decrypted secr
 
 First distinguish a lost private key from an unreachable controller network, provider firewall, wrong listener port or unfinished bootstrap. Use read-only checks of the current address, approved image and provider state before choosing a recovery action. Recreating nodes cannot repair the controller's network; avoid consuming repeated VPS and keys while that path is unavailable.
 
-For a disposable node, prefer exact-resource cleanup and fresh provisioning with a reviewed `admin_ssh_public_key`. Use `make staging-destroy` and its current manifest for owned disposable staging; permanent-node destruction/replacement must follow the authorized Terraform lifecycle and rollback runbook. Preserve state and evidence, verify provider absence and establish the recreated node's host-key identity independently. Do not bypass `prevent_destroy` or accept a changed SSH key merely because recreation was expected.
+For a disposable node, prefer exact-resource cleanup and fresh provisioning with a reviewed `admin_ssh_public_keys` list. Use `make staging-destroy` and its current manifest for owned disposable staging; permanent-node destruction/replacement must follow the authorized Terraform lifecycle and rollback runbook. Preserve state and evidence, verify provider absence and establish the recreated node's host-key identity independently. Do not bypass `prevent_destroy` or accept a changed SSH key merely because recreation was expected.
 
 Rebuild through [fresh staging deployment](deploy.md#staging-first) or `../tutorials/quickstart.md`: inventory/wait, recovery foundation, positive Tailnet bootstrap, SSH ownership migration and private deploy mappings precede ordinary deployment. Then verify the required protocols and [complete cleanup](deploy.md#acceptance-scope-and-completion). Existing authorization covers bounded retries and replacement nodes within the approved resource/cost limits; ask again only when that scope is exceeded.
 
@@ -138,7 +138,8 @@ first full plan, OpenTofu can interpret creation of a lifecycle trigger as a
 server replacement. Keep `prevent_destroy` enabled.
 
 1. Select the exact backup, provider, environment and tfvars. Compare the
-   server ID and account with the operator inventory. Use a private shell
+   server ID and account with the operator inventory. Set `admin_ssh_public_keys`
+   to the single bootstrap key from the backup. Apply additional keys after recovery. Use a private shell
    with read-only provider credentials and the pinned CLI. Set `PROVIDER`,
    `ENV`, `TFVARS`, `SNAPSHOT`, `AGE_IDENTITY`, `AGE_RECIPIENTS` and
    `RECOVERED_SNAPSHOT`. Use absolute paths. Select a new private output

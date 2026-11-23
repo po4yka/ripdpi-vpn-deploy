@@ -56,10 +56,25 @@ variable "admin_user" {
   description = "Non-root user created by cloud-init for SSH and Ansible access."
 }
 
-variable "admin_ssh_public_key" {
-  type        = string
+variable "admin_ssh_public_keys" {
+  type        = list(string)
   sensitive   = true
-  description = "Public SSH key only. The matching private key stays outside this repo."
+  description = "Public SSH keys only; the matching private keys stay outside this repo. cloud-init and baseline write all of them to the admin account. The first entry is the operator key and the only one registered with the provider: changing it replaces the node, while adding, removing or reordering later entries does not."
+
+  validation {
+    condition     = length(var.admin_ssh_public_keys) > 0
+    error_message = "admin_ssh_public_keys must contain at least one key to preserve SSH management access."
+  }
+
+  validation {
+    condition     = alltrue([for key in var.admin_ssh_public_keys : can(regex("^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh\\.com) [A-Za-z0-9+/]+=*( [^\r\n']*)?$", trimspace(key)))])
+    error_message = "admin_ssh_public_keys entries must be single-line OpenSSH public keys."
+  }
+
+  validation {
+    condition     = length(distinct([for key in var.admin_ssh_public_keys : try(join(" ", slice(split(" ", trimspace(key)), 0, 2)), key)])) == length(var.admin_ssh_public_keys)
+    error_message = "admin_ssh_public_keys must not contain duplicate keys."
+  }
 }
 
 variable "allowed_ssh_cidrs" {

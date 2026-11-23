@@ -62,7 +62,7 @@ jobs:
                   'server_name = "ci-policy"' \
                   'location = "hel1"' \
                   'server_type = "cx23"' \
-                  'admin_ssh_public_key = "ssh-ed25519 AAAACI ci@invalid"' \
+                  'admin_ssh_public_keys = ["ssh-ed25519 AAAACI ci@invalid"]' \
                   'allowed_ssh_cidrs = ["192.0.2.33/32"]' \
                   'public_listeners = [' \
                   '  { name = "xray", protocol = "tcp", port = 443 },' \
@@ -79,7 +79,7 @@ jobs:
                   'region = "ams"' \
                   'plan = "vc2-1c-1gb"' \
                   'os_id = 2625' \
-                  'admin_ssh_public_key = "ssh-ed25519 AAAACI ci@invalid"' \
+                  'admin_ssh_public_keys = ["ssh-ed25519 AAAACI ci@invalid"]' \
                   'allowed_ssh_cidrs = ["192.0.2.33/32"]' \
                   'public_listeners = [' \
                   '  { name = "xray", protocol = "tcp", port = 443 },' \

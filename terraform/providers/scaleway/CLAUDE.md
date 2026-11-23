@@ -47,7 +47,7 @@ The root disk is explicit Block Storage 5K (`sbs_volume`, 5000 IOPS), defaults t
 - **Administrator identity is creation-time state** — username/key edits hit
   replacement guards and `prevent_destroy`. First adoption compares retained
   cloud-init identity, normalizing surrounding key whitespace while checking the
-  complete key list, so mismatched inputs fail during planning. Helper and
+  first key of the list, so mismatched inputs fail during planning. Helper and
   build-label updates remain ignored; these checks do not observe guest drift.
 
 - **Example listener completeness** — the explicit staging/prod contracts include

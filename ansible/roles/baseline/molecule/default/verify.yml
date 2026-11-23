@@ -43,6 +43,31 @@
           - "'deploy' in ansible_facts.getent_passwd"
           - "(baseline_cloud_init_sudoers.content | b64decode).splitlines() == ['deploy ALL=(ALL) NOPASSWD:ALL']"
 
+    - name: Read the admin authorized_keys after converging with two keys
+      ansible.builtin.slurp:
+        src: /root/.ssh/authorized_keys
+      register: baseline_keys_added
+    - name: Both listed keys are present
+      ansible.builtin.assert:
+        that:
+          - fixture_operator_key in (baseline_keys_added.content | b64decode).splitlines()
+          - fixture_ci_key in (baseline_keys_added.content | b64decode).splitlines()
+
+    - name: Converge again with the CI key removed from the list
+      ansible.builtin.include_role:
+        name: baseline
+      vars:
+        admin_ssh_public_keys:
+          - "{{ fixture_operator_key }}"
+    - name: Read the admin authorized_keys after the revoke
+      ansible.builtin.slurp:
+        src: /root/.ssh/authorized_keys
+      register: baseline_keys_revoked
+    - name: The revoked key is gone and the remaining key is still present
+      ansible.builtin.assert:
+        that:
+          - (baseline_keys_revoked.content | b64decode).splitlines() == [fixture_operator_key]
+
     - name: Collect service facts
       ansible.builtin.service_facts:
 

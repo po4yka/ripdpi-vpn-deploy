@@ -86,6 +86,9 @@ provisioner:
         hysteria_log_dir: /var/log/hysteria
         amneziawg_config_dir: /etc/amnezia/amneziawg
         restic_repo_dir: /var/backups/vpn-restic
+        # render-inventory.sh injects this from the provider tfvars list.
+        admin_ssh_public_keys:
+          - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIACuqbmHay9Ja1UTyK6Xs0ld57/VDX6uINKx2394i/LI operator@fixture
         # Explicit provider snapshot for this scenario's preflight inputs.
         # xray_fallback_port is explicitly disabled above, so five listeners
         # are enabled and match this contract.

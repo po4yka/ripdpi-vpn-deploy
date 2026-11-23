@@ -2,7 +2,7 @@
 id: SEC-1795328680299474
 title: Issue revocable CI identities in scoped GitHub environments
 kind: feature
-status: backlog
+status: doing
 area: security
 priority: high
 risk: high
