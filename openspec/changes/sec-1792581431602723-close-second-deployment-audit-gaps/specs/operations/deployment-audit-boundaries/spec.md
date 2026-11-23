@@ -51,9 +51,9 @@ refuse an empty `ENV`. Tag selection MUST NOT skip this check.
 
 ### Requirement: REQ-DAB-SHAREDKEY — One operator key per Hetzner environment
 
-Blue-green on Hetzner MUST refuse, before the green plan, a green tfvars whose
-`admin_ssh_public_key` has the same key type and body as the blue tfvars. The
-existing Terraform identity guards MUST remain unchanged.
+Blue-green on Hetzner MUST evaluate the first entry of `admin_ssh_public_keys`
+in both tfvars files with OpenTofu. It MUST refuse before the green plan if
+either entry cannot be evaluated or the entries have the same key type and body.
 
 #### Scenario: The green tfvars copy the blue key
 
