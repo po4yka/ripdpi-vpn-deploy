@@ -82,8 +82,8 @@ def admit(restoring: bool) -> tuple[str, str, bytes, dict[str, str]]:
         if not os.environ.get(name):
             fail(f"missing {name} in the environment", 2)
     raw = read_backend(Path(root) / f"{provider}.s3.tfbackend")
-    settings = backend_settings(raw)
-    prefix = settings.get("workspace_key_prefix", "env:")
+    settings = backend_settings(raw, provider)
+    prefix = settings["workspace_key_prefix"]
     settings["object"] = settings["key"] if env == "prod" else posixpath.join(prefix, env, settings["key"])
     return provider, env, raw, settings
 
@@ -95,9 +95,9 @@ def read_backend(path: Path) -> bytes:
         fail(f"missing backend file: {path}", 2)
 
 
-def backend_settings(raw: bytes) -> dict:
+def backend_settings(raw: bytes, provider: str | None) -> dict:
     try:
-        settings = s3_settings(raw)
+        settings = s3_settings(raw, provider)
     except ValueError as error:
         fail(str(error), 2)
     try:
@@ -219,11 +219,11 @@ def read_state(result: subprocess.CompletedProcess[bytes]) -> dict | None:
 def inspect_probe(backend: Path, key: str, workspace: str) -> None:
     if not re.fullmatch(r"state/_probe/[A-Za-z0-9]+/terraform\.tfstate", key):
         fail("expected a disposable probe key", 2)
-    settings = backend_settings(read_backend(backend))
+    settings = backend_settings(read_backend(backend), None)
     run_id = key.split("/")[2]
     if workspace not in ("default", f"probe-{run_id}"):
         fail("workspace is not owned by this disposable probe", 2)
-    prefix = settings.get("workspace_key_prefix", "env:")
+    prefix = settings["workspace_key_prefix"]
     settings["object"] = key if workspace == "default" else posixpath.join(prefix, workspace, key)
     retained = {entry["version"] for entry in versions(settings)
                 if entry["kind"] == "state" and entry["version"] not in ("", "null")}

@@ -72,7 +72,7 @@ def _contains_credentials(value) -> bool:
     return isinstance(value, list) and any(_contains_credentials(item) for item in value)
 
 
-def s3_settings(raw: bytes) -> dict:
+def s3_settings(raw: bytes, provider: str | None) -> dict:
     try:
         settings = backend_literals(raw)
     except ValueError:
@@ -84,6 +84,14 @@ def s3_settings(raw: bytes) -> dict:
         raise ValueError("credential in backend file")
     if settings.get("use_lockfile") is not True:
         raise ValueError("backend requires use_lockfile = true")
+    if settings.get("workspace_key_prefix") != "state/workspaces":
+        raise ValueError('backend requires workspace_key_prefix = "state/workspaces"')
+    # The disposable lock probe supplies its own run-specific key at init.
+    if provider is not None:
+        if provider not in {"upcloud", "hetzner", "vultr", "scaleway"}:
+            raise ValueError("unknown provider backend file")
+        if settings.get("key") != f"state/{provider}/terraform.tfstate":
+            raise ValueError(f'backend requires key = "state/{provider}/terraform.tfstate"')
     return settings
 
 
@@ -104,7 +112,7 @@ def read_backend_settings(root: Path, workspace: str, file: Path) -> bytes:
                 or override.is_symlink() or override.read_text() != expected or settings != local_settings.encode()):
             raise ValueError("CI local backend does not belong to this workspace")
     else:
-        s3_settings(settings)
+        s3_settings(settings, root.name)
     return settings
 
 
@@ -117,6 +125,9 @@ def plan_scope(provider_root: Path, workspace: str, data_dir: Path) -> str:
 
 
 def main() -> None:
+    if len(sys.argv) == 3 and sys.argv[1] == "--check-probe-backend":
+        s3_settings(Path(sys.argv[2]).read_bytes(), None)
+        return
     provider, workspace, config, snapshot = sys.argv[1:]
     root = Path(provider)
     settings = read_backend_settings(root, workspace, Path(config))

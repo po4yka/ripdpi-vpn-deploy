@@ -28,7 +28,7 @@ def stub_tofu_backend(tmp_path, monkeypatch):
     backend = tmp_path / "stub-tofu-backend"
     backend.mkdir()
     for provider in ("upcloud", "hetzner", "vultr", "scaleway"):
-        (backend / f"{provider}.s3.tfbackend").write_text('bucket = "fixture"\nuse_lockfile = true\n')
+        (backend / f"{provider}.s3.tfbackend").write_text(f'bucket = "fixture"\nkey = "state/{provider}/terraform.tfstate"\nworkspace_key_prefix = "state/workspaces"\nuse_lockfile = true\n')
     monkeypatch.setenv("TF_BACKEND_ROOT", str(backend))
     return backend
 

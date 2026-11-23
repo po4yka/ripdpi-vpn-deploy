@@ -14,7 +14,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "terraform-env.sh"
-SETTINGS = 'bucket = "fixture"\nuse_lockfile = true\n'
+SETTINGS = 'bucket = "fixture"\nkey = "state/upcloud/terraform.tfstate"\nworkspace_key_prefix = "state/workspaces"\nuse_lockfile = true\n'
 DIGEST = hashlib.sha256(SETTINGS.encode()).hexdigest()
 
 
@@ -55,7 +55,7 @@ def _run(
     stub_dir = _terraform_stub(tmp_path).parent
     if backend_root is None:
         (tmp_path / "backend").mkdir(exist_ok=True)
-        (tmp_path / "backend" / f"{provider}.s3.tfbackend").write_text(SETTINGS)
+        (tmp_path / "backend" / f"{provider}.s3.tfbackend").write_text(SETTINGS.replace("state/upcloud/", f"state/{provider}/"))
         backend_root = str(tmp_path / "backend")
     env = {k: v for k, v in os.environ.items() if k != "TF_BACKEND_ROOT"} | {
         "TF_BACKEND_ROOT": backend_root,
@@ -109,9 +109,10 @@ def test_scaleway_provider_root_is_accepted(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
+    digest = hashlib.sha256(SETTINGS.replace("upcloud", "scaleway").encode()).hexdigest()
     assert (tmp_path / "terraform.log").read_text().splitlines() == [
-        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/scaleway/.terraform-env/default' / DIGEST} -chdir={REPO_ROOT / 'terraform/providers/scaleway'} workspace select default",
-        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/scaleway/.terraform-env/default' / DIGEST} -chdir={REPO_ROOT / 'terraform/providers/scaleway'} output -raw server_ipv4",
+        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/scaleway/.terraform-env/default' / digest} -chdir={REPO_ROOT / 'terraform/providers/scaleway'} workspace select default",
+        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/scaleway/.terraform-env/default' / digest} -chdir={REPO_ROOT / 'terraform/providers/scaleway'} output -raw server_ipv4",
     ]
 
 
@@ -249,6 +250,8 @@ def test_backend_change_selects_a_different_cache_before_output(tmp_path: Path):
 
 
 @pytest.mark.parametrize(("settings", "error"), [
+    (SETTINGS.replace("upcloud", "vultr"), "backend requires key"),
+    (SETTINGS.replace("state/workspaces", "env:"), "backend requires workspace_key_prefix"),
     ("use_lockfile = false\n", "use_lockfile"),
     ('use_lockfile = true\n/* old account */ access_key = "sensitive-fixture"\n', "credential in backend file"),
 ])

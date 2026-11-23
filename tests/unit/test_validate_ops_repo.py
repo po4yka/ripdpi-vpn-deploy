@@ -177,10 +177,16 @@ def test_backend_files_carry_no_credentials(ops: Path, line: str) -> None:
     assert "config/backend/vultr.s3.tfbackend: credential in backend file" in run(ops).stderr
 
 
-def test_backend_file_without_credentials_passes(ops: Path) -> None:
+@pytest.mark.parametrize("provider,prefix,expected", [
+    ("vultr", "state/workspaces", 0),
+    ("upcloud", "state/workspaces", 1),
+    ("vultr", "env:", 1),
+])
+def test_backend_file_binds_provider_and_workspace_prefix(ops: Path, provider, prefix, expected) -> None:
     (ops / "config/backend").mkdir()
-    (ops / "config/backend/vultr.s3.tfbackend").write_text('bucket = "synthetic"\nuse_lockfile = true\n')
-    assert run(ops).returncode == 0
+    (ops / "config/backend/vultr.s3.tfbackend").write_text(
+        f'key = "state/{provider}/terraform.tfstate"\nworkspace_key_prefix = "{prefix}"\nuse_lockfile = true\n')
+    assert run(ops).returncode == expected
 
 
 @pytest.mark.parametrize("setting", ["", "use_lockfile = false", "# use_lockfile = true", "/*\nuse_lockfile = true\n*/",

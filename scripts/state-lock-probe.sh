@@ -47,6 +47,7 @@ work="$(mktemp -d "${TMPDIR:-/tmp}/state-lock-probe.XXXXXX")"
 trap 'rm -rf -- "$work"' EXIT
 cp -- "$backend" "$work/probe.s3.tfbackend"
 backend="$work/probe.s3.tfbackend"
+python3 "$(dirname "$0")/tofu_backend.py" --check-probe-backend "$backend"
 probe_key="state/_probe/${work##*.}/terraform.tfstate"
 cat > "$work/main.tf" <<'EOF'
 terraform {

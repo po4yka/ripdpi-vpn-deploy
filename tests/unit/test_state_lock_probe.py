@@ -65,7 +65,7 @@ def executable(path: Path, text: str) -> None:
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
 
-def probe(tmp_path: Path, mode: str = "locking", *, omit: str | None = None) -> subprocess.CompletedProcess[str]:
+def probe(tmp_path: Path, mode: str = "locking", *, omit: str | None = None, prefix: str = "state/workspaces") -> subprocess.CompletedProcess[str]:
     binary = tmp_path / "bin"
     binary.mkdir()
     executable(binary / "sops", SOPS)
@@ -92,7 +92,7 @@ else:
         docs[role] = tmp_path / f"{role}.json"
         docs[role].write_text(json.dumps({"PROBE_ROLE": role, "AWS_ACCESS_KEY_ID": "fixture", "AWS_SECRET_ACCESS_KEY": "fixture"} if role != "passphrase" else {"TF_VAR_state_passphrase": "x" * 16}))
     backend = tmp_path / "probe.s3.tfbackend"
-    backend.write_text('bucket = "fixture"\nuse_lockfile = true\nkey = "fixture"\nworkspace_key_prefix = "state/workspaces"\nregion = "test"\nendpoints = { s3 = "https://test.invalid" }\n')
+    backend.write_text(f'bucket = "fixture"\nuse_lockfile = true\nkey = "fixture"\nworkspace_key_prefix = "{prefix}"\nregion = "test"\nendpoints = {{ s3 = "https://test.invalid" }}\n')
     arguments = {"--backend-config": backend, "--writer": docs["writer"], "--other-writer": docs["other"],
                  "--reader": docs["reader"], "--passphrase": docs["passphrase"], "--hold": "3"}
     if omit:
@@ -101,6 +101,12 @@ else:
     env = {**os.environ, "PATH": f"{binary}:{os.environ['PATH']}", "STUB_BACKEND": str(tmp_path / "backend"),
            "STUB_MODE": mode, "TMPDIR": str(tmp_path)}
     return subprocess.run(command, env=env, text=True, capture_output=True, timeout=60, check=False)
+
+
+def test_wrong_workspace_prefix_refused_before_probe(tmp_path: Path) -> None:
+    result = probe(tmp_path, prefix="wrong")
+    assert result.returncode != 0 and "backend requires workspace_key_prefix" in result.stderr
+    assert not list((tmp_path / "backend").iterdir())
 
 
 def test_locking_backend_passes_every_check(tmp_path: Path) -> None:
