@@ -2,7 +2,7 @@
 
 Each provider lives in its own root module under `providers/<name>/`. They share `shared/cloud-init.yaml.tftpl` for the bootstrap template.
 
-Use Terraform >= 1.15. Each provider root commits its own `.terraform.lock.hcl` so CI and operator workstations resolve the same provider builds.
+Use OpenTofu 1.13.9 from `mise.toml`. Each provider root commits its own `.terraform.lock.hcl` so CI and operator workstations resolve the same provider builds.
 
 ## Why per-provider root modules
 
@@ -24,27 +24,21 @@ The Ansible layer is provider-neutral — only the inventory render script reads
 Each provider root has provider-mocked `tofu test` coverage under `providers/<name>/tests/`. These tests run without contacting cloud APIs and assert the shared inventory output contract plus provider-specific firewall and server-resource invariants:
 
 ```bash
-tofu -chdir=terraform/providers/upcloud init -backend=false
-tofu -chdir=terraform/providers/upcloud test
-
-tofu -chdir=terraform/providers/hetzner init -backend=false
-tofu -chdir=terraform/providers/hetzner test
-
-tofu -chdir=terraform/providers/vultr init -backend=false
-tofu -chdir=terraform/providers/vultr test
-
-tofu -chdir=terraform/providers/scaleway init -backend=false
-tofu -chdir=terraform/providers/scaleway test
+make tf-test
 ```
 
 ## State
 
-State is encrypted on the client and stored in the remote S3 backend that `TF_BACKEND_ROOT` configures, isolated by provider plus `ENV`. The legacy `ENV=prod` deployment remains in Terraform's `default` workspace so existing state keeps working; every other environment uses a workspace with the same name. Before using a new environment, run its initialization explicitly:
+OpenTofu encrypts state on the client and stores it in the S3 backend selected by `TF_BACKEND_ROOT`. Set this absolute directory in the fleet Make configuration or export it for direct script calls. Each provider's backend file must set `use_lockfile = true`. `ENV=prod` selects the legacy `default` workspace. Other environments select a workspace with the same name. Initialize the workspace before its first plan.
 
 ```bash
 make PROVIDER=upcloud ENV=green init
 make PROVIDER=upcloud ENV=green plan apply
 ```
+
+Complete or reconcile any pending promotion or rollback on its original reviewed revision before switching. A retained snapshot from the old revision does not bind its backend. After upgrading the wrapper, run `make init` once for each selected provider and environment. OpenTofu reads the existing remote state. The local initialization cache and the plan encryption scope now depend on the exact backend file and workspace. After any backend file edit, initialize again and generate a new plan. Regenerate plans saved with an earlier release before applying them. The state encryption key is unchanged.
+
+`make plan` uses the read-only state identity without taking the writer lock. It saves an encrypted plan and checks its policy. Use the writer identity for `make apply`. OpenTofu takes the backend lock and checks the saved plan against the current state before it writes.
 
 Operator scripts and `vpnd` use `scripts/terraform-env.sh`; do not invoke raw `tofu output`, `plan`, or `apply`, because it can select the wrong workspace. Back up state out-of-band; without it Terraform cannot follow blue-green or rotate the floating IP. See `docs/how-to/incident.md` § "State loss".
 
@@ -56,7 +50,15 @@ Each provider/environment contract is tied to the Ansible cohort deployed for th
 
 ## Plan policy enforcement
 
-The Rego rules under `terraform/policy/` gate plans through conftest in two places. PR CI (`tf-policy.yml`) runs their unit tests once and, for the roots whose SDK tolerates credential-shaped dummies at configure time (`hetzner`, `vultr`), renders an offline plan and evaluates the full rule set against it. Operator environments must run `make PROVIDER=<p> ENV=<e> tf-conftest` before every apply; this is the only enforcement point for `upcloud` and `scaleway`, whose providers cannot render a credential-free plan.
+The Rego rules under `terraform/policy/` gate plans through conftest in two places. PR CI (`tf-policy.yml`) runs their unit tests once and, for the roots whose SDK tolerates credential-shaped dummies at configure time (`hetzner`, `vultr`), renders an offline plan and evaluates the full rule set against it. `make plan` evaluates its saved plan for every provider. `make apply` checks the same plan again before applying it. `make tf-conftest` can check a separate preview with the same input file.
+
+For production migration acceptance, select one reviewed Git revision and record its full SHA. Initialize each authorized provider and environment. With the read-only identity, run the following command separately for each workspace:
+
+```bash
+TF_CLI_ARGS_plan=-detailed-exitcode make PROVIDER="$provider" ENV="$environment" plan
+```
+
+A change or planning error stops Make before policy evaluation. A successful command proves that the saved plan has no changes and passes policy. Record the revision, tool version, workspace and result in the private receipt. Keep the encrypted plan private.
 
 ## Providers
 

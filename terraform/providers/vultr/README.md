@@ -77,6 +77,7 @@ No modules.
 | <a name="input_nginx_xhttp_public_port"></a> [nginx\_xhttp\_public\_port](#input\_nginx\_xhttp\_public\_port) | Public TCP port for nginx-xhttp. Keep this in sync with Ansible nginx\_xhttp\_public\_port. | `number` | `8443` | no |
 | <a name="input_os_id"></a> [os\_id](#input\_os\_id) | Vultr OS id, e.g. Debian or Ubuntu image id from `vultr-cli os list`. | `number` | n/a | yes |
 | <a name="input_plan"></a> [plan](#input\_plan) | Vultr plan slug, e.g. vc2-1c-1gb or vhf-1c-1gb. | `string` | n/a | yes |
+| <a name="input_plan_backend_scope"></a> [plan\_backend\_scope](#input\_plan\_backend\_scope) | Provider, workspace and backend configuration digest supplied by the OpenTofu wrapper. | `string` | n/a | yes |
 | <a name="input_public_listeners"></a> [public\_listeners](#input\_public\_listeners) | Public TCP/UDP listeners allowed at the provider edge. Specify exactly one of port or port\_range for each entry. Optional family (ipv4, ipv6 or dual; absent means dual) limits the entry to one address family at every layer. | <pre>list(object({<br/>    name       = string<br/>    protocol   = string<br/>    port       = optional(number)<br/>    port_range = optional(string)<br/>    family     = optional(string)<br/>  }))</pre> | `[]` | no |
 | <a name="input_region"></a> [region](#input\_region) | Vultr region, e.g. ams, fra, lhr. | `string` | n/a | yes |
 | <a name="input_server_name"></a> [server\_name](#input\_server\_name) | Hostname / Terraform name of the VPS. | `string` | n/a | yes |

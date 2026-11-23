@@ -6,6 +6,9 @@ import socket
 import stat
 import subprocess
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("stub_tofu_backend")
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "burn-check.sh"
@@ -221,10 +224,15 @@ def test_third_party_run_needs_named_vantage_points(tmp_path: pathlib.Path) -> N
     assert result.returncode == 64 and not curl_log.exists()
 
 
-def test_scheduled_entry_passes_no_probe_option() -> None:
+def test_scheduled_entry_passes_no_probe_option(tmp_path) -> None:
+    reader = tmp_path / "read-only.sops.json"
+    phrase = tmp_path / "state.sops.json"
+    reader.touch()
+    phrase.touch()
     plan = subprocess.run(
         ["bash", str(REPO_ROOT / "scripts" / "install-operator-crons.sh"), "--dry-run"],
-        cwd=REPO_ROOT, env={**os.environ, "PROVIDER": "upcloud", "ENV": "test"}, text=True, capture_output=True, check=False,
+        cwd=REPO_ROOT, env={**os.environ, "PROVIDER": "upcloud", "ENV": "test",
+                       "MONITOR_STATE_IDENTITY_SOPS_FILE": str(reader), "STATE_PASSPHRASE_SOPS_FILE": str(phrase)}, text=True, capture_output=True, check=False,
     )
     entry = next(line for line in plan.stdout.splitlines() if "make burn-check" in line)
     assert "NODES" not in entry and "--third-party" not in entry and "--udp-probe" not in entry

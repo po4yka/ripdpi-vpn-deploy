@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import shlex
 from pathlib import Path
 
 import yaml
@@ -51,3 +52,17 @@ def test_every_root_requires_the_pinned_release():
     assert roots
     for versions in roots:
         assert f'required_version = "{SUPPORTED_VERSION}"' in versions.read_text(), versions
+
+
+def test_ci_initializes_all_roots_with_frozen_provider_locks():
+    for name in ("ci.yml", "tf-policy.yml"):
+        jobs = yaml.safe_load((REPO_ROOT / ".github/workflows" / name).read_text())["jobs"]
+        commands = [
+            shlex.split(line)
+            for job in jobs.values()
+            for step in job.get("steps", [])
+            for line in step.get("run", "").splitlines()
+            if line.strip().startswith("tofu init ")
+        ]
+        assert commands
+        assert all("-lockfile=readonly" in command for command in commands), name

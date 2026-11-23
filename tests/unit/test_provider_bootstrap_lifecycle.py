@@ -1,10 +1,14 @@
 """Credential-free OpenTofu identity transitions of the provider roots."""
 
 import json
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
+from threading import Thread
+from uuid import uuid4
 
 import pytest
 
@@ -18,7 +22,7 @@ SERVERS = {
 pytestmark = pytest.mark.native_runtime
 
 
-def execute(directory, *arguments):
+def execute(directory, *arguments, backend_scope="test-workspace"):
     # Only copied configurations, generated mock state and synthetic inputs enter
     # this process. Do not inherit provider credentials or OpenTofu CLI switches.
     environment = {
@@ -26,7 +30,8 @@ def execute(directory, *arguments):
         if key in {"PATH", "HOME", "TMPDIR", "TF_PLUGIN_CACHE_DIR"}
     }
     environment.update(TF_IN_AUTOMATION="1", CHECKPOINT_DISABLE="1",
-                       TF_VAR_state_passphrase="tf-test-passphrase-not-a-secret")
+                       TF_VAR_state_passphrase="tf-test-passphrase-not-a-secret",
+                       TF_VAR_plan_backend_scope=backend_scope)
     environment["TF_CLI_CONFIG_FILE"] = str(directory / "test-provider-installation.tfrc")
     return subprocess.run(
         ["tofu", *arguments], cwd=directory, env=environment,
@@ -149,3 +154,125 @@ def test_public_key_newline_respects_provider_identity_contract(configuration):
         changes = plan_for(result, "key_newline")
         assert changes[SERVERS[provider]]["actions"] == ["no-op"]
         assert changes["terraform_data.admin_ssh_public_key"]["actions"] == ["no-op"]
+
+
+@pytest.mark.parametrize("state_config", sorted(ROOT.glob("terraform/**/state.tf")),
+                         ids=lambda path: path.parent.name)
+def test_encryption_passphrase_stays_out_of_plan_json(tmp_path, state_config):
+    shutil.copyfile(state_config, tmp_path / "state.tf")
+    (tmp_path / "test_backend_override.tf").write_text('terraform {\n  backend "local" {}\n}\n')
+    (tmp_path / "main.tf").write_text('resource "terraform_data" "test" { input = "value" }\n')
+    (tmp_path / "test-provider-installation.tfrc").write_text("")
+    for args in (("init", "-input=false"), ("plan", "-input=false", "-out=reviewed.plan"),
+                 ("show", "-json", "reviewed.plan"), ("apply", "-input=false", "reviewed.plan")):
+        result = execute(tmp_path, *args)
+        assert result.returncode == 0, result.stderr
+        if args[0] == "show":
+            if state_config.parent.name != "cascade-ingress":
+                foreign = execute(tmp_path, "apply", "-input=false", "reviewed.plan", backend_scope="other-workspace")
+                assert foreign.returncode != 0 and not (tmp_path / "terraform.tfstate").exists()
+            assert "tf-test-passphrase-not-a-secret" not in result.stdout
+            assert json.loads(result.stdout)["resource_changes"][0]["change"]["actions"] == ["create"]
+    assert "encrypted_data" in json.loads((tmp_path / "terraform.tfstate").read_text())
+
+
+def test_adopt_pre_guard_snapshot_in_isolated_backend(configuration, tmp_path):
+    provider, source, setup = configuration
+    root = tmp_path / "terraform/providers" / provider
+    root.mkdir(parents=True)
+    for path in [*source.glob("*.tf"), source / ".terraform.lock.hcl", source / "test-provider-installation.tfrc"]:
+        shutil.copy2(path, root / path.name)
+    shutil.copytree(source.parents[1] / "shared", root.parents[1] / "shared")
+    legacy = ROOT / "tests/fixtures/provider-bootstrap-lifecycle" / provider
+    for path in legacy.glob("*.tf.fixture"):
+        shutil.copy2(path, root / path.stem)
+    (root / "scratch_override.tf").write_text('terraform {\n backend "local" {}\n}\n')
+
+    mock, variables = setup.split("variables {\n", 1)
+    uuid = str(uuid4())
+    if provider == "scaleway":
+        mock = mock.replace('mock_provider "scaleway" {}', f'''mock_provider "scaleway" {{
+  mock_resource "scaleway_instance_server" {{ defaults = {{ id = "pl-waw-1/{uuid}" }} }}
+}}''')
+    values = variables.split("\n}", 1)[0]
+    tfvars = root / "identity.tfvars"
+    tfvars.write_text(values)
+    (root / "legacy.tftest.hcl").write_text(mock + "variables {\n" + values + '\n}\nrun "seed" { command = apply }\n')
+    assert execute(root, "init", "-input=false", "-lockfile=readonly").returncode == 0
+    seed = execute(root, "test", "-json", "-filter=legacy.tftest.hcl")
+    assert seed.returncode == 0 and any(e.get("test_run", {}).get("status") == "pass" for e in events(seed))
+    # The legacy server's prevent_destroy retains the mock deployment at test teardown.
+    assert (root / "errored_test.tfstate").is_file()
+    for path in legacy.glob("*.tf.fixture"):
+        shutil.copy2(source / path.stem, root / path.stem)
+
+    class VolumeRead(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path != f"/instance/v1/zones/pl-waw-1/servers/{uuid}":
+                self.send_error(404)
+                return
+            body = json.dumps({"server": {"id": uuid, "zone": "pl-waw-1", "volumes": {
+                "0": {"id": "00000000-0000-4000-8000-000000000100", "size": 20_000_000_000,
+                      "volume_type": "sbs_volume"}}}}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    with HTTPServer(("127.0.0.1", 0), VolumeRead) as api:
+        server = Thread(target=api.serve_forever, daemon=True)
+        server.start()
+        # Only synthetic credentials and this loopback endpoint are available to the real plugins.
+        environment = {"PATH": os.environ["PATH"], "HOME": str(tmp_path), "CHECKPOINT_DISABLE": "1",
+                       "TF_CLI_CONFIG_FILE": str(root / "test-provider-installation.tfrc"),
+                       "TF_VAR_state_passphrase": "tf-test-passphrase-not-a-secret",
+                       "TF_VAR_plan_backend_scope": "test-workspace",
+                       "HCLOUD_TOKEN": "0" * 64, "VULTR_API_KEY": "fixture", "SCW_ACCESS_KEY": "SCW" + "0" * 17,
+                       "SCW_SECRET_KEY": uuid, "SCW_DEFAULT_PROJECT_ID": uuid,
+                       "SCW_API_URL": f"http://127.0.0.1:{api.server_port}",
+                       "HTTP_PROXY": "http://127.0.0.1:1", "HTTPS_PROXY": "http://127.0.0.1:1"}
+
+        def tofu(*args, check=True):
+            return subprocess.run(["tofu", *args], cwd=root, env=environment, capture_output=True,
+                                  text=True, timeout=120, check=check)
+
+        def verify(plan):
+            return subprocess.run([sys.executable, str(ROOT / "scripts/check-bootstrap-guard-plan.py"), provider],
+                                  input=tofu("show", "-json", plan).stdout, capture_output=True, text=True)
+
+        try:
+            tofu("state", "push", "errored_test.tfstate")
+            plan = ["plan", "-refresh=false", "-input=false", "-no-color", "-var-file=identity.tfvars"]
+            targets = ["-target=terraform_data.admin_user"]
+            if provider != "hetzner":
+                targets.append("-target=terraform_data.admin_ssh_public_key")
+            for mismatch in ("admin_user=other", "admin_ssh_public_key=ssh-ed25519 AAAADIFFERENT fixture",
+                             "ssh_port=2222"):
+                tofu(*plan, *targets, "-var", mismatch, "-out=wrong.plan")
+                assert verify("wrong.plan").returncode != 0
+            tofu(*plan, *targets, "-out=guard.plan")
+            assert verify("guard.plan").returncode == 0
+            tofu("apply", "-input=false", "guard.plan")
+
+            # A full plan on the recovered copy must retain every managed server. The historical
+            # Scaleway resource had no explicit root volume and its volume transition is refused.
+            full = tofu(*plan, "-var=build_env=next", "-out=qualified.plan", check=False)
+            if provider == "scaleway":
+                assert full.returncode != 0
+                assert "Resource instance scaleway_instance_server.vpn has prevent_destroy set" in full.stderr
+            else:
+                assert full.returncode == 0, full.stderr
+                changes = {row["address"]: row["change"]
+                           for row in json.loads(tofu("show", "-json", "qualified.plan").stdout)["resource_changes"]}
+                assert all("delete" not in change["actions"] and "create" not in change["actions"]
+                           for change in changes.values())
+                machine = changes[SERVERS[provider]]
+                assert machine["before"]["id"] == machine["after"]["id"]
+                assert machine["before"]["user_data"] == machine["after"]["user_data"]
+                if provider == "hetzner":
+                    assert changes["hcloud_firewall_attachment.vpn"]["actions"] == ["forget"]
+                    assert machine["after"]["firewall_ids"] == [2001]
+        finally:
+            api.shutdown()
+            server.join()

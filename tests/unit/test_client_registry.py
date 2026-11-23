@@ -24,6 +24,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+pytestmark = pytest.mark.usefixtures("stub_tofu_backend")
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ISSUER = REPO_ROOT / "scripts" / "issue-sub-token.sh"
 BOOTSTRAP_ISSUER = REPO_ROOT / "scripts" / "issue-bootstrap.sh"

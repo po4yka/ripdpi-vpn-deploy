@@ -92,35 +92,120 @@ make restore-state PROVIDER=upcloud ENV=prod
 # Decrypts the selected version locally, refuses another lineage, and pushes it
 # through the backend lock as the next serial. Earlier versions stay retained.
 make restore-state PROVIDER=upcloud ENV=prod STATE_VERSION=<version-id>
-PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh plan -var-file=environments/prod.tfvars
-# Expect: no changes
+make PROVIDER=upcloud ENV=prod plan
+# Review each proposed change against the actual resources and the chosen recovery point.
 ```
 
-`ALLOW_LINEAGE_CHANGE=1` replaces state with a version of another lineage (`tofu state push -force`). A forced push skips the serial check, so stop every other writer first, and use it only after confirming that the current state is the wrong one. A writer that died while holding the lock leaves `<state key>.tflock`; after confirming no writer runs, release it with `PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh force-unlock <lock-id>` using the operator identity (a refused push or plan prints the lock ID).
+`ALLOW_LINEAGE_CHANGE=1` replaces state with a version of another lineage (`tofu state push -force`). A forced push skips the serial check, so stop every other writer first, and use it only after confirming that the current state is the wrong one. A writer that died while holding the lock leaves `<state key>.tflock`; after confirming no writer runs, release it with `PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh force-unlock <lock-id>` using the operator identity (obtain the lock ID from the backend lock record).
 
 Recovery path 1 — the bucket or its versions are lost: create a replacement bucket, point the `<provider>.s3.tfbackend` files of the ops repository at it, then restore the newest `make backup-state` snapshot into an initialized empty workspace. The producer publishes a timestamped name only after encryption completes; its private `.state-backup.*` staging files are not recovery snapshots.
 
 ```bash
+set -o pipefail
 # Snapshots live in ${BACKUP_DEST:-~/.config/vpn-provision/state-backups}/<provider>-<env>-<timestamp>.tfstate.age
+# Make reads TF_BACKEND_ROOT and TFVARS_ROOT from the selected ops configuration.
+# A change to the backend file selects a new initialization directory.
 make PROVIDER=upcloud ENV=prod init
+# Direct wrapper calls require TF_BACKEND_ROOT in the environment.
+export TF_BACKEND_ROOT="${ops_repo:?set ops_repo to the private ops checkout}/config/backend"
 age -d -i <age identity> <snapshot> | PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh state push -
-PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh plan -var-file=environments/prod.tfvars
+make PROVIDER=upcloud ENV=prod plan
 ```
 
 Recovery path 2 — re-import the existing VPS:
 
 ```bash
-PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh init
-PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh import upcloud_server.vpn <SERVER_UUID>
-PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh import upcloud_firewall_rules.vpn <SERVER_UUID>
-# Validate state matches reality
-# should show no changes
-PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh plan
+make PROVIDER=upcloud ENV=prod init
+export TF_BACKEND_ROOT="${ops_repo:?set ops_repo to the private ops checkout}/config/backend"
+export TFVARS_ROOT="${TFVARS_ROOT:?set TFVARS_ROOT to the selected ops tfvars directory}"
+tfvars="$(python3 scripts/tofu_tfvars.py upcloud prod)"
+PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh import -var-file="$tfvars" upcloud_server.vpn <SERVER_UUID>
+PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh import -var-file="$tfvars" upcloud_firewall_rules.vpn <SERVER_UUID>
+# Review the plan against the resources that you imported.
+make PROVIDER=upcloud ENV=prod plan
 ```
 
 Find `<SERVER_UUID>` in the UpCloud console (server details → "ID").
 
 After restoration, run `make backup-state` so an age snapshot of the restored state exists outside the bucket.
+
+### Backups from before the bootstrap identity guards
+
+Use this procedure for a Hetzner, Vultr or Scaleway backup that contains
+`terraform_data.ssh_port` and lacks `terraform_data.admin_user`. On Vultr and
+Scaleway, `terraform_data.admin_ssh_public_key` must also be absent. On the
+first full plan, OpenTofu can interpret creation of a lifecycle trigger as a
+server replacement. Keep `prevent_destroy` enabled.
+
+1. Select the exact backup, provider, environment and tfvars. Compare the
+   server ID and account with the operator inventory. Use a private shell
+   with read-only provider credentials and the pinned CLI. Set `PROVIDER`,
+   `ENV`, `TFVARS`, `SNAPSHOT`, `AGE_IDENTITY`, `AGE_RECIPIENTS` and
+   `RECOVERED_SNAPSHOT`. Use absolute paths. Select a new private output
+   file for `RECOVERED_SNAPSHOT`.
+2. Restore the backup into a new private directory with a local encrypted
+   backend. Keep the terminal free of state and plan JSON.
+
+   ```bash
+   set -eu -o pipefail
+   umask 077
+   repo="$(git rev-parse --show-toplevel)"
+   scratch="$(mktemp -d)"
+   root="$scratch/terraform/providers/$PROVIDER"
+   git -C "$repo" archive HEAD terraform/shared "terraform/providers/$PROVIDER" | tar -x -C "$scratch"
+   printf 'terraform {\n  backend "local" {}\n}\n' > "$root/recovery_override.tf"
+   phrase="$(openssl rand -hex 32)"
+   scratch_tofu() {
+     TF_DATA_DIR="$root/.data" TF_WORKSPACE=default TF_VAR_state_passphrase="$phrase" \
+       TF_VAR_plan_backend_scope="recovery/$PROVIDER/$ENV" tofu -chdir="$root" "$@"
+   }
+   scratch_tofu init -input=false -lockfile=readonly
+   age -d -i "$AGE_IDENTITY" "$SNAPSHOT" | scratch_tofu state push -
+   ```
+
+3. Create and review a plan for only the missing built-in guards. The checker
+   compares the proposed inputs with the retained server name, SSH port,
+   administrator and public key. It refuses a different identity or any
+   additional resource change.
+
+   ```bash
+   targets=(-target=terraform_data.admin_user)
+   case "$PROVIDER" in
+     vultr|scaleway) targets+=(-target=terraform_data.admin_ssh_public_key) ;;
+     hetzner) ;;
+     *) exit 2 ;;
+   esac
+   scratch_tofu plan -refresh=false -input=false -var-file="$TFVARS" "${targets[@]}" -out=guards.plan
+   scratch_tofu show -json guards.plan | python3 "$repo/scripts/check-bootstrap-guard-plan.py" "$PROVIDER"
+   scratch_tofu apply -input=false guards.plan
+   scratch_tofu plan -input=false -var-file="$TFVARS"
+   ```
+
+4. Review the **full** plan with provider refresh. Verify the retained server
+   ID, bootstrap identity and firewall. A legacy Hetzner state can contain
+   `hcloud_firewall_attachment.vpn`. Accept its `forget` action only when
+   the server retains the same firewall ID in `firewall_ids`. If the plan
+   creates, replaces or deletes a server, or changes an SSH key, stop. An
+   old Scaleway root disk can differ from the current volume specification.
+   Qualify the storage change separately while the server remains protected.
+5. With recovery authorization for the same provider, account and environment,
+   seal the approved local state, then use recovery path 1 above. Keep the
+   original backup. A serial or lineage conflict requires investigation.
+
+   ```bash
+   (
+     set -eu -o pipefail
+     sealed="$(mktemp "$(dirname "$RECOVERED_SNAPSHOT")/.recovered.XXXXXXXX")"
+     trap 'rm -f -- "$sealed"' EXIT
+     trap 'exit 1' HUP INT TERM
+     scratch_tofu state pull | age -R "$AGE_RECIPIENTS" > "$sealed"
+     # Link the completed file at the exact destination. An existing name is refused.
+     python3 -c 'import os,sys; os.link(sys.argv[1], sys.argv[2])' "$sealed" "$RECOVERED_SNAPSHOT"
+   )
+   ```
+
+   Run the canonical full plan against the restored backend. Remove the
+   private scratch directory after you verify recovery.
 
 ## Suspected compromise of the VPS
 

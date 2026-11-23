@@ -46,7 +46,7 @@ esac
 TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
 INV="${REPO_ROOT}/ansible/inventory/generated.ini"
 OVERRIDE="${TF_DIR}/_destroy_override.tf"
-TFVARS="${TF_DIR}/environments/${ENV}.tfvars"
+TFVARS="$(python3 "${REPO_ROOT}/scripts/tofu_tfvars.py" "$PROVIDER" "$ENV")"
 STAGING_GUARD="${REPO_ROOT}/scripts/staging-cleanup-guard.py"
 STAGING_GUARDED=false
 
@@ -199,7 +199,7 @@ EOF
 
 # Plan destroy first so the operator sees the diff
 env PROVIDER="$PROVIDER" ENV="$ENV" VPN_DESTROY_OVERRIDE_OWNER=1 "${REPO_ROOT}/scripts/terraform-env.sh" plan -destroy \
-  -var-file="environments/${ENV}.tfvars" \
+  -var-file="$TFVARS" \
   -out="$PLAN_PATH"
 
 if [[ "$STAGING_GUARDED" == "true" ]]; then

@@ -247,6 +247,9 @@ def stage(plan, journal, node, goal, environment):
         recheck(plan)
     sequence = journal.state['sequence'] + 1
     log = journal.directory / f'{sequence:06d}-{node["host"]}-{goal}.log.age'
+    if goal == 'deploy':
+        from tofu_state import backend_environment
+        environment = {**environment, **backend_environment()}
     with journal.operation(goal, {'host': node['host'], 'source': plan['source']}):
         code = encrypted_command(['make', '--no-print-directory', goal], log, plan['log_recipient'],
                                  environment=environment, cwd=ROOT, defer_cancellation=goal == 'clean')
@@ -519,13 +522,14 @@ def status(plan):
 
 
 def launch(plan_path, action, approval):
+    from tofu_state import backend_environment
     read_fd, write_fd = os.pipe()
     try:
         child = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), '_worker',
                                   '--plan', str(plan_path), '--worker-action', action,
                                   '--approval', approval or '', '--ready-fd', str(write_fd)],
                                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                 start_new_session=True, pass_fds=(write_fd,), env=command_environment())
+                                 start_new_session=True, pass_fds=(write_fd,), env=command_environment(backend_environment()))
         os.close(write_fd);write_fd = None
         ready, _, _ = select.select([read_fd], [], [], 15)
         reply = os.read(read_fd, 128) if ready else b''

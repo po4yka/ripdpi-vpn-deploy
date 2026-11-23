@@ -118,6 +118,12 @@ ensure_log_dir() {
   chmod 0700 "$dir"
 }
 
+state_monitor_job() {
+  local schedule="$1" goal="$2" tag="$3"
+  printf "%s cd %s && %s PROVIDER=%q ENV=%q bash -o pipefail -c 'make %s 2>&1 | logger -t %s'\n" \
+    "$schedule" "$repo_q" "$monitor_env" "$PROVIDER" "$ENV" "$goal" "$tag"
+}
+
 make_block() {
   local repo="$1" repo_q env_q vantage_q liveness_q sops_q age_key_q operator_path path_escaped
   printf -v repo_q '%q' "$repo"
@@ -155,13 +161,27 @@ ${MARKER_BEGIN}
 # scripts/install-operator-crons.sh to refresh, --remove to uninstall.
 PATH="${path_escaped}"
 ${service_env}
-*/30 * * * *   cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} make burn-check          2>&1 | logger -t vpn-burn
-7 3 * * *      cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} make asn-drift           2>&1 | logger -t vpn-asn
-17 3 * * *     cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} make check-ip-reputation 2>&1 | logger -t vpn-iprep
 27 3 * * *     cd ${repo} && make tspu-canary                                         2>&1 | logger -t vpn-canary
-37 3 * * *     cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} make probing-summary     2>&1 | logger -t vpn-probing
 EOF
+  local monitor_env=""
+  if [[ -n "${MONITOR_STATE_IDENTITY_SOPS_FILE:-}" ]]; then
+    for value in "$MONITOR_STATE_IDENTITY_SOPS_FILE" "$STATE_PASSPHRASE_SOPS_FILE"; do
+      [[ "$value" == /* && "$value" != *%* && -f "$value" ]] || {
+        echo "scheduled state reads require absolute SOPS document paths without %" >&2
+        return 1
+      }
+    done
+    printf -v monitor_env 'MONITOR_STATE_IDENTITY_SOPS_FILE=%q STATE_PASSPHRASE_SOPS_FILE=%q SOPS_AGE_KEY_FILE=%q' \
+      "$MONITOR_STATE_IDENTITY_SOPS_FILE" "$STATE_PASSPHRASE_SOPS_FILE" "$SOPS_AGE_KEY_FILE"
+    state_monitor_job '*/30 * * * *' burn-check vpn-burn
+    state_monitor_job '7 3 * * *' asn-drift vpn-asn
+    state_monitor_job '17 3 * * *' check-ip-reputation vpn-iprep
+    state_monitor_job '37 3 * * *' probing-summary vpn-probing
+  else
+    echo "state monitors skipped: set MONITOR_STATE_IDENTITY_SOPS_FILE and STATE_PASSPHRASE_SOPS_FILE" >&2
+  fi
   if [[ -n "$WARM_SPARE_ENV" ]]; then
+    [[ -n "$monitor_env" || -n "$LIVENESS_CONFIG" ]] || { echo "warm spare requires state reader or liveness config" >&2; return 1; }
     liveness_env=""
     if [[ -n "$LIVENESS_CONFIG" ]]; then
       [[ -f "$LIVENESS_CONFIG" ]] || { echo "LIVENESS_CONFIG not found: $LIVENESS_CONFIG" >&2; return 1; }
@@ -171,7 +191,7 @@ EOF
       echo "warm-spare watcher will use legacy TCP-only reachability; set LIVENESS_CONFIG for protocol quorum" >&2
     fi
     cat <<EOF
-*/2 * * * *    cd ${repo} && PROVIDER=${PROVIDER} ENV=${ENV} GREEN_ENV=${WARM_SPARE_ENV}${liveness_env} make watch-spare  2>&1 | logger -t vpn-spare
+*/2 * * * *    cd ${repo_q} && ${monitor_env} PROVIDER=${PROVIDER} ENV=${ENV} GREEN_ENV=${WARM_SPARE_ENV}${liveness_env} make watch-spare  2>&1 | logger -t vpn-spare
 EOF
   elif [[ -n "$LIVENESS_CONFIG" ]]; then
     [[ -f "$LIVENESS_CONFIG" ]] || { echo "LIVENESS_CONFIG not found: $LIVENESS_CONFIG" >&2; return 1; }
@@ -196,7 +216,7 @@ EOF
   else
     echo "REALITY target monitor skipped: set REALITY_TARGET_VANTAGE to a filtered technical label" >&2
   fi
-  if [[ -n "$STATE_IDENTITY_SOPS_FILE" || -n "$STATE_PASSPHRASE_SOPS_FILE" ]]; then
+  if [[ -n "$STATE_IDENTITY_SOPS_FILE" ]]; then
     local identity_q passphrase_q backup_q inner_q
     [[ "$STATE_IDENTITY_SOPS_FILE" == /* && "$STATE_PASSPHRASE_SOPS_FILE" == /* &&
        -f "$STATE_IDENTITY_SOPS_FILE" && -f "$STATE_PASSPHRASE_SOPS_FILE" &&

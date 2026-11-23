@@ -1,12 +1,12 @@
 ## Purpose
 
-Define how OpenTofu state and saved plans for every infrastructure root are encrypted on the client, stored in a versioned and object-locked Scaleway Object Storage bucket, accessed with scoped keys, serialized between writers, migrated from local files and recovered.
+Define client-side encryption for state and saved plans. Define storage, locking, migration and recovery of fleet provider state in the versioned Scaleway bucket.
 
 ## ADDED Requirements
 
 ### Requirement: REQ-STATE-ENCRYPTED — State and plans are encrypted before they leave the client
 
-Every root MUST configure OpenTofu `encryption` for `state` and `plan` with an AES-GCM method keyed by a PBKDF2 key provider whose passphrase comes only from an environment variable. After migration each root MUST set `enforced = true` and have no `unencrypted` fallback. A stored state object MUST NOT contain resource attributes in plaintext.
+Every root MUST configure OpenTofu `encryption` for `state` and `plan` with an AES-GCM method keyed by a PBKDF2 key provider whose passphrase comes only from an environment variable. After migration each root MUST set `enforced = true` and have no `unencrypted` fallback. A stored state object MUST NOT contain resource attributes in plaintext. The passphrase MUST be ephemeral and absent from the saved plan JSON and command journal. A fleet plan MUST be usable only with its original provider, workspace and backend settings.
 
 #### Scenario: Object inspection
 
@@ -20,7 +20,7 @@ Every root MUST configure OpenTofu `encryption` for `state` and `plan` with an A
 
 ### Requirement: REQ-STATE-BACKEND — One private, versioned, object-locked bucket
 
-State MUST live in one private bucket that supports the OpenTofu lock, with versioning, Object Lock governance retention and a bucket policy limiting state identities to `state/`. Each root and workspace MUST map to a distinct key under `state/`, keeping the production `default` workspace mapping of `scripts/terraform-env.sh`. Backend files MUST NOT contain credentials.
+Fleet provider state MUST live in one private bucket that supports the OpenTofu lock, with versioning, Object Lock governance retention and a bucket policy limiting state identities to `state/`. Each root and workspace MUST map to a distinct key under `state/`, keeping the production `default` workspace mapping of `scripts/terraform-env.sh`. Backend files MUST NOT contain credentials. The inert cascade exception root MUST keep its isolated encrypted local backend while apply is disabled. Disposable CI MUST use a run-specific encrypted local backend.
 
 #### Scenario: Two roots
 

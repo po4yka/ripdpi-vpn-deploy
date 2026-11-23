@@ -51,6 +51,7 @@ jobs:
           VULTR_API_KEY: ci-plan-only-dummy
           # Fixed, public value: the throwaway plan's encryption only.
           TF_VAR_state_passphrase: tf-test-passphrase-not-a-secret
+          TF_VAR_plan_backend_scope: offline-provider-tests
         run: |
           set -euo pipefail
           for provider in hetzner vultr; do
@@ -94,7 +95,7 @@ jobs:
             # partial S3 backend for this throwaway plan only. Plan needs that
             # backend initialized, so init must not pass -backend=false.
             printf 'terraform {\n  backend "local" {}\n}\n' > ci_policy_override.tf
-            tofu init -input=false
+            tofu init -lockfile=readonly -input=false
             tofu plan -input=false -refresh=false -lock=false \
               -var-file=environments/ci-policy.tfvars -out=ci-policy.tfplan
             tofu show -json ci-policy.tfplan > ci-policy.json

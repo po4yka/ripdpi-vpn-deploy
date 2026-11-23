@@ -343,7 +343,8 @@ class TerraformConfigSnapshot:
 
     MANIFEST = "manifest.json"
 
-    def __init__(self, root: Path, expected_digest: str | None = None):
+    def __init__(self, root: Path, expected_digest: str | None = None, *, for_cleanup=False):
+        self.for_cleanup = for_cleanup
         self.root = Path(root)
         self._manifest = self._load_manifest()
         self.digest = self._manifest["sha256"]
@@ -352,6 +353,7 @@ class TerraformConfigSnapshot:
         payload = self._manifest["payload"]
         self.environment = payload["environment"]
         self.workspace = payload["workspace"]
+        self.backend_scope = payload.get("backend_scope")
         self.var_file = payload["var_file"]
         self.provider_root = self.root / "terraform/providers/upcloud"
         self.data_dir = self.root / "terraform-data"
@@ -392,13 +394,21 @@ class TerraformConfigSnapshot:
         source_root, destination = Path(source_root), Path(destination)
         if NAME.fullmatch(environment or "") is None or not destination.is_absolute():
             raise PromotionError("terraform-snapshot-invalid")
-        if destination.exists() or destination.is_symlink():
-            snapshot = cls(destination)
-            if snapshot.environment != environment:
-                raise PromotionError("terraform-snapshot-invalid")
-            return snapshot
+        from tofu_backend import data_directory, plan_scope
+        from tofu_tfvars import tfvars_path
         provider = source_root / "terraform/providers/upcloud"
         workspace = "default" if environment == "prod" else environment
+        try:
+            data_root = data_directory(provider, workspace, Path(os.environ["TF_BACKEND_ROOT"]) / "upcloud.s3.tfbackend")
+            backend_scope = plan_scope(provider, workspace, data_root)
+            tfvars = tfvars_path(provider, environment)
+        except (KeyError, OSError, ValueError):
+            raise PromotionError("terraform-snapshot-invalid") from None
+        if destination.exists() or destination.is_symlink():
+            snapshot = cls(destination)
+            if snapshot.environment != environment or snapshot.backend_scope != backend_scope:
+                raise PromotionError("terraform-snapshot-invalid")
+            return snapshot
         sources = [
             (source_root / "scripts/terraform-env.sh", "scripts/terraform-env.sh")
         ]
@@ -411,7 +421,6 @@ class TerraformConfigSnapshot:
                 "terraform/providers/upcloud/.terraform.lock.hcl",
             )
         )
-        tfvars = provider / "environments" / f"{environment}.tfvars"
         sources.append(
             (tfvars, f"terraform/providers/upcloud/environments/{environment}.tfvars")
         )
@@ -420,7 +429,8 @@ class TerraformConfigSnapshot:
             (shared / name, f"terraform/shared/{name}")
             for name in ("bootstrap-sshd-ownership.py", "bootstrap-ssh-seed.py", "cloud-init.yaml.tftpl")
         )
-        data_root = provider / ".terraform-env" / workspace
+        if not (data_root / "terraform.tfstate").is_file():
+            raise PromotionError("terraform-snapshot-invalid")
         sources.extend(
             (path, "terraform-data/" + str(path.relative_to(data_root)))
             for path in sorted(data_root.rglob("*"))
@@ -465,10 +475,11 @@ class TerraformConfigSnapshot:
             for directory, _names, _files in os.walk(stage, followlinks=False):
                 os.chmod(directory, 0o700)
             payload = {
-                "schema_version": 1,
+                "schema_version": 2,
                 "provider": "upcloud",
                 "environment": environment,
                 "workspace": workspace,
+                "backend_scope": backend_scope,
                 "var_file": f"environments/{environment}.tfvars",
                 "files": manifest_files,
             }
@@ -511,6 +522,14 @@ class TerraformConfigSnapshot:
         try:
             value = json.loads(raw)
             payload = value["payload"]
+            fields = {"schema_version", "provider", "environment", "workspace", "var_file", "files"}
+            if payload["schema_version"] == 2:
+                fields.add("backend_scope")
+                scope = f"upcloud/{payload['workspace']}/"
+                if not re.fullmatch(re.escape(scope) + r"[a-f0-9]{64}", payload["backend_scope"]):
+                    raise ValueError
+            elif payload["schema_version"] != 1 or not self.for_cleanup:
+                raise ValueError
             if (
                 not stat.S_ISREG(info.st_mode)
                 or info.st_uid != os.geteuid()
@@ -520,16 +539,7 @@ class TerraformConfigSnapshot:
                 or set(value) != {"payload", "sha256"}
                 or value["sha256"]
                 != hashlib.sha256(self._canonical(payload)).hexdigest()
-                or set(payload)
-                != {
-                    "schema_version",
-                    "provider",
-                    "environment",
-                    "workspace",
-                    "var_file",
-                    "files",
-                }
-                or payload["schema_version"] != 1
+                or set(payload) != fields
                 or payload["provider"] != "upcloud"
                 or NAME.fullmatch(payload["environment"]) is None
                 or payload["workspace"]
@@ -614,9 +624,11 @@ class TerraformConfigSnapshot:
             raise PromotionError("terraform-snapshot-invalid")
 
     def invocation(self, arguments):
+        if self.for_cleanup:
+            raise PromotionError("terraform-snapshot-invalid")
         self.verify()
         return [f"-chdir={self.provider_root}", *arguments], {
-            "TF_DATA_DIR": str(self.data_dir)
+            "TF_DATA_DIR": str(self.data_dir), "TF_VAR_plan_backend_scope": self.backend_scope,
         }
 
     def remove(self):

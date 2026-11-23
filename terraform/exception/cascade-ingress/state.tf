@@ -23,6 +23,7 @@ terraform {
 variable "state_passphrase" {
   description = "State and plan encryption passphrase, from TF_VAR_state_passphrase only."
   type        = string
+  ephemeral   = true
   sensitive   = true
   nullable    = false
 

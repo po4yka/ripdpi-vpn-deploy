@@ -1089,7 +1089,8 @@ def test_ci_finalizer_uses_native_ssh_installer_and_exact_receipt_on_retry(final
     calls = []
     receipt = {}
     def install(config, sid, client, registry, **kwargs):
-        assert set(kwargs) == {'environment'}
+        assert set(kwargs) == {'environment', 'server_ipv4'}
+        assert kwargs['server_ipv4'] == '192.0.2.10'
         assert kwargs['environment']['COHORTS'] == value['cohort']
         calls.append('native-ssh-installer')
         target = json.loads(config.read_bytes())['sentinels'][0]['target']

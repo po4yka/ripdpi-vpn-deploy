@@ -156,7 +156,7 @@ def private_directory(path: Path):
 def snapshot_recovery_required(root: Path):
     """Keep an old immutable snapshot only while a durable lease needs it."""
     path = root / "receipt.json"
-    if not path.exists():
+    if not os.path.lexists(path):
         return False
     fd = private(path)
     try:
@@ -725,12 +725,12 @@ def run(config):
     private_directory(root)
     sock = root / "executor.sock"
     snapshot_path = root / "terraform-snapshot"
-    if (
-        (snapshot_path.exists() or snapshot_path.is_symlink())
-        and not (sock.exists() or sock.is_symlink() or (root / "daemon.json").exists())
-        and not snapshot_recovery_required(root)
-    ):
-        p.TerraformConfigSnapshot(snapshot_path).remove()
+    daemon = root / "daemon.json"
+    active = os.path.lexists(sock) or os.path.lexists(daemon) or snapshot_recovery_required(root)
+    if active and config["mode"] == "dry-run":
+        raise ControllerError("executor-recovery-refused")
+    if not active and os.path.lexists(snapshot_path):
+        p.TerraformConfigSnapshot(snapshot_path, for_cleanup=True).remove()
     terraform_snapshot = p.TerraformConfigSnapshot.create(
         ROOT, snapshot_path, target_environment
     )

@@ -19,6 +19,8 @@ from pathlib import Path
 
 import yaml
 
+from tofu_backend import s3_settings
+
 UPSTREAM = "https://github.com/po4yka/ripdpi-vpn-deploy"
 AUTHORITIES = {"ops-repo", "b2-recovery", "gh-environment", "password-manager", "temporary"}
 SECRET_SECTIONS = set(json.loads((Path(__file__).resolve().parents[1] / "secrets/schema.json").read_text())["properties"])
@@ -26,7 +28,6 @@ PRIVATE_MARKER = re.compile(rb"AGE-SECRET-KEY-|-----BEGIN [A-Z ]*PRIVATE KEY( BL
 FORBIDDEN_NAMES = re.compile(r"(\.tfstate(\.backup)?|\.tfplan|\.secrets\.ya?ml|\.dec|^\.env|^keys\.txt)$")
 SOPS_NAMES = re.compile(r".\.sops\.(ya?ml|json)$")
 STRUCTURED_NAMES = re.compile(r"\.(ya?ml|json)$")
-BACKEND_CREDENTIAL = re.compile(rb"^\s*(access_key|secret_key|token|session_token)\s*=", re.MULTILINE)
 SCAN_LIMIT = 16 * 1024 * 1024
 
 
@@ -129,8 +130,11 @@ def validate(root: Path) -> list[str]:
         if PRIVATE_MARKER.search(path.read_bytes()):
             findings.append(f"{relative}: private key material")
             continue
-        if path.name.endswith(".s3.tfbackend") and BACKEND_CREDENTIAL.search(path.read_bytes()):
-            findings.append(f"{relative}: credential in backend file")
+        if path.name.endswith(".s3.tfbackend"):
+            try:
+                s3_settings(path.read_bytes())
+            except ValueError as error:
+                findings.append(f"{relative}: {error}")
             continue
         if STRUCTURED_NAMES.search(path.name) and path.name not in (".sops.yaml", ".sops.yml", "catalog.json"):
             findings.extend(check_structured(path, relative, recipients))

@@ -16,6 +16,8 @@ import pytest
 import yaml
 
 
+pytestmark = pytest.mark.usefixtures("stub_tofu_backend")
+
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "observability-contract.py"
 RENDER = ROOT / "scripts" / "render-inventory.sh"
@@ -223,6 +225,7 @@ def _inventory_repo(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     for name in (
         "render-inventory.sh",
         "terraform-env.sh",
+        "tofu_backend.py",
         "observability-contract.py",
         "validate-secrets.py",
         "transport_semantics.py",

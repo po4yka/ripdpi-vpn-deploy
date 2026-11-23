@@ -19,7 +19,7 @@ from template_render import merge_render_vars, render_template
 from test_awg_encrypted_transactions import decrypt, encrypted
 from test_transport_semantics_native import command, exact_awg_sources
 
-pytestmark = pytest.mark.native_runtime
+pytestmark = [pytest.mark.native_runtime, pytest.mark.usefixtures("stub_tofu_backend")]
 ROOT = Path(__file__).resolve().parents[2]
 
 ECHO = '''import socket, threading, sys

@@ -12,12 +12,19 @@ terraform {
       keys = key_provider.pbkdf2.state
     }
 
+    key_provider "pbkdf2" "plan" {
+      passphrase = jsonencode([var.state_passphrase, var.plan_backend_scope])
+    }
+    method "aes_gcm" "plan" {
+      keys = key_provider.pbkdf2.plan
+    }
+
     state {
       method   = method.aes_gcm.state
       enforced = true
     }
     plan {
-      method   = method.aes_gcm.state
+      method   = method.aes_gcm.plan
       enforced = true
     }
   }
@@ -26,6 +33,7 @@ terraform {
 variable "state_passphrase" {
   description = "State and plan encryption passphrase, from TF_VAR_state_passphrase only."
   type        = string
+  ephemeral   = true
   sensitive   = true
   nullable    = false
 
@@ -33,4 +41,11 @@ variable "state_passphrase" {
     condition     = length(var.state_passphrase) >= 16
     error_message = "state_passphrase must have at least 16 characters."
   }
+}
+
+variable "plan_backend_scope" {
+  description = "Provider, workspace and backend configuration digest supplied by the OpenTofu wrapper."
+  type        = string
+  ephemeral   = true
+  nullable    = false
 }

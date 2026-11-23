@@ -1919,3 +1919,34 @@ def test_controller_environment_reports_task_durations(tmp_path):
     assert timed or named, result.stdout + result.stderr
     if (ROOT / ".ansible/collections/ansible_collections/ansible/posix").is_dir():
         assert timed, result.stdout
+
+
+def test_only_local_promotion_receives_the_state_identity(tmp_path, monkeypatch):
+    from recovery_io import module
+    deploy = module("deploy-controller")
+    root = tmp_path.resolve()
+    script = root / "scripts/sshd-baseline-controller.py"
+    write(script, 'import json, os, sys\n'
+          'assert json.load(sys.stdin)["hardening_b64"] == "YQ=="\n'
+          'assert os.environ["TF_VAR_state_passphrase"] == "fixture-passphrase"\n'
+          'assert os.environ["AWS_SECRET_ACCESS_KEY"] == "fixture-secret"\n'
+          'assert os.environ["TF_BACKEND_ROOT"] == "/fixture"\n'
+          'assert "UPCLOUD_TOKEN" not in os.environ\n'
+          'print(json.dumps({"status": "committed"}))\n')
+    for key, value in {"TF_VAR_state_passphrase": "fixture-passphrase", "AWS_SECRET_ACCESS_KEY": "fixture-secret",
+                       "TF_BACKEND_ROOT": "/fixture", "UPCLOUD_TOKEN": "outside-reader"}.items():
+        monkeypatch.setenv(key, value)
+    clean = deploy.execution_environment(root, root)
+    assert "TF_VAR_state_passphrase" not in clean and "AWS_SECRET_ACCESS_KEY" not in clean
+    fields = dict(contexts=[], bundle_generation="a" * 64, timeout_seconds=100, target_identity={},
+                  promotion_config_path="/selected", failure_receipt_path="/receipt",
+                  failure_receipt_parent_identity={})
+    transaction = {"ssh_transaction_" + key: value for key, value in fields.items()}
+    request = dict(fields, mode="deploy", schema_version=2, inventory_alias="selected",
+                   inventory_path="/inventory", known_hosts_path="/pins", hardening_b64="YQ==")
+    path = write(root / "request", json.dumps(request))
+    deploy.finish_local_promotion(path, transaction, "selected", "/inventory", "/pins", clean, root)
+    request["promotion_config_path"] = "/foreign"
+    write(path, json.dumps(request))
+    with pytest.raises(deploy.DeployError, match="request changed"):
+        deploy.finish_local_promotion(path, transaction, "selected", "/inventory", "/pins", clean, root)

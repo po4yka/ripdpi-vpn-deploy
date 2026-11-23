@@ -23,6 +23,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("stub_tofu_backend")
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = REPO_ROOT / "tests" / "fixtures"
 STUBS_BIN = REPO_ROOT / "tests" / "stubs" / "bin"
@@ -616,7 +618,7 @@ def _isolated_inventory_repo(tmp_path):
 
     root = tmp_path / "repo"
     (root / "scripts").mkdir(parents=True)
-    for script in ("render-inventory.sh", "terraform-env.sh", "validate-secrets.py",
+    for script in ("render-inventory.sh", "terraform-env.sh", "tofu_backend.py", "validate-secrets.py",
                    "transport_semantics.py", "awg_device_binding.py"):
         shutil.copy(REPO_ROOT / "scripts" / script, root / "scripts" / script)
     for provider in ("upcloud", "hetzner"):
