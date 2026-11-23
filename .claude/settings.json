@@ -8,10 +8,7 @@
   "permissions": {
     "allow": [
       "Edit(/README.md)",
-      "Edit(/AGENTS.md)",
       "Edit(/Makefile)",
-      "Edit(/**/CLAUDE.md)",
-      "Edit(/.agents/skills/**)",
       "Edit(/ansible/**)",
       "Edit(/contract/**)",
       "Edit(/docs/**)",
@@ -34,7 +31,19 @@
       "Read(//**/*.secrets.yml)",
       "Read(//**/*.sops.yaml.dec)",
       "Read(//**/*.sops.json.dec)",
-      "Read(//**/vpn-blue-green.*/**)"
+      "Read(//**/vpn-blue-green.*/**)",
+      "Edit(./secrets/local/keys/**)",
+      "Edit(./secrets/local/recovery/**)",
+      "Edit(./secrets/local/state-backups/**)",
+      "Edit(.env)",
+      "Edit(.envrc)",
+      "Edit(**/*.tfstate)",
+      "Edit(**/*.tfstate.*)",
+      "Edit(**/*.tfvars)",
+      "Edit(//**/*.secrets.yaml)",
+      "Edit(//**/*.secrets.yml)",
+      "Edit(//**/*.sops.yaml.dec)",
+      "Edit(//**/*.sops.json.dec)"
     ]
   }
 }
