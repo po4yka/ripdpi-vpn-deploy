@@ -179,6 +179,49 @@ def test_networkd_refuses_missing_or_ambiguous_selected_authority(
         awg_uplink.networkd_ra_owner(networkd_state, 'eth7', 7, selected_ra_route, '0')
 
 
+@pytest.fixture
+def nexthop_state(networkd_state):
+    route = networkd_state['Routes'].pop()
+    networkd_state['NextHops'] = [{
+        'ID': 4204704659, 'ConfigSource': 'NDisc', 'Family': 10, 'Protocol': 9,
+        'Blackhole': False, 'ConfigState': 'configured', 'Gateway': route['Gateway'],
+    }]
+    return networkd_state
+
+
+def test_networkd_owns_selected_default_through_an_ndisc_nexthop(nexthop_state, selected_ra_route):
+    assert awg_uplink.networkd_ra_owner(nexthop_state, 'eth7', 7, selected_ra_route, '0')
+
+
+@pytest.mark.parametrize('field,value', [
+    ('ConfigSource', 'static'), ('Family', 2), ('Protocol', 4), ('Protocol', 9.0),
+    ('Blackhole', True), ('Blackhole', None), ('ConfigState', 'configuring'),
+    ('Gateway', [254, 128] + [0] * 13 + [2]), ('Gateway', [256] * 16),
+])
+def test_networkd_refuses_foreign_or_malformed_nexthop_authority(
+        nexthop_state, selected_ra_route, field, value):
+    nexthop_state['NextHops'][0][field] = value
+    with pytest.raises(ValueError):
+        awg_uplink.networkd_ra_owner(nexthop_state, 'eth7', 7, selected_ra_route, '0')
+
+
+def test_networkd_refuses_a_default_route_and_nexthop_together(nexthop_state, selected_ra_route):
+    nexthop_state['Routes'].append({
+        'ConfigSource': 'NDisc', 'Family': 10, 'DestinationPrefixLength': 0, 'Protocol': 9,
+        'ConfigState': 'configured', 'LifetimeUSec': 60000000,
+        'Gateway': nexthop_state['NextHops'][0]['Gateway'],
+    })
+    with pytest.raises(ValueError, match='selected-route'):
+        awg_uplink.networkd_ra_owner(nexthop_state, 'eth7', 7, selected_ra_route, '0')
+
+
+@pytest.mark.parametrize('value', [{}, None, [None]])
+def test_networkd_refuses_malformed_nexthop_list(networkd_state, selected_ra_route, value):
+    networkd_state['NextHops'] = value
+    with pytest.raises(ValueError, match='state-unavailable'):
+        awg_uplink.networkd_ra_owner(networkd_state, 'eth7', 7, selected_ra_route, '0')
+
+
 @pytest.mark.parametrize('active,ndisc,accept_ra,allowed', [
     ('active', True, '0', True), ('active', True, '2', False),
     ('active', False, '2', True), ('active', False, '0', False),
