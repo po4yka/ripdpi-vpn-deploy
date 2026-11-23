@@ -34,6 +34,7 @@
           - exec
           - ripdpi-warp
           - warp-cli
+          - --accept-tos
           - registration
           - show
       changed_when: false
@@ -46,6 +47,7 @@
           - exec
           - ripdpi-warp
           - warp-cli
+          - --accept-tos
           - settings
       register: _warp_settings
       changed_when: false
@@ -58,6 +60,7 @@
           - exec
           - ripdpi-warp
           - warp-cli
+          - --accept-tos
           - mode
           - tunnel_only
       changed_when: true
@@ -71,6 +74,7 @@
           - exec
           - ripdpi-warp
           - warp-cli
+          - --accept-tos
           - status
       register: _warp_connection
       changed_when: false
@@ -83,6 +87,7 @@
           - exec
           - ripdpi-warp
           - warp-cli
+          - --accept-tos
           - connect
       changed_when: true
       no_log: true

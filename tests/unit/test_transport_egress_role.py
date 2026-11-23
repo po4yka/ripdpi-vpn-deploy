@@ -281,6 +281,11 @@ def test_vendor_role_never_creates_registration_and_suppresses_autostart():
     tasks = yaml.safe_load((role/'tasks/activate.yml').read_text())[0]['block']
     registration = next(task for task in tasks if task['name'].startswith('Inspect retained registration'))
     assert registration['ansible.builtin.command']['argv'][-2:] == ['registration', 'show']
+    # Without a TTY warp-cli refuses every command until the flag is passed; acceptance is not retained.
+    calls = [task['ansible.builtin.command']['argv'] for task in tasks
+             if 'warp-cli' in task.get('ansible.builtin.command', {}).get('argv', [])]
+    assert len(calls) == 5
+    assert all(argv[argv.index('warp-cli') + 1] == '--accept-tos' for argv in calls)
     assert 'policy_rc_d: 101' in sources
     prepare = (role/'tasks/prepare.yml').read_text()
     assert prepare.index('masked: true') < prepare.index('- name: Install cloudflare-warp package')
