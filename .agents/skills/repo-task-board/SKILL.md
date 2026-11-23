@@ -28,6 +28,19 @@ Use only `./taskctl` for lifecycle operations:
 - complete: commit the task, execution, verification, and regenerated board in `review`; then `verify <task-id> --archive-ready`, `openspec archive <change>`, `close prepare <task-id> --outcome done --evidence "<summary>"`, commit, and later `close purge` in a separate commit. `main` is rebase-merge only, so these commits may share one pull request as separate commits; never squash lifecycle commits together locally, because the purge audit validates each transition as its own first-parent commit;
 - drop: `close prepare <task-id> --outcome dropped --evidence "<summary>" --reason "<why>"` and commit the dropped record and its receipts. A linked OpenSpec change must then go through `./taskctl openspec archive <change>`, which archives a dropped change with `--skip-specs` so its deltas never reach the main specs; commit that archive. Removing the change instead is not an option: `close purge` refuses an active or unarchived change. Run `close purge` last and commit the deletion separately.
 
+Command forms, so that `--help` is needed only for rare flags:
+
+| Step | Command |
+|---|---|
+| Create | `./taskctl new --title "<title>" --kind {bug,chore,epic,feature,research} --area <AREA> --priority {critical,high,medium,low} --risk {high,standard} --spec-mode {required,not-required}`; `not-required` also needs `--spec-reason` |
+| Start | `./taskctl start <task-id>` |
+| Move | `./taskctl transition <task-id> {backlog,blocked,doing,review,todo} [--detail "<why>"]` |
+| Execution steps | `./taskctl steps <task-id> {add,done,list,set,validate,view}`; there is no `mdtask` subcommand |
+| Check | `./taskctl verify <task-id> [--archive-ready]`, `./taskctl validate`, `./taskctl generate-board` |
+| OpenSpec | `./taskctl openspec cli <upstream arguments>`, `./taskctl openspec archive <change>` |
+
+`steps add` for an OpenSpec-backed task refuses until the change has nonempty `proposal.md` and `design.md`. "missing pinned openspec" in a new worktree means that `make task-tools` has not run there. Lifecycle commands can stay silent for several minutes while they read files; run them in the background without a timeout and do not stop a silent run.
+
 Stable IDs are area-prefixed with globally unique 16-digit numeric suffixes. Worktrees share a locked allocator reservation through the Git common directory; committed validation catches cross-clone collisions. Local references use stable IDs; cross-repository references use qualified IDs such as `po4yka/RIPDPI#TRN-...`. `blocked_by` is canonical; reverse `blocks` is derived locally or through `./taskctl federation`. OpenSpec-mandatory categories are listed in the `sdd` skill; high-risk work can never waive it. Never hand-edit the generated board, use direct upstream archive, pass `--no-validate`, close work without evidence, or delete a record before its terminal-state commit exists.
 
 Before parallel agents write, record owned paths and serialized shared-file lanes in the execution file's `## Ownership` section. Implementation work uses a dedicated worktree.
