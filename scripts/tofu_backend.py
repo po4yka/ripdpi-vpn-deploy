@@ -63,7 +63,8 @@ def backend_literals(raw: bytes) -> dict:
         raise ValueError("backend file must contain unique literal HCL assignments") from None
 
 
-CREDENTIAL_FIELDS = {"access_key", "secret_key", "token", "session_token", "web_identity_token"}
+CREDENTIAL_FIELDS = {"access_key", "secret_key", "token", "session_token", "web_identity_token", "sse_customer_key"}
+CREDENTIAL_ASSIGNMENT = re.compile(rb"(?m)^\s*(?:" + "|".join(sorted(CREDENTIAL_FIELDS)).encode() + rb")\s*=")
 
 
 def _contains_credentials(value) -> bool:
@@ -77,7 +78,7 @@ def s3_settings(raw: bytes, provider: str | None) -> dict:
         settings = backend_literals(raw)
     except ValueError:
         # Keep a clear refusal even when an unquoted credential makes the HCL invalid.
-        if re.search(rb"(?m)^\s*(access_key|secret_key|token|session_token|web_identity_token)\s*=", raw):
+        if CREDENTIAL_ASSIGNMENT.search(raw):
             raise ValueError("credential in backend file") from None
         raise ValueError("backend requires use_lockfile = true in literal HCL settings") from None
     if _contains_credentials(settings):
