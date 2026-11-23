@@ -78,7 +78,8 @@ counts or prose. Suite sizes come from runner output for a specific revision.
   PR diff is the review surface.
 - **Molecule needs Docker** — CI runners and operator workstations vary.
   Failing-to-find-docker is a setup error, not a test failure; the harness
-  surfaces it explicitly.
+  surfaces it explicitly. With Colima, export
+  `DOCKER_HOST=unix://$HOME/.colima/default/docker.sock` first.
 - **State-changing test calls precede assertions** — capture retirement or
   retry results first, then assert them so optimized Python cannot omit the call.
 - Set fault-injection permissions explicitly when rejection depends on mode; restrictive CI umasks can otherwise create a safe node instead of the intended unsafe fixture.
