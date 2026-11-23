@@ -210,9 +210,13 @@ def test_plan_reads_selected_tfvars_file(tmp_path: Path, external: bool) -> None
     tfvars.touch()
     environment = {k: v for k, v in os.environ.items() if k not in ("MAKEFLAGS", "MAKEFILES")}
     environment.update(LOG=str(log), TFVARS_ROOT=str(tfvars_root or ""))
-    subprocess.run(["make", "plan", "PROVIDER=upcloud", "ENV=prod"], cwd=repo,
+    plan_path = tmp_path / "private $(shell false) reviewed plan.tfplan"
+    selection = ["TF_PLAN_FILE=" + str(plan_path)] if external else []
+    subprocess.run(["make", "plan", "PROVIDER=upcloud", "ENV=prod", *selection], cwd=repo,
                    env=environment, check=True, capture_output=True)
-    assert "-var-file=" + str(tfvars) in log.read_text().splitlines()
+    arguments = log.read_text().splitlines()
+    assert "-var-file=" + str(tfvars) in arguments
+    assert "-out=" + (str(plan_path) if external else "prod.tfplan") in arguments
 
 
 def test_relative_tfvars_root_is_refused() -> None:

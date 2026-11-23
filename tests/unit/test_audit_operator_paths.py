@@ -38,7 +38,7 @@ else:
 ''')
     executable(scripts / 'check-tf-plan.sh', '''#!/usr/bin/env python3
 import json, os, sys
-assert json.load(open(sys.argv[1])) == {'snapshot':'reviewed-plan'}
+assert json.load(sys.stdin) == {'snapshot':'reviewed-plan'}
 sys.exit(int(os.environ['REFUSE']))
 ''')
     result = subprocess.run(['bash', str(scripts / 'policy-plan.sh'), 'apply'],
@@ -63,7 +63,7 @@ def test_only_an_applied_unchanged_plan_is_removed(tmp_path, refuse):
     plan.parent.mkdir(parents=True)
     plan.write_text('reviewed-plan')
     executable(scripts / 'terraform-env.sh', '#!/bin/sh\n[ "$1" = show ] && echo "{}"\nexit 0\n')
-    executable(scripts / 'check-tf-plan.sh', '#!/bin/sh\nexit "$REFUSE"\n')
+    executable(scripts / 'check-tf-plan.sh', '#!/bin/sh\ncat >/dev/null\nexit "$REFUSE"\n')
     result = subprocess.run(['bash', str(scripts / 'policy-plan.sh'), 'apply'],
                             env={**os.environ, 'REFUSE': str(int(refuse)), 'PROVIDER': 'upcloud', 'ENV': 'prod'},
                             capture_output=True, text=True)

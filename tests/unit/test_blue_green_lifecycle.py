@@ -56,6 +56,7 @@ def run_blue_green(tmp_path, failed_phase=None, answers=APPROVE_ALL, provider="u
         (environments / f"{name}.tfvars").write_text(text)
     (environments.parent / "variables.tf").write_text(
         'variable "server_name" { type = string }\n'
+        'variable "registered_blue" { default = "ssh-ed25519 AAAABLUEKEY initial" }\n'
         'variable "admin_ssh_public_keys" {\n  type = list(string)\n  sensitive = true\n}\n'
     )
     phases = ("init", "plan", "apply", "wait", "dry-run", "deploy", "verify", "smoke-test")
@@ -71,6 +72,8 @@ root = pathlib.Path.cwd()
 with (root / 'calls').open('a') as stream:
     stream.write(json.dumps([environment, phase]) + '\\n')
 if environment == 'green':
+    if os.environ['PROVIDER'] == 'hetzner' and phase in ('plan', 'apply'):
+        assert os.environ.get('BLUE_GREEN_MANAGEMENT_KEY_FILE') == os.environ['ANSIBLE_SSH_PRIVATE_KEY_FILE']
     previous = {'plan': 'init', 'apply': 'plan', 'dry-run': 'apply',
                 'deploy': 'dry-run', 'verify': 'deploy', 'smoke-test': 'verify'}.get(phase)
     if previous and not (root / (previous + '.complete')).exists():
@@ -80,6 +83,14 @@ if environment == 'green':
         assert (root / 'migration-prepare.complete').exists()
         assert pathlib.Path(os.environ['SECRETS_FILE']).read_text() == 'prepared target credentials'
         assert os.environ['SOPS_FILE'] == os.environ['GREEN_SOPS_FILE']
+    if phase == 'plan':
+        path = pathlib.Path(os.environ['TF_PLAN_FILE'])
+        assert path.is_absolute() and path.parent.stat().st_mode & 0o077 == 0
+        path.write_text('reviewed green plan')
+        (root / 'green-plan-path').write_text(str(path))
+        (root / 'terraform/providers' / os.environ['PROVIDER'] / 'green.tfplan').write_text('competing shared plan')
+    if phase == 'apply':
+        assert pathlib.Path(os.environ['TF_PLAN_FILE']).read_text() == 'reviewed green plan'
     if phase == 'init':
         time.sleep(0.15)
     if phase == os.environ.get('FAILED_PHASE'):
@@ -107,7 +118,12 @@ if action == 'ready':
 """)
     executable(scripts / "terraform-env.sh", """#!/bin/sh
 case "$1" in
-  console) exec tofu "-chdir=$(dirname "$0")/../terraform/providers/$PROVIDER" "$@" ;;
+  console)
+    test "$ENV" = prod || exit 2
+    # The local root substitutes the cloud resource held in Blue's remote state.
+    sed 's/hcloud_ssh_key.admin.public_key/var.registered_blue/' |
+      tofu "-chdir=$(dirname "$0")/../terraform/providers/$PROVIDER" "$@"
+    exit $? ;;
 esac
 case "$*" in
   *server_hostname*) printf 'node-%s\n' "$ENV" ;;
@@ -150,6 +166,14 @@ def test_hetzner_green_with_the_blue_key_refuses_before_plan(tmp_path, green_key
     assert calls == [["prod", "verify"]]
 
 
+def test_hetzner_refuses_registered_blue_key_after_unapplied_rotation(tmp_path):
+    tfvars = {"prod": key_tfvars("ssh-ed25519 AAAANEXTKEY next"),
+              "green": key_tfvars("ssh-ed25519 AAAABLUEKEY old")}
+    result, calls = run_blue_green(tmp_path, provider="hetzner", tfvars=tfvars)
+    assert result.returncode != 0 and "one SSH key per fingerprint" in result.stderr
+    assert calls == [["prod", "verify"]]
+
+
 def test_hetzner_unreadable_key_list_refuses_before_plan(tmp_path):
     result, calls = run_blue_green(tmp_path, provider="hetzner", tfvars={
         "prod": key_tfvars("ssh-ed25519 AAAABLUEKEY operator"), "green": "admin_ssh_public_keys = ["
@@ -177,6 +201,8 @@ def test_phases_are_serial_and_failures_stop_dependents(tmp_path, failed_phase):
     expected = ["init", "plan", "apply", "wait", "migration-plan", "migration-prepare", "dry-run", "deploy", "verify", "smoke-test", "migration-publish", "migration-ready"]
     if failed_phase:
         expected = expected[:expected.index(failed_phase) + 1]
+    plan_path = tmp_path / "repo/green-plan-path"
+    assert not Path(plan_path.read_text()).exists()
     assert result.returncode == (23 if failed_phase and failed_phase.startswith('migration-') else 2 if failed_phase else 0), result.stdout + result.stderr
     assert calls == [["prod", "verify"], *[["green", phase] for phase in expected]]
 

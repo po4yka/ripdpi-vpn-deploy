@@ -18,7 +18,8 @@ for override in _destroy_override.tf _observability_cleanup_override.tf; do
     exit 1
   }
 done
-PLAN_SOURCE="${REPO_ROOT}/terraform/providers/${PROVIDER}/${ENV}.tfplan"
+PLAN_SOURCE="${TF_PLAN_FILE:-${REPO_ROOT}/terraform/providers/${PROVIDER}/${ENV}.tfplan}"
+[[ "$PLAN_SOURCE" == /* ]] || { echo 'TF_PLAN_FILE must be absolute' >&2; exit 2; }
 [[ -f "$PLAN_SOURCE" && ! -L "$PLAN_SOURCE" ]] || {
   echo 'saved plan is missing or is not a regular non-symlink file' >&2
   exit 1
@@ -33,8 +34,8 @@ work="$(cd "$work" && pwd -P)"
 cp "$PLAN_SOURCE" "$work/plan.tfplan"
 chmod 0400 "$work/plan.tfplan"
 export PROVIDER ENV
-"$REPO_ROOT/scripts/terraform-env.sh" show -json "$work/plan.tfplan" > "$work/plan.json"
-"$REPO_ROOT/scripts/check-tf-plan.sh" "$work/plan.json"
+"$REPO_ROOT/scripts/terraform-env.sh" show -json "$work/plan.tfplan" |
+  "$REPO_ROOT/scripts/check-tf-plan.sh" -
 if [[ "$1" == apply ]]; then
   "$REPO_ROOT/scripts/terraform-env.sh" apply "$work/plan.tfplan"
   # An applied plan is stale and can hold provider-generated credentials. A file

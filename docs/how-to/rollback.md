@@ -78,6 +78,16 @@ PROVIDER=upcloud BLUE_ENV=prod GREEN_ENV=green-2026-05 \
   make blue-green
 ```
 
+For Hetzner, select a distinct first entry in Green's `admin_ssh_public_keys`. If
+Blue has only one key and it is the inventory management identity, move the
+copied Blue key to the second entry in Green. Keep using the same
+`ANSIBLE_SSH_PRIVATE_KEY_FILE` for both nodes. The plan and apply gates check
+that the declared key list includes this identity and its first key differs
+from the key registered in Blue's state. Each invocation stores its saved plan
+in a private temporary directory until apply or exit. When retrying with an
+existing Green server, the pinned SSH readiness check verifies access on the
+retained server.
+
 `scripts/blue-green.sh` walks eight steps. It waits for a typed `yes` after the green plan and after the green dry-run. It stops at the operator pivot so that you move DNS or the floating IP yourself. BLUE_ENV selects the live source node; without it, ENV does. A different explicit ENV beside BLUE_ENV is refused. With `DRY_RUN=1` (or `scripts/blue-green.sh --dry-run`) the script prints its planned sequence and changes nothing.
 
 ```mermaid
