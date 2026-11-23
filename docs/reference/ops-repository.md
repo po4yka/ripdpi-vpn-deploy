@@ -49,7 +49,7 @@ Run `scripts/validate-ops-repo.py <ops checkout>` from this repository, and gitl
 
 - a missing or loose pin (branch, tag, short or uppercase SHA, another repository);
 - symbolic links;
-- a fleet `*.s3.tfbackend` file with credentials or with missing or incorrect top-level settings for `use_lockfile = true`, `key = "state/<provider>/terraform.tfstate"`, or `workspace_key_prefix = "state/workspaces"`;
+- a fleet `*.s3.tfbackend` file with credentials (including the SSE-C encryption key `sse_customer_key`) or with missing or incorrect top-level settings for `use_lockfile = true`, `key = "state/<provider>/terraform.tfstate"`, or `workspace_key_prefix = "state/workspaces"`;
 - private key material (`AGE-SECRET-KEY-`, PEM, OpenSSH or PGP private keys, WireGuard `PrivateKey =` lines) anywhere;
 - state, saved plans and decrypted secret files by name (`*.tfstate`, `*.tfplan`, `*.secrets.yaml`, `*.dec`, `.env`);
 - a YAML or JSON file that has a top-level section of `secrets/schema.json` but no SOPS metadata;

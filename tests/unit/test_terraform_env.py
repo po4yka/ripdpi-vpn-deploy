@@ -250,6 +250,7 @@ def test_backend_change_selects_a_different_cache_before_output(tmp_path: Path):
 
 
 @pytest.mark.parametrize(("settings", "error"), [
+    (SETTINGS + 'sse_customer_key = "sensitive-fixture"\n', "credential in backend file"),
     (SETTINGS.replace("upcloud", "vultr"), "backend requires key"),
     (SETTINGS.replace("state/workspaces", "env:"), "backend requires workspace_key_prefix"),
     ("use_lockfile = false\n", "use_lockfile"),

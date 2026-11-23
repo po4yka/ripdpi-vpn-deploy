@@ -169,6 +169,7 @@ def test_git_checkout_skips_ignored_runtime_files(ops: Path) -> None:
 
 
 @pytest.mark.parametrize("line", ['access_key = "SCWSYNTHETIC"', "secret_key=synthetic",
+                                 'sse_customer_key = "synthetic"', 'sse_customer_key = malformed',
                                  '/* old account */ access_key = "synthetic"',
                                  'assume_role_with_web_identity = { web_identity_token = "synthetic" }'])
 def test_backend_files_carry_no_credentials(ops: Path, line: str) -> None:
