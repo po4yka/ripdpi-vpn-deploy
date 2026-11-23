@@ -12,16 +12,15 @@ The operator state identity (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY) and
 TF_VAR_state_passphrase (restore only) come from the environment only; nothing
 secret is printed.
 
-Restore re-initializes the workspace against the same backend file, decrypts the selected version in a private local root, refuses a lineage
-other than the current one unless ALLOW_LINEAGE_CHANGE=1, sets the serial to the
-current serial plus one and pushes it through scripts/terraform-env.sh, so the
-backend lock and OpenTofu's serial and lineage checks apply. With
-ALLOW_LINEAGE_CHANGE=1 the push is forced and skips those checks: stop every
-other writer first. Every earlier version stays in the bucket.
+Restore holds the workspace's S3 lock from the current-state read through the
+verified write. ALLOW_LINEAGE_CHANGE=1 permits replacement of another lineage.
+Every earlier version stays in the bucket.
 """
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
 import posixpath
@@ -31,7 +30,10 @@ import subprocess
 import sys
 import tempfile
 import urllib.parse
+import uuid
 import xml.etree.ElementTree as ET
+from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import NoReturn
 
@@ -117,19 +119,24 @@ def backend_settings(raw: bytes, provider: str | None) -> dict:
 
 
 def s3_get(settings: dict[str, str], query: str) -> bytes:
-    """Signed GET on the bucket; the key pair reaches curl on stdin, never argv."""
+    key = settings["object"] if query.startswith("versionId=") else ""
+    return s3_request(settings, key, query)
+
+
+def s3_request(settings: dict, key: str, query: str, *options: str) -> bytes:
+    """Sign a request without putting the key pair on the command line."""
     # The pair is written into a quoted curl config value.
     if re.search(r'["\\\s]', os.environ["AWS_ACCESS_KEY_ID"] + os.environ["AWS_SECRET_ACCESS_KEY"]):
         fail("the state key pair contains quotes, backslashes or whitespace", 2)
-    path = urllib.parse.quote(settings["bucket"]) + ("/" + urllib.parse.quote(settings["object"]) if query.startswith("versionId=") else "")
-    url = f"{settings['endpoint']}/{path}?{query}"
+    path = urllib.parse.quote(settings["bucket"]) + ("/" + urllib.parse.quote(key) if key else "")
+    url = f"{settings['endpoint']}/{path}" + ("?" + query if query else "")
     config = f'user = "{os.environ["AWS_ACCESS_KEY_ID"]}:{os.environ["AWS_SECRET_ACCESS_KEY"]}"\n'
     # -q first: an operator ~/.curlrc must not weaken TLS or trace the signed request.
     result = subprocess.run(["curl", "-q", "-sS", "--fail-with-body", "-K", "-", "--aws-sigv4",
-                             f"aws:amz:{settings['region']}:s3", url], input=config.encode(), capture_output=True, check=False)
+                             f"aws:amz:{settings['region']}:s3", *options, url], input=config.encode(), capture_output=True, check=False)
     if result.returncode:
         reason = f"curl exit {result.returncode}"
-        for code in ("AccessDenied", "NoSuchKey", "NoSuchVersion", "NoSuchBucket", "InvalidAccessKeyId", "SignatureDoesNotMatch"):
+        for code in ("PreconditionFailed", "ConditionalRequestConflict", "AccessDenied", "NoSuchKey", "NoSuchVersion", "NoSuchBucket", "InvalidAccessKeyId", "SignatureDoesNotMatch"):
             if f"<Code>{code}</Code>".encode() in result.stdout:
                 reason = code
                 break
@@ -262,6 +269,31 @@ def main() -> None:
         restore(provider, env, settings, version, directory)
 
 
+@contextmanager
+def state_lock(settings, run):
+    lock_id = str(uuid.uuid4())
+    lock_path = settings["bucket"] + "/" + settings["object"]
+    record = json.dumps({"ID": lock_id, "Operation": "restore-state", "Path": lock_path,
+                         "Created": datetime.now(timezone.utc).isoformat()})
+    # Object Lock buckets require a checksum for this conditional PUT.
+    checksum = base64.b64encode(hashlib.sha256(record.encode()).digest()).decode()
+    response = s3_request(
+        settings, settings["object"] + ".tflock", "", "--request", "PUT", "--write-out", "%{http_code}",
+        "--header", "If-None-Match: *", "--header", "Content-Type: application/json",
+        "--header", f"x-amz-checksum-sha256: {checksum}", "--data-binary", record,
+    )
+    if response != b"200":
+        fail("object storage did not confirm the restore lock; inspect the backend lock record")
+    try:
+        yield
+    finally:
+        # The backend validates the UUID before deleting the lock. A lost PUT
+        # response or an interrupted restore can leave a recoverable lock.
+        unlocked = run("force-unlock", "-force", lock_id)
+        if unlocked.returncode:
+            fail(f"cannot release restore lock {lock_id}; inspect the backend lock record")
+
+
 def restore(provider, env, settings, version, directory):
     def run(*args, data=None):
         return terraform_env(provider, env, directory, *args, data=data)
@@ -271,6 +303,13 @@ def restore(provider, env, settings, version, directory):
     initialized = run("init", "-input=false", "-no-color", "-reconfigure")
     if initialized.returncode:
         fail(f"cannot initialize {provider}/{env} against {provider}.s3.tfbackend (exit {initialized.returncode})")
+    with state_lock(settings, run):
+        serial = push_and_verify(run, restored, provider, env)
+    print(f"restored version {version} of {provider}/{env} as serial {serial}; "
+          "run a plan and review it against the selected recovery point")
+
+
+def push_and_verify(run, restored, provider, env):
     pulled = run("state", "pull")
     if pulled.returncode:
         fail(f"cannot read the current state of {provider}/{env} (exit {pulled.returncode})")
@@ -282,13 +321,9 @@ def restore(provider, env, settings, version, directory):
                 fail("the selected version has another lineage; set ALLOW_LINEAGE_CHANGE=1 to replace it deliberately")
             force = ["-force"]
         restored["serial"] = current["serial"] + 1
-    # The push takes the backend lock; without -force OpenTofu refuses a lower or
-    # equal serial, so a writer that moved the state since the pull wins.
-    pushed = run("state", "push", "-no-color", *force, "-",
-                           data=json.dumps(restored).encode())
+    # The outer native S3 lock covers the pull, push and readback.
+    pushed = run("state", "push", "-lock=false", "-no-color", *force, "-", data=json.dumps(restored).encode())
     if pushed.returncode:
-        if b"Error acquiring the state lock" in pushed.stderr:
-            fail(f"state push refused while acquiring the state lock (exit {pushed.returncode})")
         fail(f"state push refused (exit {pushed.returncode})")
     # OpenTofu may raise the serial again when it persists, so report what the backend holds.
     after = run("state", "pull")
@@ -298,8 +333,7 @@ def restore(provider, env, settings, version, directory):
             or {key: value for key, value in stored.items() if key not in writer_metadata}
             != {key: value for key, value in restored.items() if key not in writer_metadata}):
         fail("the pushed state does not read back as the restored version; inspect the bucket versions")
-    print(f"restored version {version} of {provider}/{env} as serial {stored['serial']}; "
-          "run a plan and review it against the selected recovery point")
+    return stored["serial"]
 
 
 if __name__ == "__main__":

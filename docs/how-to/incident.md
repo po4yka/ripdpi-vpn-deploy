@@ -90,13 +90,13 @@ Recovery path 0 — restore a bucket version after a bad apply (preferred):
 # Lists the versions of the exact state object, newest first (metadata only).
 make restore-state PROVIDER=upcloud ENV=prod
 # Decrypts the selected version locally, refuses another lineage, and pushes it
-# through the backend lock as the next serial. Earlier versions stay retained.
+# as the next serial. The S3 lock covers the current-state read, push and readback.
 make restore-state PROVIDER=upcloud ENV=prod STATE_VERSION=<version-id>
 make PROVIDER=upcloud ENV=prod plan
 # Review each proposed change against the actual resources and the chosen recovery point.
 ```
 
-`ALLOW_LINEAGE_CHANGE=1` replaces state with a version of another lineage (`tofu state push -force`). A forced push skips the serial check, so stop every other writer first, and use it only after confirming that the current state is the wrong one. A writer that died while holding the lock leaves `<state key>.tflock`; after confirming no writer runs, release it with `PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh force-unlock <lock-id>` using the operator identity (obtain the lock ID from the backend lock record).
+`ALLOW_LINEAGE_CHANGE=1` replaces state with a version of another lineage (`tofu state push -force`). The same workspace lock protects a forced restore. Confirm that the current lineage is wrong before using this option. A writer that died while holding the lock leaves `<state key>.tflock`; after confirming no writer runs, release it with `PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh force-unlock <lock-id>` using the operator identity (obtain the lock ID from the backend lock record).
 
 Recovery path 1 — the bucket or its versions are lost: create a replacement bucket, point the `<provider>.s3.tfbackend` files of the ops repository at it, then restore the newest `make backup-state` snapshot into an initialized empty workspace. The producer publishes a timestamped name only after encryption completes; its private `.state-backup.*` staging files are not recovery snapshots.
 
