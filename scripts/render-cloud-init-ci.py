@@ -34,7 +34,7 @@ def render(values: dict[str, object] = VALUES) -> str:
         raise TypeError("admin_ssh_public_keys must be a list of strings")
     bindings = dict(values)
     bindings['jsonencode(format("%s", admin_user))'] = json.dumps(values["admin_user"])
-    bindings['jsonencode([for key in admin_ssh_public_keys : format("%s", key)])'] = json.dumps(
+    bindings['jsonencode(formatlist("%s", admin_ssh_public_keys))'] = json.dumps(
         values["admin_ssh_public_keys"]
     )
     bindings[

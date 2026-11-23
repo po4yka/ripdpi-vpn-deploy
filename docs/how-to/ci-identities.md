@@ -50,6 +50,6 @@ Each step is a live action that needs the operator's authorization:
 
 ## Revocation
 
-- **CI SSH key:** remove it from `admin_ssh_public_keys` and the inventory list, then deploy. `baseline` writes the admin `authorized_keys` exclusively from the list, so the key disappears from every node while the operator key stays. Delete the secret from `deploy-check` and `deploy`.
+- **CI SSH key:** remove it from `admin_ssh_public_keys` and the inventory list, then deploy with the operator key. Do not deploy the removal with the CI key: `baseline` removes that key during the run, and the later plays lose their connection. `baseline` writes the admin `authorized_keys` exclusively from the list, so the key disappears from every node while the operator key stays. Delete the secret from `deploy-check` and `deploy`.
 - **CI age identity:** remove the CI recipient from `.sops.yaml`, run `sops updatekeys` and rotate the data key (`sops rotate -i`) of every affected document, then replace the credentials that the identity could read. Delete the secret from `deploy-check`, `deploy` and `ops-secrets`.
 - **Tailnet and provider tokens:** revoke each one at its provider, following the `revoke_procedure` in its catalog entry, then delete the environment secret.

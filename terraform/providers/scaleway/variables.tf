@@ -67,7 +67,7 @@ variable "admin_ssh_public_keys" {
   }
 
   validation {
-    condition     = alltrue([for key in var.admin_ssh_public_keys : can(regex("^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh\\.com) [A-Za-z0-9+/]+=* ?[^\r\n]*$", trimspace(key)))])
+    condition     = alltrue([for key in var.admin_ssh_public_keys : can(regex("^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh\\.com) [A-Za-z0-9+/]+=*( [^\r\n']*)?$", trimspace(key)))])
     error_message = "admin_ssh_public_keys entries must be single-line OpenSSH public keys."
   }
 
