@@ -119,8 +119,8 @@ ensure_log_dir() {
 
 state_monitor_job() {
   local schedule="$1" goal="$2" tag="$3"
-  printf "%s cd %s && %s PROVIDER=%q ENV=%q bash -o pipefail -c 'make %s 2>&1 | logger -t %s'\n" \
-    "$schedule" "$repo_q" "$monitor_env" "$PROVIDER" "$ENV" "$goal" "$tag"
+  printf "%s cd %s && %s PROVIDER=%q ENV=%q ./scripts/cron-log.sh %s make %s\n" \
+    "$schedule" "$repo_q" "$monitor_env" "$PROVIDER" "$ENV" "$tag" "$goal"
 }
 
 make_block() {
@@ -160,7 +160,7 @@ ${MARKER_BEGIN}
 # scripts/install-operator-crons.sh to refresh, --remove to uninstall.
 PATH="${path_escaped}"
 ${service_env}
-27 3 * * *     cd ${repo} && make tspu-canary                                         2>&1 | logger -t vpn-canary
+27 3 * * *     cd ${repo_q} && ./scripts/cron-log.sh vpn-canary make tspu-canary
 EOF
   local monitor_env=""
   if [[ -n "${MONITOR_STATE_IDENTITY_SOPS_FILE:-}" ]]; then
@@ -190,13 +190,13 @@ EOF
       echo "warm-spare watcher will use legacy TCP-only reachability; set LIVENESS_CONFIG for protocol quorum" >&2
     fi
     cat <<EOF
-*/2 * * * *    cd ${repo_q} && ${monitor_env} PROVIDER=${PROVIDER} ENV=${ENV} GREEN_ENV=${WARM_SPARE_ENV}${liveness_env} make watch-spare  2>&1 | logger -t vpn-spare
+*/2 * * * *    cd ${repo_q} && ${monitor_env} PROVIDER=${PROVIDER} ENV=${ENV} GREEN_ENV=${WARM_SPARE_ENV}${liveness_env} ./scripts/cron-log.sh vpn-spare make watch-spare
 EOF
   elif [[ -n "$LIVENESS_CONFIG" ]]; then
     [[ -f "$LIVENESS_CONFIG" ]] || { echo "LIVENESS_CONFIG not found: $LIVENESS_CONFIG" >&2; return 1; }
     printf -v liveness_q '%q' "$LIVENESS_CONFIG"
     cat <<EOF
-*/2 * * * *    cd ${repo_q} && SOPS_FILE=${sops_q} SOPS_AGE_KEY_FILE=${age_key_q} make monitor-protocol-liveness LIVENESS_CONFIG=${liveness_q}  2>&1 | logger -t vpn-liveness
+*/2 * * * *    cd ${repo_q} && SOPS_FILE=${sops_q} SOPS_AGE_KEY_FILE=${age_key_q} ./scripts/cron-log.sh vpn-liveness make monitor-protocol-liveness LIVENESS_CONFIG=${liveness_q}
 EOF
   fi
   if [[ -n "$PAYLOAD_THROTTLE_HOST" ]]; then
@@ -210,7 +210,7 @@ EOF
   fi
   if [[ -n "$REALITY_TARGET_VANTAGE" ]]; then
     cat <<EOF
-17 4 * * *     cd ${repo_q} && ENV=${env_q} VANTAGE=${vantage_q} make monitor-reality-target  2>&1 | logger -t vpn-reality-target
+17 4 * * *     cd ${repo_q} && ENV=${env_q} VANTAGE=${vantage_q} ./scripts/cron-log.sh vpn-reality-target make monitor-reality-target
 EOF
   else
     echo "REALITY target monitor skipped: set REALITY_TARGET_VANTAGE to a filtered technical label" >&2
@@ -229,7 +229,7 @@ EOF
     printf -v backup_q '%q' "PROVIDER=${PROVIDER} ENV=${env_q} make backup-state"
     printf -v inner_q '%q' "sops exec-env ${passphrase_q} ${backup_q}"
     cat <<EOF
-47 3 * * *     cd ${repo_q} && SOPS_AGE_KEY_FILE=${age_key_q} sops exec-env ${identity_q} ${inner_q}  2>&1 | logger -t vpn-state
+47 3 * * *     cd ${repo_q} && SOPS_AGE_KEY_FILE=${age_key_q} ./scripts/cron-log.sh vpn-state sops exec-env ${identity_q} ${inner_q}
 EOF
   else
     echo "state backup skipped: set STATE_IDENTITY_SOPS_FILE and STATE_PASSPHRASE_SOPS_FILE" >&2
@@ -251,7 +251,7 @@ EOF
     # The DNS key exists only in the exec-env child; the command string is quoted twice.
     printf -v renewal_q '%q' "make renew-self-steal-cert SELF_STEAL_SOPS_FILE=${steal_q}"
     cat <<EOF
-27 4 * * *     cd ${repo_q} && SOPS_AGE_KEY_FILE=${age_key_q} sops exec-env ${steal_dns_q} ${renewal_q}  2>&1 | logger -t vpn-self-steal-renewal
+27 4 * * *     cd ${repo_q} && SOPS_AGE_KEY_FILE=${age_key_q} ./scripts/cron-log.sh vpn-self-steal-renewal sops exec-env ${steal_dns_q} ${renewal_q}
 EOF
   else
     echo "self-steal renewal skipped: set SELF_STEAL_SOPS_FILE and SELF_STEAL_DNS_ENV_FILE" >&2
