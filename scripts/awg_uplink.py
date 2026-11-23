@@ -36,10 +36,12 @@ def networkd_ra_owner(state, interface, index, route, accept_ra):
             or type(state.get('Index')) is not int or state['Index'] != index
             or not isinstance(state.get('Addresses'), list)
             or not isinstance(state.get('Routes'), list)
+            or not isinstance(state.get('NextHops', []), list)
             or any(not isinstance(row, dict) or not isinstance(row.get('ConfigSource'), str)
-                   for row in state['Addresses'] + state['Routes'])):
+                   for row in state['Addresses'] + state['Routes'] + state.get('NextHops', []))):
         raise ValueError('awg-networkd-state-unavailable')
-    if not any(row['ConfigSource'] == 'NDisc' for row in state['Addresses'] + state['Routes']):
+    rows = state['Addresses'] + state['Routes'] + state.get('NextHops', [])
+    if not any(row['ConfigSource'] == 'NDisc' for row in rows):
         return False
     if (accept_ra != '0' or state.get('AdministrativeState') != 'configured'
             or any(state.get(key) != 'routable' for key in
@@ -69,7 +71,15 @@ def networkd_ra_owner(state, interface, index, route, accept_ra):
                 and row.get('ConfigState') in configured
                 and type(row.get('LifetimeUSec')) is int and 0 < row['LifetimeUSec'] < 2**64
                 and address_matches(row.get('Gateway'), route['gateway'])]
-    if len(addresses) != 1 or len(defaults) != 1:
+    # systemd-networkd 257 installs the RA default through a kernel nexthop object.
+    nexthops = [row for row in state.get('NextHops', [])
+                if row['ConfigSource'] == 'NDisc'
+                and type(row.get('Family')) is int and row['Family'] == 10
+                and type(row.get('Protocol')) is int and row['Protocol'] == 9
+                and row.get('Blackhole') is False
+                and row.get('ConfigState') in configured
+                and address_matches(row.get('Gateway'), route['gateway'])]
+    if len(addresses) != 1 or len(defaults) + len(nexthops) != 1:
         raise ValueError('awg-networkd-selected-route-unavailable')
     return True
 
