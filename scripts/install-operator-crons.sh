@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Install the operator-side cron jobs documented in each watcher's
 # header. Generates a single `vpn-deploy` cron block and writes it
-# via `crontab -l | rg -v '^# vpn-deploy:' ; cat block | crontab -`
-# semantics through crontab. For drift and verified kit backup jobs on Linux
+# after reading the current user's existing entries. For drift and verified kit backup jobs on Linux
 # and macOS, use make operator-schedule (cron and launchd respectively).
 #
 # Idempotent: every entry is keyed under a single # vpn-deploy marker
@@ -263,43 +262,59 @@ EOF
 strip_block() {
   awk -v b="$MARKER_BEGIN" -v e="$MARKER_END" '
     BEGIN { skip = 0 }
-    index($0, b) { skip = 1; next }
-    index($0, e) { skip = 0; next }
+    $0 == b { if (skip) exit 1; skip = 1; next }
+    $0 == e { if (!skip) exit 1; skip = 0; next }
+    END { if (skip) exit 1 }
     !skip
   '
 }
 
+if (( ! REMOVE )); then
+  block="$(make_block "$REPO_ROOT")"
+  if (( DRY_RUN )); then
+    echo "[dry-run] would write the following block to crontab:"
+    echo
+    echo "$block"
+    exit 0
+  fi
+fi
+
+# Collect the entire table before starting a writer. A failed read can return
+# partial stdout. Vixie cron, Cronie and macOS report an absent table on stderr.
+work="$(mktemp -d "${TMPDIR:-/tmp}/vpn-crontab.XXXXXXXX")"
+trap 'rm -rf -- "$work"' EXIT
+if LC_ALL=C crontab -l > "$work/current" 2> "$work/error"; then
+  :
+else
+  status=$?
+  missing="no crontab for $(id -un)"
+  diagnostic="$(cat "$work/error")"
+  if [[ $status == 1 && ! -s "$work/current" &&
+        ( "$diagnostic" == "$missing" || "$diagnostic" == "crontab: $missing" ) ]]; then
+    : > "$work/current"
+  else
+    cat "$work/error" >&2
+    echo "cannot read current crontab (exit $status); refusing to replace it" >&2
+    exit "$status"
+  fi
+fi
+
+strip_block < "$work/current" > "$work/next"
 if (( REMOVE )); then
   if (( DRY_RUN )); then
     echo "[dry-run] would strip vpn-deploy block from crontab"
-    crontab -l 2>/dev/null | strip_block
-    exit 0
-  fi
-  if crontab -l 2>/dev/null | grep -q "$MARKER_BEGIN"; then
-    crontab -l 2>/dev/null | strip_block | crontab -
-    echo "vpn-deploy cron block removed"
-  else
+    cat "$work/next"
+  elif cmp -s "$work/current" "$work/next"; then
     echo "no vpn-deploy block in crontab"
+  else
+    crontab - < "$work/next"
+    echo "vpn-deploy cron block removed"
   fi
-  exit 0
-fi
-
-block="$(make_block "$REPO_ROOT")"
-
-if (( DRY_RUN )); then
-  echo "[dry-run] would write the following block to crontab:"
-  echo
-  echo "$block"
   exit 0
 fi
 
 [[ -n "$PAYLOAD_THROTTLE_HOST" ]] && ensure_log_dir
-
-# Replace any existing marked block with the new one.
-{
-  crontab -l 2>/dev/null | strip_block
-  echo "$block"
-} | crontab -
-
+printf '%s\n' "$block" >> "$work/next"
+crontab - < "$work/next"
 echo "vpn-deploy cron block installed:"
-crontab -l | sed -n "/$MARKER_BEGIN/,/$MARKER_END/p"
+printf '%s\n' "$block"
