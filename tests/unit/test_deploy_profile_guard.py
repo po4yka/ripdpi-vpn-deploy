@@ -157,6 +157,8 @@ def test_live_explicit_profile_surfaces_are_locked():
     assert warp_staging["vpn"] == {**staging["vpn"], "enable_warp_outbound": True,
                                    "warp_outbound_routes": [{"domain": ["full:www.cloudflare.com"]}]}
     assert warp_staging["public_site_canonical_url"] == staging["public_site_canonical_url"]
+    warp_defaults = yaml.safe_load((REPO_ROOT / "ansible/roles/warp-outbound/defaults/main.yml").read_text())
+    assert warp_staging["warp_outbound"] == {**warp_defaults["warp_outbound"], "package_version": "2026.8.2115.0"}
 
     assert lab["allow_research_roles"] == []
     assert lab["vpn"]["enable_split_hop_egress"] is False
