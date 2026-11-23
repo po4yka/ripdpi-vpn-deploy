@@ -14,6 +14,7 @@ CI operates the fleet from the private ops repository with its own identities: a
 | `deploy` | push to `main` | the same names as `deploy-check` |
 | `ops-secrets` | push to `main` | `SOPS_AGE_KEY` only |
 | `tailnet-policy` | push to `main` | `TS_POLICY_OAUTH_*` only |
+| `ci-bootstrap` | push to `main` | `CI_BOOTSTRAP_TOKEN` only: a short-lived fine-grained token that writes the generated CI identities into their environments |
 
 Provider token names are `HCLOUD_TOKEN`, `UPCLOUD_TOKEN`, `VULTR_API_KEY`, `SCW_ACCESS_KEY`/`SCW_SECRET_KEY` and `PORKBUN_API_KEY`/`PORKBUN_SECRET_API_KEY`. Every environment allows deployments from `main` only. The ops repository's `operator-merge-gate` ruleset blocks direct pushes, force pushes and deletion on `main` and lets only the owner merge, so the operator's merge is the approval for every mutating run.
 
@@ -42,8 +43,8 @@ The classifier prints a JSON verdict. `preview` (exit 0) means the diff changes 
 
 Each step is a live action that needs the operator's authorization:
 
-1. Create the six environments with a deployment branch policy of `main` only. Confirm that the `operator-merge-gate` ruleset is active.
-2. Generate the CI age identity in an `ops-secrets` run and the CI SSH key in a deploy bootstrap run, so that the private halves exist only as environment secrets. Commit the public recipient to the ops `.sops.yaml` and the public key to the tfvars `admin_ssh_public_keys` lists and the inventory variables.
+1. Create the seven environments with a deployment branch policy of `main` only. Confirm that the `operator-merge-gate` ruleset is active.
+2. Generate the CI age identity and the CI SSH key in one `ci-bootstrap` run, so that the private halves exist only as environment secrets. The operator creates a fine-grained token limited to the ops repository with environment write access and the shortest expiry, stores it as `CI_BOOTSTRAP_TOKEN` in `ci-bootstrap`, and revokes it and deletes the secret after the run. The run refuses to replace an existing identity secret. Commit the public recipient to the ops `.sops.yaml` and the public key to the tfvars `admin_ssh_public_keys` lists and the inventory variables.
 3. Run `sops updatekeys` over every `config/*.secrets.sops.yaml`, then dry-run and deploy `baseline` so that every node accepts both admin keys.
 4. Import the live Tailnet policy byte for byte into `tailnet/policy.hujson`, then add `tag:ci-tofu` and `tag:ci-deploy` with their `tagOwners` and grants.
 5. Issue the provider tokens and record a catalog entry for each environment secret. Then run the validator on the ops repository.

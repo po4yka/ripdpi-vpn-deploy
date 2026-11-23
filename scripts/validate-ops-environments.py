@@ -40,6 +40,8 @@ CI_SSH = {"CI_SSH_PRIVATE_KEY"}
 TAILNET_TOFU = {"TS_CI_TOFU_OAUTH_CLIENT_ID", "TS_CI_TOFU_OAUTH_SECRET"}
 TAILNET_DEPLOY = {"TS_CI_DEPLOY_OAUTH_CLIENT_ID", "TS_CI_DEPLOY_OAUTH_SECRET"}
 TAILNET_POLICY = {"TS_POLICY_OAUTH_CLIENT_ID", "TS_POLICY_OAUTH_SECRET"}
+# A short-lived token that only writes the generated CI identities into their environments.
+CI_BOOTSTRAP = {"CI_BOOTSTRAP_TOKEN"}
 MATRIX = {
     "tofu-plan": STATE | PROVIDERS | TAILNET_TOFU,
     "tofu-apply": STATE | PROVIDERS | TAILNET_TOFU,
@@ -47,8 +49,9 @@ MATRIX = {
     "deploy": CI_AGE | CI_SSH | TAILNET_DEPLOY,
     "ops-secrets": CI_AGE,
     "tailnet-policy": TAILNET_POLICY,
+    "ci-bootstrap": CI_BOOTSTRAP,
 }
-MUTATING = {"tofu-apply", "deploy", "ops-secrets", "tailnet-policy"}
+MUTATING = {"tofu-apply", "deploy", "ops-secrets", "tailnet-policy", "ci-bootstrap"}
 EVENTS = {"preview": {"pull_request_target", "schedule", "push"}, "mutating": {"push"}}
 MUTATING_COMMAND = re.compile(
     r"\bmake\b[^\n]*?\b(apply|destroy|staging-destroy|deploy[\w-]*|rotate-[\w-]+|issue-[\w-]+|promote-spare|"
