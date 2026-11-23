@@ -25,6 +25,8 @@ from test_emit_singbox_roundtrip import (
 )
 import subprocess
 
+pytestmark = pytest.mark.usefixtures("stub_tofu_backend")
+
 ROOT = Path(__file__).resolve().parents[2]
 
 

@@ -65,6 +65,12 @@ def fixture_document() -> dict:
     return document
 
 
+def fixture_backend(directory: Path) -> str:
+    """Select only the throwaway configuration for the stub OpenTofu client."""
+    (directory / "upcloud.s3.tfbackend").write_text('bucket = "fixture"\nuse_lockfile = true\n')
+    return str(directory)
+
+
 def render_profile(directory: Path) -> Path:
     secrets = directory / "secrets.json"
     secrets.write_text(json.dumps(fixture_document()), encoding="utf-8")
@@ -81,6 +87,7 @@ def render_profile(directory: Path) -> Path:
         {
             "PATH": f"{bin_dir}:{STUBS_BIN}:{environment.get('PATH', '')}",
             "SOPS_FILE": str(secrets),
+            "TF_BACKEND_ROOT": fixture_backend(directory),
             "STUB_LOG": str(directory / "stub.log"),
         }
     )

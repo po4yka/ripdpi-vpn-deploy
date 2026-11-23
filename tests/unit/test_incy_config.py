@@ -10,6 +10,8 @@ import pytest
 from test_client_payload_incy_links import _fixture_payload
 from test_emit_singbox_roundtrip import REPO_ROOT
 
+pytestmark = pytest.mark.usefixtures("stub_tofu_backend")
+
 SCRIPT = REPO_ROOT / 'scripts/incy_config.py'
 CONF = '[Interface]\nPrivateKey = fixture-private\n\n[Peer]\nEndpoint = 198.51.100.10:51820\n'
 

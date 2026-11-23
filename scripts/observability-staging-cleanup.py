@@ -40,6 +40,7 @@ from typing import Any
 
 import staging_lifecycle as lifecycle
 import tofu_state
+from tofu_tfvars import tfvars_path
 
 ROOT = Path(__file__).resolve().parents[1]
 TF_WRAPPER = ROOT / "scripts/terraform-env.sh"
@@ -778,6 +779,7 @@ def _filtered_environment(provider: str) -> dict[str, str]:
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
         "TF_VAR_state_passphrase",
+        "TF_BACKEND_ROOT",
     }
     credentials = {
         "upcloud": {
@@ -1293,7 +1295,7 @@ def _prepare_plan(
                 "-destroy",
                 "-input=false",
                 "-lock=true",
-                "-var-file=environments/staging.tfvars",
+                f"-var-file={tfvars_path(ROOT / 'terraform/providers' / provider, 'staging')}",
                 f"-out={plan}",
             ),
         )

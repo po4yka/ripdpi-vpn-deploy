@@ -84,6 +84,8 @@ def test_configuration_failure_publishes_safe_result_before_any_deployment(
         monkeypatch.delenv("UPCLOUD_TOKEN")
     monkeypatch.setenv("CI_DEPLOY_CONFIG", "{private-input-marker" if failure == "json" else json.dumps(value))
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+    monkeypatch.setattr(MODULE, "ROOT", tmp_path / "disposable-source")
     monkeypatch.setattr(sys, "platform", "linux")
     work, artifact = tmp_path / "private", tmp_path / "public"
     monkeypatch.setattr(sys, "argv", ["ci-real-deploy", "--profile", "p0", "--distro", "debian13",
@@ -108,6 +110,8 @@ def test_executor_startup_failure_has_result_without_overwriting_owned_report(tm
         monkeypatch.setenv(name, "synthetic-private-marker")
     monkeypatch.setenv("CI_DEPLOY_CONFIG", json.dumps(value))
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+    monkeypatch.setattr(MODULE, "ROOT", tmp_path / "disposable-source")
     monkeypatch.setattr(sys, "platform", "linux")
     work, artifact = tmp_path / "private", tmp_path / "public"
     monkeypatch.setattr(sys, "argv", ["ci-real-deploy", "--profile", "p0", "--distro", "debian13",
@@ -347,7 +351,7 @@ def test_orchestration_requires_deploy_and_verified_cleanup(tmp_path, monkeypatc
     assert marker.exists() is (fail_goal == "staging-destroy")
     # The local backend override stays only while a teardown still needs the run's state.
     backend_override = root / "terraform/providers/upcloud/ci_backend_override.tf"
-    assert backend_override.exists() is (fail_goal in {"staging-destroy", "logout"})
+    assert backend_override.exists() is (fail_goal == "staging-destroy")
     if fail_goal == "staging-destroy":
         calls.clear()
         fail_goal = None
@@ -376,6 +380,27 @@ def test_orchestration_requires_deploy_and_verified_cleanup(tmp_path, monkeypatc
         assert not backend_override.exists()
         assert not override.exists()
         assert not marker.exists()
+
+
+def test_disposable_backend_preserves_foreign_override(tmp_path, monkeypatch):
+    root, work = tmp_path / "source", tmp_path / "run"
+    provider = root / "terraform/providers/upcloud"
+    provider.mkdir(parents=True)
+    work.mkdir()
+    monkeypatch.setattr(MODULE, "ROOT", root)
+    monkeypatch.setenv("UPCLOUD_TOKEN", "synthetic")
+    runtime = MODULE.Runtime(work)
+    environment = "ci-staging-" + "a" * 16
+    runtime.environment["ENV"] = environment
+    override = provider / "ci_backend_override.tf"
+    override.write_text("foreign\n")
+    with pytest.raises(FileExistsError):
+        MODULE.local_backend(runtime)
+    with pytest.raises(MODULE.DeploymentError, match="owner-mismatch"):
+        MODULE.local_backend(runtime, resume=True)
+    with pytest.raises(MODULE.DeploymentError, match="owner-mismatch"):
+        MODULE.remove_local_backend(environment)
+    assert override.read_text() == "foreign\n"
 
 
 def test_resume_cleanup_owes_nothing_without_a_marker_and_refuses_a_foreign_context(tmp_path):

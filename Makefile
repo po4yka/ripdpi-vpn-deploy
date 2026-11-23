@@ -776,15 +776,20 @@ CLOUD_INIT_IMAGE ?= ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab
 SECRETS_FILE  ?= $(RUNTIME_DIR)/vpn-$(ENV).secrets.yaml
 SOPS_FILE     ?= $(HOME)/.config/vpn-provision/$(ENV).secrets.sops.yaml
 # Absolute directory holding <provider>/<env>.tfvars outside this checkout (the ops repository).
-TFVARS_ROOT   ?=
-TFVARS        := $(if $(TFVARS_ROOT),$(TFVARS_ROOT)/$(PROVIDER)/$(ENV).tfvars,$(TF_ROOT)/environments/$(ENV).tfvars)
+export TFVARS_ROOT ?=
+ifneq ($(filter command line environment,$(origin TFVARS_ROOT)),)
+override TFVARS_ROOT := $(value TFVARS_ROOT)
+endif
 ifneq ($(TFVARS_ROOT),)
 ifeq ($(filter /%,$(TFVARS_ROOT)),)
 $(error TFVARS_ROOT must be an absolute path)
 endif
 endif
 # Absolute directory holding <provider>.s3.tfbackend files (the ops repository).
-TF_BACKEND_ROOT ?=
+export TF_BACKEND_ROOT ?=
+ifneq ($(filter command line environment,$(origin TF_BACKEND_ROOT)),)
+override TF_BACKEND_ROOT := $(value TF_BACKEND_ROOT)
+endif
 ifneq ($(TF_BACKEND_ROOT),)
 ifeq ($(filter /%,$(TF_BACKEND_ROOT)),)
 $(error TF_BACKEND_ROOT must be an absolute path)
@@ -1024,20 +1029,22 @@ check-prereqs:
 	@python3 scripts/check-prereqs.py
 
 init:
-	PROVIDER=$(PROVIDER) ENV=$(ENV) TF_BACKEND_ROOT="$(TF_BACKEND_ROOT)" $(TF_ENV) init
+	PROVIDER=$(PROVIDER) ENV=$(ENV) $(TF_ENV) init
 
 # validate and tf-test share one backend-free OpenTofu data directory per
 # provider: providers install once per invocation and `make -j` never runs two
 # inits on the same directory.
-TF_VALIDATION_ENV = TF_DATA_DIR="$(CURDIR)/terraform/providers/$$provider/.terraform-env/.validation" TF_WORKSPACE=default
+TF_PROVIDER_ROOTS := $(addprefix terraform/providers/,upcloud hetzner vultr scaleway)
+TF_VALIDATION_ROOTS := $(TF_PROVIDER_ROOTS) terraform/exception/cascade-ingress
+TF_VALIDATION_ENV = TF_DATA_DIR="$(CURDIR)/$$root/.terraform-env/.validation" TF_WORKSPACE=default
 # Fixed, public value: tests encrypt only throwaway in-memory state.
 TF_TEST_STATE_PASSPHRASE := tf-test-passphrase-not-a-secret
 
 .PHONY: terraform-init ansible-syntax-check
 terraform-init:
 	@command -v tofu >/dev/null 2>&1 || { echo "missing: tofu (see mise.toml)" >&2; exit 1; }
-	@for provider in upcloud hetzner vultr scaleway; do \
-	  $(TF_VALIDATION_ENV) tofu -chdir=terraform/providers/$$provider init -backend=false -input=false -lockfile=readonly >/dev/null || exit 1; \
+	@for root in $(TF_VALIDATION_ROOTS); do \
+	  $(TF_VALIDATION_ENV) tofu -chdir="$$root" init -backend=false -input=false -lockfile=readonly >/dev/null || exit 1; \
 	done
 
 ansible-syntax-check:
@@ -1045,9 +1052,9 @@ ansible-syntax-check:
 	@echo "== ansible syntax =="; cd $(ANSIBLE_DIR) && ansible-playbook playbooks/site.yml --syntax-check -i 'localhost,'
 
 validate: terraform-init ansible-syntax-check
-	@for provider in upcloud hetzner vultr scaleway; do \
-	  tofu -chdir=terraform/providers/$$provider fmt -check -recursive || exit 1; \
-	  $(TF_VALIDATION_ENV) tofu -chdir=terraform/providers/$$provider validate || exit 1; \
+	@for root in $(TF_VALIDATION_ROOTS); do \
+	  tofu -chdir="$$root" fmt -check -recursive || exit 1; \
+	  $(TF_VALIDATION_ENV) tofu -chdir="$$root" validate || exit 1; \
 	done
 	gitleaks git --redact --no-banner .
 	gitleaks git --staged --redact --no-banner .
@@ -1056,10 +1063,13 @@ validate: terraform-init ansible-syntax-check
 decrypt:
 	SECRETS_FILE="$(SECRETS_FILE)" SOPS_FILE="$(SOPS_FILE)" ./scripts/decrypt-secrets.sh
 
+plan: export PROVIDER := $(PROVIDER)
+plan: export ENV := $(ENV)
 plan:
-	@test -f "$(TFVARS)" || { echo "missing $(TFVARS) — copy from .example and fill"; exit 1; }
-	PROVIDER=$(PROVIDER) ENV=$(ENV) $(TF_ENV) plan \
-	  -var-file="$(abspath $(TFVARS))" \
+	@tfvars="$$(python3 scripts/tofu_tfvars.py "$$PROVIDER" "$$ENV")" || exit 2; \
+	  test -f "$$tfvars" || { echo "missing $$tfvars — copy from .example and fill"; exit 1; }; \
+	  $(TF_ENV) plan -lock=false \
+	  -var-file="$$tfvars" \
 	  -out=$(ENV).tfplan
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/policy-plan.sh check
 
@@ -1068,7 +1078,7 @@ apply:
 
 inventory:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" \
-	  TFVARS_ROOT="$(TFVARS_ROOT)" INVENTORY_OUTPUT="$(ANSIBLE_INVENTORY)" ./scripts/render-inventory.sh
+	  INVENTORY_OUTPUT="$(ANSIBLE_INVENTORY)" ./scripts/render-inventory.sh
 
 network-exposure-review:
 	@exec /usr/bin/env -i \
@@ -1420,7 +1430,7 @@ backup-state:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/backup-tf-state.sh
 
 restore-state:
-	PROVIDER=$(PROVIDER) ENV=$(ENV) TF_BACKEND_ROOT="$(TF_BACKEND_ROOT)" STATE_VERSION='$(subst ','',$(STATE_VERSION))' ./scripts/restore-tf-state.py
+	PROVIDER=$(PROVIDER) ENV=$(ENV) STATE_VERSION='$(subst ','',$(STATE_VERSION))' ./scripts/restore-tf-state.py
 
 burn-check:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/burn-check.sh
@@ -1697,9 +1707,9 @@ cloud-init-schema:
 	  fi
 
 tf-test: terraform-init
-	@for provider in upcloud hetzner vultr scaleway; do \
-	  echo "== tofu test: $$provider =="; \
-	  $(TF_VALIDATION_ENV) TF_VAR_state_passphrase=$(TF_TEST_STATE_PASSPHRASE) tofu -chdir=terraform/providers/$$provider test || exit 1; \
+	@for root in $(TF_PROVIDER_ROOTS); do \
+	  echo "== tofu test: $$root =="; \
+	  $(TF_VALIDATION_ENV) TF_VAR_plan_backend_scope=offline-test TF_VAR_state_passphrase=$(TF_TEST_STATE_PASSPHRASE) tofu -chdir="$$root" test || exit 1; \
 	done
 	python3 -m pytest -q tests/unit/test_provider_bootstrap_lifecycle.py -m native_runtime --fail-on-skip
 

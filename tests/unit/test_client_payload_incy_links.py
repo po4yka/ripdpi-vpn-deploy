@@ -15,6 +15,8 @@ from test_emit_singbox_roundtrip import (
     REPO_ROOT, SCRIPT, _build_env, _make_fleet_pins, _plaintext_emitter, _secrets_as_json,
 )
 
+pytestmark = pytest.mark.usefixtures("stub_tofu_backend")
+
 UUID = "abcdef12-3456-4789-8abc-def012345678"
 FIXTURE_LINKS = [
     f"vless://{UUID}@198.51.100.10:443?encryption=none&security=reality&type=tcp&sni=cdn.example.com"

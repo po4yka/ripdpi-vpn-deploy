@@ -10,6 +10,8 @@ import subprocess
 import pytest
 
 
+pytestmark = pytest.mark.usefixtures("stub_tofu_backend")
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -17,7 +19,7 @@ def _setup(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     repo = tmp_path / "repo"
     scripts = repo / "scripts"
     scripts.mkdir(parents=True)
-    for name in ("policy-plan.sh", "check-tf-plan.sh", "terraform-env.sh", "terraform-plan-policy.py"):
+    for name in ("policy-plan.sh", "check-tf-plan.sh", "terraform-env.sh", "tofu_backend.py", "terraform-plan-policy.py"):
         shutil.copy2(ROOT / "scripts" / name, scripts / name)
     shutil.copytree(ROOT / "terraform/policy", repo / "terraform/policy")
     provider = repo / "terraform/providers/upcloud"

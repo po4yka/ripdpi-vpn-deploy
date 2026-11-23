@@ -23,6 +23,7 @@ repos:
         args:
           - --hook-config=--tf-path=tofu
           - --tf-init-args=-backend=false
+          - --tf-init-args=-lockfile=readonly
       - id: terraform_docs
         args:
           - --args=--hide providers

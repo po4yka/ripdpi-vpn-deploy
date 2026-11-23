@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("stub_tofu_backend")
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "monitor-reality-target.sh"
 CRON_INSTALLER = REPO_ROOT / "scripts" / "install-operator-crons.sh"

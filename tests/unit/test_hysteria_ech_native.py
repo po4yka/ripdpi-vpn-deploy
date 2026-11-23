@@ -26,7 +26,7 @@ spec = importlib.util.spec_from_file_location(
 )
 lab = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(lab)
-pytestmark = pytest.mark.native_runtime
+pytestmark = [pytest.mark.native_runtime, pytest.mark.usefixtures("stub_tofu_backend")]
 
 
 @pytest.fixture(scope="module")

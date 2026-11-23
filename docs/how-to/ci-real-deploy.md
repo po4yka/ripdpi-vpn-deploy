@@ -50,7 +50,7 @@ P4 requires `research.dns_morph_bridge` with a real HTTPS `binary_url` and its r
 
 The old template, SSH-key and age-key workflow secrets are no longer consumed. Each job generates its own admin SSH key, age key and per-device transport credentials. It encrypts the CI secrets for canonical sentinel onboarding and adds only that run's generated TLS certificate to the disposable runner's trust store. TLS verification remains enabled for XHTTP and Hysteria clients.
 
-The job keeps its OpenTofu state out of the operator's state bucket and needs no state identity. Before `make init` it writes the gitignored `terraform/providers/upcloud/ci_backend_override.tf` (`backend "local" {}`), a backend file in its private work directory that puts the workspace there, and a random per-run `TF_VAR_state_passphrase`. The state stays encrypted on the runner. A failed run's age recovery bundle carries the encrypted state and that passphrase, so the operator can decrypt it with the recovery key.
+The job keeps its OpenTofu state out of the operator's state bucket and needs no state identity. Provision and cleanup use a detached worktree in the runner's private temporary directory. Before `make init` the job writes the gitignored `terraform/providers/upcloud/ci_backend_override.tf` (`backend "local" {}`), a backend file in its private work directory that puts the workspace there, and a random per-run `TF_VAR_state_passphrase`. The state stays encrypted on the runner. A failed run's age recovery bundle carries the encrypted state and that passphrase, so the operator can decrypt it with the recovery key.
 
 ## Authenticated first contact and deployment
 

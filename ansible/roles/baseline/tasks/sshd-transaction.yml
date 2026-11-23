@@ -10,6 +10,7 @@
       - ssh_transaction_target_identity is defined
       - ssh_transaction_failure_receipt_path is defined
       - ssh_transaction_failure_receipt_parent_identity is defined
+      - (ssh_transaction_local_promotion | default(false) | bool) == (lookup('ansible.builtin.env', 'VPN_PROMOTION_REQUEST') | length > 0)
       - ansible_play_hosts_all | length == 1
     fail_msg: SSH baseline convergence requires the exact-node deployment controller
   no_log: true
@@ -45,7 +46,7 @@
     argv:
       - "{{ ansible_playbook_python }}"
       - "{{ playbook_dir }}/../../scripts/sshd-baseline-controller.py"
-    stdin: >-
+    stdin: &baseline_request >-
       {{
         {
           'schema_version': 2,
@@ -70,7 +71,22 @@
   failed_when: >-
     ssh_transaction_result.rc != 0 or
     (ssh_transaction_result.stdout | from_json).status not in ['unchanged', 'would-change', 'committed']
+  when: not (ssh_transaction_local_promotion | default(false) | bool)
   register: ssh_transaction_result
+  no_log: true
+  diff: false
+  tags: [always, baseline]
+
+- name: Hand the rendered request to the local promotion controller
+  ansible.builtin.copy:
+    dest: "{{ lookup('ansible.builtin.env', 'VPN_PROMOTION_REQUEST') }}"
+    content: *baseline_request
+    mode: "0600"
+    force: false
+  when: ssh_transaction_local_promotion | default(false) | bool
+  delegate_to: localhost
+  become: false
+  changed_when: false
   no_log: true
   diff: false
   tags: [always, baseline]

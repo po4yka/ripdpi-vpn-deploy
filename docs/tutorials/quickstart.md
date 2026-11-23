@@ -124,6 +124,8 @@ The external directory above is the default. Operators who deliberately keep all
 
 This section walks a first node from plan to smoke test. Re-deploys, tag-scoped runs, adding a device and the acceptance checklist live in [the deploy guide](../how-to/deploy.md); do not maintain a second copy here.
 
+Select the private ops checkout and include its `fleet.mk` from the ignored `.fleet.mk` as described in [Operator inputs](../reference/ops-repository.md#input-wiring). Confirm that `TF_BACKEND_ROOT` points to the directory of reviewed backend files. Run the commands in a shell with the state identity and `TF_VAR_state_passphrase` supplied by the operator's encrypted documents. Use the provider identity for the selected node.
+
 Before changing an existing fleet, read [the deployment snapshot](../reference/deployment-status.md). It records the last verified snapshot, named environments, management-path invariant, live validation boundary, and observed operator limitations without publishing endpoints or secrets. It does not establish today's fleet or deployed revision.
 
 ```bash
@@ -248,15 +250,11 @@ Then connect with the real client and run a real-life traffic test (curl through
 Add to your operator's cron / launchd:
 
 ```bash
-# Every 30 min — direct TCP reachability probe from this workstation
-*/30 * * * *  cd ~/GitRep/ripdpi-vpn-deploy && make burn-check >> /tmp/vpn-burn.log 2>&1
-
-# Every 2 min — authenticated protocol quorum (requires managed sentinels)
-*/2 * * * *   cd ~/GitRep/ripdpi-vpn-deploy && LIVENESS_CONFIG=~/.config/vpn-provision/liveness.yaml GREEN_ENV=spare make watch-spare 2>&1 | logger -t vpn-spare
-
-# Daily — age snapshot of the remote state to ~/.config/vpn-provision/state-backups/.
-# `make install-operator-crons STATE_IDENTITY_SOPS_FILE=… STATE_PASSPHRASE_SOPS_FILE=…` writes this
-# job; the state key pair and passphrase reach it only through nested `sops exec-env`.
+# Use the read-only state identity for scheduled address and administrator lookups.
+make install-operator-crons \
+  MONITOR_STATE_IDENTITY_SOPS_FILE=/absolute/path/to/state-reader.sops.json \
+  STATE_PASSPHRASE_SOPS_FILE=/absolute/path/to/state-passphrase.sops.json
+# Add STATE_IDENTITY_SOPS_FILE=/absolute/path/to/state-backup.sops.json for backups.
 ```
 
 The scheduled checks give the node address to no probe service. The reputation and ASN checks (`make check-ip-reputation`, `make asn-drift`) send it only inside DNS-over-HTTPS queries and stop when that lookup fails; set `DOH_URL` to choose the resolver. Spamhaus does not answer public resolvers, so with the default resolver that check ends as incomplete, not clean; it needs a resolver of your own. Operator alerts go only to the service that `NTFY_URL` names. `make install-operator-crons NTFY_URL=… DOH_URL=…` writes both into the cron block, so that the scheduled monitors can deliver alerts. `TCP_PORT` selects the port for `make burn-check` when REALITY does not listen on 443.
