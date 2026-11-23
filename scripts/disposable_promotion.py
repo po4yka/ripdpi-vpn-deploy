@@ -22,6 +22,8 @@ from ci_deployment import CI_PROFILES
 ROOT = Path(__file__).resolve().parents[1]
 KIND = "disposable-staging-intent"
 PROFILES = {"p0-reality", "p1-xhttp", "p2-hysteria2", "p2-amneziawg"}
+# Four-profile staging cohorts; the WARP variant re-onboards a node for the namespace refresh check.
+COHORTS = {"device-full-staging", "device-full-warp-staging"}
 INPUTS = {
     "sops_file",
     "age_key_file",
@@ -98,7 +100,7 @@ def _validate_intent(value, input_fields):
             or type(value["schema_version"]) is not int
             or value["schema_version"] != 1
             or value["kind"] != KIND
-            or (not ci and value["cohort"] != "device-full-staging")
+            or (not ci and value["cohort"] not in COHORTS)
             or not isinstance(value["host"], str)
             or re.fullmatch(
                 r"upcloud:ci-staging-[a-z0-9][a-z0-9-]{0,51}", value["host"]
