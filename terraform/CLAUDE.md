@@ -45,8 +45,8 @@ refuses mutation. `tf-conftest` uses the same evaluator.
 **Bootstrap identity changes use replacement** — administrator changes on
 Hetzner, Vultr and Scaleway, and key changes on Vultr and Scaleway, are protected
 by replacement guards. Vultr and Scaleway also compare retained cloud-init
-identity during first adoption (no longer tested: every live state carries the
-guards, and `tofu test` cannot share state across configurations). Hetzner's provider hashes user-data in state,
+identity during first adoption. Vultr and Scaleway compare the type and key body;
+comments are metadata. [Upgrade a legacy digest](../docs/how-to/incident.md#upgrade-an-existing-bootstrap-key-digest) before the first full plan. Hetzner's provider hashes user-data in state,
 so the existing key-name attribute guards first adoption; its combined name
 makes server-name changes creation-time edits too. Unchanged nodes migrate
 without replacement, while `prevent_destroy` blocks identity edits.

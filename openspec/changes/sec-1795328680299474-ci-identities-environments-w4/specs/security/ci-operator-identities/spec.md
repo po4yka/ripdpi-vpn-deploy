@@ -13,6 +13,13 @@ CI MUST use its own age recipient, admin SSH key, Tailnet identities and provide
 - **WHEN** the CI public key is removed from `admin_ssh_public_keys` and `deploy` runs
 - **THEN** the key is absent from every node's admin `authorized_keys` and the operator key still logs in
 
+#### Scenario: Edit bootstrap key metadata
+
+- **WHEN** only the comment on the first administrative SSH key changes for a Vultr or Scaleway node
+- **THEN** the existing server and any registered provider key keep their IDs
+- **AND** a change to the key algorithm or body still requires node replacement
+- **AND** a legacy full-line digest can be updated only after comparison with the existing bootstrap identity
+
 #### Scenario: Revoke the CI age recipient
 
 - **WHEN** the operator removes the CI recipient, updates recipients, rotates each affected document's SOPS data key and then replaces exposed credentials

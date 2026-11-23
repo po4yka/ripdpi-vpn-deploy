@@ -129,6 +129,42 @@ Find `<SERVER_UUID>` in the UpCloud console (server details → "ID").
 
 After restoration, run `make backup-state` so an age snapshot of the restored state exists outside the bucket.
 
+### Upgrade an existing bootstrap key digest
+
+Vultr and Scaleway use the first key's algorithm and body as bootstrap identity.
+Earlier guards hashed the full line, including its comment. If the old first key
+had a comment, the first full plan after upgrading can report `prevent_destroy`
+on the server. Migrate only the built-in guard before the full plan. A stored
+first key without a comment already has the current digest.
+
+Select the exact provider, environment, backend and tfvars. Take an encrypted
+state backup with `make backup-state`. Use a private shell with the selected
+operator identity and the state passphrase. Export `PROVIDER`, `ENV`,
+`TF_BACKEND_ROOT` and `TFVARS_ROOT`. Keep the present username, SSH port and
+first key material. The comment and additional keys may differ. Record the
+server ID and account from the inventory.
+
+```bash
+set -eu -o pipefail
+umask 077
+tfvars="$(python3 scripts/tofu_tfvars.py "$PROVIDER" "$ENV")"
+work="$(mktemp -d)"
+trap 'rm -rf -- "$work"' EXIT
+plan="$work/guard.tfplan"
+./scripts/terraform-env.sh plan -refresh=false -input=false \
+  -target=terraform_data.admin_ssh_public_key -var-file="$tfvars" -out="$plan"
+./scripts/terraform-env.sh show -json "$plan" |
+  python3 scripts/check-bootstrap-guard-plan.py "$PROVIDER" --upgrade-digest
+./scripts/terraform-env.sh apply "$plan"
+make plan PROVIDER="$PROVIDER" ENV="$ENV"
+```
+
+The checker runs the plan policies and admits one in-place update of the existing guard. It compares the
+previous digest with the retained bootstrap line and the new digest with the
+requested material. Review the full plan before any provider change. Vultr
+can update the registered public key once to remove the old comment. Its key
+ID and the VM stay the same. A different first key requires a replacement node.
+
 ### Backups from before the bootstrap identity guards
 
 Use this procedure for a Hetzner, Vultr or Scaleway backup that contains

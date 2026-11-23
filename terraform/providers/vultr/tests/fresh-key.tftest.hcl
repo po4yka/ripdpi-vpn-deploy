@@ -28,7 +28,7 @@ run "fresh_public_key_with_file_newline" {
   }
 
   assert {
-    condition     = terraform_data.admin_ssh_public_key.output == sha256(trimspace(var.admin_ssh_public_keys[0]))
+    condition     = terraform_data.admin_ssh_public_key.output == sha256("ssh-ed25519 AAAATESTKEY")
     error_message = "A fresh node must accept a newline-terminated public key."
   }
 }

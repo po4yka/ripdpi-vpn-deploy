@@ -95,6 +95,8 @@ def test_unchanged_identity_has_no_resource_changes(configuration):
     result = execute(directory, "test", "-json", "-verbose", "-filter=tests/lifecycle.tftest.hcl")
     assert result.returncode == 0, result.stderr
     assert all(change["actions"] == ["no-op"] for change in plan_for(result, "unchanged_identity").values())
+    if configuration[0] != "hetzner":
+        assert all(change["actions"] == ["no-op"] for change in plan_for(result, "edited_comment_keeps_identity").values())
 
 
 @pytest.mark.parametrize("run", ("single_key_list_keeps_node", "second_key_keeps_node"))
@@ -188,6 +190,12 @@ def test_encryption_passphrase_stays_out_of_plan_json(tmp_path, state_config):
 
 
 def test_adopt_pre_guard_snapshot_in_isolated_backend(configuration, tmp_path):
+    recover_snapshot(configuration, tmp_path / "pre-guard", old_digest=False)
+    if configuration[0] != "hetzner":
+        recover_snapshot(configuration, tmp_path / "old-digest", old_digest=True)
+
+
+def recover_snapshot(configuration, tmp_path, old_digest):
     provider, source, setup = configuration
     root = tmp_path / "terraform/providers" / provider
     root.mkdir(parents=True)
@@ -196,8 +204,13 @@ def test_adopt_pre_guard_snapshot_in_isolated_backend(configuration, tmp_path):
     shutil.copytree(source.parents[1] / "shared", root.parents[1] / "shared")
     legacy = ROOT / "tests/fixtures/provider-bootstrap-lifecycle" / provider
     shutil.copy2(legacy.parent / "cloud-init.yaml.tftpl", root / "legacy-cloud-init.tftpl")
-    for path in legacy.glob("*.tf.fixture"):
-        shutil.copy2(path, root / path.stem)
+    if old_digest:
+        entry = root / "main.tf"
+        previous = entry.read_text().replace("sha256(local.bootstrap_key)", "sha256(trimspace(var.admin_ssh_public_keys[0]))")
+        entry.write_text(previous.replace("ssh_key = local.bootstrap_key", "ssh_key = var.admin_ssh_public_keys[0]"))
+    else:
+        for path in legacy.glob("*.tf.fixture"):
+            shutil.copy2(path, root / path.stem)
     (root / "scratch_override.tf").write_text('terraform {\n backend "local" {}\n}\n')
 
     mock, variables = setup.split("variables {\n", 1)
@@ -215,8 +228,8 @@ def test_adopt_pre_guard_snapshot_in_isolated_backend(configuration, tmp_path):
     assert seed.returncode == 0 and any(e.get("test_run", {}).get("status") == "pass" for e in events(seed))
     # The legacy server's prevent_destroy retains the mock deployment at test teardown.
     assert (root / "errored_test.tfstate").is_file()
-    for path in legacy.glob("*.tf.fixture"):
-        shutil.copy2(source / path.stem, root / path.stem)
+    for path in source.glob("*.tf"):
+        shutil.copy2(path, root / path.name)
 
     class VolumeRead(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -250,7 +263,10 @@ def test_adopt_pre_guard_snapshot_in_isolated_backend(configuration, tmp_path):
                                   text=True, timeout=120, check=check)
 
         def verify(plan):
-            return subprocess.run([sys.executable, str(ROOT / "scripts/check-bootstrap-guard-plan.py"), provider],
+            command = [sys.executable, str(ROOT / "scripts/check-bootstrap-guard-plan.py"), provider]
+            if old_digest:
+                command.append("--upgrade-digest")
+            return subprocess.run(command,
                                   input=tofu("show", "-json", plan).stdout, capture_output=True, text=True)
 
         try:
@@ -259,9 +275,13 @@ def test_adopt_pre_guard_snapshot_in_isolated_backend(configuration, tmp_path):
             targets = ["-target=terraform_data.admin_user"]
             if provider != "hetzner":
                 targets.append("-target=terraform_data.admin_ssh_public_key")
-            for mismatch in ("admin_user=other", 'admin_ssh_public_keys=["ssh-ed25519 AAAADIFFERENT fixture"]',
-                             'admin_ssh_public_keys=["ssh-ed25519 AAAATESTKEY test@harness","ssh-ed25519 AAAAEXTRA extra"]',
-                             "ssh_port=2222"):
+            mismatches = ["admin_user=other", 'admin_ssh_public_keys=["ssh-ed25519 AAAADIFFERENT fixture"]', "ssh_port=2222"]
+            if old_digest:
+                targets = ["-target=terraform_data.admin_ssh_public_key"]
+                tfvars.write_text(values.replace("test@harness", "new annotation"))
+            else:
+                mismatches.append('admin_ssh_public_keys=["ssh-ed25519 AAAATESTKEY test@harness","ssh-ed25519 AAAAEXTRA extra"]')
+            for mismatch in mismatches:
                 tofu(*plan, *targets, "-var", mismatch, "-out=wrong.plan")
                 assert verify("wrong.plan").returncode != 0
             tofu(*plan, *targets, "-out=guard.plan")
@@ -271,7 +291,7 @@ def test_adopt_pre_guard_snapshot_in_isolated_backend(configuration, tmp_path):
             # A full plan on the recovered copy must retain every managed server. The historical
             # Scaleway resource had no explicit root volume and its volume transition is refused.
             full = tofu(*plan, "-var=build_env=next", "-out=qualified.plan", check=False)
-            if provider == "scaleway":
+            if provider == "scaleway" and not old_digest:
                 assert full.returncode != 0
                 assert "Resource instance scaleway_instance_server.vpn has prevent_destroy set" in full.stderr
             else:
@@ -283,6 +303,9 @@ def test_adopt_pre_guard_snapshot_in_isolated_backend(configuration, tmp_path):
                 machine = changes[SERVERS[provider]]
                 assert machine["before"]["id"] == machine["after"]["id"]
                 assert machine["before"]["user_data"] == machine["after"]["user_data"]
+                if old_digest and provider == "vultr":
+                    assert changes["vultr_ssh_key.admin"]["actions"] == ["update"]
+                    assert changes["vultr_ssh_key.admin"]["before"]["id"] == changes["vultr_ssh_key.admin"]["after"]["id"]
                 if provider == "hetzner":
                     assert changes["hcloud_firewall_attachment.vpn"]["actions"] == ["forget"]
                     assert machine["after"]["firewall_ids"] == [2001]
