@@ -21,3 +21,17 @@ The cohort MUST be listed in `role-tiers.yml` `family_profiles`, so the deploy p
 
 - **WHEN** `scripts/check-deploy-profile.py` runs
 - **THEN** it checks the new cohort with the other family profiles and passes
+
+### Requirement: REQ-WARP-STAGING-ONBOARDING — Onboarding intents admit the WARP cohort
+
+A disposable onboarding intent MUST admit cohort `device-full-staging` or `device-full-warp-staging` and MUST refuse any other non-CI cohort. Intent preparation MUST take the cohort from the required `PROMOTION_COHORT` input and MUST refuse when it is missing.
+
+#### Scenario: WARP cohort intent
+
+- **WHEN** an operator prepares an intent with `PROMOTION_COHORT=device-full-warp-staging`
+- **THEN** the published intent names that cohort and passes the intent validator
+
+#### Scenario: Foreign or missing cohort
+
+- **WHEN** `PROMOTION_COHORT` is missing or names another cohort such as `device-full`
+- **THEN** preparation refuses and publishes nothing

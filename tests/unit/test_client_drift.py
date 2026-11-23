@@ -17,6 +17,8 @@ import client_delivery_identity as identities
 import encrypted_client_document as encrypted
 import issue_sub_token as issuer
 
+pytestmark = pytest.mark.usefixtures("stub_tofu_backend")
+
 ROOT = Path(__file__).resolve().parents[2]
 MARKER = 'synthetic-sensitive-payload-marker-7F3A'
 

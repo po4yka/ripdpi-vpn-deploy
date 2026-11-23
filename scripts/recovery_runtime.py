@@ -14,6 +14,7 @@ from pathlib import Path
 import bootstrap_readiness
 import fleet_inspection
 import tofu_state
+from tofu_tfvars import tfvars_path
 from recovery_io import (
     ROOT,
     RecoveryError,
@@ -37,8 +38,7 @@ class Runtime:
             'PATH', 'HOME', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TMPDIR',
             'UPCLOUD_TOKEN', 'UPCLOUD_USERNAME', 'UPCLOUD_PASSWORD',
             'UPCLOUD_API_USERNAME', 'UPCLOUD_API_PASSWORD', 'TAILSCALE_AUTH_KEY',
-            'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'TF_VAR_state_passphrase',
-            'TF_BACKEND_ROOT') if key in os.environ}
+            'TFVARS_ROOT') if key in os.environ}
         self.cleanup_plaintext()
         self.environment.update({'PROVIDER': 'upcloud', 'ENV': manifest['environment'],
             'TF_IN_AUTOMATION': 'true', 'TF_INPUT': '0', 'PYTHONNOUSERSITE': '1',
@@ -70,7 +70,11 @@ class Runtime:
             raise RecoveryError('recovery-manifest-changed')
         self.journal.verify()
         stderr = bytearray()
+        retain_output = name not in {'inspect-plan', 'recheck-plan'}
         environment = self.environment | (extra or {})
+        if name in {'init', 'plan', 'apply', 'import-server', 'inspect-plan', 'recheck-plan',
+                    'inventory', 'bootstrap-tailnet', 'deploy'}:
+            environment.update(tofu_state.backend_environment())
         if name != 'bootstrap-tailnet':
             environment.pop('TAILSCALE_AUTH_KEY', None)
         if name not in {'observe-provider', 'init', 'plan', 'apply', 'import-server'}:
@@ -83,16 +87,24 @@ class Runtime:
                     environment=environment, cwd=self.root, capture=True,
                     stderr_output=stderr, output_limit=1_048_576)
             except (OSError, bootstrap_readiness.ReadinessError):
-                self.journal.write(f'command-{self.journal.state["sequence"]}.stderr', bytes(stderr) or b'no diagnostics\n')
+                if retain_output:
+                    self.journal.write(f'command-{self.journal.state["sequence"]}.stderr', bytes(stderr) or b'no diagnostics\n')
                 raise RecoveryError('recovery-child-interrupted') from None
-            self.journal.write(f'command-{self.journal.state["sequence"]}.stdout', output or b'no output\n')
-            self.journal.write(f'command-{self.journal.state["sequence"]}.stderr', bytes(stderr) or b'no diagnostics\n')
+            # A rendered plan includes sensitive provider fields even with encrypted state.
+            if retain_output:
+                self.journal.write(f'command-{self.journal.state["sequence"]}.stdout', output or b'no output\n')
+                self.journal.write(f'command-{self.journal.state["sequence"]}.stderr', bytes(stderr) or b'no diagnostics\n')
             if status not in allowed:
                 raise RecoveryError('recovery-child-failed-' + name)
             return status, output
 
     def make(self, goal, *, extra=None, allowed=(0,)):
         fields = dict(extra or {})
+        if goal in {'init', 'plan', 'apply', 'inventory'}:
+            # Isolated recovery does not load fleet.mk. Use the reviewed selectors
+            # even if the nested Make invocation has a different operator default.
+            fields.update(TF_BACKEND_ROOT=os.environ.get('TF_BACKEND_ROOT', ''),
+                          TFVARS_ROOT=os.environ.get('TFVARS_ROOT', ''))
         if goal != 'bootstrap-tailnet':
             fields.update(PROVIDER='upcloud', ENV=self.manifest['environment'],
                 SOPS_FILE=self.manifest['sops_file'],
@@ -128,14 +140,15 @@ class Runtime:
         # An existing workspace without state is the only absent-state case; a
         # missing workspace, authentication or decryption failure is never empty.
         try:
-            raw = tofu_state.pull('upcloud', self.manifest['environment'], env=self.environment)
+            environment = {**self.environment, **tofu_state.backend_environment()}
+            raw = tofu_state.pull('upcloud', self.manifest['environment'], env=environment)
         except tofu_state.StateError:
             raise RecoveryError('recovery-state-unavailable') from None
         return None if raw is None else server_from_state(json.loads(raw), self.manifest)
 
     def inputs(self):
         return {'source': self.source(), 'tfvars_sha256': file_digest(
-            self.tfroot / 'environments' / (self.manifest['environment'] + '.tfvars'), private=False)}
+            tfvars_path(self.tfroot, self.manifest['environment']), private=False)}
 
     def plan(self, existing):
         inputs = self.inputs()
@@ -146,12 +159,19 @@ class Runtime:
         _, raw = self.terraform('show', '-json', str(path), name='inspect-plan')
         parsed = json.loads(raw)
         reviewed = review_plan(parsed, self.manifest, existing=existing)
-        plan_json = self.journal.write('approved-plan.json', raw)
-        self.command('plan-policy', [str(self.root / 'scripts/check-tf-plan.sh'), str(plan_json)])
+        self.check_policy('plan-policy', raw)
         if self.inputs() != inputs:
             raise RecoveryError('recovery-plan-input-changed')
         return {'plan_sha256': hashlib.sha256(payload).hexdigest(), 'review': reviewed,
                 'inputs': inputs, 'state_sha256': digest(existing)}
+
+    def check_policy(self, name, raw):
+        policy = module('terraform-plan-policy')
+        environment = {key: self.environment[key] for key in ('PATH', 'HOME', 'LANG', 'LC_ALL', 'TMPDIR')
+                       if key in self.environment}
+        with self.journal.operation(name, {'plan_sha256': hashlib.sha256(raw).hexdigest()}):
+            if policy.evaluate(raw, environment=environment):
+                raise RecoveryError('recovery-child-failed-' + name)
 
     def apply(self, retained):
         path = self.journal.directory / 'approved.tfplan'
@@ -164,15 +184,14 @@ class Runtime:
             frozen = module('deploy-controller').private_file(Path(owned) / 'plan.tfplan', payload)
             _, raw = self.terraform('show', '-json', str(frozen), name='recheck-plan')
             review_plan(json.loads(raw), self.manifest, existing=self.state())
-            policy = self.journal.write('apply-policy.json', raw)
-            self.command('apply-policy', [str(self.root / 'scripts/check-tf-plan.sh'), str(policy)])
+            self.check_policy('apply-policy', raw)
             if file_digest(frozen) != retained['plan_sha256'] or self.inputs() != retained['inputs']:
                 raise RecoveryError('recovery-approved-plan-changed')
             self.terraform('apply', str(frozen), name='apply')
 
     def import_server(self, server):
         self.source()
-        self.terraform('import', '-var-file=environments/' + self.manifest['environment'] + '.tfvars',
+        self.terraform('import', '-var-file=' + str(tfvars_path(self.tfroot, self.manifest['environment'])),
                        'upcloud_server.vpn', server['uuid'], name='import-server')
 
     def migration_contract(self):

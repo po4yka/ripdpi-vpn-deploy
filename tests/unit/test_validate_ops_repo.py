@@ -168,14 +168,31 @@ def test_git_checkout_skips_ignored_runtime_files(ops: Path) -> None:
     assert "runtime/prod.secrets.yaml" in run(ops).stderr
 
 
-@pytest.mark.parametrize("line", ['access_key = "SCWSYNTHETIC"', "secret_key=synthetic"])
+@pytest.mark.parametrize("line", ['access_key = "SCWSYNTHETIC"', "secret_key=synthetic",
+                                 'sse_customer_key = "synthetic"', 'sse_customer_key = malformed',
+                                 '/* old account */ access_key = "synthetic"',
+                                 'assume_role_with_web_identity = { web_identity_token = "synthetic" }'])
 def test_backend_files_carry_no_credentials(ops: Path, line: str) -> None:
     (ops / "config/backend").mkdir()
-    (ops / "config/backend/vultr.s3.tfbackend").write_text(f'bucket = "synthetic"\n{line}\n')
+    (ops / "config/backend/vultr.s3.tfbackend").write_text(f'bucket = "synthetic"\nuse_lockfile = true\n{line}\n')
     assert "config/backend/vultr.s3.tfbackend: credential in backend file" in run(ops).stderr
 
 
-def test_backend_file_without_credentials_passes(ops: Path) -> None:
+@pytest.mark.parametrize("provider,prefix,expected", [
+    ("vultr", "state/workspaces", 0),
+    ("upcloud", "state/workspaces", 1),
+    ("vultr", "env:", 1),
+])
+def test_backend_file_binds_provider_and_workspace_prefix(ops: Path, provider, prefix, expected) -> None:
     (ops / "config/backend").mkdir()
-    (ops / "config/backend/vultr.s3.tfbackend").write_text('bucket = "synthetic"\nuse_lockfile = true\n')
-    assert run(ops).returncode == 0
+    (ops / "config/backend/vultr.s3.tfbackend").write_text(
+        f'key = "state/{provider}/terraform.tfstate"\nworkspace_key_prefix = "{prefix}"\nuse_lockfile = true\n')
+    assert run(ops).returncode == expected
+
+
+@pytest.mark.parametrize("setting", ["", "use_lockfile = false", "# use_lockfile = true", "/*\nuse_lockfile = true\n*/",
+                                     "other = <<EOF\nuse_lockfile = true\nEOF", "endpoints = {\nuse_lockfile = true\n}"])
+def test_backend_requires_writer_lock(ops: Path, setting: str):
+    (ops / "config/backend").mkdir()
+    (ops / "config/backend/vultr.s3.tfbackend").write_text(f'bucket = "synthetic"\n{setting}\n')
+    assert "backend requires use_lockfile = true" in run(ops).stderr

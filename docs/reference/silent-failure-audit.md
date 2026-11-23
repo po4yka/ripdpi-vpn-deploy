@@ -118,7 +118,7 @@ The verifier's rebuttals (LAN exemption by design; Android-only; possibly-IPv4-o
 1. `ansible/roles/monitoring/tasks/main.yml:21-24` sets node_exporter `ARGS` to `--web.listen-address=… --collector.systemd --collector.processes --no-collector.wifi`. **No `--collector.textfile.directory`.** The honeypot writes to `/var/lib/node_exporter/textfile` (a non-default path); the metrics are never scraped.
 2. No Prometheus server, alert rule, or alertmanager exists anywhere in the repo (`find … -iname '*.rules*' -o -iname 'alertmanager*'` → empty). `ansible/roles/monitoring/CLAUDE.md` confirms "No alerting included — by design."
 3. `scripts/probing-summary-remote.py` `main()` unconditionally `return 0` (line 204); no threshold check, no notification call.
-4. `install-operator-crons.sh` runs `make probing-summary 2>&1 | logger -t vpn-probing` — output swallowed by syslog, no exit-code gate, and the cron is opt-in (manual install on a workstation).
+4. The operator installs the cron block with a read-only state identity. The scheduled probe writes its diagnostics to syslog and returns a failed status if the probe or logger fails.
 
 **Silent failure mode.** Honeypot accepts connections, increments counters, writes its textfile — `systemctl status honeypot` is green — while no metric reaches a scraper and no human is ever paged. Detection produces a report someone must remember to open.
 

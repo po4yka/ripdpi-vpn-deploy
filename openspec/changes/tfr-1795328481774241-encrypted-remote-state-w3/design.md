@@ -27,7 +27,7 @@ See `proposal.md`. W2 made OpenTofu the CLI. Today each root uses local state; `
 
   No state writer receives permanent version deletion or governance bypass. Production uses `state/<root>/terraform.tfstate`. A named workspace uses `state/workspaces/<workspace>/state/<root>/terraform.tfstate`.
 - Require `use_lockfile = true` for every writer. Before migration, exercise the actual OpenTofu lock with the intended identities and bucket retention settings on disposable state: acquire, reject a concurrent writer, release and reacquire from the other client. A successful conditional PUT alone is insufficient. If this fails, keep local state authoritative and defer migration until a compatible backend or independent lock is approved and passes the same tests. Read-only plans use `-lock=false` with the read-only key.
-- `backup-state` reads the current state through `state pull` using `state-operator` and seals an age snapshot in the operator kit. `restore-state` reads the selected retained version and writes it with `state push` through the backend lock using `state-operator`. The script checks lineage before the push; under the lock OpenTofu refuses a serial that is not higher than the current one, so a concurrent writer wins. Version history is preserved and the serial advances. The operator obtains both scoped keys and the passphrase independently of CI.
+- `backup-state` reads the current state through `state pull` using `state-operator` and seals an age snapshot in the operator kit. `restore-state` reads the selected retained version and writes it with `state push` through the backend lock using `state-operator`. The script holds the same S3 lock as OpenTofu while it reads the current state, checks lineage, pushes the next serial and verifies the stored result. A writer that already holds the lock blocks restore. Version history is preserved and the serial advances. The operator obtains both scoped keys and the passphrase independently of CI.
 
 ## Contracts and ownership
 
@@ -53,7 +53,7 @@ After a successful lock and recovery probe, migrate each root and workspace from
 5. After all workspaces of the root pass, remove the fallback, set `enforced = true`, plan again with no changes.
 6. Rename the local state file to `*.migrated` (no delete) until the epic drill passes; then move its encrypted backup to `recovery/` and remove the local copy.
 
-Rollback before step 5: `tofu init -migrate-state` back to `backend "local"` with the fallback still present, or restore the step 1 backup. Rollback after step 5: restore from a B2 version with the passphrase. Order: cascade-ingress (smallest), then hetzner, scaleway, upcloud, vultr.
+Rollback before step 5: `tofu init -migrate-state` back to `backend "local"` with the fallback still present, or restore the step 1 backup. Rollback after step 5: restore from a retained Scaleway version with the passphrase. The inert cascade root has an encrypted local backend and no live resource to migrate. Disposable CI uses an isolated encrypted local backend.
 
 ## Open verification questions
 

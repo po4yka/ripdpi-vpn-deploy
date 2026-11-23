@@ -2,7 +2,7 @@
 
 ## Objective
 
-Every root keeps client-side encrypted state and plans in a versioned, object-locked Scaleway Object Storage bucket with scoped keys and serialized writers; all current local states are migrated exactly and can be restored from the MacBook without GitHub.
+Every root encrypts state and saved plans on the client. Fleet provider roots store state in a versioned, object-locked Scaleway Object Storage bucket with scoped keys and serialized writers; all current local states are migrated exactly and can be restored from the MacBook without GitHub.
 
 ## Ownership
 
@@ -19,4 +19,4 @@ Every root keeps client-side encrypted state and plans in a versioned, object-lo
 
 ## Verification
 
-Local: `python3 -m pytest tests/unit/test_state_lock_probe.py` and the state-script tests, `make tf-test`, `make validate`, `make shellcheck`. Remote CI: PR checks. Live (authorized): probe report on the real bucket; per-root migration receipts with address, lineage and serial equality and a no-change plan; one restore drill from a B2 version on the MacBook. No Ansible deploy or client change.
+Local: `python3 -m pytest tests/unit/test_state_lock_probe.py` and the state-script tests, `make tf-test`, `make validate`, `make shellcheck`. Remote CI: PR checks. Live (authorized): probe report on the real bucket; per-root migration receipts with address, lineage and serial equality and a no-change plan; one restore drill from a retained Scaleway version on the MacBook. No Ansible deploy or client change.

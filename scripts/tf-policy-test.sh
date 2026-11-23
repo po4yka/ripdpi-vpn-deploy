@@ -50,7 +50,7 @@ if [[ ! "$env_name" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]]; then
 	exit 64
 fi
 
-TFVARS="${REPO_ROOT}/terraform/providers/${provider}/environments/${env_name}.tfvars"
+TFVARS="$(python3 "${REPO_ROOT}/scripts/tofu_tfvars.py" "$provider" "$env_name")"
 [[ -f "$TFVARS" ]] || { printf 'missing %s - copy from .example and fill\n' "$TFVARS" >&2; exit 66; }
 
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/tf-policy-test.XXXXXX")"
@@ -62,7 +62,7 @@ PLAN_JSON="${TMP_DIR}/plan.json"
 
 PROVIDER="$provider" ENV="$env_name" "${REPO_ROOT}/scripts/terraform-env.sh" plan \
 	-input=false -refresh=false -lock=false \
-	-var-file="environments/${env_name}.tfvars" \
+	-var-file="$TFVARS" \
 	-out="$PLAN_BIN"
 
 PROVIDER="$provider" ENV="$env_name" "${REPO_ROOT}/scripts/terraform-env.sh" show \

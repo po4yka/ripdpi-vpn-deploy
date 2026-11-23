@@ -72,6 +72,7 @@ def test_block_without_apply_contacts_nothing(tmp_path):
     assert not (tmp_path / "ssh.log").exists()
 
 
+@pytest.mark.usefixtures("stub_tofu_backend")
 def test_apply_sends_the_planned_ruleset_and_unblock_deletes_the_whole_table(tmp_path):
     plan = _block(tmp_path, "plan", L4="tcp", PORT="443", MODE="rst").stdout
     block = _block(tmp_path, "block", APPLY="1", L4="tcp", PORT="443", MODE="rst")

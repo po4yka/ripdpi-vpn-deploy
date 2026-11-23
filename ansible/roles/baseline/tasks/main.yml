@@ -40,6 +40,19 @@
   ansible.builtin.import_tasks: module-admission.yml
   tags: [always]
 
+# ssh-keygen accepts a file if it finds any valid key. Parse each key separately.
+- name: Validate each admin public key with OpenSSH
+  ansible.builtin.command:
+    argv: [/usr/bin/ssh-keygen, -l, -f, "-"]
+    stdin: "{{ (item | trim).split(' ')[:2] | join(' ') }}"
+  loop: "{{ admin_ssh_public_keys }}"
+  delegate_to: localhost
+  become: false
+  no_log: true
+  check_mode: false
+  changed_when: false
+  tags: [always]
+
 - name: Install baseline packages
   ansible.builtin.apt:
     name:

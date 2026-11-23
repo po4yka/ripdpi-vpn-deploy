@@ -31,6 +31,7 @@ class Model:
         return copy.deepcopy(self.input_value)
 
     def state(self):
+        assert 'init' in self.calls
         return copy.deepcopy(self.state_value)
 
     def observe(self):
@@ -169,7 +170,7 @@ def test_foreign_or_changed_authority_never_mutates(manifest, fault):
         before = list(runtime.calls)
         with pytest.raises(RecoveryError):
             call(None)
-        assert runtime.calls == before
+        assert runtime.calls == before + ['init']
 
 
 def test_runtime_real_child_failure_retains_intent_and_private_diagnostics(manifest):
@@ -228,6 +229,38 @@ def test_provider_credentials_reach_only_provider_operations(manifest, monkeypat
                                ('deploy', b'False'), ('bootstrap-tailnet', b'False'), ('migration-publish', b'False')):
             _, output = runtime.command(name, command)
             assert output.strip() == expected
+
+
+def test_plan_view_stays_out_of_recovery_journal(manifest):
+    value, path = manifest
+    marker = b'private-provider-value'
+    with Journal(value) as journal:
+        runtime = Runtime(value, path, journal)
+        args = [sys.executable, '-c', '''print('{"outputs":{"fixture":"private-provider-value"}}')''']
+        for name in ('inspect-plan', 'recheck-plan'):
+            _, raw = runtime.command(name, args)
+            assert marker in raw
+        runtime.check_policy('plan-policy', raw)
+        assert all(marker not in artifact.read_bytes() for artifact in journal.directory.iterdir()
+                   if artifact.is_file())
+
+
+def test_external_tfvars_digest_and_import_use_the_same_file(manifest, monkeypatch, tmp_path):
+    import hashlib
+    value, path = manifest
+    external = tmp_path / "inputs"
+    tfvars = external / "upcloud" / (value['environment'] + ".tfvars")
+    tfvars.parent.mkdir(parents=True)
+    tfvars.write_bytes(b'example = true\n')
+    monkeypatch.setenv('TFVARS_ROOT', str(external))
+    with Journal(value) as journal:
+        runtime = Runtime(value, path, journal)
+        monkeypatch.setattr(runtime, 'source', lambda: 'reviewed')
+        assert runtime.inputs()['tfvars_sha256'] == hashlib.sha256(tfvars.read_bytes()).hexdigest()
+        seen = []
+        monkeypatch.setattr(runtime, 'terraform', lambda *args, **kwargs: seen.extend(args))
+        runtime.import_server({'uuid': 'fixture'})
+        assert '-var-file=' + str(tfvars) in seen
 
 
 def test_runtime_changed_manifest_refuses_before_child(manifest):
@@ -412,7 +445,7 @@ def test_apply_consumes_same_private_reviewed_bytes_after_retained_file_replaced
             original.write_bytes(b'unreviewed replacement')
             return 0, b''
         monkeypatch.setattr(runtime, 'terraform', terraform)
-        monkeypatch.setattr(runtime, 'command', policy)
+        monkeypatch.setattr(runtime, 'check_policy', policy)
         runtime.apply(retained)
         assert [call[0] for call in calls] == ['show', 'apply']
         assert calls[0][1] == calls[1][1] and not calls[0][1].exists()
@@ -553,6 +586,7 @@ def test_runtime_reads_state_through_the_backend_and_never_treats_failure_as_emp
     value, path = manifest
     calls, replies = [], [None, tofu_state.StateError('state-pull-failed')]
     def pull(provider, environment, *, env):
+        assert env['TF_VAR_state_passphrase'] == 'fixture-passphrase-value'
         calls.append((provider, environment, env['ENV']))
         reply = replies.pop(0)
         if isinstance(reply, Exception):
@@ -562,7 +596,7 @@ def test_runtime_reads_state_through_the_backend_and_never_treats_failure_as_emp
     monkeypatch.setattr(tofu_state, 'pull', pull)
     with Journal(value) as journal:
         runtime = Runtime(value, path, journal)
-        assert runtime.environment['TF_VAR_state_passphrase'] == 'fixture-passphrase-value'
+        assert 'TF_VAR_state_passphrase' not in runtime.environment
         assert runtime.state() is None
         with pytest.raises(RecoveryError, match='state-unavailable'):
             runtime.state()

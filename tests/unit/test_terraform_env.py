@@ -1,9 +1,12 @@
 """Tests for environment-scoped Terraform workspace selection."""
 from __future__ import annotations
 
+import hashlib
 import os
+import shutil
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -11,6 +14,8 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "terraform-env.sh"
+SETTINGS = 'bucket = "fixture"\nkey = "state/upcloud/terraform.tfstate"\nworkspace_key_prefix = "state/workspaces"\nuse_lockfile = true\n'
+DIGEST = hashlib.sha256(SETTINGS.encode()).hexdigest()
 
 
 def _terraform_stub(tmp_path: Path) -> Path:
@@ -50,7 +55,7 @@ def _run(
     stub_dir = _terraform_stub(tmp_path).parent
     if backend_root is None:
         (tmp_path / "backend").mkdir(exist_ok=True)
-        (tmp_path / "backend" / f"{provider}.s3.tfbackend").write_text('bucket = "fixture"\n')
+        (tmp_path / "backend" / f"{provider}.s3.tfbackend").write_text(SETTINGS.replace("state/upcloud/", f"state/{provider}/"))
         backend_root = str(tmp_path / "backend")
     env = {k: v for k, v in os.environ.items() if k != "TF_BACKEND_ROOT"} | {
         "TF_BACKEND_ROOT": backend_root,
@@ -68,8 +73,8 @@ def test_prod_keeps_legacy_default_workspace(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "terraform.log").read_text().splitlines() == [
-        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/upcloud/.terraform-env/default'} -chdir={REPO_ROOT / 'terraform/providers/upcloud'} workspace select default",
-        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/upcloud/.terraform-env/default'} -chdir={REPO_ROOT / 'terraform/providers/upcloud'} output -raw server_ipv4",
+        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/upcloud/.terraform-env/default' / DIGEST} -chdir={REPO_ROOT / 'terraform/providers/upcloud'} workspace select default",
+        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/upcloud/.terraform-env/default' / DIGEST} -chdir={REPO_ROOT / 'terraform/providers/upcloud'} output -raw server_ipv4",
     ]
 
 
@@ -77,11 +82,12 @@ def test_init_creates_missing_nonprod_workspace(tmp_path: Path) -> None:
     result = _run(tmp_path, env_name="green-2026", args=["init", "-input=false"])
 
     assert result.returncode == 0, result.stderr
-    assert (tmp_path / "terraform.log").read_text().splitlines() == [
-        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/upcloud/.terraform-env/green-2026'} -chdir={REPO_ROOT / 'terraform/providers/upcloud'} init -input=false -backend-config={tmp_path / 'backend/upcloud.s3.tfbackend'}",
-        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/upcloud/.terraform-env/green-2026'} -chdir={REPO_ROOT / 'terraform/providers/upcloud'} workspace select green-2026",
-        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/upcloud/.terraform-env/green-2026'} -chdir={REPO_ROOT / 'terraform/providers/upcloud'} workspace new green-2026",
-    ]
+    lines = (tmp_path / "terraform.log").read_text().splitlines()
+    data = REPO_ROOT / "terraform/providers/upcloud/.terraform-env/green-2026" / DIGEST
+    prefix = f"TF_DATA_DIR={data} -chdir={REPO_ROOT / 'terraform/providers/upcloud'}"
+    assert lines[0].startswith(prefix + " init -input=false -backend-config=")
+    assert lines[0].endswith(" -backend-config=use_lockfile=true")
+    assert lines[1:] == [prefix + " workspace select green-2026", prefix + " workspace new green-2026"]
 
 
 def test_non_init_refuses_to_create_missing_workspace(tmp_path: Path) -> None:
@@ -90,7 +96,7 @@ def test_non_init_refuses_to_create_missing_workspace(tmp_path: Path) -> None:
     assert result.returncode != 0
     assert "run 'make PROVIDER=upcloud ENV=green-2026 init' first" in result.stderr
     assert (tmp_path / "terraform.log").read_text().splitlines() == [
-        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/upcloud/.terraform-env/green-2026'} -chdir={REPO_ROOT / 'terraform/providers/upcloud'} workspace select green-2026",
+        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/upcloud/.terraform-env/green-2026' / DIGEST} -chdir={REPO_ROOT / 'terraform/providers/upcloud'} workspace select green-2026",
     ]
 
 
@@ -103,16 +109,21 @@ def test_scaleway_provider_root_is_accepted(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stderr
+    digest = hashlib.sha256(SETTINGS.replace("upcloud", "scaleway").encode()).hexdigest()
     assert (tmp_path / "terraform.log").read_text().splitlines() == [
-        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/scaleway/.terraform-env/default'} -chdir={REPO_ROOT / 'terraform/providers/scaleway'} workspace select default",
-        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/scaleway/.terraform-env/default'} -chdir={REPO_ROOT / 'terraform/providers/scaleway'} output -raw server_ipv4",
+        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/scaleway/.terraform-env/default' / digest} -chdir={REPO_ROOT / 'terraform/providers/scaleway'} workspace select default",
+        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/scaleway/.terraform-env/default' / digest} -chdir={REPO_ROOT / 'terraform/providers/scaleway'} output -raw server_ipv4",
     ]
 
 
-def test_vultr_plan_runs_control_plane_preflight_first(tmp_path: Path) -> None:
+def test_vultr_plan_runs_control_plane_preflight_first(tmp_path: Path, stub_tofu_backend) -> None:
     stub_dir = _terraform_stub(tmp_path).parent
     python = stub_dir / "python3"
-    python.write_text("#!/usr/bin/env bash\nprintf 'preflight\\n' >> \"$STUB_LOG\"\n")
+    python.write_text(
+        '#!/usr/bin/env bash\n'
+        f'if [[ "${{1##*/}}" == tofu_backend.py ]]; then exec "{sys.executable}" "$@"; fi\n'
+        "printf 'preflight\\n' >> \"$STUB_LOG\"\n"
+    )
     python.chmod(python.stat().st_mode | stat.S_IXUSR)
     env = os.environ | {
         "PATH": f"{stub_dir}:{os.environ['PATH']}",
@@ -178,21 +189,30 @@ def test_reserved_alias_refuses_backup_and_cohort_before_private_inputs():
         assert "missing" not in result.stderr
 
 
-def _planned_var_file(tfvars_root: str) -> str:
-    result = subprocess.run(
-        ["make", "-n", "--no-print-directory", "plan", "PROVIDER=upcloud", "ENV=prod", f"TFVARS_ROOT={tfvars_root}"],
-        cwd=REPO_ROOT, env={k: v for k, v in os.environ.items() if k not in ("MAKEFLAGS", "MAKEFILES")},
-        text=True, capture_output=True, check=True,
-    )
-    return next(part for part in result.stdout.split() if part.startswith("-var-file="))
-
-
-def test_plan_reads_tfvars_from_an_external_ops_checkout(tmp_path: Path) -> None:
-    assert _planned_var_file(str(tmp_path / "ops/tfvars")) == f'-var-file="{tmp_path}/ops/tfvars/upcloud/prod.tfvars"'
-
-
-def test_plan_keeps_the_provider_root_tfvars_by_default() -> None:
-    assert _planned_var_file("") == f'-var-file="{REPO_ROOT}/terraform/providers/upcloud/environments/prod.tfvars"'
+@pytest.mark.parametrize("external", [False, True])
+def test_plan_reads_selected_tfvars_file(tmp_path: Path, external: bool) -> None:
+    repo = tmp_path / "repo"
+    scripts = repo / "scripts"
+    scripts.mkdir(parents=True)
+    shutil.copy2(REPO_ROOT / "Makefile", repo)
+    shutil.copy2(REPO_ROOT / "scripts/tofu_tfvars.py", scripts)
+    log = tmp_path / "calls"
+    wrapper = scripts / "terraform-env.sh"
+    wrapper.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$LOG"\n')
+    wrapper.chmod(0o755)
+    policy = scripts / "policy-plan.sh"
+    policy.write_text('#!/bin/sh\ntest "$1" = check\n')
+    policy.chmod(0o755)
+    tfvars_root = tmp_path / 'private ops' if external else None
+    folder = tfvars_root / "upcloud" if external else repo / "terraform/providers/upcloud/environments"
+    folder.mkdir(parents=True)
+    tfvars = folder / "prod.tfvars"
+    tfvars.touch()
+    environment = {k: v for k, v in os.environ.items() if k not in ("MAKEFLAGS", "MAKEFILES")}
+    environment.update(LOG=str(log), TFVARS_ROOT=str(tfvars_root or ""))
+    subprocess.run(["make", "plan", "PROVIDER=upcloud", "ENV=prod"], cwd=repo,
+                   env=environment, check=True, capture_output=True)
+    assert "-var-file=" + str(tfvars) in log.read_text().splitlines()
 
 
 def test_relative_tfvars_root_is_refused() -> None:
@@ -215,3 +235,30 @@ def test_init_refuses_a_missing_backend_file(tmp_path: Path) -> None:
     result = _run(tmp_path, env_name="green-2026", args=["init"], backend_root=str(tmp_path))
     assert result.returncode == 2
     assert "missing backend file" in result.stderr
+
+
+def test_backend_change_selects_a_different_cache_before_output(tmp_path: Path):
+    backend = tmp_path / "backend"
+    backend.mkdir()
+    config = backend / "upcloud.s3.tfbackend"
+    for bucket in ("first", "replacement"):
+        config.write_text(SETTINGS.replace("fixture", bucket))
+        result = _run(tmp_path, env_name="prod", args=["output"], backend_root=str(backend))
+        assert result.returncode == 0
+    first, _, second, _ = (tmp_path / "terraform.log").read_text().splitlines()
+    assert first.split()[0] != second.split()[0]
+
+
+@pytest.mark.parametrize(("settings", "error"), [
+    (SETTINGS + 'sse_customer_key = "sensitive-fixture"\n', "credential in backend file"),
+    (SETTINGS.replace("upcloud", "vultr"), "backend requires key"),
+    (SETTINGS.replace("state/workspaces", "env:"), "backend requires workspace_key_prefix"),
+    ("use_lockfile = false\n", "use_lockfile"),
+    ('use_lockfile = true\n/* old account */ access_key = "sensitive-fixture"\n', "credential in backend file"),
+])
+def test_wrapper_refuses_unsafe_backend_before_tofu(tmp_path: Path, settings, error):
+    (tmp_path / "upcloud.s3.tfbackend").write_text(settings)
+    result = _run(tmp_path, env_name="prod", args=["apply"], backend_root=str(tmp_path))
+    assert result.returncode == 2 and error in result.stderr
+    assert "sensitive-fixture" not in result.stderr
+    assert not (tmp_path / "terraform.log").exists()

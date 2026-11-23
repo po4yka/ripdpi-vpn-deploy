@@ -21,7 +21,7 @@ python3 "${REPO_ROOT}/scripts/check-cascade-attestation.py" --attestation "$ATTE
 # before the check passes.
 if [[ ! -d "${ROOT}/.terraform" ]]; then
   echo "cascade exception root not initialized; running tofu init" >&2
-  tofu "-chdir=${ROOT}" init -input=false
+  tofu "-chdir=${ROOT}" init -input=false -lockfile=readonly
 fi
 
 exec tofu "-chdir=${ROOT}" plan \

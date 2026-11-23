@@ -414,5 +414,27 @@ def test_cron_backs_up_state_only_through_both_sops_documents(tmp_path):
     assert json.loads(record.read_text()) == {"argv": ["backup-state"], "env": {
         "AWS_SECRET_ACCESS_KEY": "synthetic-key", "TF_VAR_state_passphrase": "synthetic-passphrase",
         "PROVIDER": "upcloud", "ENV": "prod"}}
+    # A scheduled monitor can read the public address. Only tofu gets the credentials.
+    monitors = cron(MONITOR_STATE_IDENTITY_SOPS_FILE=str(identity), STATE_PASSPHRASE_SOPS_FILE=str(passphrase))
+    assert monitors.returncode == 0, monitors.stderr
+    for goal in ("burn-check", "asn-drift", "check-ip-reputation", "probing-summary"):
+        assert sum(f"make {goal} " in line for line in monitors.stdout.splitlines()) == 1
+    [entry] = [line for line in monitors.stdout.splitlines() if "make burn-check " in line]
+    command = entry.split(" cd ", 1)[1]
+    (tools / "make").write_text('#!/bin/sh\nset -eu\ntest -z "${AWS_SECRET_ACCESS_KEY:-}${TF_VAR_state_passphrase:-}"\n'
+                                'exec ./scripts/terraform-env.sh output -raw server_ipv4\n')
+    (tools / "tofu").write_text('#!/bin/sh\nset -eu\ntest "$AWS_SECRET_ACCESS_KEY" = synthetic-key\n'
+                                'test "$TF_VAR_state_passphrase" = synthetic-passphrase\nexit "${TOFU_STATUS:-0}"\n')
+    (tools / "logger").write_text('#!/bin/sh\ncat >/dev/null\n')
+    for name in ("tofu", "logger"):
+        (tools / name).chmod(0o700)
+    backend = tmp_path / "config"
+    backend.mkdir()
+    (backend / "upcloud.s3.tfbackend").write_text('key = "state/upcloud/terraform.tfstate"\nworkspace_key_prefix = "state/workspaces"\nuse_lockfile = true\n')
+    child = {"HOME": str(tmp_path), "PATH": f"{tools}:{os.environ['PATH']}", "TF_BACKEND_ROOT": str(backend)}
+    for status in ("0", "1"):
+        run = subprocess.run(["sh", "-c", "cd " + command], env=dict(child, TOFU_STATUS=status),
+                             capture_output=True, text=True, timeout=20)
+        assert run.returncode == int(status), run.stderr
     missing = cron(STATE_IDENTITY_SOPS_FILE=str(identity), STATE_PASSPHRASE_SOPS_FILE=str(tmp_path / "missing.json"))
     assert missing.returncode != 0 and "must both name existing absolute files" in missing.stderr

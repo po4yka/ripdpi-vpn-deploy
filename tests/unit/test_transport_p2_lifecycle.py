@@ -222,6 +222,30 @@ def test_warp_exact_stable_version_guard_precedes_mutation(tmp_path, version, su
     assert (tmp_path / "admitted").exists() is success
 
 
+@pytest.mark.parametrize("source,key,success", [
+    ("upstream", "pinned-key\n", True), ("upstream", "rotated-key\n", False),
+    ("file", "pinned-key\n", True), ("file", None, False),
+])
+def test_warp_key_pin_is_checked_in_check_mode_and_after_install(tmp_path, source, key, success):
+    import hashlib
+    enforce = next(task for task in tasks("warp-outbound", "prepare.yml")
+                   if task["name"] == "Assert GPG key matches pinned sha256")
+    pin = hashlib.sha256(b"pinned-key\n").hexdigest()
+    if source == "upstream":
+        facts = {"_warp_gpg_upstream": {"content": key}, "_warp_gpg_stat": {"stat": {"exists": False}}}
+    else:
+        stat = {"exists": True, "checksum": hashlib.sha256(key.encode()).hexdigest()} if key else {"exists": False}
+        facts = {"_warp_gpg_upstream": {"skipped": True}, "_warp_gpg_stat": {"stat": stat}}
+    play = [{
+        "hosts": "localhost", "connection": "local", "gather_facts": False,
+        "vars": {"ansible_become": False, "warp_outbound": {"pubkey_sha256": pin}, **facts},
+        "tasks": [enforce, {"ansible.builtin.copy": {"dest": str(tmp_path / "admitted"), "content": "admitted"}}],
+    }]
+    result = run(play, tmp_path)
+    assert (result.returncode == 0) is success, result.stdout[-2000:]
+    assert (tmp_path / "admitted").exists() is success
+
+
 @pytest.mark.parametrize(
     "actual,success", [("2026.8.2100.0", True), ("2026.8.2099.0", False)]
 )

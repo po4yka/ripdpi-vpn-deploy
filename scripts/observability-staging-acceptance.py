@@ -29,6 +29,7 @@ import urllib.error
 import urllib.request
 
 import fleet_inspection
+import tofu_state
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1456,42 +1457,12 @@ def _hetzner_action(manifest: dict[str, Any], action: str) -> None:
     ).hexdigest()
     if not hmac.compare_digest(account_id, binding["account_id"]):
         raise AcceptanceError("provider binding rejected")
-    environment = {
-        key: value
-        for key, value in os.environ.items()
-        if key
-        in {
-            "PATH",
-            "HOME",
-            "TMPDIR",
-            "LANG",
-            "LC_ALL",
-            "LC_CTYPE",
-            "TF_PLUGIN_CACHE_DIR",
-            "HCLOUD_TOKEN",
-        }
-    }
-    environment.update(
-        {
-            "PROVIDER": "hetzner",
-            "ENV": "staging",
-            "TF_IN_AUTOMATION": "1",
-            "TF_INPUT": "0",
-        }
-    )
+    environment = {key: os.environ[key] for key in ("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE")
+                   if key in os.environ}
     try:
-        state_result = subprocess.run(
-            [str(ROOT / "scripts" / "terraform-env.sh"), "state", "pull"],
-            cwd=ROOT,
-            env=environment,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            check=True,
-            timeout=30,
-        )
-        state_raw = state_result.stdout
-        if len(state_raw) > 16 * 1024 * 1024 or not hmac.compare_digest(
+        state_raw = tofu_state.pull("hetzner", "staging", env={**environment, **tofu_state.backend_environment()},
+                                    timeout=30)
+        if state_raw is None or not hmac.compare_digest(
             hashlib.sha256(state_raw).hexdigest(), binding["state_sha256"]
         ):
             raise AcceptanceError("provider binding rejected")
@@ -1524,7 +1495,7 @@ def _hetzner_action(manifest: dict[str, Any], action: str) -> None:
         raise
     except (
         OSError,
-        subprocess.SubprocessError,
+        tofu_state.StateError,
         UnicodeError,
         ValueError,
         TypeError,

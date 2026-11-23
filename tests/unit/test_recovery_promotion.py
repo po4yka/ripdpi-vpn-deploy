@@ -23,6 +23,7 @@ def intent(tmp_path, request):
     proof = json.loads(_config(tmp_path).read_text())
     config = yaml.safe_load(Path(proof['liveness_config']).read_bytes())
     target = {key: proof['target_identity'][key] for key in promotion.TARGET}
+    target['public_service_address_sha256'] = hashlib.sha256(b'192.0.2.10').hexdigest()
     config['sentinels'][0]['target'] = target
     config['sentinels'][0].pop('awg_target', None)
     config['policies'][0]['required_profiles'] = ['p0-reality']
@@ -225,6 +226,7 @@ def installation(prepared, monkeypatch):
     monkeypatch.setattr(installer, '_source_identity', lambda _: ('a' * 40, b'runner', b'engine'))
     def install(config, sid, client, registry, **kwargs):
         state['installs'] += 1
+        assert kwargs['server_ipv4'] == '192.0.2.10'
         assert kwargs['environment']['HOSTS'] == value['host']
         assert kwargs['environment']['SOPS_FILE'] == value['inputs']['sops_file']
         assert kwargs['read_awg_stdin'] is False and kwargs['stdin'].read() == ''

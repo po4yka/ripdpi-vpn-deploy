@@ -43,6 +43,13 @@ jobs:
             test -n "${!name}" || { echo "::error::Missing protected environment secret $name"; exit 1; }
           done
       - uses: ./.github/actions/setup-disposable-ci
+      - name: Prepare a private checkout for the disposable backend
+        id: source
+        run: |
+          umask 077
+          git worktree add --detach "$RUNNER_TEMP/disposable-source" HEAD
+          mkdir "$RUNNER_TEMP/disposable-source/.ansible"
+          cp -a .ansible/collections "$RUNNER_TEMP/disposable-source/.ansible/"
       - name: Bootstrap, deploy, prove and destroy one owned node
         env:
           UPCLOUD_TOKEN: ${{ secrets.UPCLOUD_TOKEN }}
@@ -54,7 +61,7 @@ jobs:
           SELECTED_ZONE: ${{ inputs.zone }}
           SELECTED_MODE: ${{ inputs.mode }}
         run: |
-          python3 scripts/ci-real-deploy.py \
+          python3 "$RUNNER_TEMP/disposable-source/scripts/ci-real-deploy.py" \
             --distro "$SELECTED_DISTRO" --profile "$SELECTED_PROFILE" \
             --zone "$SELECTED_ZONE" --mode "$SELECTED_MODE" \
             --work-dir "$RUNNER_TEMP/deployment-private" \
@@ -63,7 +70,7 @@ jobs:
       # signal, before a destroy can finish. This step runs even then and completes
       # the teardown that the stopped run recorded as owed.
       - name: Finish provider cleanup after a stopped run
-        if: always()
+        if: always() && steps.source.outcome == 'success'
         timeout-minutes: 20
         env:
           UPCLOUD_TOKEN: ${{ secrets.UPCLOUD_TOKEN }}
@@ -72,7 +79,7 @@ jobs:
           SELECTED_ZONE: ${{ inputs.zone }}
           SELECTED_MODE: ${{ inputs.mode }}
         run: |
-          python3 scripts/ci-real-deploy.py \
+          python3 "$RUNNER_TEMP/disposable-source/scripts/ci-real-deploy.py" \
             --distro "$SELECTED_DISTRO" --profile "$SELECTED_PROFILE" \
             --zone "$SELECTED_ZONE" --mode "$SELECTED_MODE" \
             --work-dir "$RUNNER_TEMP/deployment-private" \

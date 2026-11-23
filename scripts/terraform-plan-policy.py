@@ -17,12 +17,15 @@ REQUIRED = {
 }
 
 
-def evaluate(plan: Path) -> int:
+def evaluate(plan: Path | bytes, *, environment=None) -> int:
     try:
+        # Recovery reads an encrypted saved plan. Keep its decrypted view in pipes.
+        stdin_plan = isinstance(plan, bytes)
+        source = ["--parser", "json", "-"] if stdin_plan else [str(plan)]
         result = subprocess.run(
             ["conftest", "test", "--rego-version", "v0", "--all-namespaces",
-             "--output", "json", "-p", str(POLICY), str(plan)],
-            capture_output=True, text=True, timeout=120,
+             "--output", "json", "-p", str(POLICY), *source],
+            input=plan if stdin_plan else None, env=environment, capture_output=True, timeout=120,
         )
         rows = json.loads(result.stdout)
         if not isinstance(rows, list):

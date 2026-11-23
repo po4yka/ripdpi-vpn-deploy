@@ -22,6 +22,8 @@ from ci_deployment import CI_PROFILES
 ROOT = Path(__file__).resolve().parents[1]
 KIND = "disposable-staging-intent"
 PROFILES = {"p0-reality", "p1-xhttp", "p2-hysteria2", "p2-amneziawg"}
+# Four-profile staging cohorts; the WARP variant re-onboards a node for the namespace refresh check.
+COHORTS = {"device-full-staging", "device-full-warp-staging"}
 INPUTS = {
     "sops_file",
     "age_key_file",
@@ -98,7 +100,7 @@ def _validate_intent(value, input_fields):
             or type(value["schema_version"]) is not int
             or value["schema_version"] != 1
             or value["kind"] != KIND
-            or (not ci and value["cohort"] != "device-full-staging")
+            or (not ci and value["cohort"] not in COHORTS)
             or not isinstance(value["host"], str)
             or re.fullmatch(
                 r"upcloud:ci-staging-[a-z0-9][a-z0-9-]{0,51}", value["host"]
@@ -389,17 +391,16 @@ def finalize(intent, environment, *, clock=None):
             guard._pull_state(state_manifest["provider"], state_manifest["environment"]),
             "state",
         )
+        server_ipv4 = state["outputs"]["server_ipv4"]["value"]
         _cleanup_target(
             value,
             {
-                "address": state["outputs"]["server_ipv4"]["value"],
+                "address": server_ipv4,
                 "name": value["target_identity"]["inventory_alias"],
             },
         )
         if (
-            hashlib.sha256(
-                state["outputs"]["server_ipv4"]["value"].encode()
-            ).hexdigest()
+            hashlib.sha256(server_ipv4.encode()).hexdigest()
             != value["target_identity"]["public_service_address_sha256"]
         ):
             raise ValueError
@@ -583,14 +584,14 @@ def finalize(intent, environment, *, clock=None):
             if entry is None:
                 if ci:
                     receipt = installer.install(outputs["liveness_config"], sid, value["client"],
-                                                outputs["registry"], environment=env)
+                                                outputs["registry"], environment=env, server_ipv4=server_ipv4)
                 else:
                     # A private read supplies only the installer's stdin.
                     key = guard._private_read(inputs["awg_key_file"], "onboarding input", max_bytes=128)
                     with io.StringIO(key.decode("ascii")) as stream:
                         receipt = installer.install(
                             outputs["liveness_config"], sid, value["client"], outputs["registry"],
-                            read_awg_stdin=True, stdin=stream, environment=env,
+                            read_awg_stdin=True, stdin=stream, environment=env, server_ipv4=server_ipv4,
                             executor_manifest=outputs["executor_manifest"], executor_binding=outputs["binding"],
                             cleanup_manifest=inputs["cleanup_manifest"])
                 if (

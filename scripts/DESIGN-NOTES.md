@@ -449,6 +449,13 @@ bundle and shared transaction controller when tracing an ownership change:
 | [baseline files](../ansible/roles/baseline/files) own `sshd_migrate.py`, `sshd_transaction.py` and `sshd_ownership.py`; its [templates](../ansible/roles/baseline/templates) own the recovery units. [sshd_bundle_source.py](sshd_bundle_source.py), `bundle_manifest`, binds their immutable generation. | [install-sshd-recovery.py](install-sshd-recovery.py), [deploy-controller.py](deploy-controller.py), bootstrap and staging recovery consume that generation. | [test_sshd_bundle.py](../tests/unit/test_sshd_bundle.py), [test_install_sshd_recovery.py](../tests/unit/test_install_sshd_recovery.py). |
 | [deploy-source-identity.sh](deploy-source-identity.sh) defines the source digest, exposed by [deploy-controller.py](deploy-controller.py), `source_identity`; [sshd-baseline-controller.py](sshd-baseline-controller.py) owns transaction RPC and rollback; [sshd_contexts.py](sshd_contexts.py) binds socket contexts. | [ssh-ownership.py](ssh-ownership.py) composes these owners, rechecking source before `apply` and `confirm` and proving both transports before confirmation. | [test_ssh_ownership_controller.py](../tests/unit/test_ssh_ownership_controller.py): source drift, dual-path proof and uncertain rollback; [test_sshd_baseline_controller.py](../tests/unit/test_sshd_baseline_controller.py). |
 
+For a typed promotion, the last Ansible play writes its rendered SSH transaction
+request into the controller's private directory. After the play succeeds, the
+deploy controller checks the request against the selected node and calls the
+local SSH controller with access to the state backend. Ansible and guest tools
+do not inherit the state credentials. Profile rendering uses the public IPv4
+address that the promotion verified against the target digest.
+
 **SSH recovery installation has an early privacy guard** — the dedicated
 controller rejects enabled Ansible debug before inventory processing, forwards
 `ANSIBLE_DEBUG=false` to override config defaults, and validates exact aliases

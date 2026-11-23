@@ -53,6 +53,30 @@
           - fixture_operator_key in (baseline_keys_added.content | b64decode).splitlines()
           - fixture_ci_key in (baseline_keys_added.content | b64decode).splitlines()
 
+    - name: Check that a malformed second key preserves the current keys
+      block:
+        - name: Try a list with an invalid OpenSSH key body
+          ansible.builtin.include_role:
+            name: baseline
+          vars:
+            admin_ssh_public_keys:
+              - "{{ fixture_operator_key }}"
+              - "ssh-ed25519 AAAA truncated"
+        - name: Fail if the role accepted the malformed key
+          ansible.builtin.fail:
+            msg: The role accepted a malformed admin public key.
+      rescue:
+        - name: Require a refusal from the OpenSSH check
+          ansible.builtin.assert:
+            that: ansible_failed_task.name == 'Validate each admin public key with OpenSSH'
+        - name: Read authorized_keys after the refusal
+          ansible.builtin.slurp:
+            src: /root/.ssh/authorized_keys
+          register: baseline_keys_after_refusal
+        - name: Require the original authorized_keys bytes
+          ansible.builtin.assert:
+            that: baseline_keys_after_refusal.content == baseline_keys_added.content
+
     - name: Converge again with the CI key removed from the list
       ansible.builtin.include_role:
         name: baseline

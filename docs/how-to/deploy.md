@@ -234,6 +234,8 @@ Timeout, DNS child interruption or CA failure uses normal protected ingress/fire
 
 ## Re-deploy after a Terraform change (instance type, zone, firewall)
 
+Select the private ops checkout and include its `fleet.mk` from the ignored `.fleet.mk` as described in [Operator inputs](../reference/ops-repository.md#input-wiring). Confirm that `TF_BACKEND_ROOT` points to the directory of reviewed backend files. Run the commands in a shell with the state identity and `TF_VAR_state_passphrase` supplied by the operator's encrypted documents. Use the provider identity for the selected node.
+
 > [!CAUTION]
 > `make apply` changes real provider resources and can bill. Stop at any destroy or replace in the plan.
 

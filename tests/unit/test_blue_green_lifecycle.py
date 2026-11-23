@@ -48,6 +48,7 @@ def run_blue_green(tmp_path, failed_phase=None, answers=APPROVE_ALL, provider="u
     scripts = root / "scripts"
     scripts.mkdir(parents=True)
     shutil.copy2(ROOT / "scripts/blue-green.sh", scripts / "blue-green.sh")
+    shutil.copy2(ROOT / "scripts/tofu_tfvars.py", scripts)
     (scripts / "device_migration_inventory.py").write_text("import sys\nassert sys.argv[1] in ('check', 'render')\n")
     environments = root / f"terraform/providers/{provider}/environments"
     environments.mkdir(parents=True)
@@ -145,7 +146,12 @@ def test_hetzner_green_with_the_blue_key_refuses_before_plan(tmp_path, green_key
 def test_hetzner_green_with_its_own_key_provisions(tmp_path):
     tfvars = {"prod": key_tfvars("ssh-ed25519 AAAABLUEKEY operator@laptop"),
               "green": key_tfvars("ssh-ed25519 AAAAGREENKEY operator@laptop")}
-    result, calls = run_blue_green(tmp_path, provider="hetzner", tfvars=tfvars)
+    external = tmp_path / "ops inputs" / "hetzner"
+    external.mkdir(parents=True)
+    for name, value in tfvars.items():
+        (external / f"{name}.tfvars").write_text(value)
+    result, calls = run_blue_green(tmp_path, provider="hetzner", tfvars={"green": "stale"},
+                                   extra_environment={"TFVARS_ROOT": str(external.parent)})
     assert result.returncode == 0, result.stdout + result.stderr
     assert calls[-1] == ["green", "migration-ready"]
 
@@ -179,6 +185,7 @@ def test_child_make_does_not_load_inherited_makefiles(tmp_path):
     scripts = root / "scripts"
     scripts.mkdir(parents=True)
     shutil.copy2(ROOT / "scripts/blue-green.sh", scripts / "blue-green.sh")
+    shutil.copy2(ROOT / "scripts/tofu_tfvars.py", scripts)
     binary = tmp_path / "bin"
     executable(binary / "sops", "#!/bin/sh\nprintf 'synthetic: true\\n'\n")
     executable(binary / "ansible-inventory", "#!/bin/sh\n"

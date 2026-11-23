@@ -38,13 +38,16 @@ def setup(tmp_path, intent):
     values.update({
         "PROMOTION_LIVENESS_CONFIG_LITERAL": str(config),
         "PROMOTION_CLIENT_LITERAL": intent["client"],
+        "PROMOTION_COHORT_LITERAL": intent["cohort"],
         "PROMOTION_OUTPUT_DIR_LITERAL": str(private / "prepared"),
     })
     return helper, values, config
 
 
-def test_publishes_valid_private_intent_and_exact_alias_mapping_without_key_reads(setup):
+@pytest.mark.parametrize("cohort", ["device-full-staging", "device-full-warp-staging"])
+def test_publishes_valid_private_intent_and_exact_alias_mapping_without_key_reads(setup, cohort):
     helper, values, config = setup
+    values["PROMOTION_COHORT_LITERAL"] = cohort
     # Referenced credentials deliberately do not exist; preparation must not open them.
     for name in helper.INPUT_ENV.values():
         assert not Path(values[name + "_LITERAL"]).exists()
@@ -53,6 +56,7 @@ def test_publishes_valid_private_intent_and_exact_alias_mapping_without_key_read
     output = Path(values["PROMOTION_OUTPUT_DIR_LITERAL"])
     data = json.loads((output / "intent.json").read_bytes())
     assert helper.validate_intent(data) == data
+    assert data["cohort"] == cohort
     assert json.loads((output / "deployment-inputs.json").read_bytes()) == {
         data["target_identity"]["inventory_alias"]: data
     }
@@ -85,7 +89,7 @@ def test_configuration_alias_is_refused_before_any_input_read(setup, monkeypatch
 
 @pytest.mark.parametrize("case", ["prod", "epoch", "profile", "config-mode", "parent-mode",
                                   "symlink-config", "symlink-parent", "output-exists",
-                                  "input-alias", "missing", "duplicate", "oversized", "nan", "deep",
+                                  "input-alias", "missing", "missing-cohort", "foreign-cohort", "duplicate", "oversized", "nan", "deep",
                                   "output-missing", "output-mode"])
 def test_refusal_preserves_inputs_and_existing_destination(setup, case):
     helper, values, config = setup
@@ -121,6 +125,10 @@ def test_refusal_preserves_inputs_and_existing_destination(setup, case):
         values["PROMOTION_SOPS_FILE_LITERAL"] = str(output / "intent.json")
     elif case == "missing":
         del values["PROMOTION_CLIENT_LITERAL"]
+    elif case == "missing-cohort":
+        del values["PROMOTION_COHORT_LITERAL"]
+    elif case == "foreign-cohort":
+        values["PROMOTION_COHORT_LITERAL"] = "device-full"
     elif case == "duplicate":
         config.write_text('{"sentinels":[],"sentinels":[]}')
     elif case == "nan":

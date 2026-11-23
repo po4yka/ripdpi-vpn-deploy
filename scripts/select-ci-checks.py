@@ -166,7 +166,7 @@ def script_graph(repo):
                                 if MAKE_CALL.search(line) and not line.lstrip().startswith("#")))
 
     for path in tracked:
-        if not path or path.endswith(".md") or path.startswith(MENTION_INERT):
+        if not path or path.endswith((".md", "/.gitignore")) or path.startswith(MENTION_INERT):
             continue
         # Root configuration and repository settings name scripts only in comments or local hooks.
         if path != "Makefile" and ("/" not in path or (

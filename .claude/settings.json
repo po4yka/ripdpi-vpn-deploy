@@ -8,11 +8,16 @@
   "permissions": {
     "allow": [
       "Edit(/README.md)",
-      "Edit(/docs/explanation/**/*.md)",
-      "Edit(/docs/how-to/**/*.md)",
-      "Edit(/tests/unit/**/*.py)",
-      "Edit(/vpnd/src/**/*.py)",
-      "Edit(/vpnd/tests/**/*.py)"
+      "Edit(/Makefile)",
+      "Edit(/ansible/**)",
+      "Edit(/contract/**)",
+      "Edit(/docs/**)",
+      "Edit(/openspec/**)",
+      "Edit(/scripts/**)",
+      "Edit(/terraform/**)",
+      "Edit(/tests/**)",
+      "Edit(/tools/**)",
+      "Edit(/vpnd/**)"
     ],
     "deny": [
       "Read(./secrets/local/keys/**)",
@@ -26,7 +31,19 @@
       "Read(//**/*.secrets.yml)",
       "Read(//**/*.sops.yaml.dec)",
       "Read(//**/*.sops.json.dec)",
-      "Read(//**/vpn-blue-green.*/**)"
+      "Read(//**/vpn-blue-green.*/**)",
+      "Edit(./secrets/local/keys/**)",
+      "Edit(./secrets/local/recovery/**)",
+      "Edit(./secrets/local/state-backups/**)",
+      "Edit(.env)",
+      "Edit(.envrc)",
+      "Edit(**/*.tfstate)",
+      "Edit(**/*.tfstate.*)",
+      "Edit(**/*.tfvars)",
+      "Edit(//**/*.secrets.yaml)",
+      "Edit(//**/*.secrets.yml)",
+      "Edit(//**/*.sops.yaml.dec)",
+      "Edit(//**/*.sops.json.dec)"
     ]
   }
 }

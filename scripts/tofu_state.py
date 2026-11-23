@@ -17,6 +17,12 @@ WRAPPER = ROOT / "scripts/terraform-env.sh"
 MAX_STATE_BYTES = 16 * 1024 * 1024
 
 
+def backend_environment():
+    """Inputs for a local backend reader. Keep these out of guest executors."""
+    keys = ("TF_BACKEND_ROOT", "TF_VAR_state_passphrase", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY")
+    return {key: os.environ[key] for key in keys if key in os.environ}
+
+
 class StateError(RuntimeError):
     pass
 

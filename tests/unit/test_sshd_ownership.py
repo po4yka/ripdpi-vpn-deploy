@@ -201,14 +201,15 @@ def test_transaction_role_uses_controller_preview_during_ansible_check():
     )
 
 
-def test_real_ansible_check_invokes_read_only_transaction_preview(tmp_path):
+@pytest.mark.parametrize("local_promotion", [False, True])
+def test_real_ansible_role_routes_check_or_local_promotion_request(tmp_path, local_promotion):
     root = tmp_path / "repo"
     role = root / "ansible/roles/baseline"
     (role / "tasks").mkdir(parents=True)
     (role / "templates").mkdir()
     (root / "ansible/playbooks").mkdir()
     (root / "scripts").mkdir()
-    (role / "tasks/main.yml").write_bytes(
+    (role / "tasks/sshd-transaction.yml").write_bytes(
         (ROOT / "ansible/roles/baseline/tasks/sshd-transaction.yml").read_bytes()
     )
     (role / "templates/sshd_config.d-hardening.conf.j2").write_text(
@@ -228,6 +229,7 @@ def test_real_ansible_check_invokes_read_only_transaction_preview(tmp_path):
     variables = {
         "ansible_user": "deploy",
         "ssh_transaction_controller_managed": True,
+        "ssh_transaction_local_promotion": local_promotion,
         "ssh_transaction_inventory_path": str(root / "inventory.ini"),
         "ssh_transaction_known_hosts_path": str(root / "known_hosts"),
         "ssh_transaction_contexts": contexts,
@@ -241,15 +243,9 @@ def test_real_ansible_check_invokes_read_only_transaction_preview(tmp_path):
             "deployable_digest": "c" * 64,
         },
     }
-    playbook = [
-        {
-            "hosts": "vpn",
-            "gather_facts": False,
-            "become": False,
-            "roles": [{"role": "baseline"}],
-            "vars": variables,
-        }
-    ]
+    # Exercise the published play, including its tag inheritance.
+    final_play = yaml.safe_load((ROOT / "ansible/playbooks/site.yml").read_text())[-1]
+    playbook = [dict(final_play, vars=variables)]
     (root / "ansible/playbooks/check.yml").write_text(yaml.safe_dump(playbook))
     (root / "inventory.ini").write_text("[vpn]\nnode-one ansible_connection=local\n")
     result = subprocess.run(
@@ -258,7 +254,7 @@ def test_real_ansible_check_invokes_read_only_transaction_preview(tmp_path):
             "-i",
             str(root / "inventory.ini"),
             str(root / "ansible/playbooks/check.yml"),
-            "--check",
+            *(["--tags", "xray"] if local_promotion else ["--check"]),
         ],
         cwd=root,
         text=True,
@@ -266,13 +262,18 @@ def test_real_ansible_check_invokes_read_only_transaction_preview(tmp_path):
         timeout=30,
         env={
             **os.environ,
+            "VPN_PROMOTION_REQUEST": str(root / "handoff") if local_promotion else "",
             "ANSIBLE_ROLES_PATH": str(root / "ansible/roles"),
             "ANSIBLE_DEBUG": "false",
         },
     )
     assert result.returncode == 0, result.stdout + result.stderr
+    if local_promotion:
+        assert not record.exists()
+        record = root / "handoff"
+        assert record.stat().st_mode & 0o777 == 0o600
     request = json.loads(record.read_text())
-    assert request["mode"] == "check"
+    assert request["mode"] == ("deploy" if local_promotion else "check")
     assert request["schema_version"] == 2
     assert request["promotion_config_path"] is None
     assert request["failure_receipt_path"] is None

@@ -36,11 +36,12 @@ The public checkout's ignored `.fleet.mk` contains one line, `include /absolute/
 
 | Variable | Value | Consumers |
 |---|---|---|
+| `TF_BACKEND_ROOT` | `<ops>/config/backend` | Directory of reviewed `<provider>.s3.tfbackend` files for OpenTofu. Use the same directory for initialization and subsequent operations. |
 | `TFVARS_ROOT` | `<ops>/config/tfvars` | `make plan` passes `<TFVARS_ROOT>/<PROVIDER>/<ENV>.tfvars` to `tofu plan`; `make inventory` reads the same files for each host pair. Empty selects `terraform/providers/<provider>/environments/<env>.tfvars`. |
 | `ANSIBLE_INVENTORY` | `<ops>/config/inventories/<ENV>.ini` | `make inventory` writes it; `make dry-run` and `make deploy` pass it to the deploy controller as `DEPLOY_INVENTORY`; prechecks read it. |
 | `SOPS_FILE` | `<ops>/config/<ENV>.secrets.sops.yaml` | `make decrypt`. |
 
-`TFVARS_ROOT` must be absolute. Other operator scripts (for example `destroy.sh`, `blue-green.sh` and `vpnd`) still read the provider-root tfvars path.
+`TFVARS_ROOT` must be absolute.
 
 ## Validation
 
@@ -48,6 +49,7 @@ Run `scripts/validate-ops-repo.py <ops checkout>` from this repository, and gitl
 
 - a missing or loose pin (branch, tag, short or uppercase SHA, another repository);
 - symbolic links;
+- a fleet `*.s3.tfbackend` file with credentials (including the SSE-C encryption key `sse_customer_key`) or with missing or incorrect top-level settings for `use_lockfile = true`, `key = "state/<provider>/terraform.tfstate"`, or `workspace_key_prefix = "state/workspaces"`;
 - private key material (`AGE-SECRET-KEY-`, PEM, OpenSSH or PGP private keys, WireGuard `PrivateKey =` lines) anywhere;
 - state, saved plans and decrypted secret files by name (`*.tfstate`, `*.tfplan`, `*.secrets.yaml`, `*.dec`, `.env`);
 - a YAML or JSON file that has a top-level section of `secrets/schema.json` but no SOPS metadata;

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import datetime as dt
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -524,6 +525,8 @@ def main():
     parser.add_argument('--profile-format', choices=['sing-box', 'ripdpi', 'xray'], default='sing-box')
     parser.add_argument('--bundle', action='store_true')
     parser.add_argument('--xhttp-only', action='store_true')
+    parser.add_argument('--server-ipv4', type=ipaddress.IPv4Address,
+                        help='use the verified address of one explicitly selected host and cohort')
     parser.add_argument('--per-app-bypass', default='')
     parser.add_argument('--per-app-via-tun', default='')
     parser.add_argument('--share-uri', action='store_true', help='print the one VLESS+REALITY share URI instead of JSON')
@@ -541,7 +544,12 @@ def main():
             raise ValueError('INCY links take no other output option')
         selected_format = 'ripdpi' if args.bundle or incy else {'sing-box': 'singbox', 'ripdpi': 'ripdpi', 'xray': 'xray'}[args.profile_format]
         o = options(selected_format, expires=os.environ.get('BUNDLE_EXPIRES', ''))
-        payload, _ = materialize(args.client, o, per_app_bypass=args.per_app_bypass, per_app_via_tun=args.per_app_via_tun, extended=args.bundle, xhttp_only=args.xhttp_only)
+        endpoints = None
+        if args.server_ipv4 is not None:
+            if len(o['hosts']) != 1 or len(o['cohorts']) != 1:
+                raise ValueError('one explicit host and cohort required for a verified address')
+            endpoints = {o['hosts'][0]: str(args.server_ipv4)}
+        payload, _ = materialize(args.client, o, endpoints=endpoints, per_app_bypass=args.per_app_bypass, per_app_via_tun=args.per_app_via_tun, extended=args.bundle, xhttp_only=args.xhttp_only)
         if incy:
             print(write_incy_links(args.incy_links, incy_links(payload)))
         else:

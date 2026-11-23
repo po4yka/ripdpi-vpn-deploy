@@ -1532,21 +1532,20 @@ def test_controller_freezes_one_inventory_host_for_guest_provider_and_proof(
         files[name].write_bytes(content)
         files[name].chmod(mode)
 
-    result = controller.run(
-        {
-            "inventory_path": str(tmp_path / "inventory"),
-            "inventory_name": "node-a",
-            "provider_target_path": str(files["target"]),
-                        "terraform_path": str(files["terraform"]),
-            "terraform_sha256": "d" * 64,
-            "candidate_fragment_path": str(files["candidate"]),
-            "executor_dir": str(tmp_path / "executor"),
-            "known_hosts_path": str(tmp_path / "known"),
-            "contexts": [],
-            "mode": "dry-run",
-            "promotion_config_path": str(tmp_path / "config"),
-        }
-    )
+    config = {
+        "inventory_path": str(tmp_path / "inventory"),
+        "inventory_name": "node-a",
+        "provider_target_path": str(files["target"]),
+        "terraform_path": str(files["terraform"]),
+        "terraform_sha256": "d" * 64,
+        "candidate_fragment_path": str(files["candidate"]),
+        "executor_dir": str(tmp_path / "executor"),
+        "known_hosts_path": str(tmp_path / "known"),
+        "contexts": [],
+        "mode": "dry-run",
+        "promotion_config_path": str(tmp_path / "config"),
+    }
+    result = controller.run(config)
     assert result == {"status": "dry-run"}
     assert len(selections) == 1
     assert guest_hosts == [host_a]
@@ -1555,6 +1554,13 @@ def test_controller_freezes_one_inventory_host_for_guest_provider_and_proof(
         "alias": "node-a",
         "guest": {"status": "unchanged"},
     }
+
+    executor = tmp_path / "executor"
+    executor.mkdir(mode=0o700, exist_ok=True)
+    (executor / "daemon.json").touch()
+    with pytest.raises(controller.ControllerError, match="executor-recovery-refused"):
+        controller.run(config)
+    assert guest_hosts == [host_a]
 
 
 @pytest.mark.parametrize(
@@ -1770,7 +1776,13 @@ def test_daemon_partial_client_is_bounded_and_remains_reachable(tmp_path, monkey
     source = runtime / "source"
     provider = source / "terraform/providers/upcloud"
     (provider / "environments").mkdir(parents=True)
-    (provider / ".terraform-env/default").mkdir(parents=True)
+    from tofu_backend import data_directory
+    monkeypatch.setenv("TF_BACKEND_ROOT", str(runtime))
+    monkeypatch.delenv("TFVARS_ROOT", raising=False)
+    backend = runtime / "upcloud.s3.tfbackend"
+    backend.write_text('key = "state/upcloud/terraform.tfstate"\nworkspace_key_prefix = "state/workspaces"\nuse_lockfile = true\n')
+    data = data_directory(provider, "default", backend)
+    data.mkdir(parents=True)
     (source / "terraform/shared").mkdir(parents=True)
     (source / "scripts").mkdir(parents=True)
     snapshot_files = {
@@ -1778,7 +1790,8 @@ def test_daemon_partial_client_is_bounded_and_remains_reachable(tmp_path, monkey
         provider / "main.tf": b"terraform {}\n",
         provider / ".terraform.lock.hcl": b"# lock\n",
         provider / "environments/prod.tfvars": b"enable_provider_firewall=false\n",
-        provider / ".terraform-env/default/environment": b"default",
+        data / "environment": b"default",
+        data / "terraform.tfstate": b'{"backend": {"type": "s3"}}',
         source / "terraform/shared/bootstrap-sshd-ownership.py": b"# cloud-init helper\n",
         source / "terraform/shared/bootstrap-ssh-seed.py": b"# public seed installer\n",
         source / "terraform/shared/cloud-init.yaml.tftpl": b"#cloud-config\n",

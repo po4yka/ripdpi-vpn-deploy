@@ -269,12 +269,26 @@ def test_adapter_refuses_plan_without_a_reviewed_executable_capability(tmp_path)
         adapter.plan("forward")
 
 
-def _terraform_snapshot_source(tmp_path):
+UPCLOUD_BACKEND = (
+    'key = "state/upcloud/terraform.tfstate"\n'
+    'workspace_key_prefix = "state/workspaces"\n'
+    'use_lockfile = true\n'
+)
+
+
+@pytest.fixture
+def snapshot_source(tmp_path, monkeypatch):
+    from tofu_backend import data_directory
+    monkeypatch.setenv("TF_BACKEND_ROOT", str(tmp_path))
+    monkeypatch.delenv("TFVARS_ROOT", raising=False)
+    backend = tmp_path / "upcloud.s3.tfbackend"
+    backend.write_text(UPCLOUD_BACKEND)
     source = tmp_path / "source"
     (source / "scripts").mkdir(parents=True)
     provider = source / "terraform/providers/upcloud"
     (provider / "environments").mkdir(parents=True)
-    (provider / ".terraform-env/default/providers").mkdir(parents=True)
+    data = data_directory(provider, "default", backend)
+    (data / "providers").mkdir(parents=True)
     (source / "terraform/shared").mkdir(parents=True)
     files = {
         source / "scripts/terraform-env.sh": b'#!/bin/sh\nexec terraform "$@"\n',
@@ -285,8 +299,9 @@ def _terraform_snapshot_source(tmp_path):
         source / "terraform/shared/bootstrap-sshd-ownership.py": b"# cloud-init helper\n",
         source / "terraform/shared/bootstrap-ssh-seed.py": b"# public seed installer\n",
         source / "terraform/shared/cloud-init.yaml.tftpl": b"#cloud-config\n",
-        provider / ".terraform-env/default/environment": b"default",
-        provider / ".terraform-env/default/providers/plugin": b"plugin",
+        data / "environment": b"default",
+        data / "terraform.tfstate": b'{"backend": {"type": "s3"}}',
+        data / "providers/plugin": b"plugin",
     }
     for path, raw in files.items():
         path.write_bytes(raw)
@@ -295,13 +310,18 @@ def _terraform_snapshot_source(tmp_path):
 
 
 def test_terraform_snapshot_binds_full_selected_config_and_ignores_live_drift(
-    tmp_path,
+    tmp_path, snapshot_source, monkeypatch,
 ):
     m = mod()
-    source = _terraform_snapshot_source(tmp_path)
+    source = snapshot_source
+    monkeypatch.setenv("TFVARS_ROOT", str(tmp_path / "ops"))
+    external = tmp_path / "ops/upcloud/prod.tfvars"
+    external.parent.mkdir(parents=True)
+    external.write_text("enable_provider_firewall = true\n")
     destination = tmp_path / "private/terraform-snapshot"
     destination.parent.mkdir(mode=0o700)
     snapshot = m.TerraformConfigSnapshot.create(source, destination, "prod")
+    assert (snapshot.provider_root / snapshot.var_file).read_bytes() == external.read_bytes()
     original_digest = snapshot.digest
 
     (source / "terraform/providers/upcloud/main.tf").write_text("mutated live config")
@@ -318,13 +338,17 @@ def test_terraform_snapshot_binds_full_selected_config_and_ignores_live_drift(
     ]
     assert environment == {
         "TF_DATA_DIR": str(destination / "terraform-data"),
+        "TF_VAR_plan_backend_scope": "upcloud/default/" + hashlib.sha256(UPCLOUD_BACKEND.encode()).hexdigest(),
     }
     assert str(source) not in " ".join(command)
+    (tmp_path / "upcloud.s3.tfbackend").write_text(UPCLOUD_BACKEND + 'bucket = "other"\n')
+    with pytest.raises(m.PromotionError, match="terraform-snapshot-invalid"):
+        m.TerraformConfigSnapshot.create(source, destination, "prod")
 
 
-def test_terraform_snapshot_ignores_shared_instruction_symlink_and_cache(tmp_path):
+def test_terraform_snapshot_ignores_shared_instruction_symlink_and_cache(tmp_path, snapshot_source):
     m = mod()
-    source = _terraform_snapshot_source(tmp_path)
+    source = snapshot_source
     shared = source / "terraform/shared"
     (shared / "CLAUDE.md").write_text("operator instructions\n")
     (shared / "AGENTS.md").symlink_to("CLAUDE.md")
@@ -343,16 +367,18 @@ def test_terraform_snapshot_ignores_shared_instruction_symlink_and_cache(tmp_pat
     assert (destination / "terraform/shared/bootstrap-ssh-seed.py").read_bytes() == b"# public seed installer\n"
 
 
-def test_terraform_snapshot_has_no_local_state_and_refuses_old_manifest(tmp_path):
+def test_terraform_snapshot_has_no_local_state_and_refuses_old_manifest(tmp_path, snapshot_source):
+    from tofu_backend import data_directory
     m = mod()
-    source = _terraform_snapshot_source(tmp_path)
+    source = snapshot_source
     provider = source / "terraform/providers/upcloud"
     workspace = "ci-staging-test"
     (provider / f"environments/{workspace}.tfvars").write_bytes(
         b"enable_provider_firewall = false\n"
     )
-    data = provider / ".terraform-env" / workspace
+    data = data_directory(provider, workspace, tmp_path / "upcloud.s3.tfbackend")
     data.mkdir(parents=True)
+    (data / "terraform.tfstate").write_text('{"backend": {"type": "s3"}}')
     (data / "environment").write_text(workspace)
     (data / "environment").chmod(0o600)
     destination = tmp_path / "private/terraform-snapshot"
@@ -361,7 +387,7 @@ def test_terraform_snapshot_has_no_local_state_and_refuses_old_manifest(tmp_path
     snapshot = m.TerraformConfigSnapshot.create(source, destination, workspace)
 
     assert not hasattr(snapshot, "state_path")
-    assert not list(destination.rglob("*.tfstate*"))
+    assert list(destination.rglob("*.tfstate*")) == [snapshot.data_dir / "terraform.tfstate"]
     manifest = json.loads((destination / "manifest.json").read_text())
     assert "state_path" not in manifest["payload"]
     # A pre-backend manifest binds a local state path and must be refused.
@@ -376,11 +402,39 @@ def test_terraform_snapshot_has_no_local_state_and_refuses_old_manifest(tmp_path
         m.TerraformConfigSnapshot(destination)
 
 
+def test_previous_remote_snapshot_is_only_valid_for_verified_cleanup(tmp_path, snapshot_source):
+    m = mod()
+    destination = tmp_path / "private/terraform-snapshot"
+    destination.parent.mkdir(mode=0o700)
+    snapshot = m.TerraformConfigSnapshot.create(snapshot_source, destination, "prod")
+    path = destination / snapshot.MANIFEST
+    manifest = json.loads(path.read_bytes())
+    old = manifest["payload"]
+    old["schema_version"] = 1
+    del old["backend_scope"]
+    manifest["sha256"] = hashlib.sha256(snapshot._canonical(old)).hexdigest()
+    path.write_bytes(snapshot._canonical(manifest))
+
+    with pytest.raises(m.PromotionError, match="terraform-snapshot-invalid"):
+        m.TerraformConfigSnapshot(destination)
+    cleanup = m.TerraformConfigSnapshot(destination, for_cleanup=True)
+    with pytest.raises(m.PromotionError, match="terraform-snapshot-invalid"):
+        cleanup.invocation(["apply"])
+    extra = destination / "untracked.txt"
+    extra.write_text("unexpected file")
+    with pytest.raises(m.PromotionError, match="terraform-snapshot-invalid"):
+        cleanup.remove()
+    assert extra.exists()
+    extra.unlink()
+    cleanup.remove()
+    assert not destination.exists()
+
+
 @pytest.mark.parametrize("fault", ["missing", "symlink"])
 @pytest.mark.parametrize("filename", ["cloud-init.yaml.tftpl", "bootstrap-ssh-seed.py"])
-def test_terraform_snapshot_requires_regular_shared_inputs(tmp_path, fault, filename):
+def test_terraform_snapshot_requires_regular_shared_inputs(tmp_path, fault, filename, snapshot_source):
     m = mod()
-    source = _terraform_snapshot_source(tmp_path)
+    source = snapshot_source
     required = source / "terraform/shared" / filename
     required.unlink()
     if fault == "symlink":
@@ -394,10 +448,10 @@ def test_terraform_snapshot_requires_regular_shared_inputs(tmp_path, fault, file
 
 @pytest.mark.parametrize("fault", ["config", "tfvars", "wrapper", "data", "extra"])
 def test_terraform_snapshot_refuses_tamper_symlink_or_unmanifested_input(
-    tmp_path, fault
+    tmp_path, fault, snapshot_source
 ):
     m = mod()
-    source = _terraform_snapshot_source(tmp_path)
+    source = snapshot_source
     destination = tmp_path / "private/terraform-snapshot"
     destination.parent.mkdir(mode=0o700)
     snapshot = m.TerraformConfigSnapshot.create(source, destination, "prod")
@@ -1289,7 +1343,7 @@ def test_terraform_environment_is_canonical_and_sanitized():
 
 
 @pytest.mark.native_runtime
-def test_adapter_command_uses_reviewed_terraform_fd_and_snapshot(tmp_path, monkeypatch):
+def test_adapter_command_uses_reviewed_terraform_fd_and_snapshot(tmp_path, monkeypatch, snapshot_source):
     terraform = __import__("shutil").which("tofu")
     assert terraform is not None, "native runtime lane requires OpenTofu"
     m = mod()
@@ -1306,7 +1360,7 @@ def test_adapter_command_uses_reviewed_terraform_fd_and_snapshot(tmp_path, monke
         fd = os.open(reviewed_binary, os.O_RDONLY)
         trusted = m.TrustedTerraform(fd, __import__("hashlib").sha256(raw).hexdigest())
         fd = -1
-        source = _terraform_snapshot_source(tmp_path)
+        source = snapshot_source
         snapshot_root = tmp_path / "private/terraform-snapshot"
         snapshot_root.parent.mkdir(mode=0o700)
         snapshot = m.TerraformConfigSnapshot.create(source, snapshot_root, "prod")

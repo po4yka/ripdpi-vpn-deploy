@@ -144,30 +144,39 @@ If an attacker had the old password and repository key material, assume the repo
 
 ## 5. SSH key for the deploy user
 
-If the operator workstation is compromised:
+Use a trusted workstation. Select the exact provider, environment and inventory alias. Compare the old key's fingerprint with the first entry in `admin_ssh_public_keys` in the selected tfvars. Use `$TFVARS_ROOT/<provider>/<env>.tfvars` when the fleet config defines an external tfvars root. Otherwise use `terraform/providers/<provider>/environments/<env>.tfvars`.
 
-```bash
-# Generate a new key
-ssh-keygen -t ed25519 -f ~/.ssh/vpn_deploy_new -N '' -C 'vpn-deploy operator'
+**If the old key is the first or only entry**, it is the bootstrap identity. Removing it changes the infrastructure contract and can require server replacement. Create a replacement node with the new bootstrap key under the [device migration procedure](device-migration.md). Verify a fresh management login with the new key and complete the cutover before retiring the old node and its provider key. If management access is already lost, follow [lost SSH access](incident.md#lost-ssh-access).
 
-# Add the new public key to admin_ssh_public_keys, keeping the old one listed.
-# The list is the full set of admin keys: baseline writes authorized_keys
-# exclusively from it, and cloud-init uses it for new nodes. Only the first
-# entry is registered with the provider; changing the first entry replaces the
-# node, so keep it and add the new key after it for an in-place rotation.
-$EDITOR terraform/providers/upcloud/environments/prod.tfvars
+**To rotate a secondary key in place**, keep the first entry unchanged. Use the existing deployment inputs, host-key pins, recovery access and [deploy procedure](deploy.md) for the selected node. Run each step only after the previous one succeeds.
 
-# Converge: the new key is added to every node's admin authorized_keys.
-make deploy
+1. Select the old and new private key paths in `OLD_KEY` and `NEW_KEY` and the node's inventory alias in `NODE`. Generate a new operator key at a previously unused path. Append its public key to the selected tfvars. Keep the old entry and any other authorized keys. Use the full fleet inventory selection when rendering and limit the deploy to the chosen node.
 
-# Switch to the new key, then delete the old entry from admin_ssh_public_keys
-# and run make deploy again: baseline removes the old key from every node.
-# From now on, use the new key
-export ANSIBLE_SSH_PRIVATE_KEY_FILE=~/.ssh/vpn_deploy_new
-shred -u ~/.ssh/vpn_deploy
-```
+   ```bash
+   make inventory ANSIBLE_SSH_PRIVATE_KEY_FILE="${OLD_KEY:?}" &&
+     make dry-run ANSIBLE_LIMIT="${NODE:?}" &&
+     make deploy ANSIBLE_LIMIT="$NODE"
+   ```
 
-If you've truly lost the old key (no remaining SSH access), see `incident.md` § "lost SSH access".
+2. While both keys are authorized, select the new identity and regenerate inventory. A separate deploy-controller invocation opens a fresh, host-key-pinned SSH connection using the key in that inventory. The existing SSH session or a successful deploy with the old key does not prove access with the new one.
+
+   ```bash
+   make inventory ANSIBLE_SSH_PRIVATE_KEY_FILE="${NEW_KEY:?}" &&
+     make dry-run ANSIBLE_LIMIT="${NODE:?}"
+   ```
+
+   If the dry run fails, keep both entries, restore the working inventory selection and resolve the failure before continuing.
+
+3. Remove only the old secondary public key from the same tfvars. Render inventory again so baseline receives the new list. Apply and verify using the new identity.
+
+   ```bash
+   make inventory ANSIBLE_SSH_PRIVATE_KEY_FILE="${NEW_KEY:?}" &&
+     make dry-run ANSIBLE_LIMIT="${NODE:?}" &&
+     make deploy ANSIBLE_LIMIT="$NODE" &&
+     make verify ANSIBLE_LIMIT="$NODE"
+   ```
+
+4. Confirm the old fingerprint is absent from the admin user's installed `authorized_keys`. Repeat for every node that admitted that key. Update the persistent fleet identity and render its normal inventory so the next operation uses the intended key. Retire the old private key only after fresh access succeeds on all affected nodes and revocation is verified.
 
 ## What to NOT do during rotation
 

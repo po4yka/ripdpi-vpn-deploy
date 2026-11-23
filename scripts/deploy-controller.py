@@ -414,6 +414,31 @@ def checked(command, *, environment, cwd, timeout=15, capture=False, stream=Fals
     return output
 
 
+def finish_local_promotion(path, transaction, host, inventory, known_hosts, environment, root):
+    """Run only the reviewed local SSH controller with access to the state backend."""
+    import tofu_state
+    raw = read_input(path, private=True, exact_mode=0o600, limit=32768)
+    try:
+        request = json.loads(raw, object_pairs_hook=unique_object)
+        expected = {key: transaction["ssh_transaction_" + key] for key in (
+            "contexts", "bundle_generation", "timeout_seconds", "target_identity", "promotion_config_path",
+            "failure_receipt_path", "failure_receipt_parent_identity")}
+        expected.update(mode="deploy", schema_version=2, inventory_alias=host, inventory_path=str(inventory),
+                        known_hosts_path=str(known_hosts))
+        if {key: value for key, value in request.items() if key != "hardening_b64"} != expected:
+            raise ValueError
+    except (ValueError, TypeError, AttributeError):
+        raise DeployError("local SSH promotion request changed") from None
+    status, output = run_command([sys.executable, str(root / "scripts/sshd-baseline-controller.py")],
+                                 input_data=raw, environment={**environment, **tofu_state.backend_environment()},
+                                 cwd=root, capture=True, timeout=7200)
+    try:
+        if status or json.loads(output) not in ({"status": "unchanged"}, {"status": "committed"}):
+            raise ValueError
+    except (ValueError, UnicodeError):
+        raise DeployError("local SSH promotion failed") from None
+
+
 def require_recovery_foundation(command, generation, environment):
     """Require the exact read-only recovery capability before site convergence."""
     if re.fullmatch("[0-9a-f]{64}", generation) is None:
@@ -730,6 +755,7 @@ def transaction_inputs(mode, hosts, identity, directory, root, environment, *,
             "deployable_digest": identity["DEPLOYABLE_SOURCE_DIGEST"],
         }
         promotion = None
+        local_promotion = False
         if promotions is not None:
             target = promotions[alias].get("target_identity")
             if (not isinstance(target, dict)
@@ -753,6 +779,7 @@ def transaction_inputs(mode, hosts, identity, directory, root, environment, *,
                     raise DeployError("onboarding requires one exact host")
                 from install_liveness_sentinel import InstallError, require_runtime_pins
                 try:
+                    local_promotion = True
                     config = prepare_intent(config, host, memberships[alias], directory,
                                             deployed_secrets, environment)
                     # The post-convergence probe install needs these engines; refuse before site writes.
@@ -764,6 +791,7 @@ def transaction_inputs(mode, hosts, identity, directory, root, environment, *,
             if not no_listener_promotion.is_kind(config):
                 promotion_paths.append(promotion)
         result[alias] = {
+            "ssh_transaction_local_promotion": local_promotion,
             "ssh_transaction_controller_managed": True,
             "ssh_transaction_contexts": contexts[alias],
             "ssh_transaction_bundle_generation": generation,
@@ -990,6 +1018,10 @@ def controller(mode):
                     site += ["--tags", os.environ["DEPLOY_TAGS"]]
                 # The complete first-convergence graph can exceed one hour on small nodes.
                 checked_environment = site_environment
+                transaction = transactions[host["name"]]
+                local_request = directory / (host["name"] + "-ssh-request.json")
+                if transaction["ssh_transaction_local_promotion"]:
+                    checked_environment = {**site_environment, "VPN_PROMOTION_REQUEST": str(local_request)}
                 if strict_check == '1':
                     check_directory = directory / ('check-' + host['name'])
                     check_directory.mkdir(mode=0o700)
@@ -997,6 +1029,9 @@ def controller(mode):
                 with (deployment_silence.coverage_silence(metadata[host["name"]].get("observability_node_id"))
                       if mode == "deploy" else nullcontext()):
                     checked(site, environment=checked_environment, cwd=directory, timeout=7200, stream=True)
+                    if transaction["ssh_transaction_local_promotion"]:
+                        finish_local_promotion(local_request, transaction, host["name"], arguments[1], known_hosts,
+                                               environment, root)
                 if strict_check == '1':
                     require_no_check_changes(check_directory / 'check-statistics.json')
                 if mode == "deploy":

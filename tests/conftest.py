@@ -23,6 +23,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
 @pytest.fixture
+def stub_tofu_backend(tmp_path, monkeypatch):
+    """Backend selection for tests that substitute the OpenTofu executable."""
+    backend = tmp_path / "stub-tofu-backend"
+    backend.mkdir()
+    for provider in ("upcloud", "hetzner", "vultr", "scaleway"):
+        (backend / f"{provider}.s3.tfbackend").write_text(f'bucket = "fixture"\nkey = "state/{provider}/terraform.tfstate"\nworkspace_key_prefix = "state/workspaces"\nuse_lockfile = true\n')
+    monkeypatch.setenv("TF_BACKEND_ROOT", str(backend))
+    return backend
+
+
+@pytest.fixture
 def private_authority_path():
     """Own a private tree outside the globally writable Linux temporary ancestry."""
     with tempfile.TemporaryDirectory(prefix='.ripdpi-authority-test-', dir=Path.home()) as directory:

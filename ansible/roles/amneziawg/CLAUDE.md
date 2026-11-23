@@ -52,7 +52,8 @@ bounds 1280–1420. The default leaves room for an 80-byte IPv6 outer header on 
 Before mutation the exact IPv6 uplink (`firewall_awg_uplink6_interface`, else the
 IPv4 uplink) needs an IPv6 default route with a global
 source. Kernel-owned RA requires per-interface `accept_ra=2`; networkd-owned RA
-requires kernel `accept_ra=0` and matching typed NDisc source and route evidence.
+requires kernel `accept_ra=0` and matching typed NDisc source and route evidence
+(an NDisc default route, or the NDisc nexthop that networkd 257 uses instead).
 The host owner must persist explicit networkd RA enablement before forwarding.
 The role does not adopt provider networking authority. Configuration activation retains complete prior
 private configs and active/boot state, compensates failed candidates, and

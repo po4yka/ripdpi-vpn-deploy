@@ -614,13 +614,15 @@ def test_hetzner_fault_refuses_server_id_not_bound_to_staging_state(
     binding["state_sha256"] = hashlib.sha256(state_raw).hexdigest()
     _private(binding_path, binding)
     monkeypatch.setenv("HCLOUD_TOKEN", token)
-    monkeypatch.setattr(
-        module.subprocess,
-        "run",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess(
-            ["terraform-env.sh"], 0, stdout=state_raw
-        ),
-    )
+    monkeypatch.setenv("TF_BACKEND_ROOT", "/fixture/backend")
+    monkeypatch.setenv("TF_VAR_state_passphrase", "fixture-passphrase")
+    def pull(provider, workspace, *, env, timeout):
+        assert (provider, workspace) == ("hetzner", "staging")
+        assert env["TF_BACKEND_ROOT"] == "/fixture/backend"
+        assert env["TF_VAR_state_passphrase"] == "fixture-passphrase"
+        assert "HCLOUD_TOKEN" not in env
+        return state_raw
+    monkeypatch.setattr(module.tofu_state, "pull", pull)
 
     with pytest.raises(module.AcceptanceError, match="provider binding rejected"):
         module._hetzner_action(acceptance["manifest"], "poweroff")
