@@ -71,7 +71,7 @@ def test_warp_repository_uses_the_same_pinned_armored_key_for_admission_and_apt(
     assert verify["ansible.builtin.stat"] == {"path": key_path, "checksum_algorithm": "sha256"}
     signed_by = re.search(r"\[signed-by=([^\]]+)\]", source["ansible.builtin.copy"]["content"])
     assert signed_by and signed_by.group(1) == key_path
-    assert "_warp_gpg_stat.stat.checksum == warp_outbound.pubkey_sha256" in enforce["ansible.builtin.assert"]["that"]
+    assert "_warp_gpg_checksum == warp_outbound.pubkey_sha256" in enforce["ansible.builtin.assert"]["that"]
     assert tasks.index(download) < tasks.index(verify) < tasks.index(enforce) < tasks.index(source)
     assert all(task["when"] == "warp_outbound.install_warp_cli | default(true)"
                for task in (download, verify, enforce, source))
