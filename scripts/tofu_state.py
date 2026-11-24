@@ -6,6 +6,7 @@ memory. Callers keep the bytes in memory and never write them to disk.
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import signal
 import subprocess
@@ -63,4 +64,22 @@ def pull(provider: str, environment: str, *, env=None, timeout: float = 120) -> 
             process.wait()
     if status != 0:
         raise StateError("state-pull-failed")
-    return raw if raw.strip() else None
+    return _stable(raw) if raw.strip() else None
+
+
+def _stable(raw: bytes) -> bytes:
+    """`state pull` emits check_results in map order, which differs between pulls
+    of one unchanged state; sort them so callers can bind a state digest."""
+    try:
+        state = json.loads(raw)
+    except ValueError:
+        raise StateError("state-invalid") from None
+    results = state.get("check_results") if isinstance(state, dict) else None
+    if not isinstance(results, list) or not results:
+        return raw
+    key = lambda item: json.dumps(item, sort_keys=True)
+    for result in results:
+        if isinstance(result, dict) and isinstance(result.get("objects"), list):
+            result["objects"].sort(key=key)
+    results.sort(key=key)
+    return json.dumps(state, indent=2).encode() + b"\n"
