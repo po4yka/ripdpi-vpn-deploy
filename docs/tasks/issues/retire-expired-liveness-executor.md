@@ -2,7 +2,7 @@
 id: SCR-1795491503477936
 title: Retire an expired never-assigned disposable liveness executor
 kind: feature
-status: doing
+status: review
 area: scripts
 priority: medium
 risk: high
@@ -14,6 +14,7 @@ openspec_change: scr-1795491503477936-retire-expired-liveness-executor
 created: 2026-11-24
 updated: 2026-11-24
 related_tasks: []
+status_detail: All three execution steps are done; protected-main CI passed at f9d6a5139 and both leftover executors are retired
 ---
 
 ## Goal
