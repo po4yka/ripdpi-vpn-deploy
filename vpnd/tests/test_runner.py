@@ -150,6 +150,7 @@ def test_per_key_acceptance_table_passes_legitimate_values():
         ("TARGET_ID", "p0-direct-1"),
         ("MATRIX_CONFIG", "/tmp/probe-matrix.yaml"),
         ("PLAN", "/plans/fleet-rotation.yaml"),
+        ("PLAN", "/Users/Operator/Plans/Fleet-Rotation.yaml"),
         ("ENV", "prod"),
         ("PROVIDER", "upcloud"),
         ("SECRETS_FILE", "/run/user/1000/vpn-runtime/vpn-prod.secrets.yaml"),
@@ -258,7 +259,7 @@ def test_plan_contains_var_file_for_env(tmp_path, monkeypatch):
     monkeypatch.setenv("TFVARS_ROOT", str(tmp_path))
     assert f"-var-file={tmp_path}/upcloud/prod.tfvars" in terraform.plan(fake_ctx()).argv
     monkeypatch.setenv("TFVARS_ROOT", "relative")
-    with pytest.raises(ValueError, match="absolute path"):
+    with pytest.raises(ValueError, match=r"^TFVARS_ROOT must be an absolute path$"):
         terraform.plan(fake_ctx())
 
 
