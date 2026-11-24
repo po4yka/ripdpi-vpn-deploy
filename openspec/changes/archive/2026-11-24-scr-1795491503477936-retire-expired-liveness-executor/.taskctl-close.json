@@ -1,0 +1,11 @@
+{
+  "change": "scr-1795491503477936-retire-expired-liveness-executor",
+  "evidence_summary": "All three execution steps are done. Protected-main ci run 45410025050 passed at f9d6a5139. make retire-expired-disposable-liveness retired both leftover staging executors (status retired-expired, receipts in the private kit config); colima list shows no liveness profile.",
+  "execution_sha256": "6452e7f581693c3e44a3237b3f0645d4334569c00cd38a603200fb83883e71a3",
+  "issue_sha256": "e486e76a72955f98f8fec027a0510063979c6be6b519d1b028b0f1f194d07d7e",
+  "outcome": "done",
+  "prepared_at": "2026-11-24T15:19:48Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SCR-1795491503477936"
+}
