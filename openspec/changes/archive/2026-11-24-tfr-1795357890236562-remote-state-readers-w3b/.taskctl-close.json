@@ -1,0 +1,11 @@
+{
+  "change": "tfr-1795357890236562-remote-state-readers-w3b",
+  "evidence_summary": "All five execution steps are done. Protected-main ci run 45410025050 passed at f9d6a5139, which holds the state readers and the stable pulled-state bytes fix. Requirement evidence is test-based: pull, fail-closed, manifest binding and CI orchestration tests.",
+  "execution_sha256": "49504eef0e7ce11c663d3873e13e4d4de2295d6afdb15349aa08bd6cf7218ded",
+  "issue_sha256": "b57f91a1b732c9cb5cdad113174ab832d8391b88ab5e81c4945141d6b4b2e197",
+  "outcome": "done",
+  "prepared_at": "2026-11-24T14:47:40Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "TFR-1795357890236562"
+}
