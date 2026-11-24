@@ -46,7 +46,7 @@ Each step is a live action that needs the operator's authorization:
 1. Create the seven environments with a deployment branch policy of `main` only. Confirm that the `operator-merge-gate` ruleset is active.
 2. Generate the CI age identity and the CI SSH key in one `ci-bootstrap` run, so that the private halves exist only as environment secrets. The operator creates a fine-grained token limited to the ops repository with environment write access and the shortest expiry, stores it as `CI_BOOTSTRAP_TOKEN` in `ci-bootstrap`, and revokes it and deletes the secret after the run. The run refuses to replace an existing identity secret. Commit the public recipient to the ops `.sops.yaml` and the public key to the tfvars `admin_ssh_public_keys` lists and the inventory variables.
 3. Run `sops updatekeys` over every `config/*.secrets.sops.yaml`, then dry-run and deploy `baseline` so that every node accepts both admin keys.
-4. Import the live Tailnet policy byte for byte into `tailnet/policy.hujson`, then add `tag:ci-tofu` and `tag:ci-deploy` with their `tagOwners` and grants.
+4. Import the live Tailnet policy byte for byte into `tailnet/policy.hujson`, then add `tag:ci-tofu` and `tag:ci-deploy` with their `tagOwners` and grants. Create a Tailscale OAuth client with only the policy-file write scope, store its ID and secret as `TS_POLICY_OAUTH_CLIENT_ID` and `TS_POLICY_OAUTH_SECRET` in `tailnet-policy`, and merge the `tailnet-policy` workflow. Each later push to `main` that changes the file runs the policy tests and then applies the file.
 5. Issue the provider tokens and record a catalog entry for each environment secret. Then run the validator on the ops repository.
 
 ## Revocation
