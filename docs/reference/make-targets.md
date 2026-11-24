@@ -106,6 +106,7 @@ Variables (override on command line):
   deonboard-disposable-liveness …  Remove the exact assignment after guarded provider absence
   retire-unbound-staging-client …  Remove one unbound issued staging identity after verified absence
   retire-unbound-staging-executor  Remove its never-bound prepared executor after client retirement
+  retire-expired-disposable-liveness EXECUTOR_MANIFEST=… EXECUTOR_RECEIPT=…  Remove an expired executor that was never assigned
   watch-spare                Cron: probe blue, push OTP-gated promote alert
   promote-spare OTP=…        Consume OTP and swing traffic to GREEN_ENV
 

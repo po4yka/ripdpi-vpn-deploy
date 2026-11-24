@@ -699,39 +699,54 @@ def retire_prepared_executor(
     manifest_path: Path,
     output_path: Path,
     *,
-    client_receipt_sha256: str,
+    client_receipt_sha256: str | None,
     home: Path,
     runner: Command,
     preflight: Callable[[], None],
+    now: int | None = None,
 ) -> dict[str, Any]:
-    """Internal removal primitive after verified unbound-client retirement."""
+    """Internal removal primitive for a prepared executor that was never assigned.
+
+    Authority is either a verified unbound-client retirement receipt, or, with
+    no receipt, the manifest's expiry: an expired manifest can never be bound.
+    """
     if os.environ.get("BUILD_GATE_HELD") != "1":
         raise ExecutorError("build-gate-required")
-    if not HEX64.fullmatch(client_receipt_sha256):
+    if client_receipt_sha256 is None:
+        if type(now) is not int:
+            raise ExecutorError("executor-retirement")
+    elif not HEX64.fullmatch(client_receipt_sha256):
         raise ExecutorError("executor-retirement")
     output_path = output_path.absolute()
     _private_parent(output_path.parent)
     if output_path == manifest_path.absolute():
         raise ExecutorError("executor-retirement")
     with _profile_lease(manifest_path, home) as (record_path, manifest, payload):
+        if client_receipt_sha256 is None and now < manifest["expires_at"]:
+            raise ExecutorError("executor-not-expired")
         profile = manifest["profile"]
         profile_path = home / ".colima" / profile
+        authority = (
+            {"client_receipt_sha256": client_receipt_sha256}
+            if client_receipt_sha256 is not None
+            else {}
+        )
         request = {
             "schema_version": 1,
             "state": "retiring",
             "executor_id": manifest["executor_id"],
             "executor_manifest_sha256": hashlib.sha256(payload).hexdigest(),
-            "client_receipt_sha256": client_receipt_sha256,
+            **authority,
             "output_path": str(output_path),
         }
         result = {
             "schema_version": 1,
-            "status": "retired-prepared",
+            "status": "retired-prepared" if authority else "retired-expired",
             "executor_id_sha256": hashlib.sha256(
                 manifest["executor_id"].encode("ascii")
             ).hexdigest(),
             "executor_manifest_sha256": request["executor_manifest_sha256"],
-            "client_receipt_sha256": client_receipt_sha256,
+            **authority,
         }
         existing = _profile_record(output_path)
         if existing is not None and existing != result:
@@ -1467,6 +1482,9 @@ def main() -> int:
         remove.add_argument("--" + name, required=True, type=Path)
     remove.add_argument("--bound-cleanup-manifest", type=Path)
     remove.add_argument("--reissued-cleanup-manifest", type=Path)
+    expired = subparsers.add_parser("retire-expired")
+    expired.add_argument("--manifest", required=True, type=Path)
+    expired.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     now = int(time.time())
     try:
@@ -1484,6 +1502,31 @@ def main() -> int:
             result = verify_report_binding(
                 args.binding, args.manifest, args.config, report
             )
+        elif args.command == "retire-expired":
+            result = retire_prepared_executor(
+                args.manifest,
+                args.output,
+                client_receipt_sha256=None,
+                home=Path.home(),
+                runner=_run_command,
+                preflight=lambda: None,
+                now=now,
+            )
+            if result["changed"]:
+                try:
+                    _run_command(
+                        (
+                            str(REPO / "scripts/audit-log.sh"),
+                            "append-best-effort",
+                            "--action",
+                            "retire-expired-disposable-liveness",
+                            "--note",
+                            "executor-retired",
+                        ),
+                        timeout=30,
+                    )
+                except ExecutorError:
+                    print("disposable-liveness-executor: audit-unavailable", file=sys.stderr)
         else:
             if os.environ.get("BUILD_GATE_HELD") != "1":
                 raise ExecutorError("build-gate-required")
@@ -1514,6 +1557,8 @@ def main() -> int:
             }
         elif args.command == "verify-binding":
             public = {"schema_version": 1, "status": "verified", **result}
+        elif args.command == "retire-expired":
+            public = result
         else:
             public = {
                 key: result[key]
