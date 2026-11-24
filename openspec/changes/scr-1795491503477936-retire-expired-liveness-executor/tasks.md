@@ -12,7 +12,7 @@
 
 - [x] SCR-1795491794457312 Add the expired-executor retirement verb and Make goal #feature @item:SCR-1795491503477936
 - [x] SCR-1795491812861576 Document expired-executor retirement in the protocol liveness reference #feature @item:SCR-1795491503477936
-- [ ] SCR-1795491829921909 Retire the leftover staging executors with the new goal #feature @item:SCR-1795491503477936
+- [x] SCR-1795491829921909 Retire the leftover staging executors with the new goal #feature @item:SCR-1795491503477936
 
 ## Verification
 
