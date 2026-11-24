@@ -2,7 +2,7 @@
 id: SCR-1795491503477936
 title: Retire an expired never-assigned disposable liveness executor
 kind: feature
-status: review
+status: done
 area: scripts
 priority: medium
 risk: high
@@ -15,6 +15,9 @@ created: 2026-11-24
 updated: 2026-11-24
 related_tasks: []
 status_detail: All three execution steps are done; protected-main CI passed at f9d6a5139 and both leftover executors are retired
+closed_at: "2026-11-24T15:19:48Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: All three execution steps are done. Protected-main ci run 45410025050 passed at f9d6a5139. make retire-expired-disposable-liveness retired both leftover staging executors (status retired-expired, receipts in the private kit config); colima list shows no liveness profile.
 ---
 
 ## Goal
