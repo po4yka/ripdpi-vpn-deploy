@@ -9,7 +9,7 @@ remote_ci_evidence: null
 dry_run: not_applicable
 dry_run_evidence: The change touches only the operator-side disposable executor provisioning; no deployed runtime changes.
 staging: required
-staging_evidence: null
+staging_evidence: "Partial, 2026-11-23/24: make provision-disposable-liveness-runtime with STAGING_TRUST_ANCHOR set to the generated certificate of the disposable node vpn-ci-staging-acc4 installed it on two real Colima executors (arm64) and reported its SHA-256 fingerprint and the pinned runtime versions. No deploy reached the onboarding proof: every deploy stopped earlier during the first WARP install (nine first-install defects, fixed in PRs 694, 701, 704, 705, 710, 711, 712, 713 and 714). Verified-TLS four-profile acceptance through the anchor is therefore not done. The node was destroyed with verified provider absence, and the executor that the intent named was retired through the unbound path."
 live: not_applicable
 live_evidence: The disposable executor is deleted at de-onboarding. The `useSystemCA` profile field reaches a fleet sentinel only when its profile is next installed; fleet system stores carry the public CAs that issue production certificates, and no production node changes.
 client: not_applicable
