@@ -575,13 +575,15 @@ endif
 
 # Disposable liveness lifecycle inputs are controller data, not Make syntax.
 # Capture them before trusted includes and eager source-identity assignments.
-_DISPOSABLE_LIVENESS_GOALS := prepare-disposable-liveness provision-disposable-liveness-runtime install-disposable-liveness-sentinel protocol-liveness-disposable deonboard-disposable-liveness
+_DISPOSABLE_LIVENESS_GOALS := prepare-disposable-liveness provision-disposable-liveness-runtime install-disposable-liveness-sentinel protocol-liveness-disposable deonboard-disposable-liveness retire-expired-disposable-liveness
 ifneq ($(filter $(_DISPOSABLE_LIVENESS_GOALS),$(MAKECMDGOALS)),)
 ifneq ($(words $(MAKECMDGOALS)),1)
 $(error disposable liveness requires exactly one Make goal)
 endif
 ifneq ($(filter prepare-disposable-liveness,$(MAKECMDGOALS)),)
 _DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES := EXECUTOR_PROFILE EXECUTOR_MANIFEST
+else ifneq ($(filter retire-expired-disposable-liveness,$(MAKECMDGOALS)),)
+_DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES := EXECUTOR_MANIFEST EXECUTOR_RECEIPT
 else ifneq ($(filter provision-disposable-liveness-runtime,$(MAKECMDGOALS)),)
 _DISPOSABLE_LIVENESS_ALLOWED_COMMAND_VARIABLES := EXECUTOR_MANIFEST RUNTIME_WORK_DIR STAGING_TRUST_ANCHOR
 else ifneq ($(filter install-disposable-liveness-sentinel,$(MAKECMDGOALS)),)
@@ -599,8 +601,9 @@ _DISPOSABLE_LIVENESS_FORBIDDEN_COMMAND_VARIABLES := $(filter-out $(_DISPOSABLE_L
 ifneq ($(strip $(_DISPOSABLE_LIVENESS_FORBIDDEN_COMMAND_VARIABLES)),)
 $(error disposable liveness accepts only its documented command-line fields)
 endif
-_DISPOSABLE_LIVENESS_LITERAL_INPUTS := $(value EXECUTOR_PROFILE)$(value EXECUTOR_MANIFEST)$(value EXECUTOR_BINDING)$(value STAGING_CLEANUP_MANIFEST)$(value STAGING_POST_DESTROY_EVIDENCE)$(value DEONBOARD_EVIDENCE)$(value LIVENESS_CONFIG)$(value LIVENESS_SENTINEL_REGISTRY)$(value SENTINEL)$(value CLIENT)$(value SOPS_FILE)$(value HOSTS)$(value COHORTS)$(value ENV)$(value PROVIDER)$(value HOME)$(value DEPLOY_SOURCE_REVISION)$(value DEPLOYABLE_SOURCE_DIGEST)$(value RUNTIME_WORK_DIR)$(value STAGING_TRUST_ANCHOR)
+_DISPOSABLE_LIVENESS_LITERAL_INPUTS := $(value EXECUTOR_PROFILE)$(value EXECUTOR_MANIFEST)$(value EXECUTOR_BINDING)$(value STAGING_CLEANUP_MANIFEST)$(value STAGING_POST_DESTROY_EVIDENCE)$(value DEONBOARD_EVIDENCE)$(value LIVENESS_CONFIG)$(value LIVENESS_SENTINEL_REGISTRY)$(value SENTINEL)$(value CLIENT)$(value SOPS_FILE)$(value HOSTS)$(value COHORTS)$(value ENV)$(value PROVIDER)$(value HOME)$(value DEPLOY_SOURCE_REVISION)$(value DEPLOYABLE_SOURCE_DIGEST)$(value RUNTIME_WORK_DIR)$(value STAGING_TRUST_ANCHOR)$(value EXECUTOR_RECEIPT)
 override EXECUTOR_PROFILE := $(value EXECUTOR_PROFILE)
+override EXECUTOR_RECEIPT := $(value EXECUTOR_RECEIPT)
 override EXECUTOR_MANIFEST := $(value EXECUTOR_MANIFEST)
 override RUNTIME_WORK_DIR := $(value RUNTIME_WORK_DIR)
 override STAGING_TRUST_ANCHOR := $(value STAGING_TRUST_ANCHOR)
@@ -819,7 +822,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         test-tls-policing probe-payload-throttle fleet-status drift-since-tag fleet-rotate \
         snell-refinement \
         protocol-liveness monitor-protocol-liveness install-liveness-sentinel \
-        prepare-disposable-liveness provision-disposable-liveness-runtime install-disposable-liveness-sentinel protocol-liveness-disposable deonboard-disposable-liveness \
+        prepare-disposable-liveness provision-disposable-liveness-runtime install-disposable-liveness-sentinel protocol-liveness-disposable deonboard-disposable-liveness retire-expired-disposable-liveness \
         watch-spare promote-spare probing-summary xray-diagnostics tspu-canary \
         emit-sbom molecule-full-stack audit-log audit-log-append pyinfra-audit \
         setup-yubikey check-killswitch install-operator-crons \
@@ -931,6 +934,7 @@ help:
 	@echo "  deonboard-disposable-liveness …  Remove the exact assignment after guarded provider absence"
 	@echo "  retire-unbound-staging-client …  Remove one unbound issued staging identity after verified absence"
 	@echo "  retire-unbound-staging-executor  Remove its never-bound prepared executor after client retirement"
+	@echo "  retire-expired-disposable-liveness EXECUTOR_MANIFEST=… EXECUTOR_RECEIPT=…  Remove an expired executor that was never assigned"
 	@echo "  watch-spare                Cron: probe blue, push OTP-gated promote alert"
 	@echo "  promote-spare OTP=…        Consume OTP and swing traffic to GREEN_ENV"
 	@echo ""
@@ -2017,7 +2021,7 @@ install-liveness-sentinel:
 	  ./scripts/install-liveness-sentinel.sh --config "$(LIVENESS_CONFIG)" --sentinel "$(SENTINEL)" --client "$(CLIENT)" --awg-private-key-stdin
 
 ifneq ($(filter $(_DISPOSABLE_LIVENESS_GOALS),$(MAKECMDGOALS)),)
-export EXECUTOR_PROFILE EXECUTOR_MANIFEST RUNTIME_WORK_DIR STAGING_TRUST_ANCHOR EXECUTOR_BINDING STAGING_CLEANUP_MANIFEST STAGING_POST_DESTROY_EVIDENCE DEONBOARD_EVIDENCE LIVENESS_CONFIG LIVENESS_SENTINEL_REGISTRY SENTINEL CLIENT SOPS_FILE
+export EXECUTOR_PROFILE EXECUTOR_MANIFEST EXECUTOR_RECEIPT RUNTIME_WORK_DIR STAGING_TRUST_ANCHOR EXECUTOR_BINDING STAGING_CLEANUP_MANIFEST STAGING_POST_DESTROY_EVIDENCE DEONBOARD_EVIDENCE LIVENESS_CONFIG LIVENESS_SENTINEL_REGISTRY SENTINEL CLIENT SOPS_FILE
 unexport HOSTS COHORTS SOPS_FILES ANSIBLE_LIMIT ANSIBLE_EXTRA_VARS_FILE DESTROY_ARGS
 endif
 
@@ -2071,6 +2075,12 @@ deonboard-disposable-liveness:
 	  $(if $(BOUND_CLEANUP_MANIFEST),--bound-cleanup-manifest "$(BOUND_CLEANUP_MANIFEST)") \
 	  $(if $(REISSUED_CLEANUP_MANIFEST),--reissued-cleanup-manifest "$(REISSUED_CLEANUP_MANIFEST)") \
 	  --output "$${DEONBOARD_EVIDENCE}"
+
+retire-expired-disposable-liveness:
+	@test -n "$${EXECUTOR_MANIFEST}" -a -n "$${EXECUTOR_RECEIPT}" || { echo "usage: make retire-expired-disposable-liveness EXECUTOR_MANIFEST=… EXECUTOR_RECEIPT=…"; exit 1; }
+	@build-gate -- python3 ./scripts/disposable_liveness_executor.py retire-expired \
+	  --manifest "$${EXECUTOR_MANIFEST}" \
+	  --output "$${EXECUTOR_RECEIPT}"
 
 .PHONY: retire-unbound-staging-client
 retire-unbound-staging-client:

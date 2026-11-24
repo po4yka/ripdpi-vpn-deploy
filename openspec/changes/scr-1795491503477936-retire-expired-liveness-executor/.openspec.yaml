@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-24
+goal: SCR-1795491503477936 Retire an expired never-assigned disposable liveness
+  executor

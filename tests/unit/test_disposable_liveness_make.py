@@ -17,6 +17,7 @@ GOALS = (
     "install-disposable-liveness-sentinel",
     "protocol-liveness-disposable",
     "deonboard-disposable-liveness",
+    "retire-expired-disposable-liveness",
 )
 GOAL_FIELDS = {
     "prepare-disposable-liveness": {"EXECUTOR_PROFILE", "EXECUTOR_MANIFEST"},
@@ -45,6 +46,7 @@ GOAL_FIELDS = {
         "SOPS_FILE",
         "DEONBOARD_EVIDENCE",
     },
+    "retire-expired-disposable-liveness": {"EXECUTOR_MANIFEST", "EXECUTOR_RECEIPT"},
 }
 
 
@@ -146,6 +148,7 @@ def _fields(tmp_path: Path) -> dict[str, str]:
         "STAGING_CLEANUP_MANIFEST": str(private / "cleanup.json"),
         "STAGING_POST_DESTROY_EVIDENCE": str(private / "absence.json"),
         "DEONBOARD_EVIDENCE": str(private / "deonboard.json"),
+        "EXECUTOR_RECEIPT": str(private / "executor-retired.json"),
         "LIVENESS_CONFIG": str(private / "liveness.yaml"),
         "LIVENESS_SENTINEL_REGISTRY": str(private / "registry.json"),
         "SENTINEL": "disposable-consumer",
@@ -427,6 +430,25 @@ def test_deonboard_is_gated_and_requires_exact_provider_absence(tmp_path: Path) 
     assert record["build_gate_held"] == "1"
     assert (tmp_path / "gate.log").read_text() == "called\n"
     assert not (tmp_path / "git-spy.log").exists()
+
+
+def test_retire_expired_is_gated_and_passes_only_manifest_and_receipt(tmp_path: Path) -> None:
+    root, env = _workspace(tmp_path)
+    fields = _fields(tmp_path)
+
+    result = _run(root, env, "retire-expired-disposable-liveness", fields)
+
+    assert result.returncode == 0, result.stderr
+    record = _record(tmp_path)
+    assert record["argv"] == [
+        "retire-expired",
+        "--manifest",
+        fields["EXECUTOR_MANIFEST"],
+        "--output",
+        fields["EXECUTOR_RECEIPT"],
+    ]
+    assert record["build_gate_held"] == "1"
+    assert (tmp_path / "gate.log").read_text() == "called\n"
 
 
 def test_makefile_declares_every_disposable_goal_phony() -> None:

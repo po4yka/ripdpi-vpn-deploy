@@ -842,3 +842,124 @@ def test_deonboard_removes_only_exact_bound_local_executor_after_absence(setup, 
         )
         == result
     )
+
+
+def _retire_expired(module, home, runner, manifest, receipt, now):
+    return module.retire_prepared_executor(
+        manifest,
+        receipt,
+        client_receipt_sha256=None,
+        home=home,
+        runner=runner,
+        preflight=lambda: None,
+        now=now,
+    )
+
+
+def _vm_mutations(runner, since=0):
+    return [
+        call for call in runner.calls[since:] if call[:2] in (("colima", "stop"), ("colima", "delete"))
+    ]
+
+
+def test_expired_unassigned_executor_retires_only_after_expiry(setup):
+    module, home, evidence, runner = setup
+    manifest = evidence / "executor.json"
+    receipt = evidence / "executor-retired.json"
+    module.prepare_executor(
+        profile="vpn-liveness-one-shot",
+        manifest_path=manifest,
+        home=home,
+        now=1_700_000_000,
+        expires_at=1_700_003_600,
+        runner=runner,
+    )
+
+    with pytest.raises(module.ExecutorError, match="executor-not-expired"):
+        _retire_expired(module, home, runner, manifest, receipt, 1_700_003_599)
+    assert _vm_mutations(runner) == []
+    assert not receipt.exists()
+
+    result = _retire_expired(module, home, runner, manifest, receipt, 1_700_003_600)
+
+    assert result["status"] == "retired-expired"
+    assert result["changed"] is True
+    assert "client_receipt_sha256" not in result
+    assert result["executor_manifest_sha256"] == hashlib.sha256(manifest.read_bytes()).hexdigest()
+    assert not (home / ".colima/vpn-liveness-one-shot").exists()
+    assert runner.context == "default"
+    assert json.loads(receipt.read_bytes()) == {k: v for k, v in result.items() if k != "changed"}
+    assert receipt.stat().st_mode & 0o777 == 0o600
+    repeated = _retire_expired(module, home, runner, manifest, receipt, 1_700_003_601)
+    assert repeated == {**result, "changed": False}
+    assert _vm_mutations(runner) == [
+        ("colima", "stop", "--profile", "vpn-liveness-one-shot"),
+        ("colima", "delete", "--profile", "vpn-liveness-one-shot", "--force", "--data"),
+    ]
+
+
+def test_expired_retirement_resumes_after_an_interrupted_delete(setup):
+    module, home, evidence, runner = setup
+    manifest = evidence / "executor.json"
+    receipt = evidence / "executor-retired.json"
+    module.prepare_executor(
+        profile="vpn-liveness-one-shot",
+        manifest_path=manifest,
+        home=home,
+        now=1_700_000_000,
+        expires_at=1_700_003_600,
+        runner=runner,
+    )
+    runner.delete_fail_once = True
+    with pytest.raises(RuntimeError, match="delete failure"):
+        _retire_expired(module, home, runner, manifest, receipt, 1_700_003_600)
+    assert runner.profile_status == "Stopped"
+    assert not receipt.exists()
+
+    resumed = _retire_expired(module, home, runner, manifest, receipt, 1_700_003_700)
+
+    assert resumed["status"] == "retired-expired"
+    assert resumed["changed"] is True
+    assert not (home / ".colima/vpn-liveness-one-shot").exists()
+
+
+def test_expired_retirement_refuses_an_assigned_executor_before_vm_mutation(setup):
+    module, home, evidence, runner = setup
+    manifest = evidence / "executor.json"
+    config = evidence / "liveness.yaml"
+    cleanup = evidence / "cleanup-manifest.json"
+    config.write_text("schema_version: 2\nsentinels:\n  - id: probe-a\n")
+    config.chmod(0o600)
+    cleanup.write_text('{"schema_version":2}\n')
+    cleanup.chmod(0o600)
+    module.prepare_executor(
+        profile="vpn-liveness-one-shot",
+        manifest_path=manifest,
+        home=home,
+        now=1_700_000_000,
+        expires_at=1_700_003_600,
+        runner=runner,
+    )
+    generation, provenance, target = _identity()
+    module.bind_executor(
+        manifest,
+        evidence / "binding.json",
+        config,
+        cleanup,
+        sentinel="probe-a",
+        client="liveness-a",
+        generation_id=generation,
+        provenance=provenance,
+        target_identity=target,
+        home=home,
+        now=1_700_000_001,
+        runner=runner,
+    )
+    before = len(runner.calls)
+
+    with pytest.raises(module.ExecutorError, match="executor-claimed"):
+        _retire_expired(module, home, runner, manifest, evidence / "executor-retired.json", 1_700_003_600)
+
+    assert _vm_mutations(runner, before) == []
+    assert (home / ".colima/vpn-liveness-one-shot").exists()
+    assert not (evidence / "executor-retired.json").exists()
