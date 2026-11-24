@@ -2,7 +2,7 @@
 id: TFR-1795328481774241
 title: Move OpenTofu state to an encrypted, locked object storage backend
 kind: feature
-status: doing
+status: review
 area: terraform
 priority: high
 risk: high
@@ -12,8 +12,9 @@ blocked_by: [TFR-1795328347526492]
 spec_mode: required
 openspec_change: tfr-1795328481774241-encrypted-remote-state-w3
 created: 2026-11-22
-updated: 2026-11-22
+updated: 2026-11-24
 related_tasks: []
+status_detail: All execution steps are done. The owner removed the extended lock probe storage run and the full W2 production acceptance as closure requirements on 2026-11-24
 ---
 
 ## Goal
