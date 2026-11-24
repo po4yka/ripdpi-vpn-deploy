@@ -1,14 +1,14 @@
 ---
 task_id: SCR-1795491503477936
 change: scr-1795491503477936-retire-expired-liveness-executor
-commit_sha: null
+commit_sha: f9d6a5139500016f895d25e4eececafb298df40a
 local: passed
 local_evidence: "2026-11-24 working tree on f5646b742: `python3 -m pytest tests/unit/test_disposable_liveness_executor.py tests/unit/test_disposable_liveness_make.py tests/unit/test_retire_unbound_staging_client.py` 217 passed, exit 0 (new: expiry refusal and retirement with receipt and idempotent repeat, resume after an interrupted delete, assigned-executor refusal, Make wiring; the parametrized Make boundary tests now cover the new goal); `make docs-check` passed, exit 0, after `make docs-reference`. An independent review found no blocker; its audit-record finding is fixed (the command appends a best-effort audit record like `deonboard`)."
-remote_ci: required
-remote_ci_evidence: null
+remote_ci: passed
+remote_ci_evidence: "po4yka/ripdpi-vpn-deploy ci run 45410025050 on main at f9d6a5139: completed with success, every job passed. That revision holds the retirement verb, its Make goal and the recorded staging evidence."
 dry_run: not_applicable
 dry_run_evidence: The change touches only operator-side executor cleanup; no deployed runtime changes.
-staging: required
+staging: passed
 staging_evidence: "2026-11-24 at db0de21b3: `make retire-expired-disposable-liveness` retired the expired leftover executor of the acc3 staging run (status retired-expired, changed true). The leftover executor of the acc4 run first refused with executor-not-expired, as designed, before its manifest expired at 08:43Z; the same command after expiry retired it (exit 0, status retired-expired, changed true, receipt beside its manifest in the run's private kit config). `colima list` shows no liveness profile."
 live: not_applicable
 live_evidence: Operator machine only; no production node changes.
