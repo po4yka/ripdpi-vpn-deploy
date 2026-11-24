@@ -20,7 +20,7 @@ import yaml
 from liveness_profiles import build_profiles
 
 ROOT = Path(__file__).resolve().parents[2]
-pytestmark = pytest.mark.native_runtime
+pytestmark = [pytest.mark.native_runtime, pytest.mark.usefixtures("stub_tofu_backend")]
 spec = importlib.util.spec_from_file_location(
     "xhttp_owned_native_fixture", ROOT / "tests/integration/transport_destination_boundary/fixture.py")
 fixture = importlib.util.module_from_spec(spec)
