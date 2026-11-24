@@ -9,7 +9,7 @@ remote_ci_evidence: null
 dry_run: not_applicable
 dry_run_evidence: The change touches only operator-side executor cleanup; no deployed runtime changes.
 staging: required
-staging_evidence: "Partial, 2026-11-24 at db0de21b3: `make retire-expired-disposable-liveness` retired the expired leftover executor of the acc3 staging run (status retired-expired, changed true); `colima list` no longer shows it. The leftover executor of the acc4 run refused with executor-not-expired, as designed, because its manifest expires at 08:43Z; it is retired after that time."
+staging_evidence: "2026-11-24 at db0de21b3: `make retire-expired-disposable-liveness` retired the expired leftover executor of the acc3 staging run (status retired-expired, changed true). The leftover executor of the acc4 run first refused with executor-not-expired, as designed, before its manifest expired at 08:43Z; the same command after expiry retired it (exit 0, status retired-expired, changed true, receipt beside its manifest in the run's private kit config). `colima list` shows no liveness profile."
 live: not_applicable
 live_evidence: Operator machine only; no production node changes.
 client: not_applicable
