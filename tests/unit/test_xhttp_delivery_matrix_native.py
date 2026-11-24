@@ -12,7 +12,7 @@ import pytest
 
 from test_xhttp_endpoint_contract_native import fixture, exported_outbound, publish
 
-pytestmark = pytest.mark.native_runtime
+pytestmark = [pytest.mark.native_runtime, pytest.mark.usefixtures("stub_tofu_backend")]
 
 
 @pytest.mark.parametrize("mode,tuned", [("auto", False), ("packet-up", False), ("stream-up", False), ("stream-up", True)])
