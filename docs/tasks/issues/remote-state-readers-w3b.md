@@ -2,7 +2,7 @@
 id: TFR-1795357890236562
 title: Read OpenTofu state through the encrypted backend in every script
 kind: feature
-status: review
+status: done
 area: terraform
 priority: high
 risk: high
@@ -12,8 +12,11 @@ blocked_by: [TFR-1795328481774241]
 spec_mode: required
 openspec_change: tfr-1795357890236562-remote-state-readers-w3b
 created: 2026-11-22
-updated: 2026-11-22
+updated: 2026-11-24
 related_tasks: []
+closed_at: "2026-11-24T14:47:40Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "All five execution steps are done. Protected-main ci run 45410025050 passed at f9d6a5139, which holds the state readers and the stable pulled-state bytes fix. Requirement evidence is test-based: pull, fail-closed, manifest binding and CI orchestration tests."
 ---
 
 ## Goal
