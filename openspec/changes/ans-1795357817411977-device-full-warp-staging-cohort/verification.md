@@ -9,7 +9,7 @@ remote_ci_evidence: null
 dry_run: not_applicable
 dry_run_evidence: A new staging-only cohort; no production node uses it.
 staging: required
-staging_evidence: null
+staging_evidence: "Partial, 2026-11-23/24: one disposable UpCloud node vpn-ci-staging-acc4 (Debian 13, this cohort) was provisioned, Tailnet-enrolled and ownership-migrated; its dry-runs passed. Successive deploys found nine first-install defects in the WARP path and its Debian 13 prerequisites, fixed in PRs 694, 701, 704, 705, 710, 711, 712, 713 and 714. After the namespace-handle and terms-of-service fixes, a WARP registration was created once on the node inside the role-owned namespace, and the node was returned to its accepted state (vendor masked, no namespace). The operator executor's six-hour window ran out before a deploy at the final revision, so no deploy completed. Not done: a successful deploy of this cohort, the WARP namespace refresh, the reboot check and the four-profile proof. The node was destroyed through make staging-destroy with verified provider absence; its client and executor were retired, and its Tailnet device and key were deleted."
 live: not_applicable
 live_evidence: Staging-only cohort; production profiles are unchanged.
 client: not_applicable
