@@ -1,11 +1,11 @@
 ---
 task_id: TFR-1795328481774241
 change: tfr-1795328481774241-encrypted-remote-state-w3
-commit_sha: null
-local: required
+commit_sha: f9d6a5139500016f895d25e4eececafb298df40a
+local: passed
 local_evidence: "make -k check -j 4: every target passed except task-check (stale board, regenerated, then pass) and three load-timing pytest failures that pass rerun alone; after review fixes, the state, cron and docs tests (136) and make docs-check pass"
-remote_ci: required
-remote_ci_evidence: null
+remote_ci: passed
+remote_ci_evidence: "po4yka/ripdpi-vpn-deploy ci run 45410025050 on main at f9d6a5139: completed with success, every job passed. That revision holds the state backend, its recovery fixes and the stable pulled-state bytes fix."
 dry_run: not_applicable
 dry_run_evidence: No Ansible input changes.
 staging: not_applicable
