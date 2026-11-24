@@ -39,7 +39,7 @@ See `proposal.md`. The public repository already gates credentialed CI with the 
 }
 ```
 
-  The node tag name and SSH port are taken from the current policy during implementation. The policy file moves into the ops repository (`tailnet/policy.hujson`) and `tailscale/gitops-acl-action`, pinned by SHA, tests it on PRs and applies it on merge in `tailnet-policy`. The first push must be a byte-equivalent import of the live policy (the action's test mode against the live tailnet).
+  The node tag name and SSH port are taken from the current policy during implementation. The policy file moves into the ops repository (`tailnet/policy.hujson`) and `tailscale/gitops-acl-action`, pinned by SHA, tests and then applies it in `tailnet-policy` after a push to the default branch. Pull requests do not run it: the policy credential exists only in that mutating environment, and its tests run against the live tailnet before the apply. The first push must be a byte-equivalent import of the live policy (the action's test mode against the live tailnet).
 - Provider tokens (least privilege, recorded in the catalog):
 
 | Provider | Plan token | Apply token |
