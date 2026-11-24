@@ -2,6 +2,6 @@
 7eae9f6bc9ce5ecaf4f059a60bda88fe9b3884c3:tests/unit/test_reality_self_steal.py:wireguard-private-key:80
 
 # The expiry fixture reuses the public synthetic golden-full values.
-e917cf5be4ab14dc7f12fd749e7cd9195ca650cd:contract/ripdpi-bundle.health-expired.json:wireguard-preshared-key:104
-e917cf5be4ab14dc7f12fd749e7cd9195ca650cd:contract/ripdpi-bundle.health-expired.json:reality-short-id:35
-e917cf5be4ab14dc7f12fd749e7cd9195ca650cd:contract/ripdpi-bundle.health-expired.json:xray-client-uuid:27
+c97e86c0eef6b01859a1817fec85e5354d7cdfb9:contract/ripdpi-bundle.health-expired.json:wireguard-preshared-key:104
+c97e86c0eef6b01859a1817fec85e5354d7cdfb9:contract/ripdpi-bundle.health-expired.json:reality-short-id:35
+c97e86c0eef6b01859a1817fec85e5354d7cdfb9:contract/ripdpi-bundle.health-expired.json:xray-client-uuid:27
