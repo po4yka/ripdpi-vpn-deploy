@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-11-24
+goal: TST-1795530459812389 Evaluate owned-endpoint HTTP tunnel integration

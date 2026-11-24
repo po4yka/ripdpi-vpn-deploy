@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-11-24
+goal: TST-1795530650798260 Qualify session-mediated relay fallback before admission
