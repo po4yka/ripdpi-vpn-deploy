@@ -8,6 +8,9 @@ WARP claims 10.250.254.2. Xray allocates each relay port per association.
 Kernel policy admits only the normalizer UID and reserved source pool to
 that exact address and interface; gateway replies require conntrack reply
 direction. Foreign UDP owners on the claimed address refuse activation.
+The vendor daemon shares the namespace address, so the namespace check admits
+one shape only: a root-owned UDP socket connected to a peer other than the
+host side of the link, which cannot receive normalizer datagrams.
 The normalizer retains its control socket and recipient destination guards.
 
 Runtime probes use the watchdog secret's canary URL and expected HTTP status. The default status is 204 when no value is supplied.

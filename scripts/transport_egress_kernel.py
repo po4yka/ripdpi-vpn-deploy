@@ -383,6 +383,16 @@ def admit_links(raw, namespace=False):
     return {link['ifname'].split('@')[0]: link['ifindex'] for link in links}
 
 
+def connected_elsewhere(endpoint, excluded):
+    """Whether an ss peer field names a specific address and port other than the excluded address."""
+    try:
+        address, port = endpoint.rsplit(':', 1)
+        peer = normalize_address(address.strip('[]'))
+        return int(port) > 0 and not peer.is_unspecified and str(peer) != excluded
+    except ValueError:
+        return False
+
+
 def admit_owners(raw, namespace=False):
     expected = []
     relay = raw['backends']['warp' if namespace else 'direct']
@@ -417,7 +427,10 @@ def admit_owners(raw, namespace=False):
             # ss can report wildcard endpoints; port ownership still applies below.
             pass
         if fields[0] == 'udp' and address == relay['address'] and actual != relay_uid:
-            raise BoundaryError('foreign-relay-owner')
+            # The vendor daemon shares the namespace address. Its root-owned connected underlay
+            # socket receives only from its own peer, never from the normalizer on the host link.
+            if not (namespace and actual == 0 and connected_elsewhere(fields[5], raw['warp']['host_address'])):
+                raise BoundaryError('foreign-relay-owner')
         for low, high, uid in expected:
             if low <= port <= high:
                 if actual != uid:
