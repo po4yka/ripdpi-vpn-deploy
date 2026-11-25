@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-25
+goal: SCR-1795584057908911 Admit the WARP daemon tunnel socket in the namespace
+  relay-owner check

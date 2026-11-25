@@ -251,6 +251,34 @@ def test_dynamic_relay_address_has_one_socket_owner(monkeypatch, namespace, addr
             kernel.admit_owners(policy, namespace)
 
 
+@pytest.mark.parametrize('record', [
+    'udp ESTAB 0 0 10.250.254.2:45678 203.0.113.9:2408 ino:123 sk:1 <->',
+    'udp ESTAB 0 0 10.250.254.2:45678 203.0.113.9:2408 uid:0 ino:123 sk:1 <->',
+    'udp ESTAB 0 0 [::ffff:10.250.254.2]:45678 [::ffff:203.0.113.9]:443 ino:123 sk:1 <->',
+])
+def test_namespace_admits_the_root_vendor_socket_connected_away_from_the_host_link(monkeypatch, record):
+    monkeypatch.setattr(kernel, 'command', lambda *_: record + '\n')
+    kernel.admit_owners(build(context(True))['policy'], True)
+
+
+@pytest.mark.parametrize('namespace,record,category', [
+    (True, 'udp ESTAB 0 0 10.250.254.2:45678 203.0.113.9:2408 uid:77 ino:123', 'foreign-relay-owner'),
+    (True, 'udp ESTAB 0 0 10.250.254.2:45678 10.250.254.1:18000 ino:123', 'foreign-relay-owner'),
+    (True, 'udp ESTAB 0 0 10.250.254.2:45678 [::ffff:10.250.254.1]:18000 ino:123', 'foreign-relay-owner'),
+    (True, 'udp UNCONN 0 0 10.250.254.2:45678 *:* ino:123', 'foreign-relay-owner'),
+    (True, 'udp ESTAB 0 0 10.250.254.2:45678 0.0.0.0:2408 ino:123', 'foreign-relay-owner'),
+    (True, 'udp ESTAB 0 0 10.250.254.2:45678 203.0.113.9:* ino:123', 'foreign-relay-owner'),
+    (True, 'udp ESTAB 0 0 10.250.254.2:45678 203.0.113.9:0 ino:123', 'foreign-relay-owner'),
+    (True, 'udp ESTAB 0 0 10.250.254.2:45678 unreadable ino:123', 'foreign-relay-owner'),
+    (True, 'udp ESTAB 0 0 10.250.254.2:12091 203.0.113.9:2408 ino:123', 'foreign-port-owner'),
+    (False, 'udp ESTAB 0 0 127.0.0.55:45678 203.0.113.9:2408 ino:123', 'foreign-relay-owner'),
+])
+def test_vendor_socket_exception_keeps_every_normalizer_reachable_or_foreign_socket_refused(monkeypatch, namespace, record, category):
+    monkeypatch.setattr(kernel, 'command', lambda *_: record + '\n')
+    with pytest.raises(kernel.BoundaryError, match=category):
+        kernel.admit_owners(build(context(True))['policy'], namespace)
+
+
 def test_unclaimed_loopback_udp_socket_remains_outside_relay_authority(monkeypatch):
     monkeypatch.setattr(kernel, 'command', lambda *_: 'udp UNCONN 0 0 127.0.0.1:45678 0.0.0.0:* uid:77 ino:123\n')
     kernel.admit_owners(build(context())['policy'])
