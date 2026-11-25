@@ -24,6 +24,6 @@ artifact_evidence: No release artifact changes.
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-AUDIT-KNOWN-GOOD | OPS-1795093593849458 | `tests/unit/test_known_good.py`; `tests/unit/test_make_strict_gates.py::test_verify_records_a_receipt_only_after_source_drift_passes`, `::test_tag_known_good_requires_every_listed_inventory` | pass |
-| REQ-AUDIT-KNOWN-GOOD | OPS-1795093606367202 | `vpnd/tests/test_deploy_lifecycle.py::test_skip_precheck_and_tag_on_success_flow_into_their_targets`; device lifecycle and migration tests | pass |
-| REQ-AUDIT-KNOWN-GOOD | OPS-1795093619046117 | `bash scripts/drift-since-tag.sh --repo-only` lists only deployable commits; `make docs-check` | pass |
+| REQ-AUDIT-KNOWN-GOOD | OPS-1795093593849458 | `tests/unit/test_known_good.py`; `tests/unit/test_make_strict_gates.py::test_verify_records_a_receipt_only_after_source_drift_passes`, `::test_tag_known_good_requires_every_listed_inventory` | passed |
+| REQ-AUDIT-KNOWN-GOOD | OPS-1795093606367202 | `vpnd/tests/test_deploy_lifecycle.py::test_skip_precheck_and_tag_on_success_flow_into_their_targets`; device lifecycle and migration tests | passed |
+| REQ-AUDIT-KNOWN-GOOD | OPS-1795093619046117 | `bash scripts/drift-since-tag.sh --repo-only` lists only deployable commits; `make docs-check` | passed |
