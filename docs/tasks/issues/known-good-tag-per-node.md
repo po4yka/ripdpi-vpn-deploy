@@ -2,7 +2,7 @@
 id: OPS-1795093095746075
 title: Cut the known-good tag from per-node verification
 kind: bug
-status: review
+status: done
 area: operations
 priority: high
 risk: standard
@@ -14,6 +14,9 @@ openspec_change: ops-1795093095746075-known-good-tag-per-node
 created: 2026-11-19
 updated: 2026-11-25
 related_tasks: []
+closed_at: "2026-11-25T15:04:07Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Per-node receipts and the inventory-scoped tag gate pass locally and in main CI at f9d6a5139; the live two-inventory tag vpn-deploy-known-good-2026-11-25-1406 covers the core fleet and the split-hop pair
 ---
 
 ## Goal

@@ -1,0 +1,11 @@
+{
+  "change": "ops-1795093095746075-known-good-tag-per-node",
+  "evidence_summary": "Per-node receipts and the inventory-scoped tag gate pass locally and in main CI at f9d6a5139; the live two-inventory tag vpn-deploy-known-good-2026-11-25-1406 covers the core fleet and the split-hop pair",
+  "execution_sha256": "f3693da0db833037158e2d06e7e158e27298bbda35906bc185834cdc0c334d33",
+  "issue_sha256": "7eb0bf2b6950a683ebfb4a490e23aa7605cdbe3db2cc1b70c2e38ef4e48a9768",
+  "outcome": "done",
+  "prepared_at": "2026-11-25T15:04:07Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "OPS-1795093095746075"
+}
