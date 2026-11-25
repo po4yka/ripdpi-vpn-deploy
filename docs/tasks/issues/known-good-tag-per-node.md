@@ -2,7 +2,7 @@
 id: OPS-1795093095746075
 title: Cut the known-good tag from per-node verification
 kind: bug
-status: doing
+status: review
 area: operations
 priority: high
 risk: standard
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: ops-1795093095746075-known-good-tag-per-node
 created: 2026-11-19
-updated: 2026-11-19
+updated: 2026-11-25
 related_tasks: []
 ---
 
