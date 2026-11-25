@@ -1,0 +1,11 @@
+{
+  "change": "scr-1795352512092131-disposable-executor-staging-trust-anchor",
+  "evidence_summary": "Anchor install and validation covered by unit tests; ci run 45426312839 on main at d09191ca4 passed; the four-profile proof through the anchor returned passed on the disposable node vpn-ci-staging-acc5 at 60a371e4b",
+  "execution_sha256": "cd91bf27cc5bd97b542197a00c89ecfefda5fc3ce6a61c965816288511f59d71",
+  "issue_sha256": "bcd56fa601b7360d94af8215d3f911f011ce50ca40f4b899d1a3ed49d44b0886",
+  "outcome": "done",
+  "prepared_at": "2026-11-25T05:21:50Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SCR-1795352512092131"
+}

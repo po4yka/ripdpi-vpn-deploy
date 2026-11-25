@@ -2,7 +2,7 @@
 id: SCR-1795352512092131
 title: Trust an explicit staging TLS anchor in the disposable liveness executor
 kind: feature
-status: review
+status: done
 area: scripts
 priority: high
 risk: high
@@ -14,6 +14,9 @@ openspec_change: scr-1795352512092131-disposable-executor-staging-trust-anchor
 created: 2026-11-22
 updated: 2026-11-25
 related_tasks: []
+closed_at: "2026-11-25T05:21:50Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Anchor install and validation covered by unit tests; ci run 45426312839 on main at d09191ca4 passed; the four-profile proof through the anchor returned passed on the disposable node vpn-ci-staging-acc5 at 60a371e4b
 ---
 
 ## Goal
