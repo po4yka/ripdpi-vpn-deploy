@@ -2,7 +2,7 @@
 id: SCR-1795352512092131
 title: Trust an explicit staging TLS anchor in the disposable liveness executor
 kind: feature
-status: doing
+status: review
 area: scripts
 priority: high
 risk: high
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: scr-1795352512092131-disposable-executor-staging-trust-anchor
 created: 2026-11-22
-updated: 2026-11-22
+updated: 2026-11-25
 related_tasks: []
 ---
 
