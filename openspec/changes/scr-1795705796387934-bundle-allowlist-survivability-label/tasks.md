@@ -10,10 +10,10 @@ Each transport entry of the client bundle carries a label (yes, no, unknown) tha
 
 ## Verification
 
-Planning: `./taskctl validate`, strict OpenSpec validation and `make docs-check`. Implementation: the narrow tests of the touched area, then `make check`. Client: the RIPDPI counterpart reads the label and skips a no entry under a detected regime.
+Planning: `./taskctl validate`, strict OpenSpec validation and `make docs-check`. Implementation: the narrow tests of the touched area, then `make check`. Client (po4yka/RIPDPI#DAT-1795704964813672) reads the label and skips a no entry under a detected regime.
 
 ## Execution
 
 - [ ] SCR-1795705817694863 Decide v3 amendment or version bump, then change the schema and validator with negative fixtures #feature @item:SCR-1795705796387934
 - [ ] SCR-1795705839786234 Add the class table and emit the label with tests for UDP, TLS-over-TCP and unlisted classes #feature @item:SCR-1795705796387934
-- [ ] SCR-1795705867085474 Update docs/reference/ripdpi-bundle.md and sync the vendored copy with the RIPDPI counterpart #feature @item:SCR-1795705796387934
+- [ ] SCR-1795705867085474 Update docs/reference/ripdpi-bundle.md and sync the vendored copy with the client copy (po4yka/RIPDPI#DAT-1795704964813672) #feature @item:SCR-1795705796387934

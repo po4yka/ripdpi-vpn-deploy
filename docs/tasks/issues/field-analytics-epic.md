@@ -13,7 +13,7 @@ spec_mode: required
 openspec_change: epc-1795085241910080-field-analytics-epic
 created: 2026-11-19
 updated: 2026-11-26
-related_tasks: []
+related_tasks: [po4yka/RIPDPI#DGN-1795085498592630]
 ---
 
 ## Goal

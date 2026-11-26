@@ -8,7 +8,7 @@ priority: medium
 risk: standard
 owner: Planner
 parent: null
-blocked_by: []
+blocked_by: [MON-1795086175387484]
 spec_mode: required
 openspec_change: mon-1795705539639667-node-initiated-direction-probe
 created: 2026-11-26
