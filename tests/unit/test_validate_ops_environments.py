@@ -104,12 +104,18 @@ def test_matrix_accepts_secrets_in_their_own_environments(ops):
     assert "2 environment secret references" in result.stdout
 
 
-def test_matrix_rejects_a_provider_token_in_deploy(ops):
-    workflow(ops, APPLY.replace("tofu-apply", "deploy").replace("make apply", "make deploy"),
-             [entry("deploy", "VULTR_API_KEY"), entry("deploy", "STATE_PASSPHRASE")])
+@pytest.mark.parametrize(("environment", "command", "secret"), [
+    ("deploy", "make deploy", "VULTR_API_KEY"),
+    # The tofu and deploy environments join the Tailnet through OIDC, so no Tailnet secret belongs there.
+    ("tofu-apply", "make apply", "TS_CI_TOFU_OAUTH_SECRET"),
+])
+def test_matrix_rejects_a_secret_outside_its_environment(ops, environment, command, secret):
+    workflow(ops, APPLY.replace("tofu-apply", environment).replace("make apply", command).replace(
+        "secrets.VULTR_API_KEY", f"secrets.{secret}"),
+             [entry(environment, secret), entry(environment, "STATE_PASSPHRASE")])
     result = run(ops)
     assert result.returncode == 1
-    assert ".github/workflows/ci.yml job apply: secret VULTR_API_KEY does not belong to environment deploy" in result.stderr
+    assert f".github/workflows/ci.yml job apply: secret {secret} does not belong to environment {environment}" in result.stderr
 
 
 @pytest.mark.parametrize(("change", "message"), [

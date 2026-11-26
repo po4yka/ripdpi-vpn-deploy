@@ -37,16 +37,15 @@ PROVIDERS = {"HCLOUD_TOKEN", "UPCLOUD_TOKEN", "VULTR_API_KEY", "SCW_ACCESS_KEY",
              "PORKBUN_API_KEY", "PORKBUN_SECRET_API_KEY"}
 CI_AGE = {"SOPS_AGE_KEY"}
 CI_SSH = {"CI_SSH_PRIVATE_KEY"}
-TAILNET_TOFU = {"TS_CI_TOFU_OAUTH_CLIENT_ID", "TS_CI_TOFU_OAUTH_SECRET"}
-TAILNET_DEPLOY = {"TS_CI_DEPLOY_OAUTH_CLIENT_ID", "TS_CI_DEPLOY_OAUTH_SECRET"}
 TAILNET_POLICY = {"TS_POLICY_OAUTH_CLIENT_ID", "TS_POLICY_OAUTH_SECRET"}
 # A short-lived token that only writes the generated CI identities into their environments.
 CI_BOOTSTRAP = {"CI_BOOTSTRAP_TOKEN"}
 MATRIX = {
-    "tofu-plan": STATE | PROVIDERS | TAILNET_TOFU,
-    "tofu-apply": STATE | PROVIDERS | TAILNET_TOFU,
-    "deploy-check": CI_AGE | CI_SSH | TAILNET_DEPLOY,
-    "deploy": CI_AGE | CI_SSH | TAILNET_DEPLOY,
+    # The tofu and deploy environments join the Tailnet through OIDC trust credentials, which need no secret.
+    "tofu-plan": STATE | PROVIDERS,
+    "tofu-apply": STATE | PROVIDERS,
+    "deploy-check": CI_AGE | CI_SSH,
+    "deploy": CI_AGE | CI_SSH,
     "ops-secrets": CI_AGE,
     "tailnet-policy": TAILNET_POLICY,
     "ci-bootstrap": CI_BOOTSTRAP,
