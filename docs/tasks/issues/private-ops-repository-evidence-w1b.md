@@ -2,7 +2,7 @@
 id: OPS-1795351496232576
 title: Carry the ops repository capability and prove its inputs with a dry-run
 kind: feature
-status: backlog
+status: doing
 area: operations
 priority: high
 risk: high
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: ops-1795351496232576-private-ops-repository-evidence-w1b
 created: 2026-11-22
-updated: 2026-11-22
+updated: 2026-11-26
 related_tasks: []
 ---
 
