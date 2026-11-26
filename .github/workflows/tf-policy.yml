@@ -22,18 +22,18 @@ jobs:
 
       - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4  # v2.0.2
         with:
-          tofu_version: "1.13.9"
+          tofu_version: "1.13.10"
           tofu_wrapper: false
-          checksums: bc44eb6b06446ba83bd4072114891987f590f66cca712737a7f1147c50c539ce
+          checksums: c1f0d6b34d8328f963d3b1ad10896fae30a6c6890596190ffef477dab991090f
 
       - name: install conftest
-        # Conftest 0.57.0 — pinned SHA256 verified against upstream release
-        # https://github.com/open-policy-agent/conftest/releases/tag/v0.57.0
+        # Conftest 0.71.1 — pinned SHA256 verified against upstream release
+        # https://github.com/open-policy-agent/conftest/releases/tag/v0.71.1
         run: |
           curl -sSL --retry 4 --retry-delay 10 --retry-max-time 480 --connect-timeout 10 --max-time 120 \
-            https://github.com/open-policy-agent/conftest/releases/download/v0.57.0/conftest_0.57.0_Linux_x86_64.tar.gz \
+            https://github.com/open-policy-agent/conftest/releases/download/v0.71.1/conftest_0.71.1_Linux_x86_64.tar.gz \
             -o conftest.tar.gz
-          echo "db1018a7e301cada4d4bd8a70880a13314daae27b3f4d409c7ffba1847718392  conftest.tar.gz" | sha256sum -c -
+          echo "c3f6b2a753bd56e377a1e51a95ae3e057f926f2e9139f7d5b5dfbbaf810f7985  conftest.tar.gz" | sha256sum -c -
           tar xf conftest.tar.gz conftest
           sudo install conftest /usr/local/bin/
 

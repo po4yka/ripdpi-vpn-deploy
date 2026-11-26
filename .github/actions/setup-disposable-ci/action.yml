@@ -9,9 +9,9 @@ runs:
         galaxy: "true"
     - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4  # v2.0.2
       with:
-        tofu_version: "1.13.9"
+        tofu_version: "1.13.10"
         tofu_wrapper: false
-        checksums: bc44eb6b06446ba83bd4072114891987f590f66cca712737a7f1147c50c539ce
+        checksums: c1f0d6b34d8328f963d3b1ad10896fae30a6c6890596190ffef477dab991090f
     - name: Install system dependencies
       shell: bash
       run: |
@@ -67,8 +67,8 @@ runs:
         SING_BOX_SHA256: e2bdf179c15a3652955dc44867e33ca0965c9c9b91b34267dcc5a5d639a5feee
         TAILSCALE_VERSION: "1.102.3"
         TAILSCALE_SHA256: 36ddd9b51be57ffc2990cf76323cfa13643bfbb1b8a969f6183fa164741cdef5
-        CONFTEST_VERSION: "0.57.0"
-        CONFTEST_SHA256: db1018a7e301cada4d4bd8a70880a13314daae27b3f4d409c7ffba1847718392
+        CONFTEST_VERSION: "0.71.1"
+        CONFTEST_SHA256: c3f6b2a753bd56e377a1e51a95ae3e057f926f2e9139f7d5b5dfbbaf810f7985
         SOPS_VERSION: "3.13.3"
         SOPS_SHA256: e5bec3346a873ae91d871550f3e698c1aad962aff462a080e40f25fde17fef6b
       run: |

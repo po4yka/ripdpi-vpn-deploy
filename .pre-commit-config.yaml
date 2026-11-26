@@ -14,7 +14,7 @@ repos:
       - id: gitleaks
 
   - repo: https://github.com/antonbabenko/pre-commit-terraform
-    rev: v1.109.3
+    rev: v1.109.5
     hooks:
       - id: terraform_fmt
         args:
@@ -158,7 +158,7 @@ repos:
         stages: [commit-msg]
 
   - repo: https://github.com/rbubley/mirrors-prettier
-    rev: v3.9.10
+    rev: v3.10.1
     hooks:
       - id: prettier
         name: prettier (JSON fixtures and secrets schema)

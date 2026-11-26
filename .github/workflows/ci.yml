@@ -188,9 +188,9 @@ jobs:
 
       - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4  # v2.0.2
         with:
-          tofu_version: "1.13.9"
+          tofu_version: "1.13.10"
           tofu_wrapper: false
-          checksums: bc44eb6b06446ba83bd4072114891987f590f66cca712737a7f1147c50c539ce
+          checksums: c1f0d6b34d8328f963d3b1ad10896fae30a6c6890596190ffef477dab991090f
 
       - name: tofu fmt -check
         working-directory: terraform/providers/${{ matrix.provider }}
@@ -216,9 +216,9 @@ jobs:
           persist-credentials: false
       - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4  # v2.0.2
         with:
-          tofu_version: "1.13.9"
+          tofu_version: "1.13.10"
           tofu_wrapper: false
-          checksums: bc44eb6b06446ba83bd4072114891987f590f66cca712737a7f1147c50c539ce
+          checksums: c1f0d6b34d8328f963d3b1ad10896fae30a6c6890596190ffef477dab991090f
       - name: tofu fmt -check
         working-directory: terraform/exception/cascade-ingress
         run: tofu fmt -check
@@ -442,9 +442,9 @@ jobs:
           persist-credentials: false
       - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4  # v2.0.2
         with:
-          tofu_version: "1.13.9"
+          tofu_version: "1.13.10"
           tofu_wrapper: false
-          checksums: bc44eb6b06446ba83bd4072114891987f590f66cca712737a7f1147c50c539ce
+          checksums: c1f0d6b34d8328f963d3b1ad10896fae30a6c6890596190ffef477dab991090f
       - name: Install test system prerequisites
         run: |
           sudo apt-get update
@@ -501,8 +501,8 @@ jobs:
           sudo mv -T "$stage/sing-box" /usr/local/bin/sing-box
       - name: Install checksum-verified Conftest for policy regression tests
         env:
-          CONFTEST_VERSION: "0.57.0"
-          CONFTEST_SHA256: db1018a7e301cada4d4bd8a70880a13314daae27b3f4d409c7ffba1847718392
+          CONFTEST_VERSION: "0.71.1"
+          CONFTEST_SHA256: c3f6b2a753bd56e377a1e51a95ae3e057f926f2e9139f7d5b5dfbbaf810f7985
         run: |
           archive="$RUNNER_TEMP/conftest.tar.gz"
           bin_dir="$RUNNER_TEMP/conftest-bin"
@@ -931,9 +931,9 @@ jobs:
           persist-credentials: false
       - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4  # v2.0.2
         with:
-          tofu_version: "1.13.9"
+          tofu_version: "1.13.10"
           tofu_wrapper: false
-          checksums: bc44eb6b06446ba83bd4072114891987f590f66cca712737a7f1147c50c539ce
+          checksums: c1f0d6b34d8328f963d3b1ad10896fae30a6c6890596190ffef477dab991090f
       - name: tofu init -backend=false
         working-directory: terraform/providers/${{ matrix.provider }}
         run: tofu init -lockfile=readonly -backend=false

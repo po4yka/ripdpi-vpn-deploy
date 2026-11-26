@@ -30,7 +30,7 @@ See `terraform/providers/hetzner/CLAUDE.md` for design decisions and pitfalls.
 
 | Name | Version |
 | ---- | ------- |
-| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | 1.13.9 |
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | 1.13.10 |
 | <a name="requirement_hcloud"></a> [hcloud](#requirement\_hcloud) | ~> 1.62 |
 
 ## Modules
