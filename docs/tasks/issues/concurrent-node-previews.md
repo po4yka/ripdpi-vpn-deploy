@@ -2,7 +2,7 @@
 id: OPS-1795702314418305
 title: Preview several nodes at once while deploys stay serial
 kind: feature
-status: review
+status: done
 area: operations
 priority: medium
 risk: standard
@@ -15,6 +15,9 @@ created: 2026-11-26
 updated: 2026-11-27
 related_tasks: []
 status_detail: Concurrent previews of node-a and node-b passed from one worktree at e16a6a59e; live lock refusal recorded
+closed_at: "2026-11-26T20:20:50Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Per-node and fleet deploy locks merged in PR 748 (main ci 45856572048 at e16a6a59e passed); concurrent previews of node-a (1040.5 s) and node-b (1382.7 s) from one worktree passed in 23 min 5 s; a third node-a preview was refused on its node lock
 ---
 
 ## Goal
