@@ -10,8 +10,8 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SETUP_OPENTOFU = "opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4"
-SUPPORTED_VERSION = "1.13.9"
-LINUX_AMD64_SHA256 = "bc44eb6b06446ba83bd4072114891987f590f66cca712737a7f1147c50c539ce"
+SUPPORTED_VERSION = "1.13.10"
+LINUX_AMD64_SHA256 = "c1f0d6b34d8328f963d3b1ad10896fae30a6c6890596190ffef477dab991090f"
 INSTALLERS = (
     ".github/workflows/ci.yml",
     ".github/workflows/tf-policy.yml",

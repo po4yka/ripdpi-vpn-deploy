@@ -19,8 +19,8 @@ def doctor(tmp_path, monkeypatch):
     (tmp_path / 'mise.toml').write_text('''[tools]
 python="3.12"
 go="1.27.3"
-opentofu="1.13.9"
-conftest="0.57.0"
+opentofu="1.13.10"
+conftest="0.71.1"
 gitleaks="8.30.1"
 "aqua:prometheus/prometheus"="3.15.1"
 zizmor="1.29.0"
@@ -33,7 +33,7 @@ zizmor="1.29.0"
         'ansible-core': '2.21.5', 'ansible-lint': '26.10.1', 'PyYAML': '6.0.3'}[name])
     outputs = {'python3': json.dumps({'version': '3.12.15', 'prefix': sys.prefix}),
                sys.executable: 'ok', 'go': 'go version go1.27.3 darwin/arm64',
-               'tofu': '{"terraform_version":"1.13.9"}', 'conftest': 'Conftest: 0.57.0',
+               'tofu': '{"terraform_version":"1.13.10"}', 'conftest': 'Conftest: 0.71.1',
                'gitleaks': '8.30.1', 'promtool': 'promtool, version 3.15.1', 'zizmor': 'zizmor 1.29.0',
                'ansible': 'ansible [core 2.21.5]', 'ansible-playbook': 'ansible-playbook [core 2.21.5]',
                'ansible-lint': 'ansible-lint 26.10.1', 'docker': 'linux/aarch64', 'docker-sdk': 'ok', 'bash': 'ok'}

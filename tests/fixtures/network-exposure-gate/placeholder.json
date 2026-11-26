@@ -10,9 +10,7 @@
   },
   "content_sha256": "<CONTENT_DIGEST>",
   "policy": {
-    "ingress": [
-      "<REVIEWED_PREFIX>"
-    ],
+    "ingress": ["<REVIEWED_PREFIX>"],
     "host_egress": [],
     "forwarded": []
   },
