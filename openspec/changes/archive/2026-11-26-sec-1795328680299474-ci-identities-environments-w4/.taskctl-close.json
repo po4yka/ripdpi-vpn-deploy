@@ -1,0 +1,11 @@
+{
+  "change": "sec-1795328680299474-ci-identities-environments-w4",
+  "evidence_summary": "All W4 steps done; local, remote CI (run 45777827470 at 5d7c0b583), dry-run and live passed; staging evidence mapped to CIC-1795329226354380",
+  "execution_sha256": "ee0597c30502939748be32ef888af6205aab77f51ed2d91e3203c967892acebc",
+  "issue_sha256": "6ae29ca95fcc86f9313b1f24c5f57cce5304f195f83fa81a9fc25bfe7b49cf6c",
+  "outcome": "done",
+  "prepared_at": "2026-11-26T09:22:23Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SEC-1795328680299474"
+}

@@ -2,7 +2,7 @@
 id: SEC-1795328680299474
 title: Issue revocable CI identities in scoped GitHub environments
 kind: feature
-status: review
+status: done
 area: security
 priority: high
 risk: high
@@ -15,6 +15,9 @@ created: 2026-11-22
 updated: 2026-11-26
 related_tasks: []
 status_detail: All steps done; verification records local, dry-run and live evidence; remote CI follows on the merge revision
+closed_at: "2026-11-26T09:22:23Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: All W4 steps done; local, remote CI (run 45777827470 at 5d7c0b583), dry-run and live passed; staging evidence mapped to CIC-1795329226354380
 ---
 
 ## Goal
