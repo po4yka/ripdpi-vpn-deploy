@@ -100,6 +100,8 @@ A controller run already keeps its working state private: it copies the decrypte
 
 Only previews run concurrently. `deploy`, `verify`, `source-drift` and later stages stay one node at a time: `site.yml` keeps `serial: 1`, each node keeps its `transaction.lock`, and a deploy recovery assumes exclusive use of the node. A preview of a node during its deploy happened by accident in this research, because nothing on the operator machine records which node an operation holds; the selected change adds a per-node operation lock for `dry-run` and `deploy` and a fleet deploy lock for `deploy`. Production nodes use separate environments and secrets files, so concurrency is one controller process per node, not parallel hosts inside one run. With previews in parallel, the preview phase of a rollout takes about as long as its slowest node instead of the sum.
 
+Measured with the locks at `e16a6a59e`: previews of node-a and node-b started together from one worktree. node-a took 1040.5 s for 1265 tasks and node-b 1382.7 s for 1305 tasks, both with no unreachable or failed host, so the two previews took 23 min 5 s instead of 40 min 23 s. A third preview of node-a, started while its preview ran, stopped with `node-operation-in-progress` before it read secrets.
+
 ## Follow-up tasks
 
 - `OPS-1795702314418305` (OpenSpec, `spec_mode: required`): per-node operation locks and a fleet deploy lock in the controller, and the concurrent preview recipe.
@@ -108,6 +110,6 @@ Only previews run concurrently. `deploy`, `verify`, `source-drift` and later sta
 
 ## Gaps
 
-- No timed preview covered the complete graph: base2 timed 1055 of about 1305 node-b tasks, and the split-hop B run 699 tasks. The last roles of the graph and the SSH baseline play are not timed.
+- The research runs did not time the complete graph: base2 timed 1055 of about 1305 node-b tasks, and the split-hop B run 699 tasks. The later concurrent previews timed the complete graph of node-a and node-b only; split-hop nodes and node-c have no complete timing.
 - The timed split-hop run is B; split-hop A was deployed by a concurrent rollout during this research and was not previewed.
 - The effect of the retirement change is computed from the measured per-call cost and the full `d7a08417` previews, not re-measured live.
