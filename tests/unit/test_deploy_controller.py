@@ -46,7 +46,7 @@ def workspace(tmp_path):
                  "public_site_inputs.py",
                  "deploy-controller.py", "deployment_silence.py", "bootstrap_readiness.py",
                  "network-exposure-gate.py", "ci_deployment.py", "tailnet_management.py",
-                 "no_listener_promotion.py"):
+                 "no_listener_promotion.py", "ansible_task_timing.py"):
         source = ROOT / "scripts" / name
         if source.exists():
             target = root / "scripts" / name

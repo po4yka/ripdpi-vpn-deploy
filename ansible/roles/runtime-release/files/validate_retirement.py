@@ -128,10 +128,11 @@ def main() -> int:
         if not isinstance(request, dict) or set(request) != {"paths", "owners"}:
             raise ValueError("retirement request")
         paths = validate(request["paths"], request["owners"])
+        found = present(paths)
     except (ValueError, OSError):
         print("runtime retirement authority rejected", file=sys.stderr)
         return 2
-    print(json.dumps({"status": "accepted", "paths": paths, "present": present(paths)}, sort_keys=True))
+    print(json.dumps({"status": "accepted", "paths": paths, "present": found}, sort_keys=True))
     return 0
 
 

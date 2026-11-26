@@ -331,9 +331,11 @@ def callback_environment(root, directory, environment, *, statistics):
     """
     plugins = directory / 'callbacks'
     plugins.mkdir(mode=0o700)
-    names = ('ripdpi_task_timing', *(('ripdpi_check_statistics',) if statistics else ()))
-    for name in names:
-        (plugins / (name + '.py')).write_bytes(read_input(root / 'scripts' / (name.replace('ripdpi', 'ansible') + '.py')))
+    sources = {'ripdpi_task_timing': 'ansible_task_timing.py',
+               **({'ripdpi_check_statistics': 'ansible_check_statistics.py'} if statistics else {})}
+    names = tuple(sources)
+    for name, source in sources.items():
+        (plugins / (name + '.py')).write_bytes(read_input(root / 'scripts' / source))
     result = {**environment, 'ANSIBLE_CALLBACK_PLUGINS': str(plugins),
               'ANSIBLE_CALLBACKS_ENABLED': ','.join(filter(None, (environment.get('ANSIBLE_CALLBACKS_ENABLED'), *names)))}
     if statistics:
@@ -1020,9 +1022,9 @@ def controller(mode):
                 if os.environ.get("DEPLOY_TAGS"):
                     site += ["--tags", os.environ["DEPLOY_TAGS"]]
                 # The complete first-convergence graph can exceed one hour on small nodes.
-                check_directory = directory / ('check-' + host['name'])
-                check_directory.mkdir(mode=0o700)
-                checked_environment = callback_environment(root, check_directory, site_environment,
+                site_directory = directory / ('site-' + host['name'])
+                site_directory.mkdir(mode=0o700)
+                checked_environment = callback_environment(root, site_directory, site_environment,
                                                            statistics=strict_check == '1')
                 transaction = transactions[host["name"]]
                 local_request = directory / (host["name"] + "-ssh-request.json")
@@ -1035,7 +1037,7 @@ def controller(mode):
                         finish_local_promotion(local_request, transaction, host["name"], arguments[1], known_hosts,
                                                environment, root)
                 if strict_check == '1':
-                    require_no_check_changes(check_directory / 'check-statistics.json')
+                    require_no_check_changes(site_directory / 'check-statistics.json')
                 if mode == "deploy":
                     checked(["ansible-playbook", str(playbooks["source-drift"]), *arguments],
                             environment=environment, cwd=directory, timeout=300, stream=True)
