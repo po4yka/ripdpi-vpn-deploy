@@ -33,3 +33,15 @@ artifact_evidence: Client artifacts are covered by the client gate; no release a
 | REQ-OPSWF-SCHEDULED | CIC-1795329376420274 | scheduled run receipts | planned |
 | REQ-OPSWF-CLOUD-SESSION | CIC-1795329421913712 | cloud environment review and dispatch test result | planned |
 | REQ-OPSWF-RECEIPTS | CIC-1795329439874508 | Branch protection, denied collaborator write and preserved concurrent attempt records | planned |
+
+## Shared operational evidence ownership
+
+| Source task | Operational owner | Requirement | Acceptance command | Evidence category | Source revision |
+|---|---|---|---|---|---|
+| SEC-1795328680299474 | CIC-1795329226354380 | REQ-CIID-SEPARATE | `make deploy ENV=staging` | staging | 5d7c0b583e42215aa0318599ee2b8d0dcd8278db |
+| SEC-1795328680299474 | CIC-1795329226354380 | REQ-CIID-ENV-MATRIX | `python3 scripts/validate-ops-environments.py --root ripdpi-vpn-ops` | staging | 5d7c0b583e42215aa0318599ee2b8d0dcd8278db |
+| SEC-1795328680299474 | CIC-1795329226354380 | REQ-CIID-BOOTSTRAP | `python3 scripts/validate-ops-environments.py --root ripdpi-vpn-ops` | staging | 5d7c0b583e42215aa0318599ee2b8d0dcd8278db |
+| SEC-1795328680299474 | CIC-1795329226354380 | REQ-CIID-MERGE-GATE | `gh workflow run merge-gate-probe --repo po4yka/ripdpi-vpn-ops` | staging | 5d7c0b583e42215aa0318599ee2b8d0dcd8278db |
+| SEC-1795328680299474 | CIC-1795329226354380 | REQ-CIID-MUTATION-TRIGGER | `make deploy ENV=staging` | staging | 5d7c0b583e42215aa0318599ee2b8d0dcd8278db |
+| SEC-1795328680299474 | CIC-1795329226354380 | REQ-CIID-UNTRUSTED-INPUT | `python3 scripts/validate-ops-environments.py --root ripdpi-vpn-ops --pr BASE HEAD` | staging | 5d7c0b583e42215aa0318599ee2b8d0dcd8278db |
+| SEC-1795328680299474 | CIC-1795329226354380 | REQ-CIID-LEAST-PRIVILEGE | `make plan ENV=staging` | staging | 5d7c0b583e42215aa0318599ee2b8d0dcd8278db |

@@ -1,15 +1,15 @@
 ---
 task_id: SEC-1795328680299474
 change: sec-1795328680299474-ci-identities-environments-w4
-commit_sha: null
+commit_sha: 5d7c0b583e42215aa0318599ee2b8d0dcd8278db
 local: passed
 local_evidence: "tests/unit/test_validate_ops_environments.py and tests/unit/test_ci_age_revocation.py: 32 passed (real sops 3.13.3 and age); scripts/validate-ops-environments.py --root on ops main 7e44faa: valid, and check_catalog over all 14 tofu-plan and tofu-apply secret pairs returns no findings"
-remote_ci: required
-remote_ci_evidence: null
+remote_ci: passed
+remote_ci_evidence: "po4yka/ripdpi-vpn-deploy ci run 45777827470 on main at 5d7c0b583: completed with success. That revision holds every W4 source change and the SOPS revocation test."
 dry_run: passed
 dry_run_evidence: "baseline check (dry-run) with both admin keys at source f9d6a5139 and ops d0cd346 passed on node-a, node-b and node-c (kit receipts w4-ci-key-f9d6a513-20261124/node-*-check.json); the reviewed preview adds only the CI key to the admin authorized_keys and removes nothing (node-*-preview-review.json)"
 staging: not_applicable
-staging_evidence: "Owner decision on 2026-11-26: the baseline Molecule scenario that writes both admin keys and then revokes the CI key, plus the real SOPS rotation test, cover the revoke; no staging revoke drill was run."
+staging_evidence: "Owner decision on 2026-11-26: staging evidence moves to CIC-1795329226354380 (W7), whose CI-driven staging runs carry the CI SSH key revoke drill, the first provider-token plan and the workflow-side gates (mapping below). Offline proof meanwhile: the baseline Molecule add and revoke scenario and the real SOPS rotation test."
 live: passed
 live_evidence: "baseline deploy with both admin keys at source f9d6a5139 and ops f852e94 passed with verify, security-verify, smoke-test and protocol liveness on node-a, node-b and node-c (w4-ci-key-f9d6a513-20261124/node-*-deploy.json); ops ci-identities-bootstrap run 45226532049 generated the CI identities, and its rerun refused to replace them (w4-overwrite-refusal-drill-20261125.json); Tailnet policy change validated and applied (tailnet-policy-ci-tags-20261123.json) and ops tailnet-policy run 45550835434 succeeded; provider and state tokens stored and catalogued (w4-*-ci-env-secrets-*.json, ops #15)"
 client: not_applicable
@@ -32,3 +32,15 @@ artifact_evidence: No release artifact.
 | REQ-CIID-MUTATION-TRIGGER | SEC-1795328868236026 | `pytest tests/unit/test_validate_ops_environments.py -k trigger`; environment branch policy in `w4-environments-ruleset-20261125.json` | passed |
 | REQ-CIID-UNTRUSTED-INPUT | SEC-1795328868236026 | `-k untrusted_input` (typed toggle previews; target, pin, symlink, rename and non-descendant head defer) and `-k preview` (no secret before `--pr`) | passed |
 | REQ-CIID-LEAST-PRIVILEGE | SEC-1795328913746423 | ops catalog entries with scope, expiry and revocation (ops #15); kit receipts `w4-scw-ci-env-secrets-20261125.json`, `w4-upcloud-ci-env-secrets-20261126.json`, `w4-vultr-ci-env-secrets-20261126.json`, `w4-tailscale-ci-oidc-20261126.json`. UpCloud offers no read-only level, so its plan token is write-capable (accepted risk). No new token has made an API call yet; the first W7 run exercises them | passed |
+
+## Shared operational evidence ownership
+
+| Source task | Operational owner | Requirement | Acceptance command | Evidence category | Source revision |
+|---|---|---|---|---|---|
+| SEC-1795328680299474 | CIC-1795329226354380 | REQ-CIID-SEPARATE | `make deploy ENV=staging` | staging | 5d7c0b583e42215aa0318599ee2b8d0dcd8278db |
+| SEC-1795328680299474 | CIC-1795329226354380 | REQ-CIID-ENV-MATRIX | `python3 scripts/validate-ops-environments.py --root ripdpi-vpn-ops` | staging | 5d7c0b583e42215aa0318599ee2b8d0dcd8278db |
+| SEC-1795328680299474 | CIC-1795329226354380 | REQ-CIID-BOOTSTRAP | `python3 scripts/validate-ops-environments.py --root ripdpi-vpn-ops` | staging | 5d7c0b583e42215aa0318599ee2b8d0dcd8278db |
+| SEC-1795328680299474 | CIC-1795329226354380 | REQ-CIID-MERGE-GATE | `gh workflow run merge-gate-probe --repo po4yka/ripdpi-vpn-ops` | staging | 5d7c0b583e42215aa0318599ee2b8d0dcd8278db |
+| SEC-1795328680299474 | CIC-1795329226354380 | REQ-CIID-MUTATION-TRIGGER | `make deploy ENV=staging` | staging | 5d7c0b583e42215aa0318599ee2b8d0dcd8278db |
+| SEC-1795328680299474 | CIC-1795329226354380 | REQ-CIID-UNTRUSTED-INPUT | `python3 scripts/validate-ops-environments.py --root ripdpi-vpn-ops --pr BASE HEAD` | staging | 5d7c0b583e42215aa0318599ee2b8d0dcd8278db |
+| SEC-1795328680299474 | CIC-1795329226354380 | REQ-CIID-LEAST-PRIVILEGE | `make plan ENV=staging` | staging | 5d7c0b583e42215aa0318599ee2b8d0dcd8278db |
