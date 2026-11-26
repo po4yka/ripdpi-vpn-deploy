@@ -4,7 +4,7 @@ Task ID: `OPS-1795702314418305`
 
 ## Why
 
-A full-graph preview (`make dry-run ANSIBLE_LIMIT='<exact-alias>' ANSIBLE_TAGS=`) takes 17 to 57 minutes per production node, and a rollout previews each node in turn. The measurements in `OPS-1795697141240057` show that the time is a long tail of about 1,300 tasks, each costing one or more round trips over the management route; no single task dominates. Previews of different nodes share no remote state, so running them at the same time cuts the preview phase of a five-node rollout from the sum of the node times to about the time of the slowest node.
+A full-graph preview (`make dry-run ANSIBLE_LIMIT='<exact-alias>' ANSIBLE_TAGS=`) takes 17 to 57 minutes per production node, and a rollout previews each node in turn. The measurements in [the preview cost research](../../../docs/research/preview-cost-2026-11.md) show that the time is a long tail of about 1,300 tasks, each costing one or more round trips over the management route; no single task dominates. Previews of different nodes share no remote state, so running them at the same time cuts the preview phase of a five-node rollout from the sum of the node times to about the time of the slowest node.
 
 Two previews already ran at the same time from one checkout during that research, and they did not interfere locally. The same day, a preview and an operator's own preview of the same node also overlapped by accident, because nothing on the operator machine records which node an operation holds. Deploys must stay one node at a time: `site.yml` keeps `serial: 1`, each node keeps its `transaction.lock`, and recovery assumes exclusive use of the node.
 

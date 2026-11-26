@@ -19,7 +19,7 @@ related_tasks: []
 
 ## Goal
 
-On 2026-11-26 the management route from the operator machine to every production node went through a DERP relay, with a median RTT of 120 to 370 ms, and stalled several times for longer than the SSH keepalive budget (15 s × 8). The stalls ended three of four timed full-graph previews and one deploy (`docs/tasks/work/OPS-1795697141240057.md`), each after 15 to 25 minutes of work. This research finds the cause of the stalls and of the missing direct paths, and decides how a preview or deploy avoids losing a long run to one stall, without a retry that can run a protected task twice.
+On 2026-11-26 the management route from the operator machine to every production node went through a DERP relay, with a median RTT of 120 to 370 ms, and stalled several times for longer than the SSH keepalive budget (15 s × 8). The stalls ended three of four timed full-graph previews and one deploy ([the preview cost research](../../research/preview-cost-2026-11.md)), each after 15 to 25 minutes of work. This research finds the cause of the stalls and of the missing direct paths, and decides how a preview or deploy avoids losing a long run to one stall, without a retry that can run a protected task twice.
 
 ## Acceptance criteria
 

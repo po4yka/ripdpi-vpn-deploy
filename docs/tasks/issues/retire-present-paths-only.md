@@ -19,7 +19,7 @@ related_tasks: []
 
 ## Goal
 
-Disabled roles retire their owned files and units on every converge and every preview. The timed previews in `docs/tasks/work/OPS-1795697141240057.md` show that these retirement loops make one remote call for each declared path or unit, although on a node where the role was never installed almost every path is absent. `runtime-release` retirement already removes only present paths. The other retirement loops get the same treatment, so a preview of an unchanged node spends its remote calls on state that exists.
+Disabled roles retire their owned files and units on every converge and every preview. The timed previews in [the preview cost research](../../research/preview-cost-2026-11.md) show that these retirement loops make one remote call for each declared path or unit, although on a node where the role was never installed almost every path is absent. `runtime-release` retirement already removes only present paths. The other retirement loops get the same treatment, so a preview of an unchanged node spends its remote calls on state that exists.
 
 ## Acceptance criteria
 
