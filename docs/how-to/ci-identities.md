@@ -8,13 +8,15 @@ CI operates the fleet from the private ops repository with its own identities: a
 
 | Environment | Runs on | Secrets |
 |---|---|---|
-| `tofu-plan` | `pull_request_target` preview, schedule | `STATE_PASSPHRASE`, `STATE_ACCESS_KEY_ID`/`STATE_SECRET_ACCESS_KEY` (state bucket `tofu-state-plan`), provider tokens (read-only where the provider offers one), `TS_CI_TOFU_OAUTH_*` |
+| `tofu-plan` | `pull_request_target` preview, schedule | `STATE_PASSPHRASE`, `STATE_ACCESS_KEY_ID`/`STATE_SECRET_ACCESS_KEY` (state bucket `tofu-state-plan`), provider tokens (read-only where the provider offers one) |
 | `tofu-apply` | push to `main` | the same names, with the `tofu-state-apply` identity and write tokens |
-| `deploy-check` | `pull_request_target` preview, schedule | `SOPS_AGE_KEY` (CI age identity), `CI_SSH_PRIVATE_KEY`, `TS_CI_DEPLOY_OAUTH_*` |
+| `deploy-check` | `pull_request_target` preview, schedule | `SOPS_AGE_KEY` (CI age identity), `CI_SSH_PRIVATE_KEY` |
 | `deploy` | push to `main` | the same names as `deploy-check` |
 | `ops-secrets` | push to `main` | `SOPS_AGE_KEY` only |
 | `tailnet-policy` | push to `main` | `TS_POLICY_OAUTH_*` only |
 | `ci-bootstrap` | push to `main` | `CI_BOOTSTRAP_TOKEN` only: a short-lived fine-grained token that writes the generated CI identities into their environments |
+
+The four `tofu-*` and `deploy*` environments join the Tailnet without a stored secret. Each has its own Tailscale OIDC trust credential: issuer GitHub, subject `repo:<owner>/<ops repo>:environment:<name>`, and only the `auth_keys` write scope bound to `tag:ci-tofu` or `tag:ci-deploy`. The environment variables `TS_OIDC_CLIENT_ID` and `TS_OIDC_AUDIENCE` hold its public identifiers. A job passes them to `tailscale/github-action` with `id-token: write` permission.
 
 Provider token names are `HCLOUD_TOKEN`, `UPCLOUD_TOKEN`, `VULTR_API_KEY`, `SCW_ACCESS_KEY`/`SCW_SECRET_KEY` and `PORKBUN_API_KEY`/`PORKBUN_SECRET_API_KEY`. Every environment allows deployments from `main` only. The ops repository's `operator-merge-gate` ruleset blocks direct pushes, force pushes and deletion on `main` and lets only the owner merge, so the operator's merge is the approval for every mutating run.
 
@@ -53,4 +55,5 @@ Each step is a live action that needs the operator's authorization:
 
 - **CI SSH key:** remove it from `admin_ssh_public_keys` and the inventory list, then deploy with the operator key. Do not deploy the removal with the CI key: `baseline` removes that key during the run, and the later plays lose their connection. `baseline` writes the admin `authorized_keys` exclusively from the list, so the key disappears from every node while the operator key stays. Delete the secret from `deploy-check` and `deploy`.
 - **CI age identity:** remove the CI recipient from `.sops.yaml`, run `sops updatekeys` and rotate the data key (`sops rotate -i`) of every affected document, then replace the credentials that the identity could read. Delete the secret from `deploy-check`, `deploy` and `ops-secrets`.
-- **Tailnet and provider tokens:** revoke each one at its provider, following the `revoke_procedure` in its catalog entry, then delete the environment secret.
+- **Tailnet join:** delete the environment's OIDC trust credential in the Tailscale admin console, then delete its `TS_OIDC_*` variables.
+- **Tailnet policy and provider tokens:** revoke each one at its provider, following the `revoke_procedure` in its catalog entry, then delete the environment secret.
