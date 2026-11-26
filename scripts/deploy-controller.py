@@ -354,31 +354,40 @@ def operation_locks(names, *, deploy):
     directory = Path.home() / ".local/state/vpn-deploy/locks"
     wanted = ([("deploy.lock", "deploy-in-progress")] if deploy else []) + [
         ("node-" + name + ".lock", "node-operation-in-progress") for name in sorted(names)]
-    with ExitStack() as held:
-        try:
-            directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-            # Lock files are opened relative to this checked descriptor, so a swapped path cannot redirect them.
-            parent = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-        except OSError:
-            raise DeployError("unsafe operation lock directory") from None
-        held.callback(os.close, parent)
+    try:
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        # Lock files are opened relative to this checked descriptor, so a swapped path cannot redirect them.
+        parent = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError:
+        raise DeployError("unsafe operation lock directory") from None
+    try:
         info = os.fstat(parent)
         if info.st_uid != os.getuid() or info.st_mode & 0o077:
             raise DeployError("unsafe operation lock directory")
-        for filename, category in wanted:
-            try:
-                descriptor = os.open(filename, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600,
-                                     dir_fd=parent)
-            except OSError:
-                raise DeployError("unsafe operation lock") from None
-            held.callback(os.close, descriptor)
-            info = os.fstat(descriptor)
-            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_nlink != 1:
-                raise DeployError("unsafe operation lock")
-            try:
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                raise DeployError(category) from None
+        with ExitStack() as held:
+            for filename, category in wanted:
+                held.enter_context(_operation_lock(parent, filename, category))
+            yield
+    finally:
+        os.close(parent)
+
+
+@contextmanager
+def _operation_lock(parent, filename, category):
+    def opener(path, _flags):
+        return os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=parent)
+    try:
+        lock = open(filename, "r+b", buffering=0, opener=opener)
+    except OSError:
+        raise DeployError("unsafe operation lock") from None
+    with lock:
+        info = os.fstat(lock.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_nlink != 1:
+            raise DeployError("unsafe operation lock")
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise DeployError(category) from None
         yield
 
 
