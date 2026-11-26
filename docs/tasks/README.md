@@ -227,6 +227,15 @@ deployment:
   task that owns the corresponding operational requirement. A source task that
   still owns such a requirement remains open until the evidence passes or an
   OpenSpec update moves and maps that requirement before closure.
+- `taskctl validate` (the `task-contract` hook and CI job) and every
+  `taskctl verify` refuse a change from `required` or `blocked` to
+  `not_applicable` without a shared mapping in the same change; with
+  `--base`, every commit of the reviewed range must map its own transfer. If
+  such a transfer still reached the trusted base with no mapping row at all, a
+  later change can cure it: both the source and the owner record the complete
+  mapping, the owner lists the source in `related_tasks`, and the mapping
+  survives to the terminal snapshot. A transfer committed with a partial or
+  mismatched mapping stays refused.
 
 This policy is owned by `CIC-1788708456909496` and its linked OpenSpec change.
 The repository project contract activates transition auditing with

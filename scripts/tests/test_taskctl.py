@@ -2269,6 +2269,92 @@ class TaskctlHistoryTest(TaskctlFixture):
         ):
             taskctl.load_state(self.root)
 
+    def test_later_complete_mapping_cures_a_committed_unmapped_transfer(self) -> None:
+        source_task = "ANS-1786234567890101"
+        owner_task = "OPS-1786234567890201"
+        self.add_active_spec_task(
+            status="review", done=True, task_id=source_task, slug="source"
+        )
+        self.add_active_spec_task(
+            status="review",
+            done=True,
+            task_id=owner_task,
+            slug="owner",
+            related=[source_task],
+        )
+        source_verification = (
+            self.root / "openspec/changes" / f"{source_task.casefold()}-change" / "verification.md"
+        )
+        verification = taskctl.read_document(source_verification)
+        values = dict(verification.values)
+        values["local"] = "passed"
+        values["local_evidence"] = "Source checks passed."
+        values["live"] = "blocked"
+        values["live_evidence"] = "Live acceptance is unavailable."
+        body = verification.body.replace("| Pending | required |", "| Source passed. | passed |")
+        source_verification.write_text(
+            taskctl.render_document(values, body, order=tuple(values)), encoding="utf-8"
+        )
+        self.write_board()
+        base = self.commit_all("record blocked live evidence")
+
+        values["commit_sha"] = base
+        values["live"] = "not_applicable"
+        values["live_evidence"] = f"Transferred to {owner_task}."
+        source_verification.write_text(
+            taskctl.render_document(values, body, order=tuple(values)), encoding="utf-8"
+        )
+        transfer = self.commit_all("transfer live evidence before recording the mapping")
+
+        openspec =self.root / "tools/tasking/node_modules/.bin/openspec"
+        openspec.parent.mkdir(parents=True)
+        openspec.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        openspec.chmod(0o755)
+        verify = argparse.Namespace(root=self.root, query=source_task, archive_ready=True)
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "without a shared mapping that survives until current snapshot",
+        ):
+            taskctl.command_verify(verify)
+
+        mapping = {
+            "source_task": source_task,
+            "owner_task": owner_task,
+            "requirement": f"REQ-{source_task}-001",
+            "command": "make verify LIMIT=fixture",
+            "category": "live",
+            "source_revision": base,
+        }
+        self.add_shared_evidence_mapping(source_verification, **mapping)
+        # A cure recorded only by the source task is not accepted.
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "shared live mapping does not match owner record"
+        ):
+            taskctl.command_verify(verify)
+
+        owner_verification = (
+            self.root / "openspec/changes" / f"{owner_task.casefold()}-change" / "verification.md"
+        )
+        owner_document = taskctl.read_document(owner_verification)
+        owner_values = dict(owner_document.values)
+        owner_values["live"] = "blocked"
+        owner_values["live_evidence"] = "Owned live acceptance is pending."
+        owner_verification.write_text(
+            taskctl.render_document(owner_values, owner_document.body, order=tuple(owner_values)),
+            encoding="utf-8",
+        )
+        self.add_shared_evidence_mapping(owner_verification, **mapping)
+        self.commit_all("cure the transfer with a complete mapping")
+        taskctl.command_verify(verify)
+        # Only a transfer already on the trusted base may be cured; a reviewed
+        # range must map its own transfer.
+        taskctl.validate_repository(self.root, base=transfer, upstreams=False)
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "live evidence changed from blocked to not_applicable without a shared mapping",
+        ):
+            taskctl.validate_repository(self.root, base=base, upstreams=False)
+
     def test_shared_mapping_must_survive_until_terminal_snapshot(self) -> None:
         source_task = "ANS-1786234567890101"
         owner_task = "OPS-1786234567890201"
@@ -2380,7 +2466,7 @@ class TaskctlHistoryTest(TaskctlFixture):
         )
         with self.assertRaisesRegex(
             taskctl.ContractError,
-            "shared live mapping did not survive until current snapshot",
+            "without a shared mapping that survives until current snapshot",
         ):
             taskctl.command_close_prepare(
                 argparse.Namespace(
