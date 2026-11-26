@@ -305,8 +305,6 @@ def execution_environment(root, directory):
                        ANSIBLE_INVENTORY_ENABLED="ini", ANSIBLE_VARS_ENABLED="",
                        ANSIBLE_LOG_PATH=os.devnull, ANSIBLE_STDOUT_CALLBACK="default",
                        ANSIBLE_LOAD_CALLBACK_PLUGINS="false", ANSIBLE_DISPLAY_ARGS_TO_STDOUT="false",
-                       # Task names and durations only; the pinned collection prints the slowest tasks.
-                       ANSIBLE_CALLBACKS_ENABLED="ansible.posix.profile_tasks",
                        ANSIBLE_COLLECTIONS_PATH=str(root / ".ansible/collections"),
                        ANSIBLE_COLLECTIONS_SCAN_SYS_PATH="false", ANSIBLE_ROLES_PATH=str(root / "ansible/roles"))
     for kind in ("VARS", "CALLBACK", "ACTION", "CONNECTION", "LOOKUP", "FILTER", "TEST",
@@ -326,16 +324,21 @@ def tailnet_site_environment(environment, host_count, mode, *, enabled):
     return environment
 
 
-def check_statistics_environment(root, directory, environment):
-    """Install only the source-owned callback in an isolated plugin directory."""
-    plugins = directory / 'check-callback'
+def callback_environment(root, directory, environment, *, statistics):
+    """Install only source-owned callbacks in an isolated plugin directory.
+
+    The task timing comes from the source, not a collection: operator worktrees install no collections.
+    """
+    plugins = directory / 'callbacks'
     plugins.mkdir(mode=0o700)
-    (plugins / 'ripdpi_check_statistics.py').write_bytes(
-        read_input(root / 'scripts/ansible_check_statistics.py'))
-    return {**environment, 'ANSIBLE_CALLBACK_PLUGINS': str(plugins),
-            'ANSIBLE_CALLBACKS_ENABLED': ','.join(filter(None, (
-                environment.get('ANSIBLE_CALLBACKS_ENABLED'), 'ripdpi_check_statistics'))),
-            'RIPDPI_CHECK_STATS_FILE': str(directory / 'check-statistics.json')}
+    names = ('ripdpi_task_timing', *(('ripdpi_check_statistics',) if statistics else ()))
+    for name in names:
+        (plugins / (name + '.py')).write_bytes(read_input(root / 'scripts' / (name.replace('ripdpi', 'ansible') + '.py')))
+    result = {**environment, 'ANSIBLE_CALLBACK_PLUGINS': str(plugins),
+              'ANSIBLE_CALLBACKS_ENABLED': ','.join(filter(None, (environment.get('ANSIBLE_CALLBACKS_ENABLED'), *names)))}
+    if statistics:
+        result['RIPDPI_CHECK_STATS_FILE'] = str(directory / 'check-statistics.json')
+    return result
 
 
 def require_no_check_changes(path):
@@ -1017,15 +1020,14 @@ def controller(mode):
                 if os.environ.get("DEPLOY_TAGS"):
                     site += ["--tags", os.environ["DEPLOY_TAGS"]]
                 # The complete first-convergence graph can exceed one hour on small nodes.
-                checked_environment = site_environment
+                check_directory = directory / ('check-' + host['name'])
+                check_directory.mkdir(mode=0o700)
+                checked_environment = callback_environment(root, check_directory, site_environment,
+                                                           statistics=strict_check == '1')
                 transaction = transactions[host["name"]]
                 local_request = directory / (host["name"] + "-ssh-request.json")
                 if transaction["ssh_transaction_local_promotion"]:
-                    checked_environment = {**site_environment, "VPN_PROMOTION_REQUEST": str(local_request)}
-                if strict_check == '1':
-                    check_directory = directory / ('check-' + host['name'])
-                    check_directory.mkdir(mode=0o700)
-                    checked_environment = check_statistics_environment(root, check_directory, site_environment)
+                    checked_environment["VPN_PROMOTION_REQUEST"] = str(local_request)
                 with (deployment_silence.coverage_silence(metadata[host["name"]].get("observability_node_id"))
                       if mode == "deploy" else nullcontext()):
                     checked(site, environment=checked_environment, cwd=directory, timeout=7200, stream=True)

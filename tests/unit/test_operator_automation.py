@@ -1186,8 +1186,9 @@ def test_actual_ansible_check_counts_refuse_configuration_drift(authority, chang
     directory, _, _ = authority
     controller = load('deploy-controller')
     # An already enabled controller callback keeps running beside the statistics callback.
-    environment = controller.check_statistics_environment(ROOT, directory, private.command_environment(
-        {'ANSIBLE_CALLBACKS_ENABLED': 'ansible.builtin.junit', 'JUNIT_OUTPUT_DIR': str(directory / 'junit')}))
+    environment = controller.callback_environment(ROOT, directory, private.command_environment(
+        {'ANSIBLE_CALLBACKS_ENABLED': 'ansible.builtin.junit', 'JUNIT_OUTPUT_DIR': str(directory / 'junit')}),
+        statistics=True)
     # Real check-mode execution, including a change that leaves the live file untouched.
     target = write(directory / 'managed.txt', 'old')
     play = write(directory / 'check.yml', yaml.safe_dump([{'hosts': 'localhost', 'gather_facts': False,
