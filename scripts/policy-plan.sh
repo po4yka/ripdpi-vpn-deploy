@@ -4,7 +4,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"
-case "$PROVIDER" in upcloud|hetzner|vultr|scaleway) ;; *) exit 2 ;; esac
+case "$PROVIDER" in upcloud|hetzner|vultr|scaleway) ROOT_DIR="terraform/providers/${PROVIDER}" ;; egress-proxy) ROOT_DIR="terraform/ops/${PROVIDER}" ;; *) exit 2 ;; esac
 [[ "$ENV" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]] || exit 2
 [[ $# == 1 && ( "$1" == check || "$1" == apply ) ]] || {
   echo 'usage: policy-plan.sh check|apply' >&2
@@ -13,12 +13,12 @@ case "$PROVIDER" in upcloud|hetzner|vultr|scaleway) ;; *) exit 2 ;; esac
 # A saved plan keeps the configuration it was made from, so refuse here too:
 # terraform-env.sh cannot see an override that is gone when the plan is applied.
 for override in _destroy_override.tf _observability_cleanup_override.tf; do
-  [[ ! -e "${REPO_ROOT}/terraform/providers/${PROVIDER}/${override}" ]] || {
-    echo "refusing: terraform/providers/${PROVIDER}/${override} disables prevent_destroy; a destroy is running or crashed" >&2
+  [[ ! -e "${REPO_ROOT}/${ROOT_DIR}/${override}" ]] || {
+    echo "refusing: ${ROOT_DIR}/${override} disables prevent_destroy; a destroy is running or crashed" >&2
     exit 1
   }
 done
-PLAN_SOURCE="${TF_PLAN_FILE:-${REPO_ROOT}/terraform/providers/${PROVIDER}/${ENV}.tfplan}"
+PLAN_SOURCE="${TF_PLAN_FILE:-${REPO_ROOT}/${ROOT_DIR}/${ENV}.tfplan}"
 [[ "$PLAN_SOURCE" == /* ]] || { echo 'TF_PLAN_FILE must be absolute' >&2; exit 2; }
 [[ -f "$PLAN_SOURCE" && ! -L "$PLAN_SOURCE" ]] || {
   echo 'saved plan is missing or is not a regular non-symlink file' >&2

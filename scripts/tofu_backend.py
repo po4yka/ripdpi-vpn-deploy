@@ -89,7 +89,7 @@ def s3_settings(raw: bytes, provider: str | None) -> dict:
         raise ValueError('backend requires workspace_key_prefix = "state/workspaces"')
     # The disposable lock probe supplies its own run-specific key at init.
     if provider is not None:
-        if provider not in {"upcloud", "hetzner", "vultr", "scaleway"}:
+        if provider not in {"upcloud", "hetzner", "vultr", "scaleway", "egress-proxy"}:
             raise ValueError("unknown provider backend file")
         if settings.get("key") != f"state/{provider}/terraform.tfstate":
             raise ValueError(f'backend requires key = "state/{provider}/terraform.tfstate"')

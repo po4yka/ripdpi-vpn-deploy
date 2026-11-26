@@ -180,7 +180,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        provider: [upcloud, hetzner, vultr, scaleway]
+        provider: [upcloud, hetzner, vultr, scaleway, egress-proxy]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -193,15 +193,15 @@ jobs:
           checksums: c1f0d6b34d8328f963d3b1ad10896fae30a6c6890596190ffef477dab991090f
 
       - name: tofu fmt -check
-        working-directory: terraform/providers/${{ matrix.provider }}
+        working-directory: terraform/${{ matrix.provider == 'egress-proxy' && 'ops' || 'providers' }}/${{ matrix.provider }}
         run: tofu fmt -check -recursive
 
       - name: tofu init -backend=false
-        working-directory: terraform/providers/${{ matrix.provider }}
+        working-directory: terraform/${{ matrix.provider == 'egress-proxy' && 'ops' || 'providers' }}/${{ matrix.provider }}
         run: tofu init -lockfile=readonly -backend=false
 
       - name: tofu validate
-        working-directory: terraform/providers/${{ matrix.provider }}
+        working-directory: terraform/${{ matrix.provider == 'egress-proxy' && 'ops' || 'providers' }}/${{ matrix.provider }}
         run: tofu validate
 
   terraform-exception:
@@ -924,7 +924,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        provider: [upcloud, hetzner, vultr, scaleway]
+        provider: [upcloud, hetzner, vultr, scaleway, egress-proxy]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -935,10 +935,10 @@ jobs:
           tofu_wrapper: false
           checksums: c1f0d6b34d8328f963d3b1ad10896fae30a6c6890596190ffef477dab991090f
       - name: tofu init -backend=false
-        working-directory: terraform/providers/${{ matrix.provider }}
+        working-directory: terraform/${{ matrix.provider == 'egress-proxy' && 'ops' || 'providers' }}/${{ matrix.provider }}
         run: tofu init -lockfile=readonly -backend=false
       - name: tofu test
-        working-directory: terraform/providers/${{ matrix.provider }}
+        working-directory: terraform/${{ matrix.provider == 'egress-proxy' && 'ops' || 'providers' }}/${{ matrix.provider }}
         env:
           # Fixed, public value: tests encrypt only throwaway in-memory state.
           TF_VAR_state_passphrase: tf-test-passphrase-not-a-secret

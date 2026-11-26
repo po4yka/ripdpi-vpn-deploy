@@ -100,19 +100,25 @@ def test_non_init_refuses_to_create_missing_workspace(tmp_path: Path) -> None:
     ]
 
 
-def test_scaleway_provider_root_is_accepted(tmp_path: Path) -> None:
+# The egress root is an operations root under terraform/ops, not a VPN provider.
+@pytest.mark.parametrize(("provider", "root"), [
+    ("scaleway", "terraform/providers/scaleway"),
+    ("egress-proxy", "terraform/ops/egress-proxy"),
+])
+def test_root_is_selected_for_the_provider(tmp_path: Path, provider: str, root: str) -> None:
     result = _run(
         tmp_path,
         env_name="prod",
         args=["output", "-raw", "server_ipv4"],
-        provider="scaleway",
+        provider=provider,
     )
 
     assert result.returncode == 0, result.stderr
-    digest = hashlib.sha256(SETTINGS.replace("upcloud", "scaleway").encode()).hexdigest()
+    digest = hashlib.sha256(SETTINGS.replace("upcloud", provider).encode()).hexdigest()
+    data = REPO_ROOT / root / ".terraform-env/default" / digest
     assert (tmp_path / "terraform.log").read_text().splitlines() == [
-        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/scaleway/.terraform-env/default' / digest} -chdir={REPO_ROOT / 'terraform/providers/scaleway'} workspace select default",
-        f"TF_DATA_DIR={REPO_ROOT / 'terraform/providers/scaleway/.terraform-env/default' / digest} -chdir={REPO_ROOT / 'terraform/providers/scaleway'} output -raw server_ipv4",
+        f"TF_DATA_DIR={data} -chdir={REPO_ROOT / root} workspace select default",
+        f"TF_DATA_DIR={data} -chdir={REPO_ROOT / root} output -raw server_ipv4",
     ]
 
 
@@ -217,6 +223,26 @@ def test_plan_reads_selected_tfvars_file(tmp_path: Path, external: bool) -> None
     arguments = log.read_text().splitlines()
     assert "-var-file=" + str(tfvars) in arguments
     assert "-out=" + (str(plan_path) if external else "prod.tfplan") in arguments
+
+
+def test_egress_tfvars_resolve_under_the_operations_root() -> None:
+    env = {k: v for k, v in os.environ.items() if k != "TFVARS_ROOT"}
+    result = subprocess.run([sys.executable, "scripts/tofu_tfvars.py", "egress-proxy", "prod"], cwd=REPO_ROOT,
+                            env=env, text=True, capture_output=True, check=True)
+    assert result.stdout.strip() == str(REPO_ROOT / "terraform/ops/egress-proxy/environments/prod.tfvars")
+
+
+def test_policy_plan_reads_the_egress_plan_from_the_operations_root(tmp_path: Path) -> None:
+    plan = REPO_ROOT / "terraform/ops/egress-proxy/policy-plan-fixture.tfplan"
+    env = {k: v for k, v in os.environ.items() if k != "TF_PLAN_FILE"} | {"PROVIDER": "egress-proxy", "ENV": "policy-plan-fixture"}
+    missing = subprocess.run(["bash", "scripts/policy-plan.sh", "check"], cwd=REPO_ROOT, env=env,
+                             text=True, capture_output=True, check=False)
+    assert missing.returncode == 1
+    assert "saved plan is missing" in missing.stderr
+    unknown = subprocess.run(["bash", "scripts/policy-plan.sh", "check"], cwd=REPO_ROOT, env=env | {"PROVIDER": "unknown"},
+                             text=True, capture_output=True, check=False)
+    assert unknown.returncode == 2
+    assert not plan.exists()
 
 
 def test_relative_tfvars_root_is_refused() -> None:

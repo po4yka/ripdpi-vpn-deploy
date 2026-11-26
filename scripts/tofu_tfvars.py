@@ -8,7 +8,7 @@ import sys
 
 
 def tfvars_path(provider_root: Path, environment: str) -> Path:
-    if provider_root.name not in {"upcloud", "hetzner", "vultr", "scaleway"}:
+    if provider_root.name not in {"upcloud", "hetzner", "vultr", "scaleway", "egress-proxy"}:
         raise ValueError("unsupported tfvars provider")
     if environment == "default" or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*", environment):
         raise ValueError("invalid tfvars environment")
@@ -26,6 +26,7 @@ if __name__ == "__main__":
     if "/" in provider:
         sys.exit("invalid tfvars provider")
     try:
-        print(tfvars_path(Path(__file__).resolve().parents[1] / "terraform/providers" / provider, environment))
+        kind = "ops" if provider == "egress-proxy" else "providers"
+        print(tfvars_path(Path(__file__).resolve().parents[1] / "terraform" / kind / provider, environment))
     except ValueError as error:
         sys.exit(str(error))

@@ -26,6 +26,8 @@ blue-green path rather than changing a live node in place.
 
 **Encrypted remote state per provider and environment** — state and saved plans are encrypted on the client (`state.tf`, enforced, passphrase in `TF_VAR_state_passphrase`) and kept in a versioned Object Lock bucket behind the backend lock; the backend files live in the ops repository (`TF_BACKEND_ROOT`). `ENV=prod` deliberately remains the legacy `default` workspace; every other `ENV` maps to its own same-named workspace. Initialize a new environment with `make PROVIDER=<provider> ENV=<env> init` before any plan, apply, or output. `make restore-state` restores a bucket version under the lock; `make backup-state` keeps an age snapshot outside the bucket (`docs/how-to/incident.md`, "State loss"). Scripts read state only through `scripts/tofu_state.py` (`state pull`, kept in memory), never from a local path; the label-gated disposable CI deploy keeps its run in a per-run encrypted local backend override instead of the bucket.
 
+**Operations roots live under `ops/`** — a root that holds no VPN node (`ops/egress-proxy`, the fixed-address provider API proxy) is not a provider root: it exports only the outputs its consumers need, and `render-inventory.sh`, the liveness lists and the provider tuples in tests do not list it. It still shares encrypted remote state, the plan policy gate and `make tf-test`, so `terraform-env.sh`, `policy-plan.sh`, `tofu_tfvars.py` and `tofu_backend.py` map its name to `terraform/ops/<name>`, and the CI Terraform matrices run it with the providers.
+
 **No `local-exec` / `remote-exec`** — Terraform stays declarative.
 cloud-init owns first-boot bootstrap; Ansible owns runtime state.
 
