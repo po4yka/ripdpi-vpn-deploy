@@ -1,0 +1,11 @@
+{
+  "change": "ops-1795351496232576-private-ops-repository-evidence-w1b",
+  "evidence_summary": "W1 evidence from pull requests 683 and 686 and the ops repository; node-c check through the ops inventory passed at d7a08417",
+  "execution_sha256": "34a3fb302bb6d96236bf6b475bee8b62cdbed6fd9695d99012b88ec66244d22f",
+  "issue_sha256": "8a93d5754ce10453e49a9d802af0ea18a9c656e29dd17ff24d534f190c7a9e7c",
+  "outcome": "done",
+  "prepared_at": "2026-11-26T12:52:42Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "OPS-1795351496232576"
+}

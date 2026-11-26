@@ -2,7 +2,7 @@
 id: OPS-1795351496232576
 title: Carry the ops repository capability and prove its inputs with a dry-run
 kind: feature
-status: review
+status: done
 area: operations
 priority: high
 risk: high
@@ -15,6 +15,9 @@ created: 2026-11-22
 updated: 2026-11-26
 related_tasks: []
 status_detail: Both steps done; W1 evidence and the node-c check through the ops inventory are recorded
+closed_at: "2026-11-26T12:52:42Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: W1 evidence from pull requests 683 and 686 and the ops repository; node-c check through the ops inventory passed at d7a08417
 ---
 
 ## Goal
