@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-26
+goal: MON-1795705539639667 Probe node-initiated connections from the liveness
+  sentinel to separate one-way from two-way blocks
