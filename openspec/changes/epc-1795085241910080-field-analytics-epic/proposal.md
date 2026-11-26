@@ -6,6 +6,8 @@ Task ID: `EPC-1795085241910080`
 
 Server monitoring is rich (vmagent to Prometheus, about 40 alert rules, Kuma, watchdog, sentinel protocol-liveness, cascade-leg-probe, probe-matrix, xray-stats-exporter), but `docs/reference/protocol-liveness.md` states that client-path health is unknown. The app sends nothing to the server, and the only client contract is `contract/ripdpi-bundle.schema.json` v2. The operator cannot tell "server healthy, network blocks it for ASN X" from "server down". The owner decided on opt-in, anonymous, aggregated client field reports.
 
+Priority rationale (2026-11-26): almost all external evidence about blocking is single-vantage, and `docs/explanation/threat-model.md` states that CI measures only the unfiltered half. Opt-in client reports aggregated by client ASN and server ASN, with no IP addresses, are the only source that closes both gaps. Deliver D2, then D3, then D5 ahead of other monitoring work. The external evidence is single-source and unverified.
+
 ## What Changes
 
 - Define the client field-report contract and ripdpi-bundle v3 (child D1). BREAKING: bundle v3 replaces v2; v2 is rejected, with no compatibility shim.

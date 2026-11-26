@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-26
+goal: SCR-1795705796387934 Carry a per-entry allowlist-regime survivability
+  label in the client bundle

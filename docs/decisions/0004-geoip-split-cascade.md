@@ -116,6 +116,24 @@ Implementation completion does not clear the no-go. A future operator may recons
 
 This map exists to keep Phase 2 implementation honest: it reuses the *shape* of existing mechanisms (tiering, opt-in lists, secrets discipline, pinned datasets) without reusing their *contracts* — the EXCEPTION tier is not a fifth entry in the existing CORE/TACTICAL/RESEARCH enum, and the cascade roles are not a mode of `split-hop-egress`.
 
+## Revisit trigger
+
+**Added:** 2026-11-26. This section does not change the no-go outcome in Decision 0 or any other decision.
+
+The decision is re-examined only when both conditions below hold:
+
+1. Field data show that the share of stalled sessions toward foreign datacenter destinations on a given client ASN stays above an operator-set threshold for an operator-set period. The sources are the network block detection output (D5) and opt-in client field reports. This record sets neither the threshold nor the period.
+2. A fresh attestation under [ADR 0005](0005-per-asn-allowlist-attestation.md) is complete for the candidate ASN and is still inside its validity period.
+
+One condition alone does not re-open the decision.
+
+New context, single-source and unverified:
+
+- Reports dated 2026-10-25 to 2026-11-05 described HTTPS stalls after a few kilobytes on three cellular networks toward one foreign host. The stalls did not occur when the host was domestic.
+- A report dated 2026-11-19 described a domestic entry node that restored access on one fixed line the same evening.
+
+These reports do not change the decision. They are not field data from this fleet, and they do not satisfy condition 2.
+
 ## Open decisions
 
 - **EXCEPTION tier versus a RESEARCH sub-flag.** Whether jurisdiction risk deserves its own orthogonal tier (as decided above) or could instead have been modeled as a specially-flagged research role is not fully closed; the orthogonal-tier choice is recorded as the working decision but may be revisited once Phase 1 Terraform isolation is built and its operational cost is known.

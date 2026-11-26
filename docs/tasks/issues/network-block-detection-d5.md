@@ -4,7 +4,7 @@ title: Detect network blocks from sentinel and client-report divergence
 kind: feature
 status: review
 area: monitoring
-priority: medium
+priority: high
 risk: high
 owner: Implementer
 parent: EPC-1795085241910080
@@ -12,7 +12,7 @@ blocked_by: [SEC-1795086333272606, MON-1795086175387484]
 spec_mode: required
 openspec_change: mon-1795086646495369-network-block-detection-d5
 created: 2026-11-19
-updated: 2026-11-19
+updated: 2026-11-26
 related_tasks: []
 status_detail: Independent network-hint review findings fixed and verified locally; re-review pending
 ---

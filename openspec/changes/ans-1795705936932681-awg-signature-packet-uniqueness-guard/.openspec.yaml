@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-26
+goal: ANS-1795705936932681 Refuse AmneziaWG signature packets that repeat across
+  nodes or match a public default

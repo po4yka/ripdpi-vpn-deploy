@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-26
+goal: OPS-1795704918170150 Check a new node address from a filtered-side vantage
+  before bundle admission
