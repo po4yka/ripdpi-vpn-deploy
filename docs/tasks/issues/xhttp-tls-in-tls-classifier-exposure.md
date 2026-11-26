@@ -14,7 +14,7 @@ openspec_change: null
 created: 2026-11-26
 updated: 2026-11-26
 spec_reason: research-only
-related_tasks: []
+related_tasks: [po4yka/RIPDPI#TRN-1795705033979683]
 ---
 
 ## Goal

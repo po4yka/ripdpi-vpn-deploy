@@ -8,12 +8,12 @@ priority: medium
 risk: standard
 owner: Planner
 parent: null
-blocked_by: []
+blocked_by: [ANS-1792776076428131]
 spec_mode: required
 openspec_change: ans-1795705936932681-awg-signature-packet-uniqueness-guard
 created: 2026-11-26
 updated: 2026-11-26
-related_tasks: []
+related_tasks: [po4yka/RIPDPI#UIX-1795704986857984]
 ---
 
 ## Goal

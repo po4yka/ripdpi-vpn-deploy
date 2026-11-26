@@ -13,7 +13,7 @@ spec_mode: required
 openspec_change: sec-1795086333272606-field-report-ingest-d2
 created: 2026-11-19
 updated: 2026-11-19
-related_tasks: []
+related_tasks: [po4yka/RIPDPI#DGN-1795085498592630]
 status_detail: Re-review findings N1-N4 and L5 fixed and verified locally, Molecule included; independent review pending
 ---
 

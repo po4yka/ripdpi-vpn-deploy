@@ -14,7 +14,7 @@ If the observation holds, a client under that regime wastes attempts on UDP-base
 - Add a repository-owned class table: UDP-based classes get no, the standard TLS-over-TCP class gets yes, everything else gets unknown.
 - Update `docs/reference/ripdpi-bundle.md`.
 - BREAKING when bundle v3 has already shipped: then the label needs a version bump, with no compatibility shim. Step 1 decides this from the state of D4 (`SCR-1795086521848661`) and D1 (`SCR-1795085709140075`).
-- RIPDPI counterpart: read the label in failover and skip entries marked no when the client detects the allowlist regime. Tracked in the RIPDPI repository; no ID is recorded here.
+- Client (po4yka/RIPDPI#DAT-1795704964813672): read the label in failover and skip entries marked no when the client detects the allowlist regime. Tracked in the RIPDPI repository.
 
 ## Capabilities
 

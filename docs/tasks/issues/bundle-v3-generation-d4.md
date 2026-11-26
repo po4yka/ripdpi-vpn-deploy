@@ -13,7 +13,7 @@ spec_mode: required
 openspec_change: scr-1795086521848661-bundle-v3-generation-d4
 created: 2026-11-19
 updated: 2026-11-19
-related_tasks: []
+related_tasks: [po4yka/RIPDPI#DGN-1795704789266331]
 ---
 
 ## Goal
