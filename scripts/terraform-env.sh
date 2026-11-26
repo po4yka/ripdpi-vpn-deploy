@@ -32,7 +32,9 @@ ENV="${ENV:-prod}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 case "$PROVIDER" in
-  upcloud|hetzner|vultr|scaleway) ;;
+  upcloud|hetzner|vultr|scaleway) ROOT_KIND=providers ;;
+  # An operations root, not a VPN node provider (terraform/ops).
+  egress-proxy) ROOT_KIND=ops ;;
   *) echo "unsupported PROVIDER: $PROVIDER" >&2; exit 2 ;;
 esac
 
@@ -46,7 +48,7 @@ if [[ "$ENV" == "default" ]]; then
   exit 2
 fi
 
-TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
+TF_DIR="${REPO_ROOT}/terraform/${ROOT_KIND}/${PROVIDER}"
 [[ -d "$TF_DIR" ]] || { echo "missing Terraform root: $TF_DIR" >&2; exit 2; }
 [[ $# -gt 0 ]] || { echo "usage: $0 <tofu command> [args...]" >&2; exit 2; }
 

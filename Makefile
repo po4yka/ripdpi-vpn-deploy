@@ -1039,7 +1039,9 @@ init:
 # provider: providers install once per invocation and `make -j` never runs two
 # inits on the same directory.
 TF_PROVIDER_ROOTS := $(addprefix terraform/providers/,upcloud hetzner vultr scaleway)
-TF_VALIDATION_ROOTS := $(TF_PROVIDER_ROOTS) terraform/exception/cascade-ingress
+# Operations roots hold no VPN node; they share tests and validation, not the provider workflow.
+TF_OPS_ROOTS := terraform/ops/egress-proxy
+TF_VALIDATION_ROOTS := $(TF_PROVIDER_ROOTS) $(TF_OPS_ROOTS) terraform/exception/cascade-ingress
 TF_VALIDATION_ENV = TF_DATA_DIR="$(CURDIR)/$$root/.terraform-env/.validation" TF_WORKSPACE=default
 # Fixed, public value: tests encrypt only throwaway in-memory state.
 TF_TEST_STATE_PASSPHRASE := tf-test-passphrase-not-a-secret
@@ -1717,7 +1719,7 @@ cloud-init-schema:
 	  fi
 
 tf-test: terraform-init
-	@for root in $(TF_PROVIDER_ROOTS); do \
+	@for root in $(TF_PROVIDER_ROOTS) $(TF_OPS_ROOTS); do \
 	  echo "== tofu test: $$root =="; \
 	  $(TF_VALIDATION_ENV) TF_VAR_plan_backend_scope=offline-test TF_VAR_state_passphrase=$(TF_TEST_STATE_PASSPHRASE) tofu -chdir="$$root" test || exit 1; \
 	done
