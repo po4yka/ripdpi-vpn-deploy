@@ -1902,23 +1902,29 @@ def test_controller_environment_reports_task_durations(tmp_path):
     module = importlib.util.module_from_spec(spec)
     sys.path.insert(0, str(ROOT / "scripts"))
     spec.loader.exec_module(module)
-    environment = module.execution_environment(ROOT, tmp_path)
+    # Operator worktrees have no installed collections, so the timing must not depend on one.
+    environment = module.callback_environment(ROOT, tmp_path, module.execution_environment(ROOT, tmp_path / "run"),
+                                              statistics=False)
+    assert environment["ANSIBLE_COLLECTIONS_PATH"] == str(ROOT / ".ansible/collections")
     play = tmp_path / "play.yml"
     play.write_text("- hosts: localhost\n  connection: local\n  gather_facts: false\n  become: false\n"
-                    "  tasks:\n    - name: Timed task\n      ansible.builtin.command: 'true'\n"
-                    "      changed_when: false\n")
+                    "  tasks:\n    - name: Quick task\n      ansible.builtin.command: 'true'\n"
+                    "      changed_when: false\n"
+                    "    - name: Slow task\n      ansible.builtin.command: sleep 1\n      changed_when: false\n"
+                    "      loop: [1, 2]\n")
     inventory = tmp_path / "inventory.ini"
     inventory.write_text(f"localhost ansible_connection=local ansible_python_interpreter={sys.executable}\n")
-    result = subprocess.run(["ansible-playbook", "-i", str(inventory), str(play)], env=environment, cwd=tmp_path,
-                            capture_output=True, text=True, timeout=120)
+    result = subprocess.run(["ansible-playbook", "-i", str(inventory), str(play)],
+                            env={**environment, "ANSIBLE_COLLECTIONS_PATH": str(tmp_path / "absent")},
+                            cwd=tmp_path, capture_output=True, text=True, timeout=120)
     assert result.returncode == 0, result.stdout + result.stderr
-    # profile_tasks closes the run with one duration line per task. CI unit jobs do not install the
-    # pinned collections, so there Ansible names the same callback in its load warning instead.
-    timed = re.search(r"^Timed task -+ \d+\.\d+s$", result.stdout, re.MULTILINE)
-    named = "callback plugin 'ansible.posix.profile_tasks'" in result.stderr
-    assert timed or named, result.stdout + result.stderr
-    if (ROOT / ".ansible/collections/ansible_collections/ansible/posix").is_dir():
-        assert timed, result.stdout
+    summary = result.stdout[result.stdout.index("TASK TIMING: 2 tasks"):].splitlines()
+    assert summary[1] == "slowest tasks:"
+    seconds, name = summary[2].split("s  ", 1)
+    # Two loop items of one second each: the task duration covers both.
+    assert name == "Slow task" and float(seconds) >= 2.0
+    assert summary[3].endswith("s  Quick task")
+    assert "slowest roles (tasks, total):" in summary and summary[-1].endswith("2  (play)")
 
 
 def test_only_local_promotion_receives_the_state_identity(tmp_path, monkeypatch):
