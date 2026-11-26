@@ -2,7 +2,7 @@
 id: OPS-1795697141240057
 title: Measure dry-run task cost and design parallel per-node previews
 kind: research
-status: review
+status: done
 area: operations
 priority: medium
 risk: standard
@@ -16,6 +16,9 @@ updated: 2026-11-26
 spec_reason: research-only
 related_tasks: []
 status_detail: Measurements, retirement optimization, timing fix, design and follow-ups recorded; complete-graph timing remains a gap
+closed_at: "2026-11-26T15:17:59Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "Timed check-mode previews at 93591d825: node-b (core) 1055 of about 1305 tasks in 1443 s and split-hop B 699 tasks in 905 s, both ended by relayed Tailnet stalls; the 20 slowest tasks of each, their role, remote call in check mode and decision are in docs/tasks/work/OPS-1795697141240057.md. The owner accepted partial-graph timing. Optimizations in PR 743: source-owned task timing callback and present-only runtime-release retirement (63 fewer remote calls per preview). Design: concurrent per-node previews with private secrets and inventory paths, serial deploys. Follow-ups OPS-1795702314418305 (OpenSpec), ANS-1795702245344721, OPS-1795702284251279."
 ---
 
 ## Goal
