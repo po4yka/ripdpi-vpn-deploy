@@ -2,7 +2,7 @@
 id: OPS-1795697141240057
 title: Measure dry-run task cost and design parallel per-node previews
 kind: research
-status: backlog
+status: review
 area: operations
 priority: medium
 risk: standard
@@ -15,6 +15,7 @@ created: 2026-11-26
 updated: 2026-11-26
 spec_reason: research-only
 related_tasks: []
+status_detail: Measurements, retirement optimization, timing fix, design and follow-ups recorded; complete-graph timing remains a gap
 ---
 
 ## Goal

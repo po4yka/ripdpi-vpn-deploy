@@ -1,0 +1,28 @@
+---
+id: OPS-1795702284251279
+title: Keep full-graph previews alive through relayed Tailnet stalls
+kind: research
+status: backlog
+area: operations
+priority: high
+risk: standard
+owner: primary
+parent: null
+blocked_by: []
+spec_mode: not-required
+openspec_change: null
+created: 2026-11-26
+updated: 2026-11-26
+spec_reason: research-only
+related_tasks: []
+---
+
+## Goal
+
+On 2026-11-26 the management route from the operator machine to every production node went through a DERP relay, with a median RTT of 120 to 370 ms, and stalled several times for longer than the SSH keepalive budget (15 s × 8). The stalls ended three of four timed full-graph previews and one deploy (`docs/tasks/work/OPS-1795697141240057.md`), each after 15 to 25 minutes of work. This research finds the cause of the stalls and of the missing direct paths, and decides how a preview or deploy avoids losing a long run to one stall, without a retry that can run a protected task twice.
+
+## Acceptance criteria
+
+- The cause of the missing direct Tailnet path to each node is named from evidence (operator-side NAT, node firewall, or relay policy), with the change that would allow a direct path and its security effect on the node's exposure.
+- The stall events are correlated with operator-side network events (address changes, relay changes, sleep) from logs with times.
+- A decision states whether `dry-run` measures the management route at start as `deploy` does, and whether check mode may tolerate a longer stall than a deploy; a change to deployment lifecycle behaviour gets its own task with `spec_mode: required`.
