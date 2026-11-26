@@ -14,7 +14,7 @@ CI holds its own age, SSH, Tailnet and provider identities, each in only the Git
 - [x] SEC-1795328879513998 Turn the admin key input into a list and make baseline manage admin authorized_keys exclusively, with Molecule add and revoke #feature !high @item:SEC-1795328680299474
 - [x] SEC-1795328890918872 Add the CI tags, tagOwners and grants to an imported Tailnet policy file managed by the GitOps action #feature !high @item:SEC-1795328680299474
 - [x] SEC-1795328902011315 Create environments with default-branch policies and the owner-only merge ruleset and generate CI age and SSH identities in CI (authorized live step) #feature !high @item:SEC-1795328680299474
-- [ ] SEC-1795328913746423 Re-encrypt every scoped SOPS file to operator plus CI and issue least-privilege provider tokens with catalog entries (authorized live step) #feature !high @item:SEC-1795328680299474
+- [x] SEC-1795328913746423 Re-encrypt every scoped SOPS file to operator plus CI and issue least-privilege provider tokens with catalog entries (authorized live step) #feature !high @item:SEC-1795328680299474
 
 ## Verification
 
