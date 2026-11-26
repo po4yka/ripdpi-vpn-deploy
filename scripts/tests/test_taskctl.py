@@ -2355,6 +2355,122 @@ class TaskctlHistoryTest(TaskctlFixture):
         ):
             taskctl.validate_repository(self.root, base=base, upstreams=False)
 
+        # The terminal-history path accepts the cure through closure and purge.
+        change = f"{source_task.casefold()}-change"
+        archive = self.root / "openspec/changes/archive" / f"2026-08-09-{change}"
+        (self.root / "openspec/changes" / change).rename(archive)
+        (archive / ".taskctl-archive.json").write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "task_id": source_task,
+                    "change": change,
+                    "outcome": "review",
+                    "commit_sha": base,
+                    "archived_at": "2026-08-09T00:00:00Z",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        taskctl.command_close_prepare(
+            argparse.Namespace(
+                root=self.root,
+                query=source_task,
+                outcome="done",
+                reason="Live acceptance transferred.",
+                evidence="Cured ownership mapping retained.",
+            )
+        )
+        self.commit_all("record cured terminal closure")
+        taskctl.command_close_purge(argparse.Namespace(root=self.root, query=source_task))
+        self.commit_all("purge cured source")
+        taskctl.validate_deleted_history(self.root, base)
+
+    def test_partial_mapping_at_the_transfer_stays_refused_after_completion(self) -> None:
+        source_task = "ANS-1786234567890101"
+        owner_task = "OPS-1786234567890201"
+        self.add_active_spec_task(
+            status="review", done=True, task_id=source_task, slug="source"
+        )
+        self.add_active_spec_task(
+            status="review", done=True, task_id=owner_task, slug="owner", related=[source_task]
+        )
+        active = self.root / "openspec/changes" / f"{source_task.casefold()}-change"
+        second = f"REQ-{source_task}-002"
+        spec = active / "specs/change/spec.md"
+        spec.write_text(
+            spec.read_text(encoding="utf-8") + f"\n### Requirement: {second} — Second fixture\n",
+            encoding="utf-8",
+        )
+        tasks = active / "tasks.md"
+        tasks.write_text(
+            tasks.read_text(encoding="utf-8")
+            + f"- [x] ANS-1786234567890103 Verify second fixture @item:{source_task}\n",
+            encoding="utf-8",
+        )
+        source_verification = active / "verification.md"
+        verification = taskctl.read_document(source_verification)
+        values = dict(verification.values)
+        values["local"] = "passed"
+        values["local_evidence"] = "Source checks passed."
+        values["live"] = "blocked"
+        values["live_evidence"] = "Live acceptance is unavailable."
+        body = (
+            verification.body.replace("| Pending | required |", "| Source passed. | passed |").rstrip()
+            + f"\n| {second} | ANS-1786234567890103 | Source passed. | passed |\n"
+        )
+        source_verification.write_text(
+            taskctl.render_document(values, body, order=tuple(values)), encoding="utf-8"
+        )
+        owner_verification = (
+            self.root / "openspec/changes" / f"{owner_task.casefold()}-change" / "verification.md"
+        )
+        owner_document = taskctl.read_document(owner_verification)
+        owner_values = dict(owner_document.values)
+        owner_values["live"] = "blocked"
+        owner_values["live_evidence"] = "Owned live acceptance is pending."
+        owner_verification.write_text(
+            taskctl.render_document(owner_values, owner_document.body, order=tuple(owner_values)),
+            encoding="utf-8",
+        )
+        self.write_board()
+        base = self.commit_all("record blocked live evidence")
+
+        values["commit_sha"] = base
+        values["live"] = "not_applicable"
+        values["live_evidence"] = f"Transferred to {owner_task}."
+        source_verification.write_text(
+            taskctl.render_document(values, body, order=tuple(values)), encoding="utf-8"
+        )
+        mapping = {
+            "source_task": source_task,
+            "owner_task": owner_task,
+            "requirement": f"REQ-{source_task}-001",
+            "command": "make verify LIMIT=fixture",
+            "category": "live",
+            "source_revision": base,
+        }
+        for path in (source_verification, owner_verification):
+            self.add_shared_evidence_mapping(path, **mapping)
+        self.commit_all("transfer live evidence with one of two requirements mapped")
+
+        for path in (source_verification, owner_verification):
+            self.add_shared_evidence_mapping(path, **dict(mapping, requirement=second))
+        self.commit_all("complete the mapping later")
+
+        openspec = self.root / "tools/tasking/node_modules/.bin/openspec"
+        openspec.parent.mkdir(parents=True)
+        openspec.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        openspec.chmod(0o755)
+        # Only a transfer with no mapping row at all may be cured later.
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "does not map every source requirement"
+        ):
+            taskctl.command_verify(
+                argparse.Namespace(root=self.root, query=source_task, archive_ready=True)
+            )
+
     def test_shared_mapping_must_survive_until_terminal_snapshot(self) -> None:
         source_task = "ANS-1786234567890101"
         owner_task = "OPS-1786234567890201"
