@@ -5,6 +5,7 @@ contacting hosts. Separate parity cases use the installed Ansible locally.
 """
 
 import ast
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -375,6 +376,49 @@ def test_dry_run_checks_the_same_tags_as_the_deploy(workspace):
     assert result.returncode == 0, result.stderr
     site = [entry for entry in calls(workspace) if entry["program"] == "ansible-playbook"][0]["args"]
     assert site[-4:] == ["--check", "--diff", "--tags", "baseline,firewall,backup"]
+
+
+@pytest.mark.parametrize("held,target,limit,refusal", [
+    ("node-node-one.lock", "dry-run", "node-one", "node-operation-in-progress"),
+    ("node-node-one.lock", "deploy", "node-one", "node-operation-in-progress"),
+    ("deploy.lock", "deploy", "node-two", "deploy-in-progress"),
+    # Previews of other nodes run beside a deploy and beside each other.
+    ("deploy.lock", "dry-run", "node-one", None),
+    ("node-node-two.lock", "dry-run", "node-one", None),
+])
+def test_operation_locks_keep_one_run_per_node_and_deploys_serial(workspace, held, target, limit, refusal):
+    locks = workspace["home"] / ".local/state/vpn-deploy/locks"
+    locks.mkdir(mode=0o700, parents=True)
+    with open(locks / held, "w") as holder:
+        fcntl.flock(holder, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        result = invoke(workspace, target=target, limit=limit)
+    if refusal:
+        assert result.returncode != 0
+        assert f"deploy: {refusal}" in result.stderr
+        assert not calls(workspace)
+    else:
+        assert result.returncode == 0, result.stderr
+    # The refused or finished run released its own locks.
+    again = invoke(workspace, target=target, limit=limit)
+    assert again.returncode == 0, again.stderr
+
+
+@pytest.mark.parametrize("fault", ["shared-directory", "symlinked-lock", "hard-linked-lock"])
+def test_unsafe_operation_lock_refuses_before_any_host_call(workspace, tmp_path, fault):
+    locks = workspace["home"] / ".local/state/vpn-deploy/locks"
+    locks.mkdir(mode=0o700, parents=True)
+    if fault == "shared-directory":
+        locks.chmod(0o755)
+    elif fault == "symlinked-lock":
+        (locks / "node-node-one.lock").symlink_to(tmp_path / "elsewhere.lock")
+    else:
+        os.link(write(tmp_path / "other.lock", ""), locks / "node-node-one.lock")
+    result = invoke(workspace, target="dry-run", limit="node-one")
+    assert result.returncode != 0
+    assert ("deploy: unsafe operation lock directory" if fault == "shared-directory"
+            else "deploy: unsafe operation lock") in result.stderr
+    assert not calls(workspace)
+    assert not (tmp_path / "elsewhere.lock").exists()
 
 
 def test_dry_run_selects_the_ops_checkout_inventory_over_the_local_default(workspace, tmp_path):

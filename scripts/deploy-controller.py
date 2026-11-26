@@ -2,8 +2,9 @@
 """Inventory-bound readiness, convergence and source parity for Make deploys."""
 
 import ast
-from contextlib import contextmanager, nullcontext
+from contextlib import ExitStack, contextmanager, nullcontext
 from contextvars import ContextVar
+import fcntl
 import hashlib
 import ipaddress
 import json
@@ -341,6 +342,44 @@ def callback_environment(root, directory, environment, *, statistics):
     if statistics:
         result['RIPDPI_CHECK_STATS_FILE'] = str(directory / 'check-statistics.json')
     return result
+
+
+@contextmanager
+def operation_locks(names, *, deploy):
+    """Hold one lock per selected node for this operator account, plus the fleet lock that keeps deploys serial.
+
+    The locks live outside every checkout, so runs from different worktrees coordinate. A preview takes
+    only its node locks, so previews of other nodes can run beside a deploy.
+    """
+    directory = Path.home() / ".local/state/vpn-deploy/locks"
+    wanted = ([("deploy.lock", "deploy-in-progress")] if deploy else []) + [
+        ("node-" + name + ".lock", "node-operation-in-progress") for name in sorted(names)]
+    with ExitStack() as held:
+        try:
+            directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+            # Lock files are opened relative to this checked descriptor, so a swapped path cannot redirect them.
+            parent = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        except OSError:
+            raise DeployError("unsafe operation lock directory") from None
+        held.callback(os.close, parent)
+        info = os.fstat(parent)
+        if info.st_uid != os.getuid() or info.st_mode & 0o077:
+            raise DeployError("unsafe operation lock directory")
+        for filename, category in wanted:
+            try:
+                descriptor = os.open(filename, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600,
+                                     dir_fd=parent)
+            except OSError:
+                raise DeployError("unsafe operation lock") from None
+            held.callback(os.close, descriptor)
+            info = os.fstat(descriptor)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_nlink != 1:
+                raise DeployError("unsafe operation lock")
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise DeployError(category) from None
+        yield
 
 
 def require_no_check_changes(path):
@@ -864,7 +903,7 @@ def controller(mode):
     root = Path(__file__).resolve().parents[1]
     # Control sockets live under a short 0700 /tmp path: macOS limits socket paths to 104 bytes.
     with tempfile.TemporaryDirectory(prefix="vpn-deploy-") as temporary, \
-            tempfile.TemporaryDirectory(prefix="vd-ssh-", dir="/tmp") as control:
+            tempfile.TemporaryDirectory(prefix="vd-ssh-", dir="/tmp") as control, ExitStack() as held:
         directory, sockets = Path(temporary).resolve(), Path(control).resolve()
         environment = execution_environment(root, directory)
         identity = source_identity(root, environment, require_clean=mode == "deploy")
@@ -879,6 +918,7 @@ def controller(mode):
         if not selected_environment or any(
                 str(metadata[host["name"]].get("env", "")) != selected_environment for host in hosts):
             raise DeployError("selected inventory hosts must belong to ENV")
+        held.enter_context(operation_locks([host["name"] for host in hosts], deploy=mode == "deploy"))
         secret_data = read_input(os.environ["DEPLOY_SECRETS_FILE"], private=True, exact_mode=0o600,
                                  limit=SECRETS_LIMIT)
         validate_yaml(secret_data)
