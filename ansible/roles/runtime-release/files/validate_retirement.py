@@ -110,6 +110,18 @@ def validate(paths: list[str], owners: dict[str, str] | None = None) -> list[str
     return effective
 
 
+def present(paths: list[str]) -> list[str]:
+    """Return accepted paths that exist now; a final symlink is not followed."""
+    found = []
+    for value in paths:
+        try:
+            Path(value).lstat()
+        except FileNotFoundError:
+            continue
+        found.append(value)
+    return found
+
+
 def main() -> int:
     try:
         request = json.loads(sys.stdin.read(262145))
@@ -119,7 +131,7 @@ def main() -> int:
     except (ValueError, OSError):
         print("runtime retirement authority rejected", file=sys.stderr)
         return 2
-    print(json.dumps({"status": "accepted", "paths": paths}, sort_keys=True))
+    print(json.dumps({"status": "accepted", "paths": paths, "present": present(paths)}, sort_keys=True))
     return 0
 
 

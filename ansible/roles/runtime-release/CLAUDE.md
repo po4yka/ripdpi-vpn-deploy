@@ -200,7 +200,10 @@ Staged includes return `runtime_release_candidates` for their own consumer. They
 - `tasks/retire.yml` is a consumer-selected lifecycle entry point. Consumers
   declare their exact runtime units and authority paths; it stops installed units,
   refuses foreign owners and removes that set. It never deletes shared packages,
-  runtime release receipts or durable recovery/backup state.
+  runtime release receipts or durable recovery/backup state. The removal loop
+  takes only the accepted paths that the validator reports `present` after the
+  producers stopped; check mode stops nothing and reuses the first validation.
+  Each loop item is one remote call, and it runs for every disabled consumer.
 
 Retirement and authority rollback query every declared service, timer and target
 directly. `service_facts` enumerates services and cannot prove timer state; the
