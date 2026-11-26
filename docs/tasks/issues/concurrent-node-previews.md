@@ -2,7 +2,7 @@
 id: OPS-1795702314418305
 title: Preview several nodes at once while deploys stay serial
 kind: feature
-status: backlog
+status: doing
 area: operations
 priority: medium
 risk: standard
