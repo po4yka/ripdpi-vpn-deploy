@@ -12,7 +12,7 @@ Single serialized lane. Scripts: `scripts/deploy-controller.py`, `scripts/DESIGN
 
 - [x] OPS-1795702489297777 Take per-node operation locks and the fleet deploy lock in the deploy controller with refusal and release tests #feature @item:OPS-1795702314418305
 - [x] OPS-1795702516853613 Document the concurrent preview recipe and lock refusals in the deploy runbook #feature @item:OPS-1795702314418305
-- [ ] OPS-1795702550913675 Run concurrent previews of two production aliases from one worktree and record their durations #feature @item:OPS-1795702314418305
+- [x] OPS-1795702550913675 Run concurrent previews of two production aliases from one worktree and record their durations #feature @item:OPS-1795702314418305
 
 ## Verification
 

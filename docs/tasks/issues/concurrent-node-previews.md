@@ -2,7 +2,7 @@
 id: OPS-1795702314418305
 title: Preview several nodes at once while deploys stay serial
 kind: feature
-status: doing
+status: review
 area: operations
 priority: medium
 risk: standard
@@ -12,8 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: ops-1795702314418305-concurrent-node-previews
 created: 2026-11-26
-updated: 2026-11-26
+updated: 2026-11-27
 related_tasks: []
+status_detail: Concurrent previews of node-a and node-b passed from one worktree at e16a6a59e; live lock refusal recorded
 ---
 
 ## Goal
