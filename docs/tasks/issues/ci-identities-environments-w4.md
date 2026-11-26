@@ -2,7 +2,7 @@
 id: SEC-1795328680299474
 title: Issue revocable CI identities in scoped GitHub environments
 kind: feature
-status: doing
+status: review
 area: security
 priority: high
 risk: high
@@ -12,8 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: sec-1795328680299474-ci-identities-environments-w4
 created: 2026-11-22
-updated: 2026-11-22
+updated: 2026-11-26
 related_tasks: []
+status_detail: All steps done; verification records local, dry-run and live evidence; remote CI follows on the merge revision
 ---
 
 ## Goal
