@@ -2190,6 +2190,7 @@ def validate_current_evidence_transfers(
     root: Path,
     document: Document,
     config: ProjectConfig,
+    history_index: TerminalHistoryIndex | None = None,
 ) -> None:
     if (
         config.evidence_transfer_policy == 0
@@ -2197,7 +2198,8 @@ def validate_current_evidence_transfers(
         or document.values.get("status") == "dropped"
     ):
         return
-    history_index = build_terminal_history_index(root, config)
+    if history_index is None:
+        history_index = build_terminal_history_index(root, config)
     with tempfile.TemporaryDirectory(prefix="taskctl-current-transfer-") as directory:
         scratch = Path(directory)
         transferred: dict[str, str] = {}
@@ -4039,7 +4041,48 @@ def validate_repository(
         validate_upstreams(root, documents)
     if base:
         validate_deleted_history(root, base)
+    validate_changed_evidence_transfers(root, documents, base)
     return documents, steps
+
+
+def validate_changed_evidence_transfers(
+    root: Path, documents: Sequence[Document], base: str | None
+) -> None:
+    # A committed unmapped transfer can never be repaired, so refuse it before
+    # commit and in CI; only changed records are checked because the scan is slow.
+    if run_command(("git", "rev-parse", "--verify", "--quiet", "HEAD"), root=root).returncode:
+        return
+    # Per-commit names, not the net diff: a transfer reverted later in the range
+    # still lands on main's first-parent history.
+    listings = [
+        ("git", "diff", "--name-only", "HEAD"),
+        ("git", "ls-files", "--others", "--exclude-standard"),
+    ]
+    if base:
+        listings.append(("git", "log", "--format=", "--name-only", f"{base}..HEAD"))
+    changed: set[str] = set()
+    for listing in listings:
+        result = run_command(listing, root=root)
+        if result.returncode != 0:
+            fail("cannot list changed verification records")
+        changed.update(filter(None, (result.stdout or "").splitlines()))
+    selected = [
+        document
+        for document in documents
+        if document.values.get("spec_mode") == "required"
+        and (expected_execution_path(root, document).parent / "verification.md")
+        .relative_to(root)
+        .as_posix()
+        in changed
+    ]
+    if not selected:
+        return
+    config = load_project_config(root)
+    history_index = build_terminal_history_index(root, config)
+    for document in selected:
+        validate_current_evidence_transfers(
+            root, document, config, history_index=history_index
+        )
 
 
 def find_document(documents: Sequence[Document], query: str) -> Document:
@@ -4679,8 +4722,8 @@ def verify_task(
                     f"OpenSpec change {change} is invalid:\n{(result.stdout or '').rstrip()}"
                 )
         evidence = evidence_values(execution.parent / "verification.md", config)
+        validate_current_evidence_transfers(root, document, config)
         if archive_ready:
-            validate_current_evidence_transfers(root, document, config)
             if any(
                 evidence[category] in {"required", "blocked"}
                 for category in config.evidence_categories

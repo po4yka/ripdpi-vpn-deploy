@@ -1843,6 +1843,87 @@ class TaskctlHistoryTest(TaskctlFixture):
                 )
             )
 
+    def test_validate_and_verify_reject_an_uncommitted_unmapped_transfer(
+        self,
+    ) -> None:
+        # Once committed, an unmapped transfer can never be archived, so the
+        # pre-commit validate and a plain verify must refuse it first.
+        source_task = "ANS-1786234567890101"
+        self.add_active_spec_task(status="review", done=True, task_id=source_task)
+        verification_path = (
+            self.root
+            / "openspec/changes"
+            / f"{source_task.casefold()}-change"
+            / "verification.md"
+        )
+        verification = taskctl.read_document(verification_path)
+        values = dict(verification.values)
+        values["live"] = "blocked"
+        values["live_evidence"] = "Live acceptance is unavailable."
+        verification_path.write_text(
+            taskctl.render_document(values, verification.body, order=tuple(values)),
+            encoding="utf-8",
+        )
+        self.write_board()
+        self.commit_all("record blocked live evidence")
+
+        values["live"] = "not_applicable"
+        values["live_evidence"] = "Delegated elsewhere without mapping."
+        verification_path.write_text(
+            taskctl.render_document(values, verification.body, order=tuple(values)),
+            encoding="utf-8",
+        )
+        openspec = self.root / "tools/tasking/node_modules/.bin/openspec"
+        openspec.parent.mkdir(parents=True)
+        openspec.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        openspec.chmod(0o755)
+
+        message = "live evidence changed from blocked to not_applicable without a shared mapping"
+        with self.assertRaisesRegex(taskctl.ContractError, message):
+            taskctl.validate_repository(self.root, base=None, upstreams=False)
+        with self.assertRaisesRegex(taskctl.ContractError, message):
+            taskctl.command_verify(
+                argparse.Namespace(root=self.root, query=source_task, archive_ready=False)
+            )
+
+    def test_validate_base_rejects_an_unmapped_transfer_reverted_in_the_range(
+        self,
+    ) -> None:
+        source_task = "ANS-1786234567890101"
+        self.add_active_spec_task(status="review", done=True, task_id=source_task)
+        verification_path = (
+            self.root
+            / "openspec/changes"
+            / f"{source_task.casefold()}-change"
+            / "verification.md"
+        )
+        verification = taskctl.read_document(verification_path)
+        values = dict(verification.values)
+        values["live"] = "blocked"
+        values["live_evidence"] = "Live acceptance is unavailable."
+        blocked = taskctl.render_document(values, verification.body, order=tuple(values))
+        verification_path.write_text(blocked, encoding="utf-8")
+        self.write_board()
+        base = self.commit_all("record blocked live evidence")
+
+        values["live"] = "not_applicable"
+        values["live_evidence"] = "Delegated elsewhere without mapping."
+        verification_path.write_text(
+            taskctl.render_document(values, verification.body, order=tuple(values)),
+            encoding="utf-8",
+        )
+        self.commit_all("reclassify live evidence without mapping")
+        verification_path.write_text(blocked, encoding="utf-8")
+        self.commit_all("restore blocked live evidence")
+
+        # Without a range nothing changed, so the slow history scan is skipped.
+        taskctl.validate_repository(self.root, base=None, upstreams=False)
+        with self.assertRaisesRegex(
+            taskctl.ContractError,
+            "live evidence changed from blocked to not_applicable without a shared mapping",
+        ):
+            taskctl.validate_repository(self.root, base=base, upstreams=False)
+
     def test_historical_related_task_rejects_unmapped_evidence_transfer(
         self,
     ) -> None:
