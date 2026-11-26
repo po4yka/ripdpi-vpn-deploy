@@ -89,6 +89,7 @@
     - not ansible_check_mode
     - not (_runtime_retire_consumer_owned | bool)
 
+# Check mode stops no unit, so the first validation already describes the same state.
 - name: Validate complete declared runtime authority after stopping producers
   ansible.builtin.command:
     argv:
@@ -96,15 +97,19 @@
       - -c
       - "{{ lookup('ansible.builtin.file', role_path ~ '/files/validate_retirement.py') }}"
     stdin: "{{ {'paths': runtime_retire_paths, 'owners': runtime_retire_file_owners} | to_json }}"
-  register: _runtime_retire_preflight
+  register: _runtime_retire_postflight
   changed_when: false
-  check_mode: false
+  when: not ansible_check_mode
 
+# Only paths present after the producers stopped: each loop item is one remote call, and most
+# declared paths of a never-installed consumer are absent.
 - name: Remove only declared runtime authority
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
-  loop: "{{ _runtime_retire_effective_paths }}"
+  loop: >-
+    {{ ((_runtime_retire_preflight if ansible_check_mode else _runtime_retire_postflight).stdout
+        | from_json).present | intersect(_runtime_retire_effective_paths) }}
   register: _runtime_retire_removed
   when: not (_runtime_retire_consumer_owned | bool)
 
