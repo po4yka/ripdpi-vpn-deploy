@@ -1802,6 +1802,7 @@ def validate_historical_shared_transfer(
     snapshots_at_source: dict[str, HistoricalTaskSnapshot],
     config: ProjectConfig,
     scratch: Path,
+    defer_unmapped: bool = False,
 ) -> None:
     source_verification = historical_verification_document(
         root,
@@ -1816,6 +1817,11 @@ def validate_historical_shared_transfer(
         if mapping.source_task == task_id and mapping.category == category
     ]
     if not candidates:
+        # Cure: a transfer committed with no mapping at all is not final here; the
+        # survival check must then find a complete mapping that both tasks record.
+        # A partial or mismatched mapping at the transfer revision still fails.
+        if defer_unmapped:
+            return
         fail(
             f"{source_snapshot.relative}: {category} evidence changed from {previous_state} "
             "to not_applicable without a shared mapping"
@@ -1900,9 +1906,11 @@ def validate_current_shared_transfer(
     ]
     if not candidates:
         if require_survival:
+            # Covers a removed mapping and an uncured transfer that never had one.
             fail(
-                f"{document.path.relative_to(root)}: shared {category} mapping did not "
-                "survive until current snapshot"
+                f"{document.path.relative_to(root)}: {category} evidence changed from "
+                f"{previous_state} to not_applicable without a shared mapping that "
+                "survives until current snapshot"
             )
         fail(
             f"{document.path.relative_to(root)}: {category} evidence changed from "
@@ -2095,6 +2103,7 @@ def validate_historical_evidence_transfer_timeline(
     history_index: TerminalHistoryIndex,
     scratch: Path,
     require_survival: bool,
+    trusted_base: str | None = None,
 ) -> dict[str, str]:
     timeline = [
         (revision, history_index.by_revision[revision].get(task_id))
@@ -2166,6 +2175,14 @@ def validate_historical_evidence_transfer_timeline(
                     snapshots_at_source=history_index.by_revision[revision],
                     config=revision_config,
                     scratch=scratch,
+                    # Only history already on the trusted base may be cured; a
+                    # change under review must map its own transfer.
+                    defer_unmapped=trusted_base is None
+                    or run_command(
+                        ("git", "merge-base", "--is-ancestor", revision, trusted_base),
+                        root=root,
+                    ).returncode
+                    == 0,
                 )
                 transferred[category] = previous_state
 
@@ -2191,6 +2208,7 @@ def validate_current_evidence_transfers(
     document: Document,
     config: ProjectConfig,
     history_index: TerminalHistoryIndex | None = None,
+    trusted_base: str | None = None,
 ) -> None:
     if (
         config.evidence_transfer_policy == 0
@@ -2214,6 +2232,7 @@ def validate_current_evidence_transfers(
                     history_index=history_index,
                     scratch=scratch,
                     require_survival=False,
+                    trusted_base=trusted_base,
                 )
             )
 
@@ -4048,8 +4067,8 @@ def validate_repository(
 def validate_changed_evidence_transfers(
     root: Path, documents: Sequence[Document], base: str | None
 ) -> None:
-    # A committed unmapped transfer can never be repaired, so refuse it before
-    # commit and in CI; only changed records are checked because the scan is slow.
+    # Refuse an unmapped transfer before commit and inside the --base range, where
+    # it may not be cured; only changed records are checked because the scan is slow.
     if run_command(("git", "rev-parse", "--verify", "--quiet", "HEAD"), root=root).returncode:
         return
     # Per-commit names, not the net diff: a transfer reverted later in the range
@@ -4081,7 +4100,7 @@ def validate_changed_evidence_transfers(
     history_index = build_terminal_history_index(root, config)
     for document in selected:
         validate_current_evidence_transfers(
-            root, document, config, history_index=history_index
+            root, document, config, history_index=history_index, trusted_base=base
         )
 
 
