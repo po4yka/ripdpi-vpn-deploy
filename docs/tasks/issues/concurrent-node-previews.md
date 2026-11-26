@@ -18,7 +18,7 @@ related_tasks: []
 
 ## Goal
 
-Previews of different production nodes run at the same time from one worktree, so the preview phase of a rollout takes about as long as its slowest node instead of the sum of all nodes. Deploys stay one node at a time. The measurements and the shared-state analysis are in `docs/tasks/work/OPS-1795697141240057.md`.
+Previews of different production nodes run at the same time from one worktree, so the preview phase of a rollout takes about as long as its slowest node instead of the sum of all nodes. Deploys stay one node at a time. The measurements and the shared-state analysis are in [the preview cost research](../../research/preview-cost-2026-11.md).
 
 ## Acceptance criteria
 
