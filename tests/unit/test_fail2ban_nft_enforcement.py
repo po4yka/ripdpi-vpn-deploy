@@ -112,3 +112,21 @@ def test_unexpected_errors_never_report_success(monkeypatch, failure):
     monkeypatch.setattr(helper, "run", lambda _argv: next(values))
     with pytest.raises((helper.EnforcementError, ValueError, TypeError)):
         helper.enforce("ban", "198.51.100.22", 600)
+
+
+@pytest.mark.parametrize("tailnet_enabled", [True, False])
+def test_jail_never_bans_loopback_or_approved_tailnet_controllers(tailnet_enabled):
+    # nftables drops a banned source before its Tailnet SSH accept, so a ban locks the controller out.
+    from scripts.template_render import merge_render_vars, render_template
+
+    variables = merge_render_vars()
+    variables["vpn"] = {**variables["vpn"], "enable_tailnet_management": tailnet_enabled}
+    variables["allowed_ssh_cidrs"] = ["198.51.100.42/32"]
+    variables["tailnet_management"] = {"approved_sources": ["100.64.0.7", "fd7a:115c:a1e0::7"]}
+    rendered = render_template(
+        SOURCE.parents[1] / "templates/fail2ban-jail.local.j2", variables
+    )
+    (line,) = [row for row in rendered.splitlines() if row.startswith("ignoreip = ")]
+    ignored = line.removeprefix("ignoreip = ").split()
+    assert {"127.0.0.1/8", "::1/128", "198.51.100.42/32"} <= set(ignored)
+    assert ({"100.64.0.7", "fd7a:115c:a1e0::7"} <= set(ignored)) is tailnet_enabled

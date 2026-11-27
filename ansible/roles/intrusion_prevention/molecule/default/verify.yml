@@ -24,7 +24,7 @@
 
     - name: Fail2Ban ignoreip includes allowed SSH CIDRs
       ansible.builtin.command:
-        cmd: grep -F 'ignoreip = 127.0.0.1/8 198.51.100.42/32 2001:db8::/32' /etc/fail2ban/jail.local
+        cmd: grep -F 'ignoreip = 127.0.0.1/8 ::1/128 198.51.100.42/32 2001:db8::/32' /etc/fail2ban/jail.local
       changed_when: false
 
     - name: Fail2Ban nftables IPv4 set exists

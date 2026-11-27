@@ -1,6 +1,6 @@
 # Managed by Ansible role `intrusion_prevention`. Hand edits will be overwritten.
 [DEFAULT]
-ignoreip = 127.0.0.1/8 198.51.100.42/32
+ignoreip = 127.0.0.1/8 ::1/128 198.51.100.42/32
 backend = systemd
 banaction = nftables-ripdpi
 banaction_allports = nftables-ripdpi
