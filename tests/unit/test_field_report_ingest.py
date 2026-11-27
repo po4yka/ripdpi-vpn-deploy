@@ -445,9 +445,11 @@ def test_nginx_location_limits_size_and_rate_and_keeps_body_in_memory():
     assert "remote_addr" not in location and "X-Real-IP" not in location and "X-Forwarded-For" not in location
     assert "proxy_pass http://unix:/run/vpn-field-report.sock:;" in location and "127.0.0.1" not in location
     # An unknown token or a refused method gets the vhost's uniform not-found answer, so a probe cannot tell the route exists.
-    assert "proxy_intercept_errors on;\n        error_page 401 403 = @vpn_sub_not_found;" in location
+    # The backend's 501 page for an unsupported method would name http.server.
+    assert "proxy_intercept_errors on;\n        error_page 401 403 501 = @vpn_sub_not_found;" in location
     assert "location @vpn_sub_not_found {\n        return 404;\n    }" in vhost
-    assert "limit_req_zone $binary_remote_addr zone=vpn_field_report_per_ip:10m rate=30r/m;" in _rendered("rate-limit.conf.j2")
+    # The zone shares the /sub/ key: one IPv6 /64 is one source.
+    assert "limit_req_zone $vpn_sub_limit_key zone=vpn_field_report_per_ip:10m rate=30r/m;" in _rendered("rate-limit.conf.j2")
     assert "field-report" not in _rendered("subscription.conf.j2", enabled=False)
 
 
@@ -705,13 +707,14 @@ def test_nginx_hint_location_uses_only_the_peer_address_and_refuses_forwarding_h
         assert f'proxy_set_header {header} "";' in location
     assert "proxy_pass_request_body off;" in location
     assert "proxy_pass http://unix:/run/vpn-field-report.sock:;" in location
-    assert "proxy_intercept_errors on;\n        error_page 401 403 = @vpn_sub_not_found;" in location
+    # limit_except GET admits HEAD, which the backend answers with its 501 page.
+    assert "proxy_intercept_errors on;\n        error_page 401 403 501 = @vpn_sub_not_found;" in location
     assert "access_log /var/log/nginx/vpn-sub.categorical.log vpn_sub_category;" in location
     assert "error_log /dev/null crit;" in location
     # A real_ip setting would let a client choose the address that the hint looks up.
     assert "set_real_ip_from" not in vhost and "real_ip_header" not in vhost
     limits = _rendered("rate-limit.conf.j2", network_hint={**defaults, "enabled": True})
-    assert "limit_req_zone $binary_remote_addr zone=vpn_network_hint_per_ip:10m rate=30r/m;" in limits
+    assert "limit_req_zone $vpn_sub_limit_key zone=vpn_network_hint_per_ip:10m rate=30r/m;" in limits
     assert ('map "$http_x_forwarded_for$http_forwarded$http_x_real_ip$http_x_network_hint_peer" '
             '$vpn_network_hint_forwarded {\n    ""      0;\n    default 1;\n}') in limits
     assert "network-hint" not in _rendered("subscription.conf.j2")
