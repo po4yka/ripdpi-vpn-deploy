@@ -38,9 +38,12 @@ server_resource_types := {
 # `"password": "..."`. cloud-init account passwords (passwd, hashed_passwd,
 # plain_text_passwd) and any PEM private key block are secrets too.
 #
+# The keyword may carry a prefix (hcloud_token, tailscale_auth_key). A literal age
+# identity, Tailscale key or VLESS share link is a secret wherever it appears.
+#
 # Limit: the Hetzner provider stores a hash of user_data in the plan, so this
 # rule cannot see Hetzner content. The rendered-template unit tests cover it.
-secret_pattern := `(?im)(^\s*-?\s*"?(password|passwd|hashed_passwd|plain_text_passwd|token|api_key|secret)"?\s*[:=]\s*"?[^\s"]{6,}|-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----)`
+secret_pattern := `(?im)(^\s*-?\s*"?[a-z0-9_]*(password|passwd|token|api_key|auth_key|secret)"?\s*[:=]\s*"?[^\s"]{6,}|-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----|AGE-SECRET-KEY-1[0-9A-Z]{20,}|tskey-[A-Za-z0-9-]{10,}|vless:/{2}[^\s"]+@)`
 
 deny[msg] {
   rc := input.resource_changes[_]

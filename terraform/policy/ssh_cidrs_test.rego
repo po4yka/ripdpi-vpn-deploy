@@ -114,6 +114,32 @@ test_deny_scaleway_ssh_unlisted_cidr {
   count(result) == 1
 }
 
+test_deny_scaleway_ssh_rule_without_ip_range {
+  result := deny with input as {
+    "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}, "ssh_port": {"value": 22}},
+    "resource_changes": [{
+      "address": "scaleway_instance_security_group.vpn",
+      "type": "scaleway_instance_security_group",
+      "change": {"after": {"inbound_rule": [{"action": "accept", "protocol": "TCP", "port": 22}]}},
+    }],
+  }
+  count(result) == 1
+}
+
+hcloud_ssh_rule(rule) := {
+  "variables": {"allowed_ssh_cidrs": {"value": ["203.0.113.42/32"]}, "ssh_port": {"value": 22}},
+  "resource_changes": [{
+    "address": "hcloud_firewall.vpn",
+    "type": "hcloud_firewall",
+    "change": {"after": {"rule": [rule]}},
+  }],
+}
+
+test_deny_hcloud_ssh_rule_with_empty_or_omitted_sources {
+  count(deny) == 1 with input as hcloud_ssh_rule({"direction": "in", "protocol": "tcp", "port": "22", "source_ips": []})
+  count(deny) == 1 with input as hcloud_ssh_rule({"direction": "in", "protocol": "tcp", "port": "22"})
+}
+
 # -- good input: SSH rule matching allowed CIDR should pass --
 
 test_allow_hcloud_ssh_listed_cidr {

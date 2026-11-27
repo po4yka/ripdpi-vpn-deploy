@@ -91,9 +91,10 @@ deny[msg] {
   firewall.scaleway_port_contains(rule, ssh_port)
   not source_allowed(object.get(rule, "ip_range", ""))
 
+  # rule.ip_range here would be undefined for an omitted range and silently drop the denial.
   msg := sprintf(
     "resource %q: Scaleway SSH rule source CIDR %q is not in var.allowed_ssh_cidrs",
-    [rc.address, rule.ip_range],
+    [rc.address, object.get(rule, "ip_range", "<omitted>")],
   )
 }
 
@@ -112,6 +113,19 @@ deny[msg] {
     "resource %q: hcloud SSH rule source IP %q is not in var.allowed_ssh_cidrs",
     [rc.address, source_ip],
   )
+}
+
+# hcloud: an SSH rule with no sources has nothing to check above; refuse it as listener_family does.
+deny[msg] {
+  rc := input.resource_changes[_]
+  rc.type == "hcloud_firewall"
+  rule := rc.change.after.rule[_]
+  rule.direction == "in"
+  firewall.tcp_protocol(object.get(rule, "protocol", null))
+  firewall.port_contains(object.get(rule, "port", null), ssh_port)
+  count(object.get(rule, "source_ips", [])) == 0
+
+  msg := sprintf("resource %q: hcloud SSH rule names no source_ips", [rc.address])
 }
 
 # vultr: SSH firewall rules use subnet+subnet_size; compare via comment or
