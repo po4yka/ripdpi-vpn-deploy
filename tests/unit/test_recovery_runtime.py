@@ -419,6 +419,8 @@ def test_plan_change_while_terraform_runs_never_becomes_reviewable(manifest, mon
         monkeypatch.setattr(runtime, 'command', lambda *args, **kwargs: (0, b''))
         with pytest.raises(RecoveryError, match='plan-input-changed'):
             runtime.plan(None)
+        assert not saved.exists()
+        assert (journal.directory / 'approved.tfplan').read_bytes() == b'synthetic binary plan'
 
 
 def test_apply_consumes_same_private_reviewed_bytes_after_retained_file_replaced(manifest, monkeypatch):

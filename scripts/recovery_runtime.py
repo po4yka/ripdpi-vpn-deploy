@@ -156,6 +156,8 @@ class Runtime:
         saved = self.tfroot / (self.manifest['environment'] + '.tfplan')
         payload = read(saved, private=False, limit=16_777_216)
         path = self.journal.write('approved.tfplan', payload)
+        # The journal copy is the only approval; a stray root plan would feed a later `make apply`.
+        saved.unlink()
         _, raw = self.terraform('show', '-json', str(path), name='inspect-plan')
         parsed = json.loads(raw)
         reviewed = review_plan(parsed, self.manifest, existing=existing)
