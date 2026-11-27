@@ -129,6 +129,7 @@ Dated findings. Not normative; a research page never authorizes a change.
 | [Fleet-wide transport signatures — 2026-11-15](research/fleet-transport-signatures-2026-11.md) (Research) | Lab measurement and verdict for each transport signature that is the same on every node | — |
 | [Full-graph preview cost and concurrent previews — 2026-11-26](research/preview-cost-2026-11.md) (Research) | Timed check-mode previews, a decision for each slow task, and the design for concurrent per-node previews | — |
 | [XHTTP TLS-in-TLS classifier exposure — 2026-11-27](research/xhttp-tls-in-tls-exposure-2026-11.md) (Research) | Which TLS-in-TLS features the P1 XHTTP transport exposes, server-side options, and a go suggestion for VLESS Encryption with Vision | — |
+| [Management route stalls on the relayed Tailnet path — 2026-11-27](research/management-route-stalls-2026-11.md) (Research) | Why no direct Tailnet path forms, how relay home-region changes ended previews, and the route warm-up and session budget decisions | — |
 | [REALITY target selection — 2026-07-12](research/reality-target-selection-2026-07.md) (Research) | REALITY target selection findings from July 2026 | — |
 
 ## Archive
