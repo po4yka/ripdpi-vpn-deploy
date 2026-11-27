@@ -13,7 +13,9 @@ spec.loader.exec_module(scanner)
 
 
 @pytest.mark.parametrize('name,expected', [
-    ('.github/workflows/reproducible-build.yml', 0),
+    ('scripts/check-secrets-coverage.py', 0),
+    # The workflow reads real pins now; a placeholder there could only make a job skip.
+    ('.github/workflows/reproducible-build.yml', 1),
     ('.github/workflows/unselected.yml', 1),
     ('ansible/roles/hysteria/templates/unselected.j2', 1),
 ])
