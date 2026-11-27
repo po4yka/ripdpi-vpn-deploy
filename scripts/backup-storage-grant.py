@@ -63,8 +63,11 @@ def check(config_text, remote, path, host, opener):
     if len(buckets) != 1 or buckets[0]['bucketType'] != 'allPrivate':
         raise ValueError('private-bucket-required')
     # Hidden versions are the only copy left after a compromised node's sync deletes.
-    rules = [rule for rule in buckets[0].get('lifecycleRules') or [] if prefix.startswith(rule['fileNamePrefix'])]
-    if (len(rules) != 1 or rules[0].get('daysFromUploadingToHiding') is not None
+    # A rule under the node prefix also governs part of its files, so it counts too.
+    rules = [rule for rule in buckets[0].get('lifecycleRules') or []
+             if prefix.startswith(rule['fileNamePrefix']) or rule['fileNamePrefix'].startswith(prefix)]
+    if (len(rules) != 1 or not prefix.startswith(rules[0]['fileNamePrefix'])
+            or rules[0].get('daysFromUploadingToHiding') is not None
             or (rules[0].get('daysFromHidingToDeleting') or 0) < RETENTION_DAYS):
         raise ValueError('hidden-version-retention-required')
     return 'backup-storage-grant-accepted'
