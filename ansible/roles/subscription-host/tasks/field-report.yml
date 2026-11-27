@@ -30,6 +30,7 @@
       - >-
         field_report.previous_cohort_token | default(none) is none or
         (field_report.previous_cohort_token is match('^[A-Za-z0-9_-]{22,64}\Z') and
+         field_report.previous_cohort_token is not match('(?i)REPLACE_WITH_') and
          field_report.previous_cohort_token_valid_until | default('') is match('^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z'))
     fail_msg: Field-report ingest needs bounded limits and a well-formed field_report cohort token set in the secrets file.
     quiet: true

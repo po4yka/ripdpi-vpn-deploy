@@ -525,6 +525,8 @@ def test_settings_assert_refuses_a_trailing_newline(key):
 def test_settings_assert_refuses_the_example_cohort_token(placeholder):
     # Both spellings fit the token grammar, so only an explicit placeholder check keeps the public value out.
     assert not _settings_assert_holds(cohort_token=placeholder)
+    # A rotation before the fix could already have moved it into the overlap slot.
+    assert not _settings_assert_holds(previous_cohort_token=placeholder)
 
 
 @pytest.mark.parametrize(("release", "package"), [("trixie", "python3-jsonschema=4.19.2-6"),
