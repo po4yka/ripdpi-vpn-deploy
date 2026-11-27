@@ -1,7 +1,6 @@
 # Subscription delivery host. Listens on a non-default port to keep the
 # transport endpoint and the delivery endpoint topologically separated.
 
-{% if vpn.share_bundles | default([]) | length > 0 %}
 # The bare bundle URL serves its page. A map, not `if`: try_files is not
 # inherited into the implicit location that a matching `if` creates.
 map $vpn_share_file $vpn_share_target {
@@ -9,7 +8,6 @@ map $vpn_share_file $vpn_share_target {
     default $vpn_share_file;
 }
 
-{% endif %}
 server {
     listen {{ subscription.port | default(subscription_port) }} ssl http2;
     listen [::]:{{ subscription.port | default(subscription_port) }} ssl http2;
@@ -199,9 +197,10 @@ server {
 {% endif %}
 
 {% endif %}
-{% if vpn.share_bundles | default([]) | length > 0 %}
     # Static recipient pages produced by `vpnd share <client>`.
     # Served from the local filesystem; no proxy, no rate-limit (static HTML).
+    # Always rendered: bundles stay on disk across deploys whose upload list is
+    # empty, and a missing token answers like any unmatched path.
     # Raw token MUST NOT appear in logs — categorical logging applies here
     # as it does on /sub/. The vpnd audit trail is maintained
     # out-of-band; nginx never sees the plaintext token in a logged field.
@@ -217,7 +216,6 @@ server {
         error_log /dev/null crit;
         access_log /var/log/nginx/vpn-sub.categorical.log vpn_sub_category;
     }
-{% endif %}
 
     location @vpn_sub_not_found {
         return 404;

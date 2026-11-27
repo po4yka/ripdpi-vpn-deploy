@@ -34,8 +34,8 @@ atomic document never falls back to legacy delivery.
 
 **Every delivery outcome retains only categorical diagnostics** — the complete
 subscription vhost suppresses URI-bearing nginx error records and uses only
-HTTP status, upstream status and limit outcome. Unmatched paths and disabled
-bootstrap/share routes retain that boundary. Native tests check every nginx
+HTTP status, upstream status and limit outcome. Unmatched paths, a disabled
+bootstrap route and the always-rendered share route retain that boundary. Native tests check every nginx
 log for successful delivery, expiry/revocation, stopped upstreams, rate limits
 and malformed paths.
 
