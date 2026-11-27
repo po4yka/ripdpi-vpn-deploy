@@ -140,8 +140,9 @@ commits = [
     "0c241e6fa9c944445100d26d451c5e991d725ee8",
 ]
 paths = [
-    '''secrets/prod\.secrets\.example\.yaml''',
-    '''.*\.example\..*''',
+    '''^secrets/prod\.secrets\.example\.yaml$''',
+    # Listed one by one like the Molecule inputs below: ".example." in a name exempts nothing.
+    '''^contract/ripdpi-bundle\.example\.json$''',
     '''tests/bats/age_recovery_roundtrip\.bats''',
     '''tests/unit/test_age_recovery_roundtrip\.py''',
     '''tests/unit/test_gitleaks_rules\.py''',

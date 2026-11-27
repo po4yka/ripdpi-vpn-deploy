@@ -143,10 +143,15 @@ def test_per_device_credential_rules_detect_client_material() -> None:
     assert short_id.search("short_id: <SHORT_ID>") is None
 
 
+@pytest.mark.parametrize("path", [
+    "ansible/roles/example/molecule/default/host_vars.yml",
+    # Only reviewed example files are exempt; ".example." in a name is not.
+    "secrets/staging.example.secrets.yaml",
+])
 @pytest.mark.usefixtures("isolated_synthetic_git_config")
-def test_a_new_molecule_file_is_scanned(tmp_path: Path) -> None:
+def test_a_new_molecule_or_example_file_is_scanned(tmp_path: Path, path: str) -> None:
     repo = _temporary_repo(tmp_path)
-    target = repo / "ansible/roles/example/molecule/default/host_vars.yml"
+    target = repo / path
     target.parent.mkdir(parents=True)
     secret = "B" * 32
     target.write_text(f"psk: {secret}\n")
