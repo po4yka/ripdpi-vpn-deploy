@@ -1,6 +1,6 @@
 ## Context
 
-See `proposal.md`. Provider research (source reading, 2026-11-22): hcloud, scaleway, upcloud, vultr, tailscale and both Porkbun providers use Go `http.DefaultTransport` or `ProxyFromEnvironment`, so they should honour `HTTPS_PROXY`; this is unproven at runtime. Vultr has an account-wide API access-control IP allowlist; Scaleway IAM supports `request.ip` conditions; Porkbun keys accept source CIDRs; Hetzner tokens and B2 keys have no IP restriction; UpCloud sub-accounts may support IP filters. The fleet already has `firewall` (nftables), `tailnet-management` and `baseline` roles and the shared cloud-init template.
+See `proposal.md`. Provider research (source reading, 2026-11-22): hcloud, scaleway, upcloud, vultr, tailscale and both Porkbun providers use Go `http.DefaultTransport` or `ProxyFromEnvironment`, so they should honour `HTTPS_PROXY`; this is unproven at runtime. Vultr has an account-wide API access-control IP allowlist; Scaleway IAM supports `request.ip` conditions; Porkbun keys accept source CIDRs; Hetzner tokens and the state bucket keys have no IP restriction; UpCloud sub-accounts may support IP filters. The fleet already has `firewall` (nftables), `tailnet-management` and `baseline` roles and the shared cloud-init template.
 
 ## Goals / Non-Goals
 
@@ -16,7 +16,7 @@ See `proposal.md`. Provider research (source reading, 2026-11-22): hcloud, scale
 - Hardened unit: a drop-in for the packaged unit following the `systemd` skill floor (`NoNewPrivileges`, `ProtectSystem=strict`, `ReadWritePaths` for log and spool, `PrivateTmp`, `CapabilityBoundingSet=` empty since 3128 is unprivileged, `RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX`, `LimitNOFILE`, `Restart=on-failure`), started after `tailscaled` so the Tailnet address exists.
 - nftables through the `firewall` role: accept 3128 only on `tailscale0` from `100.64.0.0/10`; no public inbound except what Tailscale needs; outbound 443, DNS and Tailscale.
 - Inventory: group `egress` in the ops repository; playbook `ansible/playbooks/egress-proxy.yml` applying `baseline`, `firewall`, `tailnet-management` (tag `tag:egress`) and `egress-proxy`; it does not run VPN roles.
-- For normal CI state and provider requests set `HTTPS_PROXY` before backend initialization. Install pinned provider packages separately from a verified cache or mirror. For approved bootstrap or reconstruction of the egress root alone, use direct TLS to the fixed Hetzner and B2 endpoints, the same remote state and W3 lock. The recovery route cannot target other roots. Use the operator workstation with its state key and a verified ops checkout when Actions is unavailable.
+- For normal CI state and provider requests set `HTTPS_PROXY` before backend initialization. Install pinned provider packages separately from a verified cache or mirror. For approved bootstrap or reconstruction of the egress root alone, use direct TLS to the fixed Hetzner and state-backend endpoints, the same remote state and W3 lock. The recovery route cannot target other roots. Use the operator workstation with its state key and a verified ops checkout when Actions is unavailable.
 - Provider proof: run `tofu plan` per root through the proxy with each provider token, then read the proxy log for the expected `CONNECT` lines. Only then set the Vultr allowlist; after that, a plan without the proxy must fail for Vultr (negative check).
 
 ## Contracts and ownership
@@ -39,7 +39,7 @@ See `proposal.md`. Provider research (source reading, 2026-11-22): hcloud, scale
 
 ## Open verification questions
 
-1. Does every provider client (hcloud, scaleway, upcloud, vultr, porkbun, tailscale) and the B2 S3 backend actually route through `HTTPS_PROXY` under OpenTofu at runtime? Source reading says yes; the proof step decides.
-2. Are the API host names complete? Some providers redirect or call secondary hosts (for example a B2 `apiUrl`, Scaleway product-specific endpoints). Capture with the proxy log during the proof, with a temporary log-only allow-all on a staging copy of the node, never on production.
+1. Does every provider client (hcloud, scaleway, upcloud, vultr, porkbun, tailscale) and the S3 state backend (Scaleway object storage since W3) actually route through `HTTPS_PROXY` under OpenTofu at runtime? Source reading says yes; the proof step decides.
+2. Are the API host names complete? Some providers redirect or call secondary hosts (for example Scaleway product-specific endpoints). Capture with the proxy log during the proof, with a temporary log-only allow-all on a staging copy of the node, never on production.
 3. Does UpCloud offer an API IP filter for sub-accounts, and does Scaleway support `request.ip` for the API keys the fleet uses? Optional allowlists depend on it.
 4. Does Vultr's access control also need an IPv6 entry if the egress node has IPv6 and the runner resolves `api.vultr.com` over IPv6 through the proxy? Force IPv4 on the proxy (`dns_v4_first` or equivalent) or add both.

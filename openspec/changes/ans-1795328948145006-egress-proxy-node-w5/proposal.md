@@ -8,11 +8,11 @@ GitHub-hosted runners have changing public addresses, and the Vultr API key has 
 
 ## What Changes
 
-- New OpenTofu root `terraform/ops/egress-proxy` (Hetzner) with one small node and a retained primary IPv4 that survives recreation, encrypted B2 state from the start (W3), and the shared cloud-init admin bootstrap.
-- New Ansible role `egress-proxy`: a CONNECT-only forward proxy bound to the node's Tailnet address, allowlisting only the API hosts of Hetzner, Scaleway, UpCloud, Vultr, Backblaze B2, Porkbun and Tailscale on port 443, with no TLS termination, a hardened systemd unit and nftables rules. The node holds no operator or provider credential.
+- New OpenTofu root `terraform/ops/egress-proxy` (Hetzner) with one small node and a retained primary IPv4 that survives recreation, encrypted remote state from the start (W3), and the shared cloud-init admin bootstrap.
+- New Ansible role `egress-proxy`: a CONNECT-only forward proxy bound to the node's Tailnet address, allowlisting only the API hosts of Hetzner, Scaleway, UpCloud, Vultr, the OpenTofu state backend S3 host, Porkbun and Tailscale on port 443, with no TLS termination, a hardened systemd unit and nftables rules. The node holds no operator or provider credential.
 - Tailnet grant: `tag:ci-tofu` (and optionally one operator device) to `tag:egress` on the proxy port only.
 - Provider-side API allowlists: Vultr set to the egress address only and the workstation /32 removed (mandatory); UpCloud sub-account, Scaleway IAM condition and Porkbun key source IP set to the egress address where available (optional, per provider).
-- A recorded proof that each OpenTofu provider and the B2 backend work through `HTTPS_PROXY`.
+- A recorded proof that each OpenTofu provider and the state backend work through `HTTPS_PROXY`.
 - Break-glass procedures for a down proxy, a lost VPS and a GitHub outage.
 
 ## Capabilities

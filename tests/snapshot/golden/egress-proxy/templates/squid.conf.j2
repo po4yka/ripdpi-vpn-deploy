@@ -20,7 +20,7 @@ logfile_rotate 0
 acl CONNECT method CONNECT
 acl SSL_ports port 443
 acl ci_src src 100.64.0.0/10
-acl api dstdomain -n api.hetzner.cloud api.scaleway.com api.upcloud.com api.vultr.com api.porkbun.com api-ipv4.porkbun.com api.tailscale.com s3..backblazeb2.com
+acl api dstdomain -n api.hetzner.cloud api.scaleway.com api.upcloud.com api.vultr.com api.porkbun.com api-ipv4.porkbun.com api.tailscale.com 
 
 http_access deny !CONNECT
 http_access deny !SSL_ports
