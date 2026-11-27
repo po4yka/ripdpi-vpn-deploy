@@ -6,7 +6,7 @@
 
 **Firewall remains the nftables owner** — the firewall role renders the `f2b_sshd4` / `f2b_sshd6` sets and input-chain drops when `security_controls.fail2ban` is true. This role only keeps Fail2Ban's action pointed at those sets. If it runs before firewall, nftables set checks are opportunistic and firewall creates the durable sets later in the same play.
 
-**Allowed SSH CIDRs are never bannable** — `allowed_ssh_cidrs` is merged into Fail2Ban `ignoreip` with `intrusion_prevention.ignore_cidrs`.
+**Allowed SSH CIDRs are never bannable** — `allowed_ssh_cidrs` is merged into Fail2Ban `ignoreip` with `intrusion_prevention.ignore_cidrs`, and so are `tailnet_management.approved_sources` when Tailnet management is enabled: the firewall drops a banned source before its Tailnet SSH accept.
 
 **The sshd jail reconciles both states** — the owned jail is rendered with enabled=false when the internal switch turns off, and the changed policy restarts Fail2Ban after validation. Other jail files are preserved.
 

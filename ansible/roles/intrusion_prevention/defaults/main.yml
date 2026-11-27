@@ -6,6 +6,7 @@ intrusion_prevention:
   provider: fail2ban
   ignore_cidrs:
     - 127.0.0.1/8
+    - ::1/128
   sshd:
     enabled: true
     maxretry: 5
