@@ -1,0 +1,11 @@
+{
+  "change": "scr-1795774108061951-management-route-warmup",
+  "evidence_summary": "Merged in f5ca1809a (PR 779): dry-run and deploy warm and measure the Tailnet route before readiness, refuse management-route-unreachable without a warm-up reply, and keep the shared SSH master through 300 s of silence. Timed node-a preview at f5ca1809a over the relayed route passed (median 166 ms, ok=706 changed=3 unreachable=0 failed=0). Change archived; main spec openspec/specs/operations/management-route-warmup.",
+  "execution_sha256": "ca9c797bca83bd745d0ec51f4db269c17de878b3dac69090488d807a5925c186",
+  "issue_sha256": "85b499c5763de42140125b53728bec55666d4c8852e04029adc674fe0fad62dc",
+  "outcome": "done",
+  "prepared_at": "2026-11-27T16:44:54Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SCR-1795774108061951"
+}

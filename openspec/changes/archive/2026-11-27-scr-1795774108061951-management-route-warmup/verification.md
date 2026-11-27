@@ -24,7 +24,7 @@ artifact_evidence: No build or release artifact changes.
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-OPS-ROUTE-WARMUP | SCR-1795774279138177 | test_both_modes_warm_and_measure_tailnet_route_before_ssh (warm-up before the first SSH command; `unreachable` cases), test_route_gate_parses_cli_replies (`mapped-probed`) | Passed locally |
-| REQ-OPS-ROUTE-SCOPE | SCR-1795774279138177 | test_route_gate_skips_public_transport (dry-run and deploy), test_route_gate_parses_cli_replies (CI handoff, public and host-name transports) | Passed locally |
+| REQ-OPS-ROUTE-WARMUP | SCR-1795774279138177 | test_both_modes_warm_and_measure_tailnet_route_before_ssh (warm-up before the first SSH command; `unreachable` cases), test_route_gate_parses_cli_replies (`mapped-probed`); pytest unit tests passed in ci run 46027663778 on main at f5ca1809a; node-a preview warmed the relayed route before readiness | Passed |
+| REQ-OPS-ROUTE-SCOPE | SCR-1795774279138177 | test_route_gate_skips_public_transport (dry-run and deploy), test_route_gate_parses_cli_replies (CI handoff, public and host-name transports); pytest unit tests passed in ci run 46027663778 on main at f5ca1809a | Passed |
 | REQ-OPS-ROUTE-BOTH-MODES | SCR-1795774279138177 | test_both_modes_warm_and_measure_tailnet_route_before_ssh (dry-run and deploy for relayed, direct, lossy and slow routes); node-a preview at f5ca1809a reported "management route relayed, median 166 ms" | Passed |
-| REQ-OPS-ROUTE-SILENCE | SCR-1795774324586353 | test_frozen_transport_is_portable_and_retains_original_host_key_identity (real `ssh -G`), test_installer_real_ansible_preserves_local_delegation | Passed locally |
+| REQ-OPS-ROUTE-SILENCE | SCR-1795774324586353 | test_frozen_transport_is_portable_and_retains_original_host_key_identity (real `ssh -G`), test_installer_real_ansible_preserves_local_delegation; pytest unit tests passed in ci run 46027663778 on main at f5ca1809a | Passed |

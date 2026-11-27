@@ -2,7 +2,7 @@
 id: SCR-1795774108061951
 title: Warm the Tailnet management route before readiness and outlast relay home changes
 kind: feature
-status: review
+status: done
 area: scripts
 priority: high
 risk: standard
@@ -15,6 +15,9 @@ created: 2026-11-27
 updated: 2026-11-27
 related_tasks: []
 status_detail: Merged in f5ca1809a (PR 779); node-a preview at f5ca1809a warmed and measured the relayed route before readiness (median 166 ms) and passed
+closed_at: "2026-11-27T16:44:54Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "Merged in f5ca1809a (PR 779): dry-run and deploy warm and measure the Tailnet route before readiness, refuse management-route-unreachable without a warm-up reply, and keep the shared SSH master through 300 s of silence. Timed node-a preview at f5ca1809a over the relayed route passed (median 166 ms, ok=706 changed=3 unreachable=0 failed=0). Change archived; main spec openspec/specs/operations/management-route-warmup."
 ---
 
 ## Goal
