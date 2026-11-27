@@ -38,6 +38,11 @@ if [[ -z "${IP:-}" ]]; then
   echo "no IP available (tofu output missing? export IP=… to override)" >&2
   exit 2
 fi
+# The lookups below reverse a dotted IPv4 address and pass it to Python as data.
+if [[ ! "$IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+  echo "IP must be a dotted IPv4 address" >&2
+  exit 2
+fi
 
 # Reverse the IP for RBL lookups.
 IFS=. read -r a b c d <<< "$IP"
@@ -78,16 +83,17 @@ fh_cache="${FIREHOL_NETSET_FILE:-${CACHE_DIR}/firehol_level1.netset}"
 if [[ ! -f "$fh_cache" ]]; then
   echo "  (info) FireHOL netset not present; set FIREHOL_NETSET_FILE to enable that check" >&2
 fi
-if [[ -f "$fh_cache" ]] && python3 -c "
+if [[ -f "$fh_cache" ]] && python3 - "$IP" "$fh_cache" <<'PY'
 import ipaddress, pathlib, sys
-ip = ipaddress.ip_address('$IP')
-for line in pathlib.Path('$fh_cache').read_text().splitlines():
+ip = ipaddress.ip_address(sys.argv[1])
+for line in pathlib.Path(sys.argv[2]).read_text().splitlines():
     line = line.strip()
     if not line or line.startswith('#'): continue
     if ip in ipaddress.ip_network(line, strict=False):
         sys.exit(0)
 sys.exit(1)
-"; then
+PY
+then
   findings+=("FireHOL Level 1: listed in $fh_cache")
 fi
 
