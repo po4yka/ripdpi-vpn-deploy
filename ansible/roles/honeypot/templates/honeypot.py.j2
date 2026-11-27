@@ -224,6 +224,8 @@ def _handle(conn: socket.socket, addr: tuple) -> None:
             buf += chunk
     except socket.timeout:
         pass  # deadline reached mid-read
+    except ConnectionError:
+        pass  # a scanner's RST or abort is ordinary client behavior, not an input error
     except Exception as exc:
         _record_input_error()
         logging.debug("recv error from %s: %s", src_ip, exc)
