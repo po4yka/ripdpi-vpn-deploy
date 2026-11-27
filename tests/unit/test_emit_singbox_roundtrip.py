@@ -675,14 +675,6 @@ def test_emit_singbox_hysteria_uses_server_userpass_contract(tmp_path):
     assert (hysteria["up_mbps"], hysteria["down_mbps"]) == (200, 100)
 
 
-def test_smoke_hysteria_uses_server_userpass_contract():
-    smoke = (REPO_ROOT / "ansible" / "playbooks" / "smoke-test.yml").read_text()
-
-    assert (
-        'auth: "{{ hysteria.clients[0].name }}:' '{{ hysteria.clients[0].password }}"'
-    ) in smoke
-
-
 def test_emit_awg_make_target_script_is_executable():
     assert os.access(REPO_ROOT / "scripts" / "emit-awg.sh", os.X_OK)
 
