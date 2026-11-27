@@ -101,6 +101,10 @@ if sys.argv[1] == "force-unlock":
     sys.exit(0)
 assert os.path.exists(lock)
 if sys.argv[1:3] == ["state", "pull"]:
+    if os.environ.get("STUB_TERMINATE"):
+        import signal, time
+        os.kill(os.getppid(), signal.SIGTERM)
+        time.sleep(60)
     if os.path.exists(current):
         sys.stdout.write(open(current).read())
     sys.exit(0)
@@ -222,6 +226,7 @@ def test_listing_follows_truncated_pages_without_the_passphrase(restore):
     assert [line.split()[0] for line in result.stdout.splitlines()] == ["v-1", "v-0"]
     requests = [json.loads(line)["argv"] for line in (store / "curl.log").read_text().splitlines()]
     assert requests[0][0] == "-q"
+    assert all({"--connect-timeout", "--max-time"} <= set(request) for request in requests)
     assert "&key-marker=state%2Fupcloud%2Fterraform.tfstate&version-id-marker=v-1" in requests[1][-1]
 
 
@@ -250,6 +255,15 @@ def test_restore_excludes_a_destroy_between_pull_and_push(restore):
     assert result.returncode == 0, result.stderr
     assert (store / "destroy-refused").exists()
     assert not (store / "native.lock").exists()
+
+
+def test_terminated_restore_releases_its_lock_without_pushing(restore):
+    store, run = restore
+    (store / "objects/v-good").write_text(sealed(state(40)))
+    result = run("v-good", STUB_TERMINATE="1")
+    assert result.returncode == 143
+    assert not (store / "native.lock").exists()
+    assert "force-unlock" in (store / "wrapper.log").read_text() and pushes(store) == []
 
 
 @pytest.mark.parametrize("force", ["", "1"])

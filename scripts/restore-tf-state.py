@@ -26,6 +26,7 @@ import os
 import posixpath
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -132,7 +133,9 @@ def s3_request(settings: dict, key: str, query: str, *options: str) -> bytes:
     url = f"{settings['endpoint']}/{path}" + ("?" + query if query else "")
     config = f'user = "{os.environ["AWS_ACCESS_KEY_ID"]}:{os.environ["AWS_SECRET_ACCESS_KEY"]}"\n'
     # -q first: an operator ~/.curlrc must not weaken TLS or trace the signed request.
-    result = subprocess.run(["curl", "-q", "-sS", "--fail-with-body", "-K", "-", "--aws-sigv4",
+    # A stalled request must not hold the restore lock indefinitely.
+    result = subprocess.run(["curl", "-q", "-sS", "--fail-with-body", "--connect-timeout", "30", "--max-time", "300",
+                             "-K", "-", "--aws-sigv4",
                              f"aws:amz:{settings['region']}:s3", *options, url], input=config.encode(), capture_output=True, check=False)
     if result.returncode:
         reason = f"curl exit {result.returncode}"
@@ -251,6 +254,8 @@ def inspect_probe(backend: Path, key: str, workspace: str) -> None:
 
 def main() -> None:
     os.umask(0o077)
+    # SIGTERM would otherwise end the process without the finally that releases the restore lock.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     if len(sys.argv) == 5 and sys.argv[1] == "--inspect-probe":
         inspect_probe(Path(sys.argv[2]), sys.argv[3], sys.argv[4])
         return
