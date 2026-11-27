@@ -618,6 +618,19 @@ def test_strict_disabled_observability_exempts_secret_blocks(filled, tmp_path):
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.parametrize("placeholder", [
+    "REPLACE_with_rotate_cohort_token_output",  # the example cohort token's lowercase spelling
+    "[offsite]\naccess_key_id = REPLACE\n",  # the example rclone_config block's bare word
+])
+def test_strict_rejects_every_example_placeholder_spelling(filled, tmp_path, placeholder):
+    filled.pop("observability_secrets", None)
+    filled.pop("observability_deadman_secrets", None)
+    filled["backup"]["restic_password"] = placeholder + "x" * 20
+    result = _validate_cli_with_selector(filled, tmp_path, enabled=False)
+    assert result.returncode == 1
+    assert "--strict found 1 unfilled" in result.stderr
+
+
 @pytest.mark.parametrize(
     "present",
     [None, "observability_secrets", "observability_deadman_secrets"],
