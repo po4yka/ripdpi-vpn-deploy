@@ -20,7 +20,7 @@ logfile_rotate 0
 acl CONNECT method CONNECT
 acl SSL_ports port 443
 acl ci_src src {{ egress_proxy_client_cidrs | join(' ') }}
-acl api dstdomain -n {{ (egress_proxy_api_hosts + ['s3.' ~ egress_proxy_b2_region ~ '.backblazeb2.com']) | join(' ') }}
+acl api dstdomain -n {{ (egress_proxy_api_hosts + [egress_proxy_state_host]) | join(' ') }}
 
 http_access deny !CONNECT
 http_access deny !SSL_ports

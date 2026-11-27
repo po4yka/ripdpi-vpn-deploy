@@ -4,7 +4,7 @@
 
 Debian `squid`, pinned to the exact package version, because a custom proxy would be new code on a security boundary and tinyproxy cannot refuse non-CONNECT methods for allowlisted hosts. The ACL order is the contract: `deny !CONNECT`, `deny !SSL_ports` (443), `deny !api`, `allow ci_src`, `deny all`. No `ssl_bump` and `cache deny all`: the node never terminates or stores TLS.
 
-The `api` ACL is `dstdomain -n`: squid compares the literal target text and never reverse-resolves, so an IPv4 or IPv6 literal (even the address of an allowlisted name, or one with an allowlisted PTR) is denied before any upstream connection. B2's S3 host is `s3.<region>.backblazeb2.com`; the region is operator input (`egress_proxy_b2_region`) and the role refuses an empty one.
+The `api` ACL is `dstdomain -n`: squid compares the literal target text and never reverse-resolves, so an IPv4 or IPv6 literal (even the address of an allowlisted name, or one with an allowlisted PTR) is denied before any upstream connection. The OpenTofu state backend is S3 with path-style addressing, so the one extra host is its endpoint (`egress_proxy_state_host`, for example `s3.fr-par.scw.cloud`); the role refuses an empty value or an IP. No B2 host: nothing that uses the proxy talks to B2.
 
 The listen address is a required input. In production (`egress_proxy_require_tailnet_listen: true`) it must be a canonical dotted-quad inside 100.64.0.0/10 (no leading zeros, `\Z`-anchored); only Molecule turns that off and uses loopback. The node holds no secrets, and the access log records time, client, target host, status, bytes and squid result code (no URL, no headers). `client_ip_max_connections` is 64: far below the 4096 descriptor budget (two per tunnel) yet above a CI runner's concurrent provider calls. ICP, HTCP, SNMP and the pinger are off; the `acl CONNECT method CONNECT` is declared explicitly.
 
@@ -25,7 +25,7 @@ Firewall: this role opens nothing. The playbook that applies it, `ansible/playbo
 - A squid upgrade can obsolete a directive; the `squid -k parse` validate step catches that at converge time.
 - Exposure floor: `systemd-analyze security squid.service` measures 3.0 (OK) and Molecule fails above `egress_proxy_exposure_floor: 3.0` in `verify.yml`. Raise the floor only with a stated reason.
 - The `-n` proof maps 198.51.100.7 to `api.vultr.com` in `/etc/hosts` before squid starts; without `-n` squid would match that literal through the hosts mapping.
-- The squid.conf golden renders with empty listen address and B2 region: `render-snapshots.py` has one shared variable set and no per-template input. The admission test (`tests/unit/test_egress_proxy_admission.py`) covers real values.
+- The squid.conf golden renders with an empty listen address and state host: `render-snapshots.py` has one shared variable set and no per-template input. The admission test (`tests/unit/test_egress_proxy_admission.py`) covers real values.
 
 ## Accepted risks
 

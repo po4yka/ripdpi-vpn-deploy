@@ -9,7 +9,7 @@ The egress node is one non-VPN host that runs a CONNECT-only squid proxy for pro
 ## Inputs
 
 - A rendered inventory with one host in the group `egress`, already enrolled in the Tailnet with `tag:egress` through the bootstrap-tailnet command. The playbook verifies the tag and fails closed without it.
-- `egress_proxy_b2_region`, the Backblaze B2 region for the S3 host. The role refuses an empty value.
+- `egress_proxy_state_host`, the S3 host of the OpenTofu state backend (path-style), for example `s3.fr-par.scw.cloud`. The role refuses an empty value or an IP address.
 - The usual `allowed_ssh_cidrs`, `vpn_service_address` and `tailnet_management.approved_sources` inventory values.
 
 The Tailnet grants already exist: `tag:ci-tofu` reaches `tag:egress` on 3128 and `tag:ci-deploy` reaches it on 22. The playbook reads the listen address from the node (`tailscale status --json`), so no address input is needed.
@@ -17,7 +17,7 @@ The Tailnet grants already exist: `tag:ci-tofu` reaches `tag:egress` on 3128 and
 ## Run
 
 ```bash
-ansible-playbook ansible/playbooks/egress-proxy.yml -i inventory/<env>.yml --limit <egress-host> -e egress_proxy_b2_region=<region>
+ansible-playbook ansible/playbooks/egress-proxy.yml -i inventory/<env>.yml --limit <egress-host> -e egress_proxy_state_host=<state S3 host>
 ```
 
 There is no Make target. The firewall policy is `strict`: DNS, NTP and TCP 80/443 are the only host-originated traffic, which is all squid needs.

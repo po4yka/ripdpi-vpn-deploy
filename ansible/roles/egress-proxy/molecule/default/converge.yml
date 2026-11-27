@@ -18,4 +18,4 @@
         egress_proxy_require_tailnet_listen: false
         egress_proxy_client_cidrs:
           - 127.0.0.1/32
-        egress_proxy_b2_region: us-west-004
+        egress_proxy_state_host: s3.fr-par.scw.cloud

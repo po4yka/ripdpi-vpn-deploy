@@ -40,7 +40,7 @@
                 "ipv6_literal": connect("[2606:4700:4700::1111]:443"),
                 "hosts_file_mapped_ipv4": connect("198.51.100.7:443"),
                 "allowed": connect("api.vultr.com:443"),
-                "allowed_b2": connect("s3.us-west-004.backblazeb2.com:443"),
+                "allowed_state": connect("s3.fr-par.scw.cloud:443"),
             }))
       register: _egress_proxy_probe
       changed_when: false
@@ -67,7 +67,7 @@
           - not (_egress_proxy_probe.stdout | from_json)[item].denied
       loop:
         - allowed
-        - allowed_b2
+        - allowed_state
 
     - name: Read the access log
       ansible.builtin.command: cat /var/log/squid/access.log

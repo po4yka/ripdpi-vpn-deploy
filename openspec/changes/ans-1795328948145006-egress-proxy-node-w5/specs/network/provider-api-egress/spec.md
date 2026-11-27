@@ -6,7 +6,7 @@ Define the dedicated egress node that gives CI one fixed source address for prov
 
 ### Requirement: REQ-EGRESS-CONNECT-ONLY — Only CONNECT to allowlisted API hosts on 443
 
-The proxy MUST accept only the HTTP `CONNECT` method, only to port 443, and only to host names on the allowlist (`api.hetzner.cloud`, `api.scaleway.com`, `api.upcloud.com`, `api.vultr.com`, the configured `s3.<region>.backblazeb2.com`, `api.porkbun.com`, `api-ipv4.porkbun.com`, `api.tailscale.com`). It MUST reject IP-literal targets and every other method, and it MUST NOT terminate or inspect TLS.
+The proxy MUST accept only the HTTP `CONNECT` method, only to port 443, and only to host names on the allowlist (`api.hetzner.cloud`, `api.scaleway.com`, `api.upcloud.com`, `api.vultr.com`, the configured S3 host of the OpenTofu state backend (path-style, for example `s3.fr-par.scw.cloud`), `api.porkbun.com`, `api-ipv4.porkbun.com`, `api.tailscale.com`). It MUST reject IP-literal targets and every other method, and it MUST NOT terminate or inspect TLS.
 
 #### Scenario: Plain HTTP request
 
@@ -71,7 +71,7 @@ The public IPv4 MUST be a retained primary IP resource that is reassigned to a r
 
 ### Requirement: REQ-EGRESS-PROVIDER-PROOF — Every provider client works through the proxy
 
-Before any provider allowlist is enabled, each OpenTofu provider used by the fleet and the B2 backend MUST be shown to complete `tofu plan` with `HTTPS_PROXY` set to the egress proxy, with the proxy log showing `CONNECT` to that provider's host.
+Before any provider allowlist is enabled, each OpenTofu provider used by the fleet and the OpenTofu state backend MUST be shown to complete `tofu plan` with `HTTPS_PROXY` set to the egress proxy, with the proxy log showing `CONNECT` to that provider's host.
 
 #### Scenario: Provider ignores the proxy
 
@@ -89,7 +89,7 @@ The Vultr API access control MUST list only the egress IPv4 (and IPv6 if used) a
 
 ### Requirement: REQ-EGRESS-BREAK-GLASS — Documented recovery when the proxy, VPS or GitHub is down
 
-The runbook MUST repair a stopped proxy through pinned management SSH on the Tailnet. For a lost server it MUST recreate only the egress root using direct Hetzner and B2 access with the W3 lock, retain its IP, verify the new host identity and enroll it before restoring proxied jobs. The operator MUST be able to perform this recovery without GitHub. Emergency Vultr console access MUST be time-limited and recorded.
+The runbook MUST repair a stopped proxy through pinned management SSH on the Tailnet. For a lost server it MUST recreate only the egress root using direct Hetzner and state-backend access with the W3 lock, retain its IP, verify the new host identity and enroll it before restoring proxied jobs. The operator MUST be able to perform this recovery without GitHub. Emergency Vultr console access MUST be time-limited and recorded.
 
 #### Scenario: Proxy and GitHub both down
 

@@ -19,7 +19,7 @@ DEFAULTS = yaml.safe_load((ROLE / "defaults" / "main.yml").read_text())
 
 def _admitted(**overrides: object) -> bool:
     task = next(t for t in yaml.safe_load((ROLE / "tasks" / "main.yml").read_text()) if t["name"] == TASK_NAME)
-    variables = {**DEFAULTS, "egress_proxy_listen_address": "100.64.0.1", "egress_proxy_b2_region": "us-west-004"}
+    variables = {**DEFAULTS, "egress_proxy_listen_address": "100.64.0.1", "egress_proxy_state_host": "s3.fr-par.scw.cloud"}
     variables.update(overrides)
     templar = Templar(loader=DataLoader(), variables=variables)
     variables.update({k: templar.template(trust_as_template(v)) for k, v in task["vars"].items()})
@@ -49,11 +49,11 @@ def test_loopback_is_admitted_only_when_the_tailnet_requirement_is_off() -> None
     assert not _admitted(egress_proxy_listen_address="127.0.0.01", egress_proxy_require_tailnet_listen=False)
 
 
-@pytest.mark.parametrize("region", ["", "US-West", "us west", "us-west-004\n"])
-def test_b2_region_must_be_set_and_literal(region: str) -> None:
-    assert not _admitted(egress_proxy_b2_region=region)
+@pytest.mark.parametrize("host", ["", "198.51.100.7", ".s3.fr-par.scw.cloud", "s3.fr-par.scw.cloud\n", "S3.FR-PAR.SCW.CLOUD"])
+def test_state_host_must_be_a_literal_host_name(host: str) -> None:
+    assert not _admitted(egress_proxy_state_host=host)
 
 
-@pytest.mark.parametrize("host", [".api.vultr.com", "*.vultr.com", "api.vultr.com.", "localhost", "api.vultr.com\n"])
+@pytest.mark.parametrize("host", [".api.vultr.com", "*.vultr.com", "api.vultr.com.", "localhost", "api.vultr.com\n", "198.51.100.7"])
 def test_allowlist_rejects_wildcards_and_malformed_hosts(host: str) -> None:
     assert not _admitted(egress_proxy_api_hosts=["api.vultr.com", host])

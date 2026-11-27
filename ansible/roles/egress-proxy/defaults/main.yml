@@ -13,8 +13,8 @@ egress_proxy_require_tailnet_listen: true
 egress_proxy_client_cidrs:
   - 100.64.0.0/10
 
-# Backblaze B2 S3 endpoint is s3.<region>.backblazeb2.com; the region is operator input.
-egress_proxy_b2_region: ""
+# S3 host of the OpenTofu state backend (path-style, for example s3.fr-par.scw.cloud); operator input.
+egress_proxy_state_host: ""
 
 # dstdomain entries (exact names, no leading dot), matched with -n (no reverse lookup).
 egress_proxy_api_hosts:
