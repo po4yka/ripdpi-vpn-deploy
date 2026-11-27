@@ -31,16 +31,20 @@
   ansible.builtin.set_fact:
     _owned_preserved_masks: '{{ _owned_disabled_units.results | selectattr(''stdout'', ''equalto'', ''masked'') | map(attribute=''item'')
       | list }}'
+- name: Find which owned runtime files exist
+  ansible.builtin.import_tasks: '{{ role_path }}/../../playbooks/tasks/present-paths.yml'
+  vars:
+    owned_paths:
+      - /etc/systemd/system/vpn-geodata-refresh.timer
+      - /etc/systemd/system/vpn-geodata-refresh.service
+      - /usr/local/sbin/vpn-geodata-publish
+      - /usr/local/sbin/vpn-geodata-refresh.sh
+      - /usr/local/sbin/vpn-xray-geodata-activate.sh
 - name: Remove only exact owned runtime files
   ansible.builtin.file:
     path: '{{ item }}'
     state: absent
-  loop:
-    - /etc/systemd/system/vpn-geodata-refresh.timer
-    - /etc/systemd/system/vpn-geodata-refresh.service
-    - /usr/local/sbin/vpn-geodata-publish
-    - /usr/local/sbin/vpn-geodata-refresh.sh
-    - /usr/local/sbin/vpn-xray-geodata-activate.sh
+  loop: '{{ owned_present_paths }}'
   when: (item | basename) not in _owned_preserved_masks
   register: _owned_retired_files
 - name: Reload the retired owned unit graph

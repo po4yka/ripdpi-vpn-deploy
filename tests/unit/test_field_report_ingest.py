@@ -487,8 +487,10 @@ def test_role_links_the_private_aggregate_into_the_textfile_directory():
                       "dest": "{{ (monitoring | default({})).node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/vpn_field_report.prom",
                       "state": "link", "owner": "root", "group": "root", "force": True, "follow": False}]
     retired = yaml.safe_load((ROLE / "tasks/field-report-disable.yml").read_text())
+    found = next(task for task in retired if task["name"] == "Find which field-report ingest files exist")
     removed = next(task for task in retired if task["name"] == "Remove field-report ingest files and aggregate textfile")
-    assert "/var/lib/vpn-field-report" in removed["loop"]
+    assert "/var/lib/vpn-field-report" in found["vars"]["owned_paths"]
+    assert removed["loop"] == "{{ owned_present_paths }}"
 
 
 def _settings_assert_holds(**changes) -> bool:

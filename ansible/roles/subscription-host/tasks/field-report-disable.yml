@@ -22,17 +22,22 @@
     label: "{{ item.name }}"
   when: item.present | bool
 
+- name: Find which field-report ingest files exist
+  ansible.builtin.import_tasks: "{{ role_path }}/../../playbooks/tasks/present-paths.yml"
+  vars:
+    owned_paths:
+      - /etc/systemd/system/vpn-field-report.service
+      - /etc/systemd/system/vpn-field-report.socket
+      - /etc/vpn-field-report
+      - /usr/local/lib/vpn-field-report
+      - /var/lib/vpn-field-report
+      - "{{ (monitoring | default({})).node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/vpn_field_report.prom"
+
 - name: Remove field-report ingest files and aggregate textfile
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
-  loop:
-    - /etc/systemd/system/vpn-field-report.service
-    - /etc/systemd/system/vpn-field-report.socket
-    - /etc/vpn-field-report
-    - /usr/local/lib/vpn-field-report
-    - /var/lib/vpn-field-report
-    - "{{ (monitoring | default({})).node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/vpn_field_report.prom"
+  loop: "{{ owned_present_paths }}"
   register: _subscription_field_report_removed
 
 - name: Reload systemd after field-report ingest retirement

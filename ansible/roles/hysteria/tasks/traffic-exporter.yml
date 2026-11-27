@@ -69,16 +69,21 @@
         - not ansible_check_mode
         - _hysteria_traffic_exporter_timer.stat.exists
 
+    - name: Find which Hysteria traffic exporter surfaces exist
+      ansible.builtin.import_tasks: "{{ role_path }}/../../playbooks/tasks/present-paths.yml"
+      vars:
+        owned_paths:
+          - /etc/systemd/system/hysteria-traffic-exporter.timer
+          - /etc/systemd/system/hysteria-traffic-exporter.service
+          - /usr/local/sbin/hysteria-traffic-exporter
+          - "{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/vpn_hysteria.prom"
+          - "{{ hysteria_config_dir }}/traffic-stats.secret"
+
     - name: Remove Hysteria traffic exporter surfaces
       ansible.builtin.file:
         path: "{{ item }}"
         state: absent
-      loop:
-        - /etc/systemd/system/hysteria-traffic-exporter.timer
-        - /etc/systemd/system/hysteria-traffic-exporter.service
-        - /usr/local/sbin/hysteria-traffic-exporter
-        - "{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/vpn_hysteria.prom"
-        - "{{ hysteria_config_dir }}/traffic-stats.secret"
+      loop: "{{ owned_present_paths }}"
       register: _hysteria_traffic_exporter_removed
 
     - name: Reload systemd after Hysteria traffic exporter removal

@@ -19,16 +19,21 @@
     state: stopped
   when: _model_news_timer.stat.exists
 
+- name: Find which model news files exist
+  ansible.builtin.import_tasks: "{{ role_path }}/../../playbooks/tasks/present-paths.yml"
+  vars:
+    owned_paths:
+      - /etc/systemd/system/model-news.timer
+      - /etc/systemd/system/model-news.service
+      - /usr/local/libexec/model-news-refresh
+      - /etc/model-news
+      - /var/lib/model-news
+
 - name: Remove the model news units, script, configuration and state
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
-  loop:
-    - /etc/systemd/system/model-news.timer
-    - /etc/systemd/system/model-news.service
-    - /usr/local/libexec/model-news-refresh
-    - /etc/model-news
-    - /var/lib/model-news
+  loop: "{{ owned_present_paths }}"
   register: _model_news_removed
 
 - name: Reload systemd after model news unit removal

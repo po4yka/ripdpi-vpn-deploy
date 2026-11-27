@@ -33,16 +33,21 @@
       {{ _nginx_routing_units.results
          | selectattr('stdout', 'equalto', 'masked') | map(attribute='item') | list }}
 
+- name: Find which routing list runtime files exist
+  ansible.builtin.import_tasks: '{{ role_path }}/../../playbooks/tasks/present-paths.yml'
+  vars:
+    owned_paths:
+      - /etc/systemd/system/vpn-routing-lists.timer
+      - /etc/systemd/system/vpn-routing-lists.service
+      - /usr/local/libexec/vpn-routing-lists-refresh
+      - /etc/vpn-routing-lists.json
+      - /var/lib/vpn-routing-lists
+
 - name: Remove routing list runtime
   ansible.builtin.file:
     path: '{{ item }}'
     state: absent
-  loop:
-    - /etc/systemd/system/vpn-routing-lists.timer
-    - /etc/systemd/system/vpn-routing-lists.service
-    - /usr/local/libexec/vpn-routing-lists-refresh
-    - /etc/vpn-routing-lists.json
-    - /var/lib/vpn-routing-lists
+  loop: '{{ owned_present_paths }}'
   when: (item | basename) not in _nginx_routing_masks
   register: _nginx_routing_removed
 

@@ -36,13 +36,23 @@
   when: _dns_morph_retire_fragment.stat.exists
   no_log: true
 
+# One query instead of service_facts: systemctl prints LoadState then SubState for each unit,
+# in argument order; the check refuses any other shape.
 - name: Inspect shared Unbound service before retiring its bridge fragment
-  ansible.builtin.service_facts:
+  ansible.builtin.command:
+    argv: [systemctl, show, '--property=LoadState,SubState', --value, unbound.service, systemd-resolved.service]
+  register: _dns_morph_shared_units
+  changed_when: false
+  check_mode: false
+  failed_when: >-
+    _dns_morph_shared_units.rc != 0 or
+    (_dns_morph_shared_units.stdout.split() | length) != 4 or
+    (_dns_morph_shared_units.stdout.split()[0::2] | difference(['loaded', 'masked', 'not-found']) | length) > 0
 
 - name: Preserve the prior shared Unbound activation intent
   ansible.builtin.set_fact:
-    _dns_morph_unbound_was_running: >-
-      {{ ansible_facts.services.get('unbound.service', {}).get('state', '') == 'running' }}
+    _dns_morph_unbound_was_running: "{{ _dns_morph_shared_units.stdout.split()[1] == 'running' }}"
+    _dns_morph_resolved_present: "{{ _dns_morph_shared_units.stdout.split()[2] != 'not-found' }}"
 
 - name: Validate existing shared Unbound configuration before retirement
   ansible.builtin.command:
@@ -113,4 +123,4 @@
   vars:
     baseline_dns_morph_active: false
     baseline_defer_resolver_restore: false
-  when: "'systemd-resolved.service' in ansible_facts.services"
+  when: _dns_morph_resolved_present | bool
