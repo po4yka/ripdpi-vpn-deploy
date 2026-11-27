@@ -796,6 +796,19 @@ def test_precheck_bypass_keeps_the_placeholder_check_outside_ci(tmp_path, enviro
                      if validated else [])
 
 
+@pytest.mark.parametrize("assignments,deployed", [([], True), (["ENV=prod"], False)])
+def test_deploy_canary_defaults_to_the_canary_files(tmp_path, assignments, deployed):
+    # The recipe recurses with plain $(MAKE), which reads ./Makefile, not the -f path.
+    root = Path(__file__).resolve().parents[2]
+    (tmp_path / "Makefile").write_text(f"include {root / 'Makefile'}\n")
+    result, calls = _run_recipe_with_recorders(
+        tmp_path, "deploy-canary", *assignments, recorders=["deploy-controller.py"])
+    assert (result.returncode == 0) is deployed, result.stdout + result.stderr
+    assert calls == ([["deploy-controller.py", "deploy"]] if deployed else [])
+    if not deployed:
+        assert "refusing deploy-canary" in result.stderr
+
+
 def test_xray_diagnostics_rejects_unsafe_extra_vars_files():
     root = Path(__file__).resolve().parents[2]
     makefile = (root / "Makefile").read_text()

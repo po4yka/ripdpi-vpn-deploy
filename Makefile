@@ -296,6 +296,10 @@ prepare-disposable-promotion-intent:
 	@python3 scripts/prepare-disposable-promotion-intent.py
 else
 PROVIDER ?= upcloud
+# deploy-canary deploys ENV=canary, so its default secrets and SOPS paths must name canary files too.
+ifneq ($(filter deploy-canary,$(MAKECMDGOALS)),)
+ENV      ?= canary
+endif
 ENV      ?= prod
 
 ifneq ($(filter bootstrap-secrets,$(MAKECMDGOALS)),)
