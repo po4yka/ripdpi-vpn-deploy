@@ -175,12 +175,17 @@ def test_ssh_allowlist_sources_are_never_banned(cidrs):
             ),
             "2001:db8::1",
         ),
+        # A source without the network prefix is still the source.
+        ("from 198.51.100.8:40000 accepted tcp:142.250.1.1:443 [vless-reality -> block] email: dan", "198.51.100.8"),
+        # No "from": no source to attribute, so the destination must not stand in for it.
+        ("accepted udp:142.250.1.1:443 [vless-reality -> block] email: erin", None),
     ],
 )
 def test_source_ip_is_banned_not_destination(daemon, line, source):
     limiter = daemon["RateLimiter"](5, 60, 300)
     banned = [limiter.observe(line, NOW) for _ in range(5)]
     assert banned == [None, None, None, None, source]
+    assert limiter.events == (5 if source else 0)
 
 
 # ---------------------------------------------------------------------------
