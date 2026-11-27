@@ -14,6 +14,7 @@ Cross-provider policy layer above the per-provider `tofu test` suite. Every prov
 | `secondary_ip.rego` | `no_secondary_public_ip_without_opt_in` | A server plan adds a secondary public IPv4 without `var.additional_public_ip = true`; ordinary dual-stack IPv6 is permitted. |
 | `admin_port.rego` | `no_admin_port_exposed_to_world` | Any firewall resource allows the effective `var.ssh_port` or TCP/3389 from `0.0.0.0/0` or `::/0`. panel_port rules removed — no admin panel is deployed. |
 | `ssh_cidrs.rego` | `firewall_rules_pin_ssh_to_documented_cidrs` | An SSH allow rule on `var.ssh_port` references a source CIDR not present in `var.allowed_ssh_cidrs`. |
+| `listener_family.rego` | `closed_family_listener_rule` | A world-open provider rule admits a port of a `public_listeners` entry on the address family that the entry's `family` (`ipv4` or `ipv6`) closes. An absent or `dual` family closes nothing. |
 | `egress_address.rego` | `retained_primary_ip_is_not_auto_deleted` | An `hcloud_primary_ip` (the egress address in `terraform/ops/egress-proxy`) does not set `auto_delete = false`, so deleting its server would delete the address that provider API allowlists name. |
 | `no_secrets_in_user_data.rego` | `cloud_init_user_data_contains_no_secrets` | A server resource's `user_data` contains a line-anchored plaintext assignment matching `(password\|token\|api_key\|secret)\s*[:=]\s*[^\s]{6,}`. The bare word `key` is excluded to avoid false-positives on SSH authorized_keys lines. |
 
