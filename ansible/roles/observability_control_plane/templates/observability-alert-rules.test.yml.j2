@@ -333,7 +333,7 @@ tests:
             exp_annotations:
               value: "xhttp in as64500 ZZ 70% failed"
               stage_mix: "tls_handshake=3000 tcp_reset=1200 "
-              rotation_hint: "Network as64500 blocks xhttp while the sentinel sees it healthy, by unauthenticated client reports. Consider a fresh endpoint for this network in the next fleet-rotate plan. This alert never starts a rotation."
+              rotation_hint: "Client reports show this network blocking the protocol while the sentinel sees it healthy. Consider a fresh endpoint for it in the next fleet-rotate plan."
               incident_family: field-report-network-block
               evidence_class: sentinel-client-divergence
               source_generation: "{{ observability_control_plane.alerting.source_generation }}"

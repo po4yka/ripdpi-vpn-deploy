@@ -425,8 +425,9 @@ groups:
         labels: {severity: "{{ policy.warning_severity }}", component: field-report, node: field-reports}
         annotations:
           value: "{% raw %}{{ $labels.protocol }} in {{ $labels.network }} {{ $labels.country }} {{ $value | humanizePercentage }} failed{% endraw %}"
-          stage_mix: '{% raw %}{{ range query (printf "sort_desc(sum by (failure_stage) (increase(vpn_field_report_failures_total{environment=%q,protocol=%q,network=%q,node=~%q}[{% endraw %}{{ block_window }}{% raw %}])))" $labels.environment $labels.protocol $labels.network "{% endraw %}{{ report_nodes }}{% raw %}") }}{{ .Labels.failure_stage }}={{ .Value | printf "%.0f" }} {{ end }}{% endraw %}'
-          rotation_hint: "{% raw %}Network {{ $labels.network }} blocks {{ $labels.protocol }} while the sentinel sees it healthy, by unauthenticated client reports. Consider a fresh endpoint for this network in the next fleet-rotate plan. This alert never starts a rotation.{% endraw %}"
+          # The relay refuses an empty or over-160-character annotation: keep the top three stages and a "none" fallback.
+          stage_mix: '{% raw %}{{ with query (printf "sort_desc(sum by (failure_stage) (increase(vpn_field_report_failures_total{environment=%q,protocol=%q,network=%q,node=~%q}[{% endraw %}{{ block_window }}{% raw %}])))" $labels.environment $labels.protocol $labels.network "{% endraw %}{{ report_nodes }}{% raw %}") }}{{ range $i, $s := . }}{{ if lt $i 3 }}{{ $s.Labels.failure_stage }}={{ $s.Value | printf "%.0f" }} {{ end }}{{ end }}{{ else }}none{{ end }}{% endraw %}'
+          rotation_hint: "Client reports show this network blocking the protocol while the sentinel sees it healthy. Consider a fresh endpoint for it in the next fleet-rotate plan."
           incident_family: field-report-network-block
           evidence_class: sentinel-client-divergence
           source_generation: "{{ observability_control_plane.alerting.source_generation }}"

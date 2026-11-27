@@ -769,6 +769,32 @@ def test_promtool_rule_cases_cover_firing_stale_recovery_and_absent(
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_promtool_expected_annotations_pass_the_relay_bounds() -> None:
+    # promtool pins rendered annotations; a set the relay refuses never reaches Telegram.
+    from tests.unit.test_observability_telegram_delivery import _relay
+
+    contract = _contract()
+    contract["field_report"] = {"source_nodes": ["vpn-sub"]}
+    cases = yaml.safe_load(
+        render_template(
+            ROLE / "templates/observability-alert-rules.test.yml.j2",
+            {"observability_control_plane": contract},
+        )
+    )
+    relay = _relay()
+    checked, refused = set(), []
+    for case in cases["tests"]:
+        for rule_test in case["alert_rule_test"]:
+            for expected in rule_test.get("exp_alerts") or []:
+                try:
+                    relay._bounded_mapping(expected["exp_annotations"])
+                except relay.Refusal:
+                    refused.append(rule_test["alertname"])
+                checked.add(rule_test["alertname"])
+    assert refused == []
+    assert "FieldReportNetworkBlocked" in checked
+
+
 @pytest.mark.parametrize("missing", [None, ("vpn-p1", "node"), ("vpn-p0", "delivery")])
 def test_missing_expected_push_scopes_fire_relay_accepted_alerts(tmp_path, missing):
     from tests.unit.test_observability_telegram_delivery import _payload, _relay
