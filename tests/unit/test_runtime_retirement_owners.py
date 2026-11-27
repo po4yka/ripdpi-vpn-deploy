@@ -167,6 +167,40 @@ def test_retirement_removes_only_present_paths_of_the_mode_validation(tmp_path, 
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+@pytest.mark.parametrize("check_mode", [True, False])
+def test_owned_path_query_selects_only_existing_paths_for_removal(tmp_path, check_mode):
+    """Role retirement loops remove the paths that the one query found, in declared order."""
+    import yaml
+
+    (tmp_path / "file").write_text("x")
+    (tmp_path / "dir").mkdir()
+    (tmp_path / "dangling").symlink_to(tmp_path / "gone")
+    declared = [str(tmp_path / name) for name in ("absent", "file", "dangling", "dir", "absent-too")]
+    present = [declared[1], declared[2], declared[3]]
+    play = [{
+        "hosts": "localhost", "connection": "local", "gather_facts": False, "become": False,
+        "vars": {"ansible_python_interpreter": sys.executable, "owned_paths": declared},
+        "tasks": [
+            {"name": "Query", "ansible.builtin.import_tasks": str(ROOT / "ansible/playbooks/tasks/present-paths.yml")},
+            {"name": "Require the existing paths in order",
+             "ansible.builtin.assert": {"that": [f"owned_present_paths == {present}"]}},
+            {"name": "Remove", "ansible.builtin.file": {"path": "{{ item }}", "state": "absent"},
+             "loop": "{{ owned_present_paths }}", "register": "removed"},
+            {"name": "Require one changed removal per existing path",
+             "ansible.builtin.assert": {"that": ["removed.results | map(attribute='changed') | list == [true, true, true]"]}},
+        ],
+    }]
+    candidate = tmp_path / "play.yml"
+    candidate.write_text(yaml.safe_dump(play))
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("ANSIBLE_")}
+    environment.update(ANSIBLE_CONFIG=str(tmp_path / "absent.cfg"), ANSIBLE_LOCAL_TEMP=str(tmp_path / "ansible-local"))
+    result = subprocess.run(["ansible-playbook", "-i", "localhost,", *(["--check"] if check_mode else []), str(candidate)],
+                            cwd=tmp_path, env=environment, capture_output=True, text=True, timeout=40)
+    left = [path for path in declared if os.path.lexists(path)]
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert left == (present if check_mode else [])
+
+
 def test_declared_producer_grant_preserves_root_owned_metric(authority):
     module, metric, entries, metadata = authority
     entries[metric] = metadata(stat.S_IFREG | 0o600)

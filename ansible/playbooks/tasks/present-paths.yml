@@ -1,0 +1,19 @@
+---
+# Input: owned_paths, a list of absolute paths. Output: owned_present_paths, the paths of
+# that list that exist on the host, in the same order (a dangling symlink counts as present).
+# One remote call: a `file: state=absent` loop over the result skips the absent paths, which
+# would otherwise cost one remote call each on every converge and preview.
+- name: Find which owned paths exist before retirement
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - import json, os, sys; print(json.dumps([p for p in json.load(sys.stdin) if os.path.lexists(p)]))
+    stdin: "{{ owned_paths | to_json }}"
+  register: _owned_present_paths
+  changed_when: false
+  check_mode: false
+
+- name: Record the owned paths that exist
+  ansible.builtin.set_fact:
+    owned_present_paths: "{{ _owned_present_paths.stdout | from_json }}"

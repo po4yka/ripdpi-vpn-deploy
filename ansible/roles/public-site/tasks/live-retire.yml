@@ -43,15 +43,21 @@
   loop_control:
     label: "{{ item.1[:12] }}{{ item.2 }}"
 
+- name: Find which live page refresh files exist when no bundle declares a page
+  ansible.builtin.import_tasks: "{{ role_path }}/../../playbooks/tasks/present-paths.yml"
+  vars:
+    owned_paths:
+      - /etc/systemd/system/public-site-live@.timer
+      - /etc/systemd/system/public-site-live@.service
+      - /usr/local/libexec/public-site-live-refresh
+      - /var/lib/public-site-live
+  when: public_site_live | default({}) | length == 0
+
 - name: Remove the live page refresh units, script and directory when no bundle declares a page
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
-  loop:
-    - /etc/systemd/system/public-site-live@.timer
-    - /etc/systemd/system/public-site-live@.service
-    - /usr/local/libexec/public-site-live-refresh
-    - /var/lib/public-site-live
+  loop: "{{ owned_present_paths }}"
   register: _public_site_live_removed
   when: public_site_live | default({}) | length == 0
 

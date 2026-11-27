@@ -22,18 +22,23 @@
     state: stopped
   when: _public_site_timer.stat.exists
 
+- name: Find which public site publisher files exist
+  ansible.builtin.import_tasks: "{{ role_path }}/../../playbooks/tasks/present-paths.yml"
+  vars:
+    owned_paths:
+      - /etc/systemd/system/public-site-publish.timer
+      - /etc/systemd/system/public-site-publish.service
+      - /usr/local/libexec/public-site-publish
+      - /etc/public-site
+      - /var/lib/public-site
+      # Left by Persistent=true.
+      - /var/lib/systemd/timers/stamp-public-site-publish.timer
+
 - name: Remove the public site publisher units, script, bundles and state
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent
-  loop:
-    - /etc/systemd/system/public-site-publish.timer
-    - /etc/systemd/system/public-site-publish.service
-    - /usr/local/libexec/public-site-publish
-    - /etc/public-site
-    - /var/lib/public-site
-    # Left by Persistent=true.
-    - /var/lib/systemd/timers/stamp-public-site-publish.timer
+  loop: "{{ owned_present_paths }}"
   register: _public_site_removed
 
 - name: Reload systemd after public site unit removal

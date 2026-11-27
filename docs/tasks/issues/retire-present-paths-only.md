@@ -2,7 +2,7 @@
 id: ANS-1795702245344721
 title: Retire absent owned paths and units without one remote call per path
 kind: chore
-status: backlog
+status: doing
 area: ansible
 priority: medium
 risk: standard
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: not-required
 openspec_change: null
 created: 2026-11-26
-updated: 2026-11-26
+updated: 2026-11-27
 spec_reason: mechanical-refactor
 related_tasks: []
 ---
