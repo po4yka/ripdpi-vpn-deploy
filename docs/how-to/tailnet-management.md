@@ -34,8 +34,8 @@ Create an operator-owned mode-`0600` JSON config in a private directory. Its exa
 | Field | Required value |
 |---|---|
 | `schema_version` | Integer `3` |
-| `inventory_path`, `inventory_section` | Absolute source inventory path and explicit `vpn` or `observability-kuma` section. The observer stays outside the VPN fleet. |
-| `environment`, `provider` | Exact routed Terraform workspace, including named permanent workspaces; `upcloud`, `scaleway` or `vultr`. Disposable `ci-staging-*` workspaces always require their manifest; disposable Scaleway is unsupported. |
+| `inventory_path`, `inventory_section` | Absolute source inventory path and explicit `vpn`, `observability-kuma` or `egress` section. The observer and the egress node stay outside the VPN fleet. |
+| `environment`, `provider` | Exact routed Terraform workspace, including named permanent workspaces; `upcloud`, `scaleway` or `vultr`, or only `egress-proxy` for the `egress` section (production only, see [egress-proxy.md](egress-proxy.md#first-enrollment)). Disposable `ci-staging-*` workspaces always require their manifest; disposable Scaleway is unsupported. |
 | `build_environment` | Canonical `vpn_build_environment` emitted by inventory and matching `/etc/vpn-build-id`; named permanent workspaces require `prod` |
 | `inventory_alias`, `public_address`, `ssh_port` | One exact canonical inventory node and its current public SSH endpoint |
 | `host_key_sha256` | Lowercase hex SHA256 of the decoded pinned Ed25519 public-key blob |

@@ -23,6 +23,9 @@ import tailnet_management as tailnet
 import tofu_state
 
 ROOT = Path(__file__).resolve().parents[1]
+_VPN_PROVIDERS = frozenset({"upcloud", "vultr", "scaleway"})
+SECTION_PROVIDERS = {"vpn": _VPN_PROVIDERS, "observability-kuma": _VPN_PROVIDERS,
+                     "egress": frozenset({"egress-proxy"})}
 CONFIG_FIELDS = {
     "schema_version", "environment", "build_environment", "provider", "inventory_alias",
     "inventory_path", "inventory_section",
@@ -182,11 +185,14 @@ def load_inputs(environment, directory):
             raise BootstrapError("config-invalid")
         if (not isinstance(config["inventory_path"], str)
                 or not Path(config["inventory_path"]).is_absolute()
-                or config["inventory_section"] not in {"vpn", "observability-kuma"}):
+                or config["inventory_section"] not in SECTION_PROVIDERS):
             raise BootstrapError("inventory-selector-invalid")
-        if (config["inventory_alias"] != target or config["provider"] not in {"upcloud", "vultr", "scaleway"}
+        if (config["inventory_alias"] != target
+                or config["provider"] not in SECTION_PROVIDERS[config["inventory_section"]]
                 or not isinstance(config["environment"], str)
-                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,63}", config["environment"])):
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,63}", config["environment"])
+                # The egress node is production only; it has no disposable cleanup authority.
+                or (config["inventory_section"] == "egress" and config["environment"] != "prod")):
             raise BootstrapError("target-invalid")
         build_environment = config["build_environment"]
         if (not isinstance(build_environment, str) or not 1 <= len(build_environment) <= 128

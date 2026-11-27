@@ -528,3 +528,19 @@ def test_duplicate_transport_or_identity_is_rejected(tmp_path):
     path.write_text(path.read_text().replace("ansible_host=192.0.2.2 ansible_user=deploy ansible_port=22", "ansible_host=192.0.2.1 ansible_user=deploy ansible_port=2222"))
     with pytest.raises(m.InspectionError):
         m.select_hosts(path, ["node-a", "node-b"])
+
+
+def test_egress_host_is_invisible_to_default_section_callers_and_the_observability_group(tmp_path):
+    m = module()
+    path = inventory(tmp_path)
+    egress = ("[egress]\negress-1 ansible_host=203.0.113.20 ansible_user=deploy ansible_port=22 "
+              "provider=egress-proxy env=prod vpn_build_environment='\"prod\"'\n")
+    path.write_text(path.read_text() + egress)
+    assert [h["name"] for h in m.select_hosts(path, ["egress-1"], primary_section="egress")] == ["egress-1"]
+    with pytest.raises(m.InspectionError, match="host-not-found"):
+        m.select_hosts(path, ["egress-1"])
+    with pytest.raises(m.InspectionError, match="host-not-found"):
+        m.select_hosts(path, ["egress-proxy:prod"], selection_kind="provider-env")
+    path.write_text(path.read_text() + "[observability:children]\negress\n")
+    with pytest.raises(m.InspectionError, match="unsupported-inventory"):
+        m.select_hosts(path, ["egress-1"], primary_section="egress")

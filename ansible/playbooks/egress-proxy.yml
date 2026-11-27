@@ -111,6 +111,34 @@
         quiet: true
       tags: [always]
 
+    # The tag is fixed at enrollment and the roles take no tag input, so verify it before any role runs.
+    - name: Read the node Tailnet identity
+      ansible.builtin.command:
+        argv: [tailscale, status, --json, --self=true, --peers=false]
+      register: egress_tailscale_status
+      changed_when: false
+      check_mode: false
+      no_log: true
+      tags: [always]
+
+    - name: Require tag:egress and derive the Tailnet IPv4 listen address
+      ansible.builtin.set_fact:
+        egress_proxy_listen_address: >-
+          {{ (egress_tailscale_status.stdout | from_json).Self.TailscaleIPs
+             | select('match', '^100[.]') | list | first | default('') }}
+        egress_tailnet_tags: "{{ (egress_tailscale_status.stdout | from_json).Self.Tags | default([]) }}"
+      no_log: true
+      tags: [always]
+
+    - name: Fail closed without the egress tag or a Tailnet IPv4 address
+      ansible.builtin.assert:
+        that:
+          - egress_tailnet_tags == ['tag:egress']
+          - egress_proxy_listen_address | length > 0
+        fail_msg: The node must carry exactly the tag tag:egress and hold a Tailnet IPv4 address.
+        quiet: true
+      tags: [always]
+
   tasks:
     - name: Apply hardened host baseline
       ansible.builtin.include_role:
@@ -123,31 +151,6 @@
     - name: Verify existing Tailnet management access
       ansible.builtin.include_role:
         name: tailnet-management
-
-    # The role takes no tag input: the tag is fixed at enrollment, so verify it here.
-    - name: Read the node Tailnet identity
-      ansible.builtin.command:
-        argv: [tailscale, status, --json, --self=true, --peers=false]
-      register: egress_tailscale_status
-      changed_when: false
-      check_mode: false
-      no_log: true
-
-    - name: Require tag:egress and derive the Tailnet IPv4 listen address
-      ansible.builtin.set_fact:
-        egress_proxy_listen_address: >-
-          {{ (egress_tailscale_status.stdout | from_json).Self.TailscaleIPs
-             | select('match', '^100[.]') | list | first | default('') }}
-        egress_tailnet_tags: "{{ (egress_tailscale_status.stdout | from_json).Self.Tags | default([]) }}"
-      no_log: true
-
-    - name: Fail closed without the egress tag or a Tailnet IPv4 address
-      ansible.builtin.assert:
-        that:
-          - "'tag:egress' in egress_tailnet_tags"
-          - egress_proxy_listen_address | length > 0
-        fail_msg: The node must be enrolled with tag:egress and hold a Tailnet IPv4 address.
-        quiet: true
 
     - name: Configure the CONNECT-only egress proxy
       ansible.builtin.include_role:

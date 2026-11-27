@@ -404,6 +404,20 @@ def _local_file(path, private=False):
     return str(Path(path).expanduser().absolute())
 
 
+def _require_egress_pairing(section, values):
+    """The egress section and the egress-proxy provider belong together, in production only."""
+    if section != "egress":
+        if values.get("provider") == "egress-proxy":
+            raise InspectionError("egress-provider-section-mismatch")
+        return
+    try:
+        build = json.loads(values.get("vpn_build_environment", ""))
+    except ValueError:
+        build = None
+    if values.get("provider") != "egress-proxy" or values.get("env") != "prod" or build != "prod":
+        raise InspectionError("egress-pairing-invalid")
+
+
 def select_hosts(inventory_path, selected, *, primary_section="vpn", include_variables=False, selection_kind="name", include_cohorts=False):
     if selection_kind not in ("name", "provider-env"):
         raise InspectionError("unsupported-selection-kind")
@@ -414,7 +428,7 @@ def select_hosts(inventory_path, selected, *, primary_section="vpn", include_var
         if (len(parts) != (2 if selection_kind == "provider-env" else 1)
                 or any(not SAFE_NAME.fullmatch(part) or part == "all" for part in parts)):
             raise InspectionError("explicit-host-subset-required")
-    sections = ("vpn", "vpn-observability-control", "observability-kuma")
+    sections = ("vpn", "vpn-observability-control", "observability-kuma", "egress")
     if primary_section not in sections:
         raise InspectionError("unsupported-inventory-section")
     try:
@@ -455,7 +469,7 @@ def select_hosts(inventory_path, selected, *, primary_section="vpn", include_var
             target = hosts.setdefault(words[0], {})
             target["__sections"] = {section}
             assignments = words[1:]
-        elif section == "observability:children" and len(words) == 1 and words[0] in sections:
+        elif section == "observability:children" and len(words) == 1 and words[0] in sections and words[0] != "egress":
             continue
         elif section.startswith("vpn-") and len(words) == 1 and SAFE_NAME.fullmatch(words[0]):
             cohorts.setdefault(words[0], set()).add(section[4:])
@@ -498,6 +512,7 @@ def select_hosts(inventory_path, selected, *, primary_section="vpn", include_var
         if inherited.keys() & host_values.keys():
             raise InspectionError("ambiguous-inventory-variable")
         values = {**inherited, **host_values}
+        _require_egress_pairing(primary_section, values)
         try:
             connection = _connection_name(values["ansible_host"])
             address = connection

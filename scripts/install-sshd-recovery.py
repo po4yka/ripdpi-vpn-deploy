@@ -53,7 +53,7 @@ def build_invocation(environment):
     if debug not in {'', 'false', 'no', '0', 'off'}:
         raise InstallError('ansible-debug-forbidden')
     section = environment.get('SSH_RECOVERY_INVENTORY_SECTION')
-    if section not in {'vpn', 'observability-kuma'}:
+    if section not in {'vpn', 'observability-kuma', 'egress'}:
         raise InstallError('inventory-section-required')
     inventory = Path(environment.get('SSH_RECOVERY_INVENTORY') or ROOT/'ansible/inventory/generated.ini').expanduser().absolute()
     known_hosts = Path(environment.get('SSH_RECOVERY_KNOWN_HOSTS') or Path.home()/'.ssh/known_hosts').expanduser().absolute()
