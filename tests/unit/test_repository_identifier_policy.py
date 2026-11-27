@@ -130,8 +130,8 @@ ALLOWED_PUBLIC_ADDRESSES = {
         "public service or placeholder address used as a test or example value",
     ),
     **dict.fromkeys(
-        ("8.0.0.0", "100.128.0.1", "149.0.0.0", "172.15.0.1", "172.32.0.1", "203.0.112.0"),
-        "first address outside a reserved range, in a boundary test",
+        ("8.0.0.0", "100.63.255.255", "100.128.0.1", "149.0.0.0", "172.15.0.1", "172.32.0.1", "203.0.112.0"),
+        "address next to a reserved range, in a boundary test",
     ),
     **dict.fromkeys(("4.8.12.9", "4.8.15.5", "4.8.19.0", "4.8.20.0"), "four-part version number"),
 }
