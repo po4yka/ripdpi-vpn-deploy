@@ -234,8 +234,11 @@ def test_smoke_client_retains_exact_verified_tls_identity(identity):
     elif identity == "explicit":
         expected = "explicit.example"
         variables["hysteria"]["server_name"] = expected
+    # A YAML-significant password must survive into the client document unchanged.
+    variables["hysteria"]["clients"][0]["password"] = 'q"uo\\te #x'
     rendered = render_fragment("hysteria-smoke-client.yaml", task["ansible.builtin.copy"]["content"], variables)
     client = yaml.safe_load(rendered)
+    assert client["auth"] == variables["hysteria"]["clients"][0]["name"] + ':q"uo\\te #x'
     assert client["tls"]["sni"] == expected
     assert client["tls"]["insecure"] is False
     assert ("ech" in client["tls"]) is (identity == "ech")

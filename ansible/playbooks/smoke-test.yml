@@ -103,7 +103,7 @@
                     mode: "0600"
                     content: |
                       server: 127.0.0.1:{{ hysteria_port }}
-                      auth: "{{ hysteria.clients[0].name }}:{{ hysteria.clients[0].password }}"
+                      auth: {{ (hysteria.clients[0].name ~ ':' ~ hysteria.clients[0].password) | to_json }}
                       tls:
                         sni: {{ (hysteria.ech.inner_name if hysteria.ech is defined
                           else hysteria.server_name | default(nginx_xhttp.server_name
