@@ -212,6 +212,7 @@ cleanup_secrets() {
 }
 trap cleanup_secrets EXIT
 # An untrapped signal skips the EXIT trap; fleet rotation stops this script with SIGTERM.
+# The trap runs once the current foreground child exits, so a SIGKILL that follows sooner still skips it.
 trap 'exit 130' INT
 trap 'exit 143' TERM
 sops --decrypt "$SOPS_FILE" > "$SECRETS_FILE"

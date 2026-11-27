@@ -155,13 +155,14 @@ def test_reputation_check_reads_the_block_list_over_the_encrypted_resolver(tmp_p
     assert not (tmp_path / "cleartext-calls").exists()
 
 
-def test_reputation_check_refuses_an_address_that_is_not_dotted_ipv4(tmp_path):
+@pytest.mark.parametrize("address", ["{payload}", "999.1.1.1"])
+def test_reputation_check_refuses_an_address_that_is_not_dotted_ipv4(tmp_path, address):
     marker = tmp_path / "executed"
     payload = f"1.2.3.4');open({str(marker)!r},'w');('"
     netset = tmp_path / "firehol.netset"
     netset.write_text("198.51.100.0/24\n")
     result = run(["bash", str(ROOT / "scripts/check-ip-reputation.sh")], closed_resolver(), tmp_path,
-                 IP=payload, FIREHOL_NETSET_FILE=str(netset), NTFY_TOPIC="")
+                 IP=address.format(payload=payload), FIREHOL_NETSET_FILE=str(netset), NTFY_TOPIC="")
     assert result.returncode == 2
     assert "dotted IPv4" in result.stderr
     assert not marker.exists()
