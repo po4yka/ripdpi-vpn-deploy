@@ -1,0 +1,14 @@
+# Managed by Ansible. Replaces the packaged fragment, which signals squid only when /run/squid.pid exists.
+/var/log/squid/*.log {
+	daily
+	rotate 7
+	compress
+	delaycompress
+	missingok
+	notifempty
+	nocreate
+	sharedscripts
+	postrotate
+		/usr/bin/systemctl kill --kill-whom=main --signal=USR1 squid.service
+	endscript
+}

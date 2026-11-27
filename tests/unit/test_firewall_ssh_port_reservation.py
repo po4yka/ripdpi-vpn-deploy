@@ -100,3 +100,39 @@ def test_check_precedes_firewall_mutation() -> None:
     assert check < names.index("Render nftables config")
     # Nothing may skip the check: no condition, tag or check-mode override.
     assert not {"when", "tags", "check_mode"} & _task().keys()
+
+
+EXTRA_PORTS_TASK = "Admit Tailnet-only extra TCP ports"
+
+
+def _extra_ports_pass(ports: object, ssh_port: int = 22) -> bool:
+    task = next(task for task in _tasks() if task["name"] == EXTRA_PORTS_TASK)
+    templar = Templar(
+        loader=DataLoader(),
+        variables={"firewall_tailnet_extra_tcp_ports": ports, "firewall_effective_ssh_ports": [ssh_port]},
+    )
+    return all(
+        templar.template(trust_as_template("{{ " + condition + " }}"))
+        for condition in task["ansible.builtin.assert"]["that"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("ports", "ssh_port", "expected"),
+    [
+        ([], 22, True),
+        ([3128], 22, True),
+        ([3128, 8080], 2222, True),
+        ([3128, 3128], 22, False),
+        ([0], 22, False),
+        ([65536], 22, False),
+        (["3128"], 22, False),
+        ([True], 22, False),
+        ("3128", 22, False),
+        ([22], 22, False),
+        ([2222], 2222, False),
+        ([9443], 22, False),
+    ],
+)
+def test_tailnet_extra_tcp_ports_admission(ports: object, ssh_port: int, expected: bool) -> None:
+    assert _extra_ports_pass(ports, ssh_port) is expected

@@ -187,6 +187,9 @@ table inet filter {
     tcp dport {{ ssh_port }} ip6 saddr { {{ ssh_v6_cidrs | join(", ") }} } accept
 {% endif %}
 
+{% for port in firewall_tailnet_extra_tcp_ports | default([]) %}
+    iifname "tailscale0" ip saddr 100.64.0.0/10 tcp dport {{ port | int }} accept comment "tailnet-tcp-{{ port | int }}"
+{% endfor %}
 {% if firewall_tailnet_collector_ingress | default({}) %}
     iifname "tailscale0" ip daddr {{ firewall_tailnet_collector_ingress.address }} ip saddr { {{ firewall_tailnet_collector_ingress.sources | join(', ') }} } tcp dport 9443 accept comment "private-collector-ingress"
 {% endif %}{% for listener in public_listener_contract | default([]) %}

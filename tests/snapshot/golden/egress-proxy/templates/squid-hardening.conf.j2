@@ -1,0 +1,35 @@
+# Managed by Ansible.
+[Unit]
+After=tailscaled.service
+
+[Service]
+User=proxy
+Group=proxy
+PIDFile=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/log/squid /var/spool/squid
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+LimitNOFILE=4096
+Restart=on-failure
+RestartSec=5

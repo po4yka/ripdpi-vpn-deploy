@@ -1,0 +1,76 @@
+---
+- name: Admit proxy inputs before any host change
+  ansible.builtin.assert:
+    that:
+      - egress_proxy_listen_address is match(_egress_proxy_ipv4_re)
+      - not (egress_proxy_require_tailnet_listen | bool) or egress_proxy_listen_address is match(_egress_proxy_tailnet_re)
+      - egress_proxy_b2_region is match(_egress_proxy_region_re)
+      - egress_proxy_client_cidrs | length > 0
+      - egress_proxy_client_cidrs | reject('match', _egress_proxy_cidr_re) | list | length == 0
+      - egress_proxy_api_hosts | reject('match', _egress_proxy_host_re) | list | length == 0
+    fail_msg: >-
+      egress_proxy_listen_address must be a canonical IPv4 address (inside 100.64.0.0/10 unless
+      egress_proxy_require_tailnet_listen is false), egress_proxy_b2_region must be set,
+      and client CIDRs and API hosts must be literal values.
+  vars:
+    _egress_proxy_region_re: '^[a-z0-9-]+\Z'
+    _egress_proxy_ipv4_re: '^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}\Z'
+    _egress_proxy_tailnet_re: '^100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])(\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){2}\Z'
+    _egress_proxy_cidr_re: '^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}(/(3[0-2]|[12]?[0-9]))?\Z'
+    _egress_proxy_host_re: '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+\Z'
+
+- name: Install the pinned squid package
+  ansible.builtin.apt:
+    name:
+      - "squid={{ egress_proxy_package_version }}"
+      - logrotate
+    state: present
+    policy_rc_d: 101
+    update_cache: true
+    cache_valid_time: 3600
+    allow_downgrade: false
+
+- name: Create the systemd drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/squid.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the hardening drop-in
+  ansible.builtin.template:
+    src: squid-hardening.conf.j2
+    dest: /etc/systemd/system/squid.service.d/10-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart egress proxy
+
+- name: Install squid.conf
+  ansible.builtin.template:
+    src: squid.conf.j2
+    dest: /etc/squid/squid.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/squid -k parse -f %s
+  notify: Restart egress proxy
+
+- name: Install the logrotate fragment that signals squid through systemd
+  ansible.builtin.copy:
+    src: squid-logrotate
+    dest: /etc/logrotate.d/squid
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Apply unit and configuration changes before starting
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start squid
+  ansible.builtin.systemd_service:
+    name: squid
+    enabled: true
+    state: started
+    daemon_reload: true

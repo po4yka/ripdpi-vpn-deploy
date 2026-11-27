@@ -1,0 +1,10 @@
+---
+- name: Reload systemd for the egress proxy drop-in
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  listen: Restart egress proxy
+
+- name: Restart egress proxy
+  ansible.builtin.systemd_service:
+    name: squid
+    state: restarted

@@ -193,6 +193,19 @@
       Move them to another port; the firewall would otherwise accept SSH from
       sources outside allowed_ssh_cidrs.
 
+- name: Admit Tailnet-only extra TCP ports
+  ansible.builtin.assert:
+    that:
+      - firewall_tailnet_extra_tcp_ports is sequence and firewall_tailnet_extra_tcp_ports is not string
+      - firewall_tailnet_extra_tcp_ports | select('integer') | reject('boolean') | list | length == firewall_tailnet_extra_tcp_ports | length
+      - firewall_tailnet_extra_tcp_ports | select('lt', 1) | list | length == 0
+      - firewall_tailnet_extra_tcp_ports | select('gt', 65535) | list | length == 0
+      - firewall_tailnet_extra_tcp_ports | unique | list | length == firewall_tailnet_extra_tcp_ports | length
+      - firewall_tailnet_extra_tcp_ports | intersect(firewall_effective_ssh_ports + [9443]) | length == 0
+    fail_msg: >-
+      firewall_tailnet_extra_tcp_ports must be unique integers in 1..65535 that
+      are neither an effective SSH port nor 9443 (private collector ingress).
+
 - name: Prepare retained firewall consumer authority
   ansible.builtin.import_tasks: consumer-prepare.yml
   when: (firewall_site_transaction | default(false) | bool) or (firewall_stage_candidate | default(false) | bool)
