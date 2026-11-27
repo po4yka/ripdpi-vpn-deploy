@@ -2,7 +2,7 @@
 id: SCR-1795774108061951
 title: Warm the Tailnet management route before readiness and outlast relay home changes
 kind: feature
-status: doing
+status: review
 area: scripts
 priority: high
 risk: standard
@@ -14,6 +14,7 @@ openspec_change: scr-1795774108061951-management-route-warmup
 created: 2026-11-27
 updated: 2026-11-27
 related_tasks: []
+status_detail: Merged in f5ca1809a (PR 779); node-a preview at f5ca1809a warmed and measured the relayed route before readiness (median 166 ms) and passed
 ---
 
 ## Goal
