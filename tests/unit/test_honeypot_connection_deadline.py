@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.util
 import re
 import socket
+import struct
 import sys
 import threading
 import time
@@ -87,6 +88,24 @@ def test_slow_reader_is_bounded_by_total_deadline(tmp_path: Path, monkeypatch) -
     # Deadline renders as 1s; allow scheduler slack but far below the
     # unbounded dribble duration.
     assert elapsed < 4.0, f"slow reader held the slot {elapsed:.2f}s"
+
+
+def test_a_scanner_reset_is_not_an_input_error(tmp_path: Path) -> None:
+    # ObservabilityDetectorError fires on any input error with for: 0m, so one RST must not count.
+    honeypot = _render_module(tmp_path)
+    listener = socket.create_server(("127.0.0.1", 0))
+    client = socket.create_connection(listener.getsockname())
+    server, addr = listener.accept()
+    client.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+    client.close()  # linger 0 sends RST
+    time.sleep(0.2)
+    try:
+        honeypot._handle(server, addr)
+    finally:
+        listener.close()
+    honeypot._flush_textfile()
+    metrics = (tmp_path / "textfile" / "vpn_honeypot.prom").read_text()
+    assert _metric(metrics, "vpn_honeypot_input_errors_total") == 0
 
 
 def test_slot_exhaustion_drops_are_counted_and_exported(
