@@ -121,6 +121,9 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+# An untrapped signal skips the EXIT trap and would leave the override and the saved plan.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 cat <<EOF
 

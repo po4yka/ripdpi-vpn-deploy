@@ -1854,6 +1854,7 @@ renew-self-steal-cert:
 	@# One plaintext path per invocation, so overlapping runs never read or remove each other's input.
 	@set -eu; secrets="$(RUNTIME_DIR)/vpn-self-steal-renewal-$$$$.secrets.yaml"; \
 	  trap '$(MAKE) --no-print-directory clean SECRETS_FILE="'"$$secrets"'" >/dev/null' EXIT; \
+	  trap 'exit 130' INT; trap 'exit 143' TERM; \
 	  $(MAKE) --no-print-directory decrypt SOPS_FILE="$(SELF_STEAL_SOPS_FILE)" SECRETS_FILE="$$secrets" >/dev/null; \
 	  VPN_SECRETS_FILE="$$secrets" python3 ./scripts/renew-self-steal-cert.py \
 	    --sops-file "$(SELF_STEAL_SOPS_FILE)" --lego-path "$(SELF_STEAL_RENEWAL_DIR)/lego"

@@ -60,7 +60,12 @@ echo
 echo "[3] Stray plaintext"
 shopt -s nullglob
 strays=()
+# The same runtime directory that decrypt-secrets.sh writes to, its hidden
+# candidates, and blue-green's private temporary directories.
+runtime_dir="${VPN_RUNTIME_DIR:-${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}/vpn-provision-$(id -u)}}"
 for p in /tmp/vpn-*.secrets.yaml \
+         "$runtime_dir"/vpn-*.secrets.yaml "$runtime_dir"/.vpn-*.secrets.* \
+         "${TMPDIR:-/tmp}"/vpn-blue-green.*/*.yaml /tmp/vpn-blue-green.*/*.yaml \
          "$CONFIG_DIR"/*.secrets.yaml \
          "$REPO_ROOT"/secrets/*.secrets.yaml; do
   # The example schema is fine; anything else under secrets/ that's not

@@ -95,6 +95,11 @@ if environment == 'green':
         time.sleep(0.15)
     if phase == os.environ.get('FAILED_PHASE'):
         sys.exit(23)
+    if phase == os.environ.get('TERM_PHASE'):
+        # Signal blue-green.sh (Make's parent) the way fleet rotation stops it.
+        import signal, subprocess
+        shell = int(subprocess.check_output(['ps', '-o', 'ppid=', '-p', str(os.getppid())]))
+        os.kill(shell, signal.SIGTERM)
     (root / (phase + '.complete')).touch()
 """)
     (scripts / "device-migration.py").write_text("""
@@ -311,6 +316,15 @@ def test_green_plaintext_secrets_do_not_outlive_the_manual_pivot(tmp_path):
     result, _ = run_blue_green(tmp_path)
     assert result.returncode == 0, result.stderr
     assert (tmp_path / 'repo/green-secrets-after-pivot').read_text() == 'absent'
+
+
+def test_sigterm_still_removes_the_plaintext_secrets_directory(tmp_path):
+    # Fleet rotation stops blue-green with SIGTERM; an EXIT trap alone never runs then.
+    result, _ = run_blue_green(tmp_path, extra_environment={"TERM_PHASE": "dry-run"})
+    assert result.returncode == 143, result.stderr
+    plaintext = Path((tmp_path / 'repo/green-secrets-path').read_text())
+    assert not plaintext.exists()
+    assert not plaintext.parent.exists()
 
 
 def test_plan_selection_conflict_refuses_before_provider_mutation(tmp_path):
