@@ -19,6 +19,21 @@ make PROVIDER=scaleway  init plan apply
 
 The Ansible layer is provider-neutral — only the inventory render script reads the common Terraform output contract. `nat_source_port_range` is empty for stateful provider firewalls and the inert exception root. Enabled UpCloud stateless filtering exports its exact admitted return range for guest NAT.
 
+## Operations roots
+
+A root under `ops/` holds no VPN node. Select it with the same variable as a provider root:
+
+```bash
+make PROVIDER=egress-proxy init plan
+```
+
+`ops/egress-proxy` creates one Hetzner node for the fixed-address provider API proxy:
+
+- The primary IPv4 has `auto_delete = false` and `prevent_destroy`, so a replaced or lost server keeps the address that provider API allowlists name. The `egress_address` plan policy refuses a plan whose primary IP does not set `auto_delete = false`.
+- The provider firewall admits only ICMP and `ssh_port` from `allowed_ssh_cidrs`. The server has no public IPv6.
+- The root exports `server_ipv4`, `server_hostname`, `admin_user`, `ssh_port` and `zone`. It does not export the inventory output contract, so the inventory render script and the liveness lists do not include it.
+- State uses the same encrypted remote backend and the same plan policy gate as the provider roots, and `make tf-test` runs its mocked tests.
+
 ## Native tests
 
 Each provider root has provider-mocked `tofu test` coverage under `providers/<name>/tests/`. These tests run without contacting cloud APIs and assert the shared inventory output contract plus provider-specific firewall and server-resource invariants:
