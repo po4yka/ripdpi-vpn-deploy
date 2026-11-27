@@ -3,7 +3,8 @@
 [![ci](https://github.com/po4yka/ripdpi-vpn-deploy/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/po4yka/ripdpi-vpn-deploy/actions/workflows/ci.yml)
 [![codeql](https://github.com/po4yka/ripdpi-vpn-deploy/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/po4yka/ripdpi-vpn-deploy/actions/workflows/codeql.yml)
 [![scorecard](https://api.securityscorecards.dev/projects/github.com/po4yka/ripdpi-vpn-deploy/badge)](https://securityscorecards.dev/viewer/?uri=github.com/po4yka/ripdpi-vpn-deploy)
-[![release](https://img.shields.io/github/v/release/po4yka/ripdpi-vpn-deploy?sort=semver)](https://github.com/po4yka/ripdpi-vpn-deploy/releases)
+[![vpnd release](https://img.shields.io/github/v/release/po4yka/ripdpi-vpn-deploy?filter=vpnd-v*&label=vpnd)](https://github.com/po4yka/ripdpi-vpn-deploy/releases)
+[![license](https://img.shields.io/github/license/po4yka/ripdpi-vpn-deploy)](LICENSE)
 
 Reproducible infrastructure for a small VPN service on a filtered network path. The path does deep packet inspection: it inspects SNI, fingerprints TLS-in-TLS, probes servers actively and throttles UDP. Four transport tiers answer these behaviours, and each tier has a different wire shape. The [threat model](docs/explanation/threat-model.md) maps each observed behaviour to its design answer.
 
@@ -64,7 +65,7 @@ Each layer owns one part of the system. Nothing crosses these boundaries except 
 
 | Layer | Owns |
 |---|---|
-| Terraform | VPS, provider firewall, SSH key, DNS, floating IP |
+| Terraform (run with OpenTofu) | VPS, provider firewall, SSH key, DNS, floating IP |
 | cloud-init | Admin user, SSH hardening, python3, marker file |
 | Ansible | All runtime state: packages, nftables, Xray, nginx, Hysteria2, AmneziaWG, monitoring, backup |
 | SOPS + age | Secrets at rest, outside Git tracking |
@@ -146,7 +147,7 @@ export PROVIDER=upcloud
 
 ## Providers
 
-Terraform has one root per provider: [UpCloud](terraform/providers/upcloud/), [Scaleway](terraform/providers/scaleway/), [Vultr](terraform/providers/vultr/) and [Hetzner](terraform/providers/hetzner/). Provider support does not mean that a server exists at every provider. The accepted service uses three VPN nodes and one independent observer; no personal device hosts a service component. [Provider notes](docs/reference/provider-notes.md) explain selection constraints.
+Terraform has one root per provider: [UpCloud](terraform/providers/upcloud/), [Scaleway](terraform/providers/scaleway/), [Vultr](terraform/providers/vultr/) and [Hetzner](terraform/providers/hetzner/). Provider support does not mean that a server exists at every provider. Two more roots hold no VPN node: the [operations root](terraform/ops/egress-proxy/) for the fixed-address provider API proxy, and the isolated [exception root](terraform/exception/), which `make plan` and `make apply` cannot address. The [Terraform layer notes](terraform/README.md) cover the pinned OpenTofu version, tests and encrypted state. The accepted service uses three VPN nodes and one independent observer; no personal device hosts a service component. [Provider notes](docs/reference/provider-notes.md) explain selection constraints.
 
 ## Security and contributions
 
