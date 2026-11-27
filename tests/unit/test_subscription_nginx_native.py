@@ -264,3 +264,27 @@ def test_generated_import_and_qr_targets_cross_real_nginx_and_backend(service):
         logs = "\n".join(path.read_text() for path in base.glob("*.log"))
         assert token not in logs, "nginx delivery diagnostics exposed synthetic bearer URI"
         assert "status=200" in logs and "status=410" in logs
+
+
+def test_other_methods_on_bearer_routes_answer_as_an_unmatched_path(service):
+    # The backend answers an unsupported method, HEAD included, with a 501 page that names http.server.
+    token, _, _, _ = prepare_subscription(service)
+    with (
+        delivery_server(service) as backend,
+        nginx_server(upstream=backend.server_port, rate="1000r/s", burst=20) as (origin, _),
+    ):
+        tls = ssl._create_unverified_context()
+
+        def answer(method, path):
+            request = urllib.request.Request(origin + path, method=method)
+            with pytest.raises(urllib.error.HTTPError) as failed:
+                urllib.request.urlopen(request, context=tls, timeout=3)
+            headers = sorted((k, v) for k, v in failed.value.headers.items() if k != "Date")
+            return failed.value.code, failed.value.read(), headers
+
+        for method in ("HEAD", "POST", "PUT", "OPTIONS"):
+            absent = answer(method, f"/unknown/{token}")
+            assert absent[0] == 404
+            for path in (f"/sub/{token}", f"/bootstrap/{token}"):
+                assert answer(method, path) == absent, (method, path)
+        assert answer("POST", f"/sub/{token}")[:2] == (404, b"synthetic-site-not-found")
