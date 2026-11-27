@@ -286,18 +286,18 @@ def test_installed_ansible_cohort_without_flow_inherits_profile_shape(
 
 def test_site_playbook_runs_xray_for_reality_or_xhttp() -> None:
     playbook = yaml.safe_load(SITE_PLAYBOOK.read_text())[0]
-    xray_role = next(role for role in site_roles(playbook) if role["role"] == "xray")
-    enabled = xray_role["vars"]["xray_role_enabled"]
-    assert "enable_xray_reality" in enabled
-    assert "enable_nginx_xhttp" in enabled
+    roles = {role["role"]: role for role in site_roles(playbook)}
     from scripts.template_render import render_fragment
-    for reality, xhttp, subscription in [(False, False, False), (True, False, False),
-                                         (False, True, False), (True, True, False), (True, True, True)]:
-        selected = render_fragment('selected.txt', enabled, {
-            'vpn': {'enable_xray_reality': reality, 'enable_nginx_xhttp': xhttp},
-            'vpn_subscription_only': subscription,
-        })
-        assert selected == str((reality or xhttp) and not subscription)
+    # Xray reads its geodata directory on XHTTP-only nodes too, so geodata must not retire there.
+    for name in ("xray", "geodata"):
+        enabled = roles[name]["vars"][f"{name}_role_enabled"]
+        for reality, xhttp, subscription in [(False, False, False), (True, False, False),
+                                             (False, True, False), (True, True, False), (True, True, True)]:
+            selected = render_fragment('selected.txt', enabled, {
+                'vpn': {'enable_xray_reality': reality, 'enable_nginx_xhttp': xhttp, 'enable_geodata': True},
+                'vpn_subscription_only': subscription,
+            })
+            assert selected == str((reality or xhttp) and not subscription), name
 
 
 def test_rotation_playbook_updates_xhttp_only_xray() -> None:
