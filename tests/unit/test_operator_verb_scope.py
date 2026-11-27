@@ -233,6 +233,22 @@ def test_vpnd_rotation_builder_alias_grammar_matches_the_play_guard(alias):
     assert builder_accepts == (re.match(play_alias_pattern(), alias) is not None and not alias.endswith("\n"))
 
 
+def test_vpnd_deploy_prerequisite_step_is_accepted_by_the_makefile():
+    """The Makefile refuses any command-line variable for check-prereqs, so vpnd deploy must send none."""
+    from argparse import Namespace
+
+    from vpnd.commands import deploy
+    from vpnd.config import Context
+
+    context = Context(root=ROOT, ansible_dir=ROOT / "ansible", tf_root=ROOT / "terraform/providers/upcloud", env="prod",
+                      provider="upcloud", sops_file=Path("/config/prod.secrets.sops.yaml"),
+                      secrets_file=Path("/tmp/vpn-prod.secrets.yaml"), config_dir=Path("/config"), explain=True, yes=True)
+    (prerequisites, *_) = deploy.plan_steps(context, Namespace(skip_precheck=False, tag_on_success=False))
+    result = make("-n", *prerequisites.argv)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "scripts/check-prereqs.py" in result.stdout
+
+
 @pytest.mark.parametrize("template", HOSTILE_LIMITS)
 def test_make_refuses_a_limit_that_is_not_an_alias_without_executing_it(tmp_path, template):
     marker = tmp_path / "executed"

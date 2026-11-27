@@ -2,16 +2,21 @@
 
 import asyncio
 import sys
-from ..runner.make import target, target_with
+from ..runner.make import goal, target, target_with
 from . import StopSignals, confirm_async, render_summary, require_review
 
 # The operator reviews the saved plan between these two groups.
 PLAN_TARGETS = ("check-prereqs", "validate", "decrypt", "init", "plan")
 APPLY_TARGETS = ("apply", "inventory", "wait")
+# The Makefile refuses any command-line variable for these goals.
+BARE_GOALS = {"check-prereqs"}
 
 
 def plan_steps(ctx, args):
-    steps = [target(ctx, name) for name in PLAN_TARGETS + APPLY_TARGETS]
+    steps = [
+        goal(ctx, name) if name in BARE_GOALS else target(ctx, name)
+        for name in PLAN_TARGETS + APPLY_TARGETS
+    ]
     steps.append(
         target_with(ctx, "deploy", [("SKIP_PRECHECK", "1")])
         if args.skip_precheck
