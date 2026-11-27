@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
+from address_admission import AdmissionRefused
 from client_delivery_identity import authority, digest
 from client_payload import ROOT, command, materialize, options, paths, validate_options
 from encrypted_client_document import CommittedPublication, ExternalPublicationUncertain, operate
@@ -191,6 +192,9 @@ def main():
     except ExternalPublicationUncertain:
         print('subscription-delivery: remote-publication-uncertain; reconcile remote delivery and encrypted registry before retrying', file=sys.stderr)
         return 3
+    except AdmissionRefused as error:
+        print(error, file=sys.stderr)
+        return 2
     except ValueError as error:
         # Only our fixed categories are exposed; downstream parsers may echo input.
         allowed = {'no client_registry entry; re-issue the token', 'ambiguous client_registry entries; re-issue', 'token does not belong to requested client',

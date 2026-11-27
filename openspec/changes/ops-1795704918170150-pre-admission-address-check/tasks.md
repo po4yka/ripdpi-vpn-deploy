@@ -14,6 +14,6 @@ Planning: `./taskctl validate`, strict OpenSpec validation and `make docs-check`
 
 ## Execution
 
-- [ ] OPS-1795705312358436 Fix the vantage, control points and refusal rule in the design, then add the check script with tests for pass, unreachable block and missing result #feature @item:OPS-1795704918170150
-- [ ] OPS-1795705349825337 Wire the gate into the bundle emit path and add a test that a refused node never appears in a bundle #feature @item:OPS-1795704918170150
-- [ ] OPS-1795705412632581 Document the gate and the ICMP rule in docs/how-to/deploy.md #feature @item:OPS-1795704918170150
+- [x] OPS-1795705312358436 Fix the vantage, control points and refusal rule in the design, then add the check script with tests for pass, unreachable block and missing result #feature @item:OPS-1795704918170150
+- [x] OPS-1795705349825337 Wire the gate into the bundle emit path and add a test that a refused node never appears in a bundle #feature @item:OPS-1795704918170150
+- [x] OPS-1795705412632581 Document the gate and the ICMP rule in docs/how-to/deploy.md #feature @item:OPS-1795704918170150

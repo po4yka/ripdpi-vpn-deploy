@@ -155,6 +155,8 @@ a separate release fact and never authorizes promotion or bypasses staging.
 
 AWG delivery uses bundle version 3 and the named range/signature profile. Header values are canonical strings; signature programs retain their exact supported tags. Source admission requires the reviewed source pair for ranges or signatures. Standalone native configuration omits the JSON profile marker. Keep schema, fingerprint and paired consumer mirrors aligned; numeric legacy headers require a fresh export.
 
+**RIPDPI bundles admit only attested addresses** — `_materialize` calls `address_admission.require` for each host of a RIPDPI bundle before it reads the host's cohort. Every publication path shares that call; only the read-only drift comparison passes `admission=False`. Refusals are fixed operator messages without the address. Unit tests run behind an autouse fixture in `tests/conftest.py` that admits the fixture addresses; a new fixture address must be added there.
+
 **Bundle topology is host-order independent** — `emit-bundle.sh` aggregates
 split-hop ingress and realm metadata across every `HOSTS` entry. Never infer
 client-facing topology from the first host; conflicting non-null realm IDs

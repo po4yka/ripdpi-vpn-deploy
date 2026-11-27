@@ -294,6 +294,26 @@ make wait
 
 Follow [Device migration](device-migration.md) before retiring the source. Blue-green requires a separate `GREEN_SOPS_FILE` and a reviewed `DEVICE_MIGRATION_PLAN`. It prepares device identities before target convergence, preserves every active subscription URL, and gates drain on fresh device path evidence. Keep the source available while any device is only published or received. Publication, device receipt and successful target traffic are separate states; a healthy replacement alone does not complete device migration.
 
+## Admit a new node address into RIPDPI bundles
+
+A RIPDPI bundle names a node address only after a filtered-side vantage reached it. The gate runs in every RIPDPI bundle path: `make emit-bundle`, device issuance, device migration and subscription token delivery. The read-only drift check is exempt.
+
+1. From a device in the filtered network, run the RIPDPI diagnostics address check against the node listener. It completes a TCP connect and a TLS handshake and signs the result as one attestation in the [node address check contract](../../contract/node-address-check.schema.json).
+2. Copy the attestation JSON file into the private directory named by `ADDRESS_ATTESTATION_DIR`, for example under `secrets/local/`. List the public key of each trusted vantage device, one base64 key per line, in the file named by `ADDRESS_VANTAGE_KEYS`.
+3. Check the address before you emit or issue: `python3 scripts/address_admission.py <node-address>`.
+
+Only the newest attestation of each vantage key for each address counts. The gate admits the address when one trusted attestation for that exact address, not older than seven days, reports TCP pass and TLS pass, and no two vantage keys failed the /24 block of the node. Otherwise it refuses and no bundle contains the address:
+
+| Message | Cause | Action |
+|---|---|---|
+| `set ADDRESS_ATTESTATION_DIR and ADDRESS_VANTAGE_KEYS` | No vantage configuration | Configure both paths |
+| `no fresh filtered-side TCP and TLS result` | No attestation, a stale one, or one with only an ICMP result | Run the address check |
+| `one filtered-side vantage failed a node address` | One vantage key reported a TCP or TLS failure | Recheck from a second independent device, or recreate the node |
+| `two independent filtered-side vantages failed the /24 block of a node` | Two vantage keys failed addresses in the same /24 | Recreate the node with a new address |
+| `an attestation is malformed, unsigned, from the future or from an untrusted vantage` | Bad input in the evidence directory, including any file from a vantage key that was removed from the trust file | Remove or replace the file |
+
+ICMP is never evidence. An attestation records the ICMP echo result as a hint only: no reply with a TLS pass admits, and a reply with a TLS failure refuses. A reissued bundle is a new admission, so an existing node also needs an attestation not older than seven days.
+
 ## Add a new client device
 
 ```bash

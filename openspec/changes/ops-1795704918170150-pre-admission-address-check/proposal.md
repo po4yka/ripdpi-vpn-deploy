@@ -27,6 +27,7 @@ Today a node address reaches a client bundle once the node exists. `make burn-ch
 
 ## Impact
 
-- Scripts: the bundle emit path and one new check script.
+- Scripts: the shared bundle materializer and one new admission script.
 - Docs: `docs/how-to/deploy.md` and `docs/explanation/threat-model.md`.
-- Vantage: reuses the liveness executor mechanism; no new provider resource.
+- Vantage: a signed attestation from an operator-run filtered-side RIPDPI diagnostics check; no new provider resource. The client producer is RIPDPI work.
+- Contract: `contract/node-address-check.schema.json` and its signed golden fixture, mirrored into the RIPDPI contract fixtures.

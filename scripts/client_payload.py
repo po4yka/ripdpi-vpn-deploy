@@ -22,6 +22,7 @@ from transport_semantics import (
 )
 from fleet_inspection import bounded_command, InspectionError
 from payload_failover_policy import validate_policy
+import address_admission
 import bundle_health
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -168,7 +169,7 @@ def native_delivery(document, resolved, client, host, endpoint):
 
 
 def _materialize(client, o, *, documents=None, source_paths=None, private_only=False, per_app_bypass='',
-                 per_app_via_tun='', extended=False, xhttp_only=False, endpoints=None, include_health=True):
+                 per_app_via_tun='', extended=False, xhttp_only=False, endpoints=None, include_health=True, admission=True):
     validate_options(o)
     if o['format'] == 'xray' and (per_app_bypass or per_app_via_tun or o['expires']):
         raise ValueError('unsupported-native-xhttp-options')
@@ -201,6 +202,8 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
         provider, environment = host.split(':')
         env = dict(os.environ, PROVIDER=provider, ENV=environment)
         ip = (endpoints[host] if endpoints is not None else command([str(ROOT / 'scripts/terraform-env.sh'), 'output', '-raw', 'server_ipv4'], env=env).decode().strip())
+        if extended and admission:
+            address_admission.require(ip)
         cohort = o['cohorts'][i] if o['cohorts'] else inventory_cohort(command(
             [str(ROOT / 'scripts/terraform-env.sh'), 'output', '-raw', 'server_hostname'], env=env).decode().strip())
         c = context(cohort)
@@ -557,7 +560,7 @@ def main():
         return 0
     except (OSError, ValueError, KeyError, TypeError, AttributeError, RecursionError, StopIteration, subprocess.SubprocessError, yaml.YAMLError) as error:
         safe = {'--xhttp-only requires --profile-format ripdpi', 'ECH requires the verified official sing-box engine; RIPDPI export is unsupported', 'BBR resource profiles require the verified official sing-box engine; RIPDPI export is unsupported', 'invalid-hysteria-hopping', 'P0 REALITY finalmask requires an Xray client', 'P0 REALITY Mux.Cool requires an Xray client; sing-mux is incompatible', 'conflicting vpn.hysteria_realm values across HOSTS', 'ambiguous-device-binding', 'missing-device-binding', 'plaintext secrets cannot be combined with SOPS_FILES', 'missing-snell-variant', 'share URI requires sing-box format', 'share URI requires exactly one REALITY endpoint; select it with HOSTS and COHORTS', 'INCY links take no other output option', 'unsupported-incy-field', 'unsupported-incy-xhttp-mode', 'unsupported-incy-outbound', 'unsafe-recipient-output', 'incy-output-exists', 'recipient-output-changed', 'invalid-health-config', 'health-ttl-exceeds-maximum', 'invalid-field-report-config', 'conflicting-field-report-config', 'payload-input-unavailable', 'payload-deadline-exceeded'}
-        detail = str(error) if isinstance(error, ValueError) and str(error) in safe else ('plaintext secrets unavailable' if 'VPN_SECRETS_FILE' in os.environ else 'materialization refused')
+        detail = str(error) if isinstance(error, address_admission.AdmissionRefused) or isinstance(error, ValueError) and str(error) in safe else ('plaintext secrets unavailable' if 'VPN_SECRETS_FILE' in os.environ else 'materialization refused')
         print('client-payload: ' + detail, file=__import__('sys').stderr)
         return 2
 
