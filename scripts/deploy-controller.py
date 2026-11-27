@@ -640,14 +640,14 @@ def multiplexed(command, sockets):
     """
     if not all(option in command for option in MULTIPLEX_OPTIONS):
         raise DeployError("unsupported SSH option")
-    # The shared master outlives short relay stalls (about 120 s of silence) and
-    # retries only the initial connection, never a started remote command.
+    # The shared master outlives a relay home-region change (300 s of silence; 117 s was
+    # observed) and retries only the initial connection, never a started remote command.
     replaced = dict(zip((*MULTIPLEX_OPTIONS, "ConnectionAttempts=1"),
                         ("ControlPath=" + str(sockets / "%C"), "ControlMaster=auto", "ControlPersist=300",
                          "ConnectionAttempts=3")))
     result = [replaced.get(value, value) for value in command]
     index = result.index("ControlPersist=300") + 1
-    return result[:index] + ["-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8"] + result[index:]
+    return result[:index] + ["-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=20"] + result[index:]
 
 
 def close_master(command):
@@ -695,6 +695,12 @@ def require_management_route(transport, environment):
     if not any(address in network for network in TAILNET_NETWORKS):
         return
     try:
+        # Unmeasured warm-up: connecting a relay region the client has not used can take about 25 s.
+        _status, output = run_command(
+            ["tailscale", "ping", "--until-direct=false", "--c", "1", "--timeout", "30s", transport],
+            environment=environment, timeout=60, capture=True)
+        if not any(map(PONG.match, output.decode(errors="replace").splitlines())):
+            raise DeployError("management-route-unreachable")
         status, output = run_command(
             ["tailscale", "ping", "--until-direct=false", "--c", str(ROUTE_PROBES), "--timeout", "5s", transport],
             environment=environment, timeout=90, capture=True)
@@ -1054,12 +1060,12 @@ def controller(mode):
                 )
         try:
             for host, command, playbooks, arguments in prepared:
+                # Both modes, before the first SSH command: the warm-up connects the relay region, and
+                # measuring before the source recheck still catches a change during the probe.
+                require_management_route(host["transport"], environment)
                 wait_for_bootstrap(command[:-1], environment=environment)
                 require_recovery_foundation(
                     command, transactions[host["name"]]["ssh_transaction_bundle_generation"], environment)
-                # Measure before the source recheck so a change during the probe is still caught.
-                if mode == "deploy":
-                    require_management_route(host["transport"], environment)
                 current = source_identity(root, environment, require_clean=mode == "deploy")
                 if current != identity:
                     raise DeployError("source changed during readiness")

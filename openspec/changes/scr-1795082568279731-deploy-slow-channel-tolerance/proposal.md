@@ -10,7 +10,7 @@ The controller replaces the `ssh_args` of `ansible/ansible.cfg` with the strict 
 
 ## What Changes
 
-- The run-owned SSH master that Ansible tasks share sends keepalives (`ServerAliveInterval=15`, `ServerAliveCountMax=8`) and makes up to three connection attempts. Readiness, recovery and every fresh SSH lockout proof keep the unchanged strict command.
+- The run-owned SSH master that Ansible tasks share sends keepalives (`ServerAliveInterval=15`, `ServerAliveCountMax=8`, raised to 20 by `SCR-1795774108061951`) and makes up to three connection attempts. Readiness, recovery and every fresh SSH lockout proof keep the unchanged strict command.
 - Ansible tasks in a controller run wait 90 seconds for the privilege-escalation prompt instead of 32 seconds.
 - Ansible SSH retries stay disabled, because a retry after a lost connection can run a non-idempotent protected-transaction task a second time.
 - Before a mutating deploy of a host whose management transport is a Tailnet address, the controller measures the route with `tailscale ping` and refuses with a categorical error when a probe is lost, when the median round-trip time is above 400 ms, or when it cannot measure the route. It reports whether the route is direct or relayed and prints no address. Dry-run and non-Tailnet transports are not gated.

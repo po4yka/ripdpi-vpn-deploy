@@ -299,7 +299,7 @@ def test_installer_real_ansible_preserves_local_delegation(controller, inputs, m
     before, after = strict_arguments.split(option)
     replaced = ("ansible_ssh_args[before | length:ansible_ssh_args | length - after | length] is "
                 + "match('^-o ControlPath=/[^ ]*/vb-ssh-[^ /]+/%C -o ControlMaster=auto -o ControlPersist=300"
-                + " -o ServerAliveInterval=15 -o ServerAliveCountMax=8$')")
+                + " -o ServerAliveInterval=15 -o ServerAliveCountMax=20$')")
     play = [{"hosts": "vpn", "gather_facts": False,
              "vars": {"expected_transport": transport, "before": before, "after": after},
              "tasks": [

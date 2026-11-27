@@ -20,7 +20,7 @@ The operator machine reaches every production node only through a DERP relay: it
 
 ### Modified Capabilities
 
-- None in the main specifications. The change supersedes the dry-run exclusion of `REQ-OPS-CHANNEL-GATE` and the `ServerAliveCountMax=8` value of `REQ-OPS-CHANNEL-SESSION` in the unarchived change `scr-1795082568279731-deploy-slow-channel-tolerance`; the two are reconciled before either is archived.
+- None in the main specifications. The unarchived change `scr-1795082568279731-deploy-slow-channel-tolerance` is reconciled in the same commit: its `REQ-OPS-CHANNEL-GATE` now covers both modes and its `REQ-OPS-CHANNEL-SESSION` uses `ServerAliveCountMax=20`, so either change can be archived first.
 
 ## Impact
 

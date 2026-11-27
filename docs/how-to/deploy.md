@@ -227,15 +227,16 @@ Set `ENV`, `SOPS_FILE` and the key for each alias as the ordinary recipe does. T
 
 ### Management route check and slow channels
 
-Before the first playbook of each node, `make deploy` measures the management route when the node's transport is a Tailnet address (`100.64.0.0/10` or `fd7a:115c:a1e0::/48`). It runs ten `tailscale ping` probes and prints the route kind and median round-trip time, for example `deploy: management route relayed, median 180 ms`. It prints no address or peer name. `make dry-run`, the CI deploy, public-address transports and host-name transports are not measured.
+Before the first SSH command to each node, `make dry-run` and `make deploy` check the management route when the node's transport is a Tailnet address (`100.64.0.0/10` or `fd7a:115c:a1e0::/48`). One warm-up `tailscale ping` waits up to 30 seconds, so that the operator's client connects the node's relay region before the readiness probe; then ten probes measure the route, and the controller prints the route kind and median round-trip time, for example `deploy: management route relayed, median 180 ms`. It prints no address or peer name. The CI deploy, public-address transports and host-name transports are not probed. Why the route is relayed and when it stalls: [management route stalls research](../research/management-route-stalls-2026-11.md).
 
 | Refusal | Cause | What to do |
 |---|---|---|
+| `management-route-unreachable` | The warm-up probe got no reply in 30 seconds: the node is offline in the Tailnet, the route is down, or the local Tailscale client is stopped or logged out | Check `tailscale status` on the operator machine and that the node is online, then run the block again |
 | `management-route-lossy` | At least one of the ten probes got no reply | Fix the operator network or wait, then run the deploy block again |
 | `management-route-slow` | Median round-trip time above 400 ms | Use a network with a direct or nearer relayed route, or a remote executor |
 | `management-route-unmeasured` | The `tailscale` CLI is missing from `PATH`, failed or printed no reply | Put the `tailscale` CLI on `PATH` and confirm that the node is online |
 
-The refusal comes before any change to that node, so it needs no recovery: run the same deploy block again when the route is healthy. In a multi-node deploy, nodes earlier in the run may already have converged. The gate measures the route once; a later stall is covered by the session settings. The shared SSH master that Ansible tasks use sends keepalives every 15 seconds and survives about 120 seconds of silence, retries only its initial connection, and Ansible waits 92 seconds for the sudo prompt. Ansible SSH retries stay off, because a retry after a lost connection can run a protected-transaction task twice.
+The refusal comes before any change to that node, so it needs no recovery: run the same deploy block again when the route is healthy. In a multi-node deploy, nodes earlier in the run may already have converged. The gate measures the route once; a later stall is covered by the session settings. The shared SSH master that Ansible tasks use, in both modes, sends keepalives every 15 seconds and survives 300 seconds of silence (a change of the operator's home relay region has cost up to about 117 seconds of replies), retries only its initial connection, and Ansible waits 92 seconds for the sudo prompt. Ansible SSH retries stay off, because a retry after a lost connection can run a protected-transaction task twice.
 
 ### Coverage silence during the transport restart
 

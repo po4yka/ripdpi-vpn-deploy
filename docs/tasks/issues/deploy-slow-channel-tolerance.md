@@ -22,7 +22,7 @@ A short stall of the operator channel no longer fails an Ansible task during a d
 
 ## Acceptance criteria
 
-- The shared Ansible SSH master uses `ServerAliveInterval=15`, `ServerAliveCountMax=8` and `ConnectionAttempts=3`; readiness, recovery and fresh lockout proofs keep the strict single-attempt command.
+- The shared Ansible SSH master uses `ServerAliveInterval=15`, `ServerAliveCountMax=20` (8 until `SCR-1795774108061951`) and `ConnectionAttempts=3`; readiness, recovery and fresh lockout proofs keep the strict single-attempt command.
 - Controller-driven playbook hosts get `ansible_ssh_timeout=90` and no Ansible SSH retries.
-- A deploy to a Tailnet address refuses with `management-route-lossy`, `management-route-slow` or `management-route-unmeasured` before the source recheck and playbook; dry-run, the CI handoff run and other transports are not probed.
+- A deploy to a Tailnet address refuses with `management-route-lossy`, `management-route-slow` or `management-route-unmeasured` before the source recheck and playbook; since `SCR-1795774108061951` a dry-run is probed the same way, and the CI handoff run and other transports are not probed.
 - `tests/unit/test_deploy_controller.py` covers the options, the timeout and every gate decision, and `docs/how-to/deploy.md` documents the refusals.
