@@ -2,7 +2,7 @@
 
 > **Status:** Snapshot (2026-07-26) · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-10-21
 
-Status: audit completed 2026-06-11; current dispositions reviewed 2026-07-26 Method: multi-agent audit, one analyst per control plus an independent adversarial verifier per verdict. Upstream behaviour (Xray-core, sing-box, restic, rclone, openssl, check-host.net, node_exporter) verified against source/docs, not assumed.
+Status: audit completed 2026-06-11; current dispositions reviewed 2026-11-27 Method: multi-agent audit, one analyst per control plus an independent adversarial verifier per verdict. Upstream behaviour (Xray-core, sing-box, restic, rclone, openssl, check-host.net, node_exporter) verified against source/docs, not assumed.
 
 > Historical audit snapshot. The verdicts below describe the 2026-06-11 code, not the current implementation. As of 2026-07-26, policy-ratelimit is explicitly scoped away from REALITY probe defence; authenticated protocol liveness is a separate sentinel contract; kill-switch route/direct and address-family leaks are tested; the monitoring textfile collector is wired; backup has recency checks and an isolated restore drill; certificate matching compares DER public keys; and `burn-check.sh` replaces stale reachability metrics with explicit error gauges on every exit. Preserve the original findings below as the rationale for those controls.
 
@@ -37,7 +37,7 @@ Seven controls, eight findings (watchdog splits into two). All `BROKEN`. No `VER
 | 2 | watchdog transport liveness | **RESOLVED** | Node-local authenticated completion is separated from the client-path quorum/OTP authority in `protocol-liveness.md`; `test_watchdog_protocol_probe.py` covers the local probe. |
 | 3 | watchdog log classifier | **RESOLVED** | Real block/rejected tokens and `policy_reject_spike` semantics replaced the false active-probing class; watchdog render tests pin it. |
 | 4 | sing-box kill switch | **RESOLVED** | `check-singbox-killswitch.py` traverses route rules/groups, rejects direct/bypass resolution, and requires unified TUN address-family coverage; `test_check_killswitch.py` covers failures. |
-| 5 | honeypot alert pipeline | **PARTIAL** | Monitoring now scrapes the shared textfile directory and reports/metrics exist, but threshold paging and alert routing remain operator-owned outside this repository. |
+| 5 | honeypot alert pipeline | **RESOLVED** | Monitoring scrapes the shared textfile directory. The `observability_control_plane` rules alert on the event threshold (`ObservabilityDetectorEventThreshold`, `honeypot_events_60min`) and on a failed, stale, stalled or erroring detector, and Alertmanager routes them; the rendered rule unit tests cover them. Delivery to a person needs the `telegram` notification mode; a `panel-only` deployment has no Telegram delivery. |
 | 6 | backup integrity | **RESOLVED** | Backup runs integrity/recency/remote checks and a scheduled isolated restore drill; focused backup contract tests and Molecule exercise them. |
 | 7 | certificate key match | **RESOLVED** | `check-certs.sh` compares key-type-independent DER public-key digests; `test_check_certs_key_match.py` prevents RSA-only regression. |
 | 8 | burn-check metric freshness | **RESOLVED** | An EXIT trap atomically rewrites the textfile on every path; API and incomplete-run gauges distinguish an indeterminate check from a healthy result. |
@@ -110,7 +110,7 @@ The verifier's rebuttals (LAN exemption by design; Android-only; possibly-IPv4-o
 
 ## 5. `honeypot` — listens, counts, and notifies no one
 
-**Current status: PARTIAL.** Textfile collection and writer access are repaired; threshold paging and alert routing remain an explicit operator-owned boundary.
+**Current status: RESOLVED in the repository.** Textfile collection and writer access are repaired, and the `observability_control_plane` role holds the threshold rule, the detector-health rules and the alert routing. Delivery to a person remains an operator choice: it needs the `telegram` notification mode, and a `panel-only` deployment has none.
 
 **Contract.** Four stacked contracts must all hold for a probe spike to reach a human: (1) node_exporter scrapes `/var/lib/node_exporter/textfile`; (2) a Prometheus server + alert rule fires on `vpn_honeypot_*`; (3) `probing-summary-remote.py` notifies on a threshold; (4) the operator cron produces an active alert, not a passive log line.
 
