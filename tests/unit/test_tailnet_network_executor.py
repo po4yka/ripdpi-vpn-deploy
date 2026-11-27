@@ -379,12 +379,25 @@ def test_expiry_serializes_with_forward_mark_and_rolls_back_true(tmp_path, monke
     monkeypatch.setattr(m.time, "time", lambda: 2_001)
     provider_lock = value.store._provider_locked()
     outcome = []
+    observed = threading.Event()
+    acquire = value.store._provider_locked
+
+    def waiting_acquire():
+        observed.set()
+        return acquire()
+
+    value.store._provider_locked = waiting_acquire
 
     def reconcile():
         outcome.append(value.reconcile())
 
     worker = threading.Thread(target=reconcile)
     worker.start()
+    # reconcile reads the receipt without the store lock, which is safe only in
+    # the single-threaded daemon: a replacement between its open and fstat
+    # leaves a zero-link inode that private_fd refuses. Wait until that read is
+    # complete and the timer is at the provider lock before the receipt changes.
+    assert observed.wait(timeout=2)
     # The timer has observed the expired forward but cannot cross the provider
     # lock while the controller persists its successful publication marker.
     value.guard(
