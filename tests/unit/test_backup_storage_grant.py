@@ -19,14 +19,16 @@ APPEND_ONLY = ["listBuckets", "listFiles", "readFiles", "writeFiles"]
 
 
 class FakeB2:
-    def __init__(self, capabilities, prefix="nodes/node-a/", bucket_type="allPrivate", hide_days=30, buckets=None):
+    def __init__(self, capabilities, prefix="nodes/node-a/", bucket_type="allPrivate", hide_days=30, buckets=None,
+                 rule_prefixes=("",)):
         self.allowed = {
             "capabilities": capabilities,
             "buckets": buckets or [{"id": "b1", "name": "backups"}],
             "namePrefix": prefix,
         }
         self.bucket_type = bucket_type
-        self.rules = [{"fileNamePrefix": "", "daysFromHidingToDeleting": hide_days, "daysFromUploadingToHiding": None}]
+        self.rules = [{"fileNamePrefix": rule_prefix, "daysFromHidingToDeleting": hide_days,
+                       "daysFromUploadingToHiding": None} for rule_prefix in rule_prefixes]
 
     def open(self, outbound, timeout):
         if outbound.full_url.endswith("b2_authorize_account"):
@@ -58,6 +60,9 @@ def test_append_only_node_grant_is_accepted() -> None:
         (FakeB2(APPEND_ONLY, buckets=[{"id": "b2", "name": "other"}]), "single-bucket-grant-required"),
         (FakeB2(APPEND_ONLY, hide_days=7), "hidden-version-retention-required"),
         (FakeB2(APPEND_ONLY, hide_days=None), "hidden-version-retention-required"),
+        # A rule under the node prefix governs only part of its files.
+        (FakeB2(APPEND_ONLY, rule_prefixes=("nodes/node-a/db/",)), "hidden-version-retention-required"),
+        (FakeB2(APPEND_ONLY, rule_prefixes=("", "nodes/node-a/db/")), "hidden-version-retention-required"),
     ],
 )
 def test_grant_that_can_delete_or_escape_the_node_is_refused(fake, category) -> None:
