@@ -39,7 +39,9 @@
                 "ipv4_literal": connect("1.1.1.1:443"),
                 "ipv6_literal": connect("[2606:4700:4700::1111]:443"),
                 "hosts_file_mapped_ipv4": connect("198.51.100.7:443"),
-                "allowed": connect("api.vultr.com:443"),
+                # Not api.vultr.com: converge maps it to an unroutable address, so squid's
+                # one-minute connect timeout would outlast this probe's 30 s read.
+                "allowed": connect("api.upcloud.com:443"),
                 "allowed_state": connect("s3.fr-par.scw.cloud:443"),
             }))
       register: _egress_proxy_probe
@@ -80,7 +82,7 @@
           - _egress_proxy_log.stdout_lines | select('search', ' example.com 403 .* TCP_DENIED') | list | length >= 1
           - _egress_proxy_log.stdout_lines | select('search', ' 198.51.100.7 403 .* TCP_DENIED') | list | length == 1
           - _egress_proxy_log.stdout_lines | select('search', ' github.com 403 .* TCP_DENIED') | list | length == 1
-          - _egress_proxy_log.stdout_lines | select('search', ' api.vultr.com (200|502|503) [0-9]+ (?!TCP_DENIED)[A-Z_]+') | list | length >= 1
+          - _egress_proxy_log.stdout_lines | select('search', ' api.upcloud.com (200|502|503) [0-9]+ (?!TCP_DENIED)[A-Z_]+') | list | length >= 1
           - _egress_proxy_log.stdout_lines | select('search', ' api.vultr.com 403 .* TCP_DENIED') | list | length >= 1
 
     - name: Enumerate sockets that squid owns
