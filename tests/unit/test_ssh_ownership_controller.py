@@ -18,7 +18,7 @@ def load(name):
     return module
 
 
-@pytest.fixture(params=["vpn", "observability-kuma"])
+@pytest.fixture(params=["vpn", "observability-kuma", "egress"])
 def configured(tmp_path, monkeypatch, request):
     operator = load("ssh-ownership")
     deploy = load("deploy-controller")
@@ -27,11 +27,15 @@ def configured(tmp_path, monkeypatch, request):
     key.write_text("fixture")
     key.chmod(0o600)
     inventory = tmp_path / "inventory.ini"
-    inventory.write_text(
-        f"[{request.param}]\nnode-a ansible_host=192.0.2.10 ansible_user=deploy ansible_port=2222 "
-        "inspection_transport_host=100.64.0.10 inspection_host_key_alias=192.0.2.10\n"
-        f"[{'vpn' if request.param == 'vpn' else 'observability'}:vars]\nansible_ssh_private_key_file=" + str(key) + "\n"
-    )
+    host = ("node-a ansible_host=192.0.2.10 ansible_user=deploy ansible_port=2222 "
+            "inspection_transport_host=100.64.0.10 inspection_host_key_alias=192.0.2.10")
+    if request.param == "egress":
+        # The egress host carries its key and production pairing itself, with no group variables.
+        inventory.write_text(f"[egress]\n{host} ansible_ssh_private_key_file={key} provider=egress-proxy env=prod "
+                             "vpn_build_environment='\"prod\"'\n")
+    else:
+        group = "observability" if request.param == "observability-kuma" else "vpn"
+        inventory.write_text(f"[{request.param}]\n{host}\n[{group}:vars]\nansible_ssh_private_key_file={key}\n")
     known = tmp_path / "known_hosts"
     known.write_text("[192.0.2.10]:2222 ssh-ed25519 fixture-pin\n")
     contexts = tmp_path / "contexts.json"
@@ -245,7 +249,7 @@ def test_observer_dashboard_intent_uses_exact_recoverable_policy(configured, mon
         calls.append(request)
         return {"status": "would-change", "snapshot_digest": "d" * 64}
     monkeypatch.setattr(controller, "transaction_rpc", rpc)
-    if data["inventory_section"] == "vpn":
+    if data["inventory_section"] != "observability-kuma":
         with pytest.raises(operator.OwnershipControllerError, match="configuration-invalid"):
             operator.execute(config)
         assert calls == []
@@ -259,3 +263,23 @@ def test_observer_dashboard_intent_uses_exact_recoverable_policy(configured, mon
         assert "AllowAgentForwarding no\n" in policy
         assert "AllowStreamLocalForwarding no\n" in policy
         assert "AllowUsers deploy\n" in policy
+
+
+@pytest.mark.parametrize(("section", "variables", "category"), [
+    ("egress", "provider=upcloud env=prod", "egress-pairing-invalid"),
+    ("egress", "provider=egress-proxy env=test", "egress-pairing-invalid"),
+    ("egress", "provider=egress-proxy env=prod vpn_build_environment='\"staging\"'", "egress-pairing-invalid"),
+    ("vpn", "provider=egress-proxy env=prod", "egress-provider-section-mismatch"),
+    ("observability-kuma", "provider=egress-proxy env=prod", "egress-provider-section-mismatch"),
+])
+def test_egress_provider_and_section_must_pair_before_host_access(configured, monkeypatch, section, variables, category):
+    operator, controller, config, data, _ = configured
+    inventory = Path(data["inventory_path"])
+    key = inventory.parent / "key"
+    inventory.write_text(f"[{section}]\nnode-a ansible_host=192.0.2.10 ansible_user=deploy ansible_port=2222 "
+                         f"ansible_ssh_private_key_file={key} {variables}\n")
+    data["inventory_section"] = section
+    config.write_text(json.dumps(data))
+    monkeypatch.setattr(controller, "transaction_rpc", lambda *args, **kwargs: pytest.fail("RPC before pairing check"))
+    with pytest.raises(operator.fleet_inspection.InspectionError, match=category):
+        operator.execute(config)

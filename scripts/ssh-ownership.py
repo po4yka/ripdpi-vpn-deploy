@@ -47,7 +47,7 @@ def _document(raw):
         value = json.loads(raw, object_pairs_hook=_unique)
         if (not isinstance(value, dict) or set(value) != FIELDS
                 or type(value["schema_version"]) is not int or value["schema_version"] != 3
-                or value["inventory_section"] not in {"vpn", "observability-kuma"}
+                or value["inventory_section"] not in {"vpn", "observability-kuma", "egress"}
                 or value["intent"] not in {"ownership", "observer-dashboard"}
                 or (value["intent"] == "observer-dashboard"
                     and value["inventory_section"] != "observability-kuma")

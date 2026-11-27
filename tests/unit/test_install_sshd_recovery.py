@@ -62,7 +62,7 @@ def test_explicit_inventory_section_is_required(controller, monkeypatch, section
                                      'SSH_RECOVERY_INVENTORY_SECTION': section})
 
 
-@pytest.mark.parametrize('section', ['vpn', 'observability-kuma'])
+@pytest.mark.parametrize('section', ['vpn', 'observability-kuma', 'egress'])
 def test_source_section_selects_exact_host_without_persistent_membership(controller, tmp_path, section):
     key = tmp_path / 'identity'
     key.write_text('fixture identity\n')
@@ -70,8 +70,9 @@ def test_source_section_selects_exact_host_without_persistent_membership(control
     pins = tmp_path / 'known_hosts'
     pins.write_text('fixture host pin\n')
     inventory = tmp_path / 'inventory.ini'
+    extra = ' provider=egress-proxy env=prod vpn_build_environment=\'"prod"\'' if section == 'egress' else ''
     inventory.write_text(f'[{section}]\nobserver-one ansible_host=192.0.2.10 ansible_user=deploy '
-                         f'ansible_port=22 ansible_ssh_private_key_file={key}\n')
+                         f'ansible_port=22 ansible_ssh_private_key_file={key}{extra}\n')
     configuration = {'SSH_RECOVERY_TARGET': 'observer-one', 'SSH_RECOVERY_WINDOW': '1',
                      'SSH_RECOVERY_INVENTORY': str(inventory), 'SSH_RECOVERY_KNOWN_HOSTS': str(pins),
                      'SSH_RECOVERY_INVENTORY_SECTION': section}
@@ -80,9 +81,30 @@ def test_source_section_selects_exact_host_without_persistent_membership(control
     assert adapter == '[vpn]\nobserver-one\n'
     assert f'[{section}]' in inventory.read_text()
     assert 'StrictHostKeyChecking=yes' in environment['ANSIBLE_SSH_ARGS']
-    configuration['SSH_RECOVERY_INVENTORY_SECTION'] = 'vpn' if section == 'observability-kuma' else 'observability-kuma'
+    configuration['SSH_RECOVERY_INVENTORY_SECTION'] = 'observability-kuma' if section == 'vpn' else 'vpn'
     with pytest.raises(controller.inspection.InspectionError, match='host-not-found'):
         controller.build_invocation(configuration)
+
+
+@pytest.mark.parametrize(('section', 'variables', 'category'), [
+    ('egress', 'provider=upcloud env=prod', 'egress-pairing-invalid'),
+    ('egress', 'provider=egress-proxy env=ci-staging-x', 'egress-pairing-invalid'),
+    ('egress', 'provider=egress-proxy env=test', 'egress-pairing-invalid'),
+    ('egress', 'provider=egress-proxy env=prod vpn_build_environment=\'"staging"\'', 'egress-pairing-invalid'),
+    ('vpn', 'provider=egress-proxy env=prod', 'egress-provider-section-mismatch'),
+    ('observability-kuma', 'provider=egress-proxy env=prod', 'egress-provider-section-mismatch'),
+])
+def test_egress_provider_and_section_must_pair_in_production(controller, tmp_path, section, variables, category):
+    key = tmp_path / 'identity'
+    key.write_text('fixture identity\n')
+    key.chmod(0o600)
+    inventory = tmp_path / 'inventory.ini'
+    inventory.write_text(f'[{section}]\nnode-one ansible_host=192.0.2.10 ansible_user=deploy ansible_port=22 '
+                         f'ansible_ssh_private_key_file={key} {variables}\n')
+    with pytest.raises(controller.inspection.InspectionError, match=category):
+        controller.build_invocation({'SSH_RECOVERY_TARGET': 'node-one', 'SSH_RECOVERY_WINDOW': '1',
+                                     'SSH_RECOVERY_INVENTORY': str(inventory), 'SSH_RECOVERY_INVENTORY_SECTION': section,
+                                     'SSH_RECOVERY_KNOWN_HOSTS': str(tmp_path / 'known_hosts')})
 
 
 def test_make_limit_data_never_runs_shell_or_make_expansions(tmp_path):

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import importlib.util
 import json
@@ -123,6 +124,73 @@ def test_host_in_other_section_refuses(controller, inputs, monkeypatch, section)
     inventory.write_text(inventory.read_text().replace("[vpn]", f"[{other}]"))
     with pytest.raises(controller.BootstrapError):
         load(controller, inputs, monkeypatch, inventory_section=section)
+
+
+@contextlib.contextmanager
+def refused_as(controller, category):
+    """load_inputs hides the specific refusal behind one category; the chained cause names it."""
+    with pytest.raises(controller.BootstrapError, match="bootstrap-inputs-refused") as refusal:
+        yield
+    assert str(refusal.value.__context__) == category
+
+
+def _egress_inventory(inventory, provider="egress-proxy"):
+    inventory.write_text(inventory.read_text().replace("[vpn]", "[egress]").replace("provider=upcloud", f"provider={provider}"))
+
+
+def test_egress_node_is_admitted_as_production_with_its_router_provider(controller, inputs, monkeypatch):
+    _egress_inventory(inputs[1])
+    selected = load(controller, inputs, monkeypatch, inventory_section="egress", provider="egress-proxy")
+    assert selected.host["name"] == "node-one"
+    assert selected.fences[-1] is not None and len(selected.fences) == 4  # no cleanup fence in production
+    assert selected.config["observer_firewall"] is None
+
+
+@pytest.mark.parametrize("provider", ["upcloud", "vultr", "scaleway", "hetzner"])
+def test_egress_refuses_vpn_providers(controller, inputs, monkeypatch, provider):
+    _egress_inventory(inputs[1], provider)
+    with refused_as(controller, "target-invalid"):
+        load(controller, inputs, monkeypatch, inventory_section="egress", provider=provider)
+
+
+@pytest.mark.parametrize("section", ["vpn", "observability-kuma"])
+def test_vpn_sections_refuse_the_egress_provider(controller, inputs, monkeypatch, section):
+    inventory = inputs[1]
+    inventory.write_text(inventory.read_text().replace("[vpn]", f"[{section}]").replace("provider=upcloud", "provider=egress-proxy"))
+    with refused_as(controller, "target-invalid"):
+        load(controller, inputs, monkeypatch, inventory_section=section, provider="egress-proxy")
+
+
+@pytest.mark.parametrize(("changes", "category"), [
+    ({"environment": "ci-staging-abc", "build_environment": "ci-staging-abc"}, "target-invalid"),
+    ({"environment": "ci-staging-abc", "cleanup_manifest": "/private/manifest.json"}, "target-invalid"),
+    ({"environment": "test"}, "target-invalid"),
+    ({"cleanup_manifest": "/private/manifest.json"}, "unexpected-cleanup-manifest"),
+    ({"build_environment": "staging"}, "lifecycle-classification-invalid"),
+], ids=["ci-staging", "ci-staging-manifest", "non-prod-environment", "prod-manifest", "non-prod-build"])
+def test_egress_refuses_disposable_or_manifest_lifecycle(controller, inputs, monkeypatch, changes, category):
+    _egress_inventory(inputs[1])
+    with refused_as(controller, category):
+        load(controller, inputs, monkeypatch, inventory_section="egress", provider="egress-proxy", **changes)
+
+
+def test_egress_refuses_the_observer_firewall_variable(controller, inputs, monkeypatch):
+    inventory = inputs[1]
+    _egress_inventory(inventory)
+    inventory.write_text(inventory.read_text().replace(" provider=", " observability_kuma_guest_firewall='{}' provider=", 1))
+    with refused_as(controller, "observer-firewall-invalid"):
+        load(controller, inputs, monkeypatch, inventory_section="egress", provider="egress-proxy")
+
+
+@pytest.mark.parametrize("variables", ["provider=upcloud", "env=test"])
+def test_egress_host_variables_must_pair_with_the_router_provider(controller, inputs, monkeypatch, variables):
+    # The config says egress-proxy/prod; the inventory host itself says otherwise.
+    inventory = inputs[1]
+    _egress_inventory(inventory)
+    key = variables.partition("=")[0]
+    inventory.write_text(inventory.read_text().replace(f"{key}={'egress-proxy' if key == 'provider' else 'prod'}", variables))
+    with refused_as(controller, "egress-pairing-invalid"):
+        load(controller, inputs, monkeypatch, inventory_section="egress", provider="egress-proxy")
 
 
 @pytest.mark.parametrize("selector", ["relative", "symlink", "old-schema"])

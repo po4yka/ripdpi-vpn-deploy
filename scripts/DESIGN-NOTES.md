@@ -1120,10 +1120,10 @@ Telegram `topic_id` is `0` for direct/non-forum chats so runtime senders omit
 `message_thread_id`; positive values are reserved for real forum topics.
 `ssh-ownership.py` is the explicit fresh-node SSH ownership verb between
 dual-path Tailnet bootstrap and ordinary deployment. Its private configuration
-binds the exact source, one inventory alias and an explicit `vpn` or
-`observability-kuma` section in schema 2; check mode only previews.
+binds the exact source, one inventory alias and an explicit `vpn`,
+`observability-kuma` or `egress` section in schema 2; check mode only previews.
 Tailnet bootstrap schema 3 selects an absolute fenced inventory and either
-`vpn` or `observability-kuma`. SSH recovery requires the same explicit section.
+`vpn`, `observability-kuma` or `egress`; `egress` pairs only with provider `egress-proxy` and production. SSH recovery requires the same explicit section.
 Both installers use a private one-node Ansible adapter; this does not add the
 independent observer to the persistent VPN fleet. Old bootstrap schemas refuse.
 `staging-tailnet-recovery.py` is the disposable-only acceptance verb behind two
