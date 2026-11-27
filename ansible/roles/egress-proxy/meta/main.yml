@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  role_name: egress_proxy
+  author: po4yka
+  description: CONNECT-only allowlist forward proxy for provider APIs
+  license: MIT
+  min_ansible_version: "2.19"
+  platforms:
+    - name: Debian
+      versions: [all]
+dependencies: []

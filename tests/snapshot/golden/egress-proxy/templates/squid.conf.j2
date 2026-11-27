@@ -1,0 +1,29 @@
+# Managed by Ansible. CONNECT-only allowlist proxy; no TLS inspection, no cache.
+http_port :3128
+icp_port 0
+htcp_port 0
+snmp_port 0
+pinger_enable off
+pid_filename none
+max_filedescriptors 4096
+client_ip_max_connections 64
+cache deny all
+via off
+forwarded_for delete
+visible_hostname egress-proxy
+
+logformat egress %tg %>a %>rd %>Hs %<st %Ss
+access_log stdio:/var/log/squid/access.log egress
+cache_log /var/log/squid/cache.log
+logfile_rotate 0
+
+acl CONNECT method CONNECT
+acl SSL_ports port 443
+acl ci_src src 100.64.0.0/10
+acl api dstdomain -n api.hetzner.cloud api.scaleway.com api.upcloud.com api.vultr.com api.porkbun.com api-ipv4.porkbun.com api.tailscale.com s3..backblazeb2.com
+
+http_access deny !CONNECT
+http_access deny !SSL_ports
+http_access deny !api
+http_access allow ci_src
+http_access deny all

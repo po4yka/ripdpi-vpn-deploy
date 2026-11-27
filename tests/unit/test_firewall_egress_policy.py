@@ -590,3 +590,15 @@ def test_retained_awg_listener_keeps_a_contract_written_before_families(tmp_path
     listeners = json.loads((tmp_path / "listeners.json").read_text())
     assert listeners[-1] == {"name": "amneziawg", "protocol": "udp", "port": 51820, "port_range": None,
                              "family": claim.get("family")}
+
+
+def test_firewall_tailnet_extra_tcp_ports_are_tailnet_scoped() -> None:
+    vars_ = ctr.merge_render_vars()
+    vars_["firewall_effective_ssh_ports"] = [22]
+    default = ctr.render_template(TEMPLATE, vars_)
+    vars_["firewall_tailnet_extra_tcp_ports"] = [3128]
+    rendered = ctr.render_template(TEMPLATE, vars_)
+    rule = 'iifname "tailscale0" ip saddr 100.64.0.0/10 tcp dport 3128 accept comment "tailnet-tcp-3128"'
+    assert rule in rendered
+    assert "tailnet-tcp-" not in default
+    assert rendered.count("tcp dport 3128") == 1

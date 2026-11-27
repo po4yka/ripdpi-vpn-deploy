@@ -7,6 +7,10 @@ firewall_forward_interface_contract: []
 # This grants no public listener and stays inert on other nodes.
 firewall_tailnet_collector_ingress: {}
 
+# TCP ports accepted only on tailscale0 from 100.64.0.0/10 (egress-proxy sets [3128]).
+# Never public: no rule outside the Tailnet interface is added.
+firewall_tailnet_extra_tcp_ports: []
+
 # Exact AmneziaWG IPv6 uplink when the provider attaches IPv6 to a separate
 # interface; empty keeps IPv6 on the IPv4 uplink. Never inferred from facts.
 firewall_awg_uplink6_interface: ""

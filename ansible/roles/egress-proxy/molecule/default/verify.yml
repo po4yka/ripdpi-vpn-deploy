@@ -1,0 +1,191 @@
+---
+- name: Verify egress proxy role
+  hosts: all
+  become: true
+  vars:
+    # Measured `systemd-analyze security squid.service` exposure; a regression raises it.
+    egress_proxy_exposure_floor: 3.0
+  tasks:
+    - name: Send raw proxy requests and collect status and denial header
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import json, socket
+            def probe(req):
+                s = socket.create_connection(("127.0.0.1", 3128), timeout=30)
+                s.sendall(req.encode())
+                data = b""
+                while b"\r\n\r\n" not in data:
+                    chunk = s.recv(4096)
+                    if not chunk:
+                        break
+                    data += chunk
+                s.close()
+                head = data.decode(errors="replace")
+                return {"status": head.split(" ")[1],
+                        "denied": "X-Squid-Error: ERR_ACCESS_DENIED" in head}
+            def get(url, host):
+                return probe("GET %s HTTP/1.1\r\nHost: %s\r\n\r\n" % (url, host))
+            def connect(t):
+                return probe("CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n" % (t, t))
+            print(json.dumps({
+                "plain_get": get("http://example.com/", "example.com"),
+                "get_allowlisted_port443": get("http://api.vultr.com:443/", "api.vultr.com"),
+                "get_allowlisted_https": get("https://api.vultr.com/", "api.vultr.com"),
+                "port80": connect("api.vultr.com:80"),
+                "offlist": connect("github.com:443"),
+                "ipv4_literal": connect("1.1.1.1:443"),
+                "ipv6_literal": connect("[2606:4700:4700::1111]:443"),
+                "hosts_file_mapped_ipv4": connect("198.51.100.7:443"),
+                "allowed": connect("api.vultr.com:443"),
+                "allowed_b2": connect("s3.us-west-004.backblazeb2.com:443"),
+            }))
+      register: _egress_proxy_probe
+      changed_when: false
+
+    - name: Assert every denial is an ACL denial (403 and ERR_ACCESS_DENIED)
+      ansible.builtin.assert:
+        that:
+          - (_egress_proxy_probe.stdout | from_json)[item].status == '403'
+          - (_egress_proxy_probe.stdout | from_json)[item].denied
+      loop:
+        - plain_get
+        - get_allowlisted_port443
+        - get_allowlisted_https
+        - port80
+        - offlist
+        - ipv4_literal
+        - ipv6_literal
+        - hosts_file_mapped_ipv4
+
+    - name: Assert allowlisted CONNECTs pass the ACL
+      ansible.builtin.assert:
+        that:
+          - (_egress_proxy_probe.stdout | from_json)[item].status in ['200', '502', '503']
+          - not (_egress_proxy_probe.stdout | from_json)[item].denied
+      loop:
+        - allowed
+        - allowed_b2
+
+    - name: Read the access log
+      ansible.builtin.command: cat /var/log/squid/access.log
+      register: _egress_proxy_log
+      changed_when: false
+
+    - name: Assert the log records each denial as TCP_DENIED and the allowed CONNECT otherwise
+      ansible.builtin.assert:
+        that:
+          - _egress_proxy_log.stdout_lines | select('search', ' example.com 403 .* TCP_DENIED') | list | length >= 1
+          - _egress_proxy_log.stdout_lines | select('search', ' 198.51.100.7 403 .* TCP_DENIED') | list | length == 1
+          - _egress_proxy_log.stdout_lines | select('search', ' github.com 403 .* TCP_DENIED') | list | length == 1
+          - _egress_proxy_log.stdout_lines | select('search', ' api.vultr.com (200|502|503) [0-9]+ (?!TCP_DENIED)[A-Z_]+') | list | length >= 1
+          - _egress_proxy_log.stdout_lines | select('search', ' api.vultr.com 403 .* TCP_DENIED') | list | length >= 1
+
+    - name: Enumerate sockets that squid owns
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import glob, json, os, pwd
+            uid = pwd.getpwnam("proxy").pw_uid
+            pids = [p for p in os.listdir("/proc") if p.isdigit() and os.stat("/proc/" + p).st_uid == uid]
+            assert pids, "no proxy-owned process"
+            inodes = set()
+            for pid in pids:
+                for fd in glob.glob("/proc/%s/fd/*" % pid):
+                    try:
+                        link = os.readlink(fd)
+                    except OSError:
+                        continue
+                    if link.startswith("socket:["):
+                        inodes.add(link[8:-1])
+            out = {}
+            for proto in ("tcp", "tcp6", "udp", "udp6"):
+                rows = []
+                for line in open("/proc/net/" + proto).read().splitlines()[1:]:
+                    f = line.split()
+                    if f[9] in inodes:
+                        rows.append({"local": f[1], "state": f[3]})
+                out[proto] = rows
+            print(json.dumps(out))
+      register: _egress_proxy_sockets
+      changed_when: false
+
+    - name: Assert the only listener is the loopback TCP port and no ICP, HTCP or SNMP socket exists
+      vars:
+        _sockets: "{{ _egress_proxy_sockets.stdout | from_json }}"
+      ansible.builtin.assert:
+        that:
+          - _sockets.tcp | selectattr('state', 'equalto', '0A') | map(attribute='local') | list == ['0100007F:0C38']
+          - _sockets.tcp6 | selectattr('state', 'equalto', '0A') | list | length == 0
+          - >-
+            (_sockets.udp + _sockets.udp6) | map(attribute='local') | map('regex_replace', '^.*:', '')
+            | select('in', ['0C3A', '1223', '0D19']) | list | length == 0
+
+    - name: Rotate logs through the installed fragment
+      ansible.builtin.command: logrotate --force /etc/logrotate.d/squid
+      changed_when: true
+
+    - name: Send a request after rotation
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import socket
+            s = socket.create_connection(("127.0.0.1", 3128), timeout=30)
+            s.sendall(b"GET http://after-rotate.invalid/ HTTP/1.1\r\nHost: after-rotate.invalid\r\n\r\n")
+            s.recv(4096)
+      changed_when: false
+
+    - name: Read the rotated and the new access logs
+      ansible.builtin.shell: |
+        set -o pipefail
+        echo "NEW:"; cat /var/log/squid/access.log
+        echo "OLD:"; cat /var/log/squid/access.log.1
+      args:
+        executable: /bin/bash
+      register: _egress_proxy_rotated
+      changed_when: false
+
+    - name: Assert the new log holds only the post-rotation request
+      vars:
+        _new: "{{ _egress_proxy_rotated.stdout.split('OLD:')[0] }}"
+        _old: "{{ _egress_proxy_rotated.stdout.split('OLD:')[1] }}"
+      ansible.builtin.assert:
+        that:
+          - "'after-rotate.invalid' in _new"
+          - "'github.com' not in _new"
+          - "'github.com' in _old"
+          - "'after-rotate.invalid' not in _old"
+
+    - name: Score the unit
+      ansible.builtin.command: systemd-analyze security squid.service --no-pager
+      register: _egress_proxy_security
+      changed_when: false
+
+    - name: Assert the exposure score stays at or below the floor
+      vars:
+        _score: "{{ _egress_proxy_security.stdout | regex_search('Overall exposure level for squid.service: ([0-9.]+)', '\\1') | first | float }}"
+      ansible.builtin.assert:
+        that:
+          - _score | float <= egress_proxy_exposure_floor | float
+        success_msg: "exposure {{ _score }} <= {{ egress_proxy_exposure_floor }}"
+
+    - name: Read effective unit properties and the unit text
+      ansible.builtin.command: systemctl show squid.service -p User -p NoNewPrivileges -p ProtectSystem -p CapabilityBoundingSet -p Restart -p PIDFile
+      register: _egress_proxy_unit
+      changed_when: false
+
+    - name: Assert the hardened unit is effective
+      ansible.builtin.assert:
+        that:
+          - "'User=proxy' in _egress_proxy_unit.stdout"
+          - "'NoNewPrivileges=yes' in _egress_proxy_unit.stdout"
+          - "'ProtectSystem=strict' in _egress_proxy_unit.stdout"
+          - _egress_proxy_unit.stdout_lines | select('equalto', 'CapabilityBoundingSet=') | list | length == 1
+          - "'Restart=on-failure' in _egress_proxy_unit.stdout"
+          - _egress_proxy_unit.stdout_lines | select('equalto', 'PIDFile=') | list | length == 1

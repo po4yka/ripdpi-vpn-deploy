@@ -1,0 +1,29 @@
+# Managed by Ansible. CONNECT-only allowlist proxy; no TLS inspection, no cache.
+http_port {{ egress_proxy_listen_address }}:{{ egress_proxy_listen_port }}
+icp_port 0
+htcp_port 0
+snmp_port 0
+pinger_enable off
+pid_filename none
+max_filedescriptors {{ egress_proxy_max_filedescriptors }}
+client_ip_max_connections {{ egress_proxy_client_max_connections }}
+cache deny all
+via off
+forwarded_for delete
+visible_hostname egress-proxy
+
+logformat egress %tg %>a %>rd %>Hs %<st %Ss
+access_log stdio:/var/log/squid/access.log egress
+cache_log /var/log/squid/cache.log
+logfile_rotate 0
+
+acl CONNECT method CONNECT
+acl SSL_ports port 443
+acl ci_src src {{ egress_proxy_client_cidrs | join(' ') }}
+acl api dstdomain -n {{ (egress_proxy_api_hosts + ['s3.' ~ egress_proxy_b2_region ~ '.backblazeb2.com']) | join(' ') }}
+
+http_access deny !CONNECT
+http_access deny !SSL_ports
+http_access deny !api
+http_access allow ci_src
+http_access deny all

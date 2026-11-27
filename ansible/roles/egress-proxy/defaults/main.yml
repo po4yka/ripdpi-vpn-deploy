@@ -1,0 +1,32 @@
+---
+# CONNECT-only forward proxy for provider APIs. The node holds no secrets.
+# Runs from its own playbook, not site.yml; there is no vpn.enable_* toggle.
+egress_proxy_package_version: "6.13-2+deb13u4"
+
+# Production: the node's Tailnet address (must be inside 100.64.0.0/10).
+# Required; the role refuses an empty value. Molecule overrides both knobs below.
+egress_proxy_listen_address: ""
+egress_proxy_listen_port: 3128
+egress_proxy_require_tailnet_listen: true
+
+# Only these sources may use the proxy; the firewall input is the first gate.
+egress_proxy_client_cidrs:
+  - 100.64.0.0/10
+
+# Backblaze B2 S3 endpoint is s3.<region>.backblazeb2.com; the region is operator input.
+egress_proxy_b2_region: ""
+
+# dstdomain entries (exact names, no leading dot), matched with -n (no reverse lookup).
+egress_proxy_api_hosts:
+  - api.hetzner.cloud
+  - api.scaleway.com
+  - api.upcloud.com
+  - api.vultr.com
+  - api.porkbun.com
+  - api-ipv4.porkbun.com
+  - api.tailscale.com
+
+egress_proxy_max_filedescriptors: 4096
+# One CI runner opens a handful of provider connections at a time; 64 per client
+# leaves one runaway client far below the descriptor budget (each CONNECT uses two).
+egress_proxy_client_max_connections: 64
