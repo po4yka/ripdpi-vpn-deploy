@@ -402,6 +402,31 @@ def test_protocol_evaluates_only_the_exact_private_binding(tmp_path: Path) -> No
     assert not (tmp_path / "git-spy.log").exists()
 
 
+@pytest.mark.parametrize("origin", ["command line", "environment"])
+def test_deonboard_passes_optional_cleanup_manifests_as_data(tmp_path: Path, origin: str) -> None:
+    root, env = _workspace(tmp_path)
+    fields = _fields(tmp_path)
+    marker = tmp_path / "expanded"
+    manifests = {
+        "BOUND_CLEANUP_MANIFEST": str(tmp_path / "private/bound.json"),
+        # Inside the old double-quoted recipe text a backtick ran as a command.
+        "REISSUED_CLEANUP_MANIFEST": f"{tmp_path}/private/re`touch {marker}`.json",
+    }
+    if origin == "environment":
+        result = _run(root, {**env, **manifests}, "deonboard-disposable-liveness", fields)
+    else:
+        required = GOAL_FIELDS["deonboard-disposable-liveness"]
+        assignments = [f"{key}={value}" for key, value in {**fields, **manifests}.items()
+                       if key in required or key in manifests]
+        result = subprocess.run(["make", "deonboard-disposable-liveness", *assignments], cwd=root, env=env,
+                                text=True, capture_output=True, timeout=20, check=False)
+    assert result.returncode == 0, result.stderr
+    argv = _record(tmp_path)["argv"]
+    assert argv[argv.index("--bound-cleanup-manifest") + 1] == manifests["BOUND_CLEANUP_MANIFEST"]
+    assert argv[argv.index("--reissued-cleanup-manifest") + 1] == manifests["REISSUED_CLEANUP_MANIFEST"]
+    assert not marker.exists()
+
+
 def test_deonboard_is_gated_and_requires_exact_provider_absence(tmp_path: Path) -> None:
     root, env = _workspace(tmp_path)
     fields = _fields(tmp_path)
