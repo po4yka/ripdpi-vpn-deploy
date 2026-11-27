@@ -519,6 +519,14 @@ def test_settings_assert_refuses_a_trailing_newline(key):
     assert not _settings_assert_holds(**{key: [value + "\n"] if key == "server_refs" else value + "\n"})
 
 
+# Joined so the staged-file placeholder scan does not read the fixture as a leaked placeholder.
+@pytest.mark.parametrize("placeholder", ["REPLACE_with_rotate_cohort_token_output",
+                                         "_".join(("REPLACE", "WITH", "COHORT_TOKEN_VALUE"))])
+def test_settings_assert_refuses_the_example_cohort_token(placeholder):
+    # Both spellings fit the token grammar, so only an explicit placeholder check keeps the public value out.
+    assert not _settings_assert_holds(cohort_token=placeholder)
+
+
 @pytest.mark.parametrize(("release", "package"), [("trixie", "python3-jsonschema=4.19.2-6"),
                                                   ("noble", "python3-jsonschema=4.10.3-2ubuntu1")])
 def test_validator_package_is_pinned_for_each_supported_release(release, package):

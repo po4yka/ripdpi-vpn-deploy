@@ -245,6 +245,17 @@ def test_rotation_keeps_one_previous_token_and_the_ingest_honours_the_overlap(tm
     assert [_post(config, body, token=token) for token in reversed(tokens)] == [202, 202, 401]
 
 
+def test_rotation_never_keeps_the_example_placeholder_as_previous_token(tmp_path):
+    secrets = tmp_path / "prod.secrets.sops.json"
+    secrets.write_text(json.dumps({"field_report": {"cohort_token": "REPLACE_with_rotate_cohort_token_output"}}))
+    secrets.chmod(0o600)
+    result = _rotate(tmp_path, secrets)
+    assert result.returncode == 0, result.stderr
+    field_report = json.loads(secrets.read_text())["field_report"]
+    assert "previous_cohort_token" not in field_report
+    assert len(field_report["cohort_token"]) == 43
+
+
 def test_rotation_refuses_to_drop_a_previous_token_inside_its_overlap(tmp_path):
     secrets = tmp_path / "prod.secrets.sops.json"
     secrets.write_text(json.dumps({}))

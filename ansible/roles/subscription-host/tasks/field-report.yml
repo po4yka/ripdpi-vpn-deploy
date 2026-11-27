@@ -25,6 +25,8 @@
       - subscription_field_report.server_refs | reject('match', '^[A-Za-z0-9_-]{1,64}\Z') | list | length == 0
       - field_report is mapping
       - field_report.cohort_token | default('') is match('^[A-Za-z0-9_-]{22,64}\Z')
+      # The example value fits the token grammar but is public; issue one with rotate-cohort-token.sh.
+      - field_report.cohort_token | default('') is not match('(?i)REPLACE_WITH_')
       - >-
         field_report.previous_cohort_token | default(none) is none or
         (field_report.previous_cohort_token is match('^[A-Za-z0-9_-]{22,64}\Z') and

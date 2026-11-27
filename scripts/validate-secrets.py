@@ -40,7 +40,8 @@ SCHEMA = REPO_ROOT / "secrets" / "schema.json"
 DEFAULT_TARGET = REPO_ROOT / "secrets" / "prod.secrets.example.yaml"
 OBSERVABILITY_CONFIG = REPO_ROOT / "ansible" / "group_vars" / "all.yml"
 
-PLACEHOLDER = re.compile(r"REPLACE_WITH_[A-Z0-9_]+")
+# Any case of the REPLACE_WITH_ prefix, and the bare uppercase word the example's free-form blocks use.
+PLACEHOLDER = re.compile(r"(?i:REPLACE_WITH_)[A-Za-z0-9_]+|\bREPLACE\b")
 AWG_FINGERPRINT = re.compile(r"^sha256:([0-9a-fA-F]{16})$")
 OBSERVABILITY_ROTATION_MAX_SECONDS = 24 * 60 * 60
 

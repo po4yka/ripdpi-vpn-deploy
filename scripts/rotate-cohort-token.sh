@@ -60,6 +60,9 @@ current="$(sops --decrypt --output-type json "$SOPS_FILE" | FORCE="$FORCE" pytho
 import datetime, json, os, re, sys
 field_report = json.load(sys.stdin).get("field_report") or {}
 token = field_report.get("cohort_token", "")
+# A copied example placeholder is public text: issue a first token instead of keeping it in the overlap.
+if re.match(r"(?i)REPLACE_WITH_", token):
+    token = ""
 if token and not re.fullmatch(r"[A-Za-z0-9_-]{22,64}", token):
     sys.exit("error: the current cohort token is malformed; fix it before rotating")
 until = field_report.get("previous_cohort_token_valid_until")
