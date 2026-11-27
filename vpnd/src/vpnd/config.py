@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import re
 import sys
 import tempfile
 from . import protected_file
@@ -59,6 +60,11 @@ class Context:
         except OSError as error:
             raise ValueError("--root not found") from error
         ansible = root / "ansible"
+        # Both name path components: `..` would resolve to an existing directory outside its root.
+        if not re.fullmatch(r"[a-z][a-z0-9-]*", cli.provider):
+            raise ValueError(f"invalid provider {cli.provider!r} (expected upcloud | hetzner | vultr | scaleway)")
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*", cli.env):
+            raise ValueError(f"invalid environment {cli.env!r}: letters, numbers and hyphens only")
         tfroot = root / "terraform/providers" / cli.provider
         if not ansible.is_dir():
             raise ValueError(f"missing {ansible} — not a vpn-deploy repo root")
