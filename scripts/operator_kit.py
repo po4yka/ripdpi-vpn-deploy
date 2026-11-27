@@ -60,8 +60,9 @@ def selected(plan):
             if field in backup and os.path.lexists(backup[field]):
                 info = Path(backup[field]).stat()
                 require((info.st_dev, info.st_ino) not in identities, "excluded-kit-authority")
-        require(all(not data.startswith(b"AGE-SECRET-KEY-") and b"-----BEGIN OPENSSH PRIVATE KEY-----" not in data
-                    and b"AGE-SECRET-KEY-" not in data for data in files.values()), "plaintext-working-key-in-kit")
+        # Any PEM private key (OpenSSH, PKCS#1, SEC1, PKCS#8), as operator-kit.py refuses in snapshots.
+        require(all(b"AGE-SECRET-KEY-" not in data and not re.search(rb"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", data)
+                    for data in files.values()), "plaintext-working-key-in-kit")
     return files, authorities
 
 
