@@ -1,13 +1,14 @@
 ---
 name: reproducible-build
 
-# Verifies that the prebuilt-binary sha256s pinned in the secrets schema
-# correspond to deterministic from-source rebuilds of the same tag. If a
-# release tag is silently re-cut with different bytes, this job fails the
-# CI before the operator deploys it.
+# Rebuilds the patched hysteria and rclone runtimes and requires the approved
+# byte pins in scripts/security-runtime-artifacts.json, then requires the
+# published hysteria and RealiTLScanner assets to match their pins. A re-cut
+# asset fails CI before the operator deploys it.
 #
-# Scope: xray-core, hysteria, rclone, RealiTLScanner. AmneziaWG sha256s are not
-# pinned in v1 schema and are out of scope here.
+# Xray is out of scope: upstream Go builds are not bit-reproducible, so the
+# integrity gate is the pinned archive sha256 that .github/actions/install-xray
+# and the xray role verify. AmneziaWG sha256s are not pinned in the v1 schema.
 
 on:
   workflow_call:
@@ -86,92 +87,6 @@ jobs:
             .cache/security-runtime-artifacts/rclone-linux-*
             .cache/security-runtime-artifacts/rclone-*.deb
             .cache/security-runtime-artifacts/*-LICENSE
-  xray-core:
-    if: ${{ !inputs.artifact_producer_only }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Read pinned xray version + sha256 from schema
-        id: pin
-        run: |
-          set -euo pipefail
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import re
-          import yaml
-          d = yaml.safe_load(open("secrets/prod.secrets.example.yaml")) or {}
-          x = d.get("xray") or {}
-          v   = x.get("version", "")
-          amd = x.get("linux_amd64_sha256", "")
-          version_pattern = r"(?:v[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.+-]+)?|REPLACE_WITH_[A-Z0-9_]+)"
-          sha_pattern = r"(?:[0-9a-fA-F]{64}|REPLACE_WITH_RELEASE_SHA256|)"
-          if re.fullmatch(version_pattern, v) is None:
-              raise SystemExit("invalid xray version pin")
-          if re.fullmatch(sha_pattern, amd) is None:
-              raise SystemExit("invalid xray sha256 pin")
-          print(f"version={v}")
-          print(f"sha={amd}")
-          PY
-
-      - name: Skip when pin is a placeholder
-        if: ${{ steps.pin.outputs.sha == 'REPLACE_WITH_RELEASE_SHA256' || steps.pin.outputs.sha == '' }}
-        run: echo "no real sha256 pinned yet; skipping rebuild verification" && exit 0
-
-      - name: Set up Go (matching XTLS upstream)
-        if: ${{ steps.pin.outputs.sha != 'REPLACE_WITH_RELEASE_SHA256' && steps.pin.outputs.sha != '' }}
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
-        with:
-          go-version: "1.23.x"
-          check-latest: true
-
-      - name: Clone Xray-core at pinned tag
-        if: ${{ steps.pin.outputs.sha != 'REPLACE_WITH_RELEASE_SHA256' && steps.pin.outputs.sha != '' }}
-        env:
-          PIN_VERSION: ${{ steps.pin.outputs.version }}
-        run: |
-          git clone --depth 1 --branch "$PIN_VERSION" \
-            https://github.com/XTLS/Xray-core src
-
-      - name: Build deterministically
-        if: ${{ steps.pin.outputs.sha != 'REPLACE_WITH_RELEASE_SHA256' && steps.pin.outputs.sha != '' }}
-        working-directory: src
-        env:
-          CGO_ENABLED: "0"
-          GOOS: linux
-          GOARCH: amd64
-          GOFLAGS: -trimpath
-        run: |
-          set -euo pipefail
-          go build -ldflags="-s -w" -o ../xray-built ./main
-
-      - name: Compare local build sha256 against schema pin
-        if: ${{ steps.pin.outputs.sha != 'REPLACE_WITH_RELEASE_SHA256' && steps.pin.outputs.sha != '' }}
-        env:
-          PIN_SHA: ${{ steps.pin.outputs.sha }}
-        run: |
-          local_sha="$(sha256sum xray-built | awk '{print $1}')"
-          schema_sha="$PIN_SHA"
-          echo "schema:  ${schema_sha}"
-          echo "rebuild: ${local_sha}"
-          # xray mismatch is advisory only: Go releases are not reproducible
-          # by default (build IDs, timestamps, toolchain version all affect
-          # the binary). A mismatch here does NOT indicate tampering — it
-          # means upstream's toolchain differs from ours. The role downloads
-          # the upstream release asset and verifies its sha256; that check is
-          # the actual integrity gate. Hysteria uses a downloaded release
-          # asset verified against a pinned sha256, making it the blocking
-          # reproducibility gate for this workflow.
-          if [[ "${local_sha}" != "${schema_sha}" ]]; then
-            echo "::warning::Rebuild sha256 does not match schema pin."
-            echo "::warning::This usually means upstream ships a different toolchain build."
-            echo "::warning::Verify the release-asset sha256 instead (downloaded by the role)."
-          else
-            echo "match — rebuild is bit-identical to the pinned binary"
-          fi
-
   hysteria:
     if: ${{ !inputs.artifact_producer_only }}
     runs-on: ubuntu-24.04
@@ -181,50 +96,48 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Read pinned hysteria version
+      - name: Read the approved hysteria release pins
         id: pin
         run: |
           set -euo pipefail
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
           import re
-          import yaml
-          d = yaml.safe_load(open("secrets/prod.secrets.example.yaml")) or {}
-          h = d.get("hysteria") or {}
-          v = h.get("version", "")
-          amd = h.get("linux_amd64_sha256", "")
-          version_pattern = r"(?:v[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.+-]+)?|REPLACE_WITH_[A-Z0-9_]+)"
-          sha_pattern = r"(?:[0-9a-fA-F]{64}|REPLACE_WITH_RELEASE_SHA256|)"
-          if re.fullmatch(version_pattern, v) is None:
+          pins = json.load(open("scripts/security-runtime-artifacts.json"))
+          release = pins.get("release", "")
+          identity = re.fullmatch(r"(v[0-9]+\.[0-9]+\.[0-9]+)-(go[0-9]+\.[0-9]+\.[0-9]+)", pins.get("hysteria_release_identity", ""))
+          sha = pins.get("artifacts", {}).get("hysteria-linux-amd64", "")
+          if re.fullmatch(r"runtime-go[0-9]+\.[0-9]+\.[0-9]+-[0-9]{8}", release) is None:
+              raise SystemExit("invalid hysteria release pin")
+          if identity is None:
               raise SystemExit("invalid hysteria version pin")
-          if re.fullmatch(sha_pattern, amd) is None:
+          if re.fullmatch(r"[0-9a-f]{64}", sha) is None:
               raise SystemExit("invalid hysteria sha256 pin")
-          print(f"version={v}")
-          print(f"sha={amd}")
+          print(f"release={release}")
+          print(f"version={identity[1]}")
+          print(f"toolchain={identity[2]}")
+          print(f"sha={sha}")
           PY
 
-      - name: Skip when pin is a placeholder
-        if: ${{ steps.pin.outputs.sha == 'REPLACE_WITH_RELEASE_SHA256' || steps.pin.outputs.sha == '' }}
-        run: echo "no real sha256 pinned yet; skipping" && exit 0
-
-      - name: Verify release-asset sha256 matches schema
-        if: ${{ steps.pin.outputs.sha != 'REPLACE_WITH_RELEASE_SHA256' && steps.pin.outputs.sha != '' }}
+      - name: Verify the published release asset matches its pin
         env:
+          PIN_RELEASE: ${{ steps.pin.outputs.release }}
           PIN_SHA: ${{ steps.pin.outputs.sha }}
           PIN_VERSION: ${{ steps.pin.outputs.version }}
+          PIN_TOOLCHAIN: ${{ steps.pin.outputs.toolchain }}
         run: |
           set -euo pipefail
-          ver="$PIN_VERSION"
-          url="https://github.com/po4yka/ripdpi-vpn-deploy/releases/download/runtime-go1.27.3-20261102/hysteria-linux-amd64"
+          url="https://github.com/po4yka/ripdpi-vpn-deploy/releases/download/${PIN_RELEASE}/hysteria-linux-amd64"
           curl -fsSL --retry 4 --retry-delay 10 --retry-max-time 480 --connect-timeout 10 --max-time 120 -o hysteria-bin "$url"
           asset_sha="$(sha256sum hysteria-bin | awk '{print $1}')"
           echo "release asset sha256: ${asset_sha}"
-          echo "schema pin:           $PIN_SHA"
+          echo "approved pin:         $PIN_SHA"
           [[ "$asset_sha" == "$PIN_SHA" ]] \
-            || { echo "::error::release-asset sha256 differs from schema pin"; exit 1; }
+            || { echo "::error::release-asset sha256 differs from the approved pin"; exit 1; }
           chmod 0755 hysteria-bin
           ./hysteria-bin version > hysteria-version.txt
-          grep -Fx "Version:$(printf '\t')${ver}" hysteria-version.txt
-          grep -Fx "Toolchain:$(printf '\t')go1.27.3" hysteria-version.txt
+          grep -Fx "Version:$(printf '\t')${PIN_VERSION}" hysteria-version.txt
+          grep -Fx "Toolchain:$(printf '\t')${PIN_TOOLCHAIN}" hysteria-version.txt
 
   realitlscanner:
     if: ${{ !inputs.artifact_producer_only }}
