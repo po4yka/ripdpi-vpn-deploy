@@ -37,7 +37,7 @@ def _verdict(client):
         o = dict(o, expires=entry['token_expires'], hosts=entry['hosts'], cohorts=entry['cohorts'], awg_host=entry['awg_delivery_host'])
         payload, bindings = materialize(client, o, private_only=True, documents={str(path.absolute()): doc},
                                         source_paths=entry['delivery_sources'], extended=o['format'] == 'ripdpi',
-                                        include_health=False)
+                                        include_health=False, admission=False)
         if 'migration_delivery' in entry:
             payload = wrap_payload(payload, entry['migration_delivery'])
         current = digest(client, o, payload, bindings, auth)

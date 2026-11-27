@@ -22,6 +22,32 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
+# Documentation and loopback node addresses that fixture bundles publish.
+ADMITTED_FIXTURE_ADDRESSES = (
+    '127.0.0.1', '::1', '192.0.2.1', '192.0.2.5', '192.0.2.7', '192.0.2.10', '192.0.2.20', '192.0.2.44', '192.0.2.80',
+    '192.0.2.90', '192.0.2.230', '198.51.100.1', '198.51.100.10', '198.51.100.20', '203.0.113.10',
+    '203.0.113.239',
+)
+
+
+@pytest.fixture(scope='session')
+def admitted_fixture_vantage(tmp_path_factory):
+    try:
+        from address_attestation import attestation, write_vantage
+    except ModuleNotFoundError:
+        # Harness tests copy this file into a tree without the gate; nothing there materializes a bundle.
+        return {}
+    return write_vantage(tmp_path_factory.mktemp('vantage'),
+                         [attestation(address) for address in ADMITTED_FIXTURE_ADDRESSES])
+
+
+@pytest.fixture(autouse=True)
+def filtered_vantage_admission(admitted_fixture_vantage, monkeypatch):
+    """Admit fixture node addresses; scripts/address_admission.py tests replace this vantage."""
+    for key, value in admitted_fixture_vantage.items():
+        monkeypatch.setenv(key, value)
+
+
 @pytest.fixture
 def stub_tofu_backend(tmp_path, monkeypatch):
     """Backend selection for tests that substitute the OpenTofu executable."""

@@ -2,7 +2,7 @@
 id: OPS-1795704918170150
 title: Check a new node address from a filtered-side vantage before bundle admission
 kind: feature
-status: backlog
+status: review
 area: operations
 priority: medium
 risk: standard
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: ops-1795704918170150-pre-admission-address-check
 created: 2026-11-26
-updated: 2026-11-26
+updated: 2026-11-27
 related_tasks: []
 ---
 

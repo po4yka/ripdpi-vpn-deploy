@@ -32,7 +32,7 @@ The target path is a filtered network with an in-path policy enforcement point t
 - It does not hide that a VPN exists. It makes each flow look like the traffic class it imitates and keeps enough independent paths that a client can fail over.
 - It does not defend against an adversary with access to the server or the operator machine. Compromise is handled by recreation and rotation, not by hardening a compromised host.
 - It does not prove field survival from the repository. Reachability from the filtered side is measured by an operator from a filtered vantage; CI measures only the unfiltered half.
-- It does not treat ICMP reachability as evidence of tunnel state. A missing ICMP result neither proves a tunnel down nor up. Liveness decisions use authenticated protocol probes, as in [protocol liveness](../reference/protocol-liveness.md).
+- It does not treat ICMP reachability as evidence of tunnel state. A missing ICMP result neither proves a tunnel down nor up. Liveness decisions use authenticated protocol probes, as in [protocol liveness](../reference/protocol-liveness.md). Admission of a new node address into a RIPDPI bundle needs a signed TCP and TLS result from a filtered-side vantage; an ICMP result in that attestation is ignored ([admission gate](../how-to/deploy.md#admit-a-new-node-address-into-ripdpi-bundles)).
 
 ## Where the evidence lives
 
