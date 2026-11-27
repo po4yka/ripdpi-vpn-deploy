@@ -1,0 +1,154 @@
+---
+# Converge one exact egress node: a CONNECT-only forward proxy for provider APIs,
+# reachable only over the Tailnet. No VPN role runs here, so every vpn.enable_*
+# toggle is false except tailnet management, which the Tailnet role and the
+# strict firewall's tailscaled allowance both key on.
+#
+# firewall_egress_policy is strict: it default-drops host-originated traffic but
+# accepts DNS (53, 853), NTP and TCP 80/443 (nftables.conf.j2, strict chain), which
+# is all squid needs (CONNECT to port 443). The arbitrary-upstream allowance is
+# reserved for enabled proxy transports and stays off here.
+#
+# Inputs: inventory group `egress` (one host, --limit equal to it), allowed_ssh_cidrs,
+# tailnet_management.approved_sources, vpn_service_address, and egress_proxy_b2_region.
+# The node must already be enrolled (bootstrap-tailnet) with tag:egress.
+- name: Converge one exact egress proxy node
+  hosts: egress
+  serial: 1
+  any_errors_fatal: true
+  become: true
+  gather_facts: true
+
+  vars:
+    vpn:
+      enable_xray_reality: false
+      enable_reality_self_steal: false
+      enable_nginx_xhttp: false
+      enable_naive: false
+      enable_hysteria: false
+      enable_amneziawg: false
+      enable_geodata: false
+      enable_monitoring: false
+      enable_watchdog: false
+      enable_backup: false
+      enable_subscription_host: false
+      enable_tailnet_management: true
+      enable_policy_ratelimit: false
+      enable_cdn_front: false
+      enable_honeypot: false
+      enable_warp_outbound: false
+      enable_dns_morph_bridge: false
+      enable_hysteria_realm: false
+      enable_split_hop_egress: false
+      enable_split_hop_ingress: false
+      enable_probe_matrix_target: false
+      enable_snell: false
+      enable_cascade_ingress: false
+      enable_cascade_egress: false
+    security_controls:
+      ssh_strict: true
+      ssh_allow_tcp_forwarding: false
+      ssh_prune_moduli: true
+      ssh_required_rsa_size: 0
+      ssh_max_sessions: 2
+      ssh_max_startups: "10:30:20"
+      unattended_upgrades: true
+      fail2ban: false
+    package_updates:
+      enabled: true
+      security_only: true
+      automatic_reboot: false
+      mail: root
+      mail_only_on_error: true
+      remove_unused_dependencies: true
+      install_apticron: false
+    vpn_subscription_only: false
+    firewall_egress_policy: strict
+    firewall_tailnet_extra_tcp_ports: [3128]
+    network_exposure_gate:
+      mode: disabled
+
+  pre_tasks:
+    - name: Validate egress scope before host mutation
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all | length == 1
+          - allowed_ssh_cidrs is sequence
+          - allowed_ssh_cidrs is not string
+          - allowed_ssh_cidrs | length > 0
+          - allowed_ssh_cidrs | length <= 16
+          - egress_proxy_b2_region | default('') | length > 0
+        fail_msg: Exactly one egress node, SSH sources and egress_proxy_b2_region are required.
+        quiet: true
+      tags: [always]
+
+    - name: Read effective SSH policy before host mutation
+      ansible.builtin.command:
+        cmd: sshd -T
+      register: egress_sshd
+      changed_when: false
+      check_mode: false
+      tags: [always]
+
+    - name: Select effective SSH listener before host mutation
+      ansible.builtin.set_fact:
+        egress_ssh_ports: >-
+          {{
+            egress_sshd.stdout_lines
+            | select('match', '^port [0-9]+$')
+            | map('regex_replace', '^port ', '')
+            | map('int')
+            | list
+          }}
+      tags: [always]
+
+    - name: Require effective SSH listener ownership before host mutation
+      ansible.builtin.assert:
+        that:
+          - egress_ssh_ports | length == 1
+          - egress_ssh_ports[0] | int == ansible_port | int
+        fail_msg: Effective SSH listener differs from the exact inventory binding.
+        quiet: true
+      tags: [always]
+
+  tasks:
+    - name: Apply hardened host baseline
+      ansible.builtin.include_role:
+        name: baseline
+
+    - name: Apply Tailnet-only guest firewall
+      ansible.builtin.include_role:
+        name: firewall
+
+    - name: Verify existing Tailnet management access
+      ansible.builtin.include_role:
+        name: tailnet-management
+
+    # The role takes no tag input: the tag is fixed at enrollment, so verify it here.
+    - name: Read the node Tailnet identity
+      ansible.builtin.command:
+        argv: [tailscale, status, --json, --self=true, --peers=false]
+      register: egress_tailscale_status
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Require tag:egress and derive the Tailnet IPv4 listen address
+      ansible.builtin.set_fact:
+        egress_proxy_listen_address: >-
+          {{ (egress_tailscale_status.stdout | from_json).Self.TailscaleIPs
+             | select('match', '^100[.]') | list | first | default('') }}
+        egress_tailnet_tags: "{{ (egress_tailscale_status.stdout | from_json).Self.Tags | default([]) }}"
+      no_log: true
+
+    - name: Fail closed without the egress tag or a Tailnet IPv4 address
+      ansible.builtin.assert:
+        that:
+          - "'tag:egress' in egress_tailnet_tags"
+          - egress_proxy_listen_address | length > 0
+        fail_msg: The node must be enrolled with tag:egress and hold a Tailnet IPv4 address.
+        quiet: true
+
+    - name: Configure the CONNECT-only egress proxy
+      ansible.builtin.include_role:
+        name: egress-proxy

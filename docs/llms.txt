@@ -25,6 +25,7 @@
 - [Runbook — deploy](/md/how-to/deploy.md)
 - [Issue, refresh or revoke a device](/md/how-to/device-lifecycle.md)
 - [Device migration during server replacement](/md/how-to/device-migration.md)
+- [Converge the egress proxy node](/md/how-to/egress-proxy.md)
 - [Recreate a lost node and resume after failure](/md/how-to/executable-recovery.md)
 - [Field analytics staging acceptance](/md/how-to/field-analytics-acceptance.md)
 - [Maintain existing nodes and verify operator recovery](/md/how-to/fleet-maintenance.md)

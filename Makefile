@@ -1059,7 +1059,7 @@ terraform-init:
 
 ansible-syntax-check:
 	@command -v ansible-playbook >/dev/null 2>&1 || { echo "missing: ansible-playbook" >&2; exit 1; }
-	@echo "== ansible syntax =="; cd $(ANSIBLE_DIR) && ansible-playbook playbooks/site.yml --syntax-check -i 'localhost,'
+	@echo "== ansible syntax =="; cd $(ANSIBLE_DIR) && ansible-playbook playbooks/site.yml --syntax-check -i 'localhost,' && ansible-playbook playbooks/egress-proxy.yml --syntax-check -i 'localhost,'
 
 validate: terraform-init ansible-syntax-check
 	@for root in $(TF_VALIDATION_ROOTS); do \
