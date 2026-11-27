@@ -155,6 +155,28 @@ def test_reputation_check_reads_the_block_list_over_the_encrypted_resolver(tmp_p
     assert not (tmp_path / "cleartext-calls").exists()
 
 
+def test_reputation_check_refuses_an_address_that_is_not_dotted_ipv4(tmp_path):
+    marker = tmp_path / "executed"
+    payload = f"1.2.3.4');open({str(marker)!r},'w');('"
+    netset = tmp_path / "firehol.netset"
+    netset.write_text("198.51.100.0/24\n")
+    result = run(["bash", str(ROOT / "scripts/check-ip-reputation.sh")], closed_resolver(), tmp_path,
+                 IP=payload, FIREHOL_NETSET_FILE=str(netset), NTFY_TOPIC="")
+    assert result.returncode == 2
+    assert "dotted IPv4" in result.stderr
+    assert not marker.exists()
+
+
+def test_reputation_check_reads_a_netset_path_as_data(tmp_path):
+    # A quote in the operator-supplied path must not reach Python source.
+    netset = tmp_path / "it's firehol.netset"
+    netset.write_text("# fixture\n192.0.2.0/24\n")
+    with doh_server({BLOCK_LIST: []}) as url:
+        result = run(["bash", str(ROOT / "scripts/check-ip-reputation.sh")], url, tmp_path,
+                     IP="192.0.2.9", FIREHOL_NETSET_FILE=str(netset), NTFY_TOPIC="")
+    assert "FireHOL Level 1: listed" in result.stdout, result.stderr
+
+
 def test_reputation_check_fails_closed_without_the_encrypted_resolver(tmp_path):
     result = run(["bash", str(ROOT / "scripts/check-ip-reputation.sh")], closed_resolver(), tmp_path, IP="192.0.2.9", NTFY_TOPIC="")
     assert result.returncode == 2
