@@ -10,9 +10,9 @@ A preview or deploy on a Tailnet transport establishes and measures the relayed 
 
 ## Execution
 
-- [ ] SCR-1795774279138177 Warm and measure the Tailnet route before readiness in dry-run and deploy #feature !high @item:SCR-1795774108061951
-- [ ] SCR-1795774324586353 Raise the shared SSH master silence budget to 300 s in both modes #feature !high @item:SCR-1795774108061951
-- [ ] SCR-1795774367402539 Document the gated preview and refusal categories in the deploy runbook #feature !high @item:SCR-1795774108061951
+- [x] SCR-1795774279138177 Warm and measure the Tailnet route before readiness in dry-run and deploy #feature !high @item:SCR-1795774108061951
+- [x] SCR-1795774324586353 Raise the shared SSH master silence budget to 300 s in both modes #feature !high @item:SCR-1795774108061951
+- [x] SCR-1795774367402539 Document the gated preview and refusal categories in the deploy runbook #feature !high @item:SCR-1795774108061951
 - [ ] SCR-1795774415106539 Reconcile the channel tolerance spec and record a live preview over the relayed route #feature !high @item:SCR-1795774108061951
 
 ## Verification

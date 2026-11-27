@@ -2,12 +2,12 @@
 
 ### Requirement: REQ-OPS-CHANNEL-SESSION — Shared Ansible master survives a short stall
 
-The deploy controller MUST give the run-owned SSH master that Ansible tasks share the options `ServerAliveInterval=15`, `ServerAliveCountMax=8` and `ConnectionAttempts=3`. Readiness checks, recovery commands and every fresh strict SSH lockout proof MUST keep the strict command with `ConnectionAttempts=1`, no master and no keepalive options.
+The deploy controller MUST give the run-owned SSH master that Ansible tasks share the options `ServerAliveInterval=15`, `ServerAliveCountMax=20` and `ConnectionAttempts=3`. Readiness checks, recovery commands and every fresh strict SSH lockout proof MUST keep the strict command with `ConnectionAttempts=1`, no master and no keepalive options.
 
 #### Scenario: Multiplexed task path carries keepalive and connection attempts
 
 - **WHEN** the controller prepares the Ansible SSH arguments for a selected host
-- **THEN** they contain `ServerAliveInterval=15`, `ServerAliveCountMax=8` and `ConnectionAttempts=3` together with the run-owned control path
+- **THEN** they contain `ServerAliveInterval=15`, `ServerAliveCountMax=20` and `ConnectionAttempts=3` together with the run-owned control path
 
 #### Scenario: Fresh strict command is unchanged
 
@@ -25,16 +25,16 @@ The controller MUST pass `ansible_ssh_timeout=90` to every controller-driven pla
 
 ### Requirement: REQ-OPS-CHANNEL-GATE — Measured Tailnet route before mutation
 
-Before the source recheck and the first mutating playbook of a deploy on a host whose management address is inside `100.64.0.0/10` or `fd7a:115c:a1e0::/48` (IPv4-mapped forms included), the controller MUST measure the route with ten `tailscale ping` probes that do not stop at the first direct reply. Dry-run, the CI Tailnet handoff run and other transports MUST NOT be probed.
+Before the readiness probe, the source recheck and the first playbook of a dry-run or deploy on a host whose management address is inside `100.64.0.0/10` or `fd7a:115c:a1e0::/48` (IPv4-mapped forms included), the controller MUST measure the route with ten `tailscale ping` probes that do not stop at the first direct reply. The CI Tailnet handoff run and other transports MUST NOT be probed.
 
 #### Scenario: Relayed route within bounds is admitted
 
 - **WHEN** a deploy targets a Tailnet transport and all ten probes reply through a relay with a median of 180 ms
 - **THEN** the controller reports a relayed route with a 180 ms median and continues to the playbook
 
-#### Scenario: Dry-run, CI handoff and public transport are not gated
+#### Scenario: CI handoff and public transport are not gated
 
-- **WHEN** the run is a dry-run, the CI Tailnet handoff run, or the transport is a public address or a host name
+- **WHEN** the run is the CI Tailnet handoff run, or the transport is a public address or a host name
 - **THEN** the controller runs no route probe
 
 ### Requirement: REQ-OPS-CHANNEL-REFUSAL — Categorical route refusal

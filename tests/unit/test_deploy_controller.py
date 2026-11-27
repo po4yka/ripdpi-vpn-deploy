@@ -352,10 +352,10 @@ with pathlib.Path({str(workspace['calls'])!r}).open('a') as stream:
     assert result.returncode == 0, result.stderr
     observed = calls(workspace)
     assert [entry["program"] for entry in observed] == [
-        "sops", "sshd-promotion-proof.py", "validate-secrets.py", "spot-check-secrets.py", "check-certs.sh", "ssh",
-        "ssh", "tailscale", "ansible-playbook", "ansible-playbook", "audit-log.sh"]
-    assert_bootstrap_readiness(observed[5], "100.64.0.1")
-    assert_recovery_preflight(observed[6], "100.64.0.1")
+        "sops", "sshd-promotion-proof.py", "validate-secrets.py", "spot-check-secrets.py", "check-certs.sh",
+        "tailscale", "tailscale", "ssh", "ssh", "ansible-playbook", "ansible-playbook", "audit-log.sh"]
+    assert_bootstrap_readiness(observed[7], "100.64.0.1")
+    assert_recovery_preflight(observed[8], "100.64.0.1")
     consumers = [entry for entry in observed if "secret" in entry]
     snapshot = Path(consumers[0]["secret"])
     assert snapshot != source
@@ -1532,32 +1532,39 @@ def test_multigoal_make_keeps_source_identity_outside_controller_targets(workspa
     assert len([entry for entry in observed if entry["program"] == "audit-log.sh"]) == 1
 
 
+WARM_UP = ["ping", "--until-direct=false", "--c", "1", "--timeout", "30s", "100.64.0.1"]
+MEASURE = ["ping", "--until-direct=false", "--c", "10", "--timeout", "5s", "100.64.0.1"]
+
+
+@pytest.mark.parametrize("target", ["deploy", "dry-run"])
 @pytest.mark.parametrize(("lines", "rtt", "path", "category"), [
     (10, 180, "DERP(fixture)", None),
     (10, 20, "198.51.100.9:41641", None),
     (9, 180, "DERP(fixture)", "management-route-lossy"),
     (10, 650, "DERP(fixture)", "management-route-slow"),
-    (0, 0, "DERP(fixture)", "management-route-unmeasured"),
-], ids=["relayed", "direct", "lossy", "slow", "unmeasured"])
-def test_deploy_measures_tailnet_route_before_mutation(workspace, lines, rtt, path, category):
+    (0, 0, "DERP(fixture)", "management-route-unreachable"),
+], ids=["relayed", "direct", "lossy", "slow", "unreachable"])
+def test_both_modes_warm_and_measure_tailnet_route_before_ssh(workspace, target, lines, rtt, path, category):
     binary = Path(workspace["env"]["PATH"].split(os.pathsep)[0])
     stub = binary / "tailscale"
     stub.write_text(stub.read_text().replace(ROUTE_REPLY.format(lines=10, path="DERP(fixture)", rtt=180),
                                              ROUTE_REPLY.format(lines=lines, path=path, rtt=rtt)))
-    result = invoke(workspace, target="deploy", limit="node-one")
+    result = invoke(workspace, target=target, limit="node-one")
     observed = calls(workspace)
+    programs = [entry["program"] for entry in observed]
     probes = [entry["args"] for entry in observed if entry["program"] == "tailscale"]
-    assert probes == [["ping", "--until-direct=false", "--c", "10", "--timeout", "5s", "100.64.0.1"]]
+    assert probes == ([WARM_UP] if category == "management-route-unreachable" else [WARM_UP, MEASURE])
     playbooks = [entry for entry in observed if entry["program"] == "ansible-playbook"]
     if category is None:
         assert result.returncode == 0, result.stderr
         kind = "relayed" if path.startswith("DERP(") else "direct"
         assert f"deploy: management route {kind}, median {rtt} ms" in result.stderr
         assert "100.64.0.1" not in result.stderr and "fixture-peer-host" not in result.stderr
-        assert len(playbooks) == 2
+        assert programs.index("tailscale") < programs.index("ssh"), "the route is warm before readiness"
+        assert len(playbooks) == {"deploy": 2, "dry-run": 1}[target]
     else:
         assert result.returncode != 0 and "deploy: " + category in result.stderr
-        assert playbooks == []
+        assert playbooks == [] and "ssh" not in programs
 
 
 def pong(via, latency):
@@ -1573,7 +1580,7 @@ def pong(via, latency):
     ("100.64.0.9", 0, [pong("peer-relay(198.51.100.7:7777:vni:1)", "40ms")] * 10, "relayed, median 40 ms"),
     ("100.64.0.9", 1, [pong("DERP(x)", "180ms")] * 10, "management-route-unmeasured"),
     ("fd7a:115c:a1e0::9", 0, [pong("DERP(x)", "180ms")] * 3, "management-route-lossy"),
-    ("::ffff:100.64.0.9", 0, [], "management-route-unmeasured"),
+    ("::ffff:100.64.0.9", 0, [], "management-route-unreachable"),
     ("100.64.0.9", None, [], "management-route-unmeasured"),
     ("198.51.100.9", 0, [], None),
     ("node.example.invalid", 0, [], None),
@@ -1610,16 +1617,25 @@ def test_route_gate_parses_cli_replies(monkeypatch, capsys, transport, status, l
     assert probes == [], "CI uses its own tailscaled socket and is not an operator channel"
 
 
-@pytest.mark.parametrize("target", ["dry-run", "deploy-public"])
-def test_route_gate_skips_dry_run_and_public_transport(workspace, target):
-    values = {}
-    if target == "deploy-public":
-        values["ANSIBLE_EXTRA_VARS_FILE"] = str(write(workspace["root"].parent / "overrides.yaml",
-                                                      "ansible_host: 198.51.100.8\n"))
+def test_warm_route_that_measures_no_reply_is_unmeasured(monkeypatch):
+    spec = importlib.util.spec_from_file_location("deploy_controller_warm", ROOT / "scripts/deploy-controller.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, str(ROOT / "scripts"))
+    spec.loader.exec_module(module)
+    replies = iter([(0, pong("DERP(x)", "180ms").encode()), (1, b"")])
+    monkeypatch.setattr(module, "run_command", lambda command, **_options: next(replies))
+    monkeypatch.delenv("DEPLOY_CI_TAILNET_HANDOFF", raising=False)
+    with pytest.raises(module.DeployError, match="^management-route-unmeasured$"):
+        module.require_management_route("100.64.0.9", {})
+
+
+@pytest.mark.parametrize("target", ["dry-run", "deploy"])
+def test_route_gate_skips_public_transport(workspace, target):
+    values = {"ANSIBLE_EXTRA_VARS_FILE": str(write(workspace["root"].parent / "overrides.yaml",
+                                                   "ansible_host: 198.51.100.8\n"))}
     context = {"user": "deploy", "host": "node-one", "addr": "198.51.100.44", "laddr": "192.0.2.1", "lport": 2222}
-    pairs = {"node-one": [context, {**context, "laddr": "198.51.100.8"}]} if values else None
-    result = invoke(workspace, target="dry-run" if target == "dry-run" else "deploy", limit="node-one",
-                    context_pairs=pairs, **values)
+    pairs = {"node-one": [context, {**context, "laddr": "198.51.100.8"}]}
+    result = invoke(workspace, target=target, limit="node-one", context_pairs=pairs, **values)
     assert result.returncode == 0, result.stderr
     assert not any(entry["program"] == "tailscale" for entry in calls(workspace))
 
@@ -1661,8 +1677,8 @@ pathlib.Path({str(record)!r}).write_text(json.dumps({{'config': config, 'transpo
     assert config["identityagent"] == "none"
     # Ansible shares one run-owned master; readiness keeps a fresh connection.
     assert config["controlmaster"] == "auto" and config["controlpersist"] == "300"
-    # The shared master survives a short relay stall and retries only its initial connection.
-    assert config["serveraliveinterval"] == "15" and config["serveralivecountmax"] == "8"
+    # The shared master survives 300 s of relay silence and retries only its initial connection.
+    assert config["serveraliveinterval"] == "15" and config["serveralivecountmax"] == "20"
     assert config["connectionattempts"] == "3"
     assert transport["ansible_ssh_timeout"] == 90 and "ansible_ssh_retries" not in transport
     sockets = Path(config["controlpath"]).parent

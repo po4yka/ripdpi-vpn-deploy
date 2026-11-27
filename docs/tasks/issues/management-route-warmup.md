@@ -2,7 +2,7 @@
 id: SCR-1795774108061951
 title: Warm the Tailnet management route before readiness and outlast relay home changes
 kind: feature
-status: backlog
+status: doing
 area: scripts
 priority: high
 risk: standard

@@ -26,5 +26,5 @@ artifact_evidence: No release artifact changes.
 |---|---|---|---|
 | REQ-OPS-CHANNEL-SESSION | SCR-1795082805831806 | test_frozen_transport_is_portable_and_retains_original_host_key_identity (real ssh -G), test_installer_real_ansible_preserves_local_delegation | Passed locally |
 | REQ-OPS-CHANNEL-PROMPT | SCR-1795082805831806 | test_frozen_transport_is_portable_and_retains_original_host_key_identity | Passed locally |
-| REQ-OPS-CHANNEL-GATE | SCR-1795082820949890 | test_deploy_measures_tailnet_route_before_mutation, test_route_gate_skips_dry_run_and_public_transport, test_route_gate_parses_cli_replies | Passed locally |
-| REQ-OPS-CHANNEL-REFUSAL | SCR-1795082820949890 | test_deploy_measures_tailnet_route_before_mutation, test_route_gate_parses_cli_replies | Passed locally |
+| REQ-OPS-CHANNEL-GATE | SCR-1795082820949890 | test_both_modes_warm_and_measure_tailnet_route_before_ssh, test_route_gate_skips_public_transport, test_route_gate_parses_cli_replies (renamed and extended by SCR-1795774108061951) | Passed locally |
+| REQ-OPS-CHANNEL-REFUSAL | SCR-1795082820949890 | test_both_modes_warm_and_measure_tailnet_route_before_ssh, test_route_gate_parses_cli_replies | Passed locally |
