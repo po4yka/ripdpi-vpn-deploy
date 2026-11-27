@@ -211,6 +211,9 @@ cleanup_secrets() {
   rmdir "$SECRETS_DIR" 2>/dev/null || true
 }
 trap cleanup_secrets EXIT
+# An untrapped signal skips the EXIT trap; fleet rotation stops this script with SIGTERM.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 sops --decrypt "$SOPS_FILE" > "$SECRETS_FILE"
 
 BLUE_ALIAS="$(PROVIDER="$PROVIDER" ENV="$BLUE_ENV" "$REPO_ROOT/scripts/terraform-env.sh" output -raw server_hostname)"

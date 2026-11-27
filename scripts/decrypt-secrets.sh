@@ -36,6 +36,8 @@ fi
 [[ ! -L "$OUT" && ( ! -e "$OUT" || -f "$OUT" ) ]] || { echo "secrets output must be a regular file" >&2; exit 1; }
 tmp="$(mktemp "${OUT_DIR}/.vpn-${ENV}.secrets.XXXXXX")"
 trap 'rm -f "$tmp"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 sops --decrypt "$SOPS_FILE" > "$tmp"
 chmod 0600 "$tmp"
 mv -f "$tmp" "$OUT"
