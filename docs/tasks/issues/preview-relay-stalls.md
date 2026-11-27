@@ -2,7 +2,7 @@
 id: OPS-1795702284251279
 title: Keep full-graph previews alive through relayed Tailnet stalls
 kind: research
-status: review
+status: done
 area: operations
 priority: high
 risk: standard
@@ -16,6 +16,9 @@ updated: 2026-11-27
 spec_reason: research-only
 related_tasks: []
 status_detail: "Cause named from evidence: operator NAT with destination-dependent mapping plus node input policy keep every peer on DERP; node-b journal ties the 2026-11-26 stalls to operator home-region changes; controller change is SCR-1795774108061951"
+closed_at: "2026-11-27T11:33:40Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "docs/research/management-route-stalls-2026-11.md: no direct path because the operator NAT maps each destination to its own port and node input accepts Tailscale UDP only for established flows; node-b tailscaled journal ties the 2026-11-26 stalls (96 to 117 s) to operator home-region changes, and the 2026-11-27 readiness timeout to a cold relay region; decisions and follow-up task SCR-1795774108061951 (spec_mode required)."
 ---
 
 ## Goal
