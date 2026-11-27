@@ -130,3 +130,41 @@ def test_every_release_job_has_a_timeout():
     workflow = yaml.safe_load((ROOT / ".github/workflows/release-vpnd.yml").read_text())
     missing = [name for name, job in workflow["jobs"].items() if not isinstance(job.get("timeout-minutes"), int)]
     assert missing == []
+
+
+def _release_step(name):
+    workflow = yaml.safe_load((ROOT / ".github/workflows/release-vpnd.yml").read_text())
+    return next(step for step in workflow["jobs"]["release"]["steps"] if step.get("name") == name)
+
+
+@pytest.mark.parametrize("wheel_bytes,accepted", [(["same"] * 4, True), (["same"] * 3 + ["other"], False)])
+def test_release_publishes_packages_only_when_every_runner_built_the_same_bytes(tmp_path, wheel_bytes, accepted):
+    for target, wheel in zip(("x86_64-linux", "aarch64-linux", "x86_64-darwin", "aarch64-darwin"), wheel_bytes):
+        runner = tmp_path / "runners" / f"vpnd-{target}"
+        runner.mkdir(parents=True)
+        (runner / f"vpnd-{target}.tar.gz").write_text(target)
+        (runner / "vpnd-1.2.3-py3-none-any.whl").write_text(wheel)
+        (runner / "vpnd-1.2.3.tar.gz").write_text("sdist")
+    step = _release_step("Require identical Python packages from every runner")
+    result = subprocess.run(["bash", "-c", step["run"]], cwd=tmp_path, capture_output=True, text=True, timeout=20)
+    assert (result.returncode == 0) is accepted, result.stdout + result.stderr
+    published = sorted(path.name for path in (tmp_path / "dist").glob("*")) if accepted else []
+    assert published == ([
+        "vpnd-1.2.3-py3-none-any.whl", "vpnd-1.2.3.tar.gz", "vpnd-aarch64-darwin.tar.gz",
+        "vpnd-aarch64-linux.tar.gz", "vpnd-x86_64-darwin.tar.gz", "vpnd-x86_64-linux.tar.gz",
+    ] if accepted else [])
+
+
+def test_every_published_release_asset_carries_build_provenance():
+    workflow = yaml.safe_load((ROOT / ".github/workflows/release-vpnd.yml").read_text())
+    build = next(step for step in workflow["jobs"]["build"]["steps"] if step.get("name") == "Attest build provenance")
+    assert build["with"]["subject-path"].split() == ["dist/vpnd-*.tar.gz", "dist/vpnd-*.whl"]
+    steps = workflow["jobs"]["release"]["steps"]
+    names = [step.get("name") for step in steps]
+    attest = steps[names.index("Attest SBOM and checksum provenance")]
+    assert attest["with"]["subject-path"].split() == ["dist/sbom.json", "dist/SHA256SUMS"]
+    assert names.index("Generate SHA256SUMS") < names.index("Attest SBOM and checksum provenance") < names.index("Publish GitHub release")
+    assert {"id-token": "write", "attestations": "write"}.items() <= workflow["jobs"]["release"]["permissions"].items()
+    # merge-multiple would let one runner's package silently replace another's.
+    download = next(step for step in steps if step.get("uses", "").startswith("actions/download-artifact@"))
+    assert "merge-multiple" not in download["with"]

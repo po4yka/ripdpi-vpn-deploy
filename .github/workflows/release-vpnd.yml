@@ -67,7 +67,9 @@ jobs:
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
         with:
-          subject-path: dist/vpnd-*.tar.gz
+          subject-path: |
+            dist/vpnd-*.tar.gz
+            dist/vpnd-*.whl
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
           name: vpnd-${{ matrix.target }}
@@ -84,6 +86,8 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     env:
       RELEASE_TAG: ${{ needs.validate-tag.outputs.release-tag }}
     steps:
@@ -93,13 +97,33 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
         with:
           pattern: vpnd-*
-          path: dist
-          merge-multiple: true
+          path: runners
+      # Every runner builds the same wheel and sdist; publish them only when all four agree.
+      - name: Require identical Python packages from every runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          for package in 'vpnd-*-py3-none-any.whl' 'vpnd-[0-9]*.tar.gz'; do
+            mapfile -t copies < <(compgen -G "runners/vpnd-*/$package")
+            test "${#copies[@]}" -eq 4
+            test "$(sha256sum "${copies[@]}" | awk '{print $1}' | sort -u | wc -l)" -eq 1 \
+              || { echo "::error::runners built different $package bytes"; exit 1; }
+          done
+          mkdir dist
+          for runner in runners/vpnd-*/; do
+            cp -p "$runner"vpnd-* dist/
+          done
       - name: Emit SBOM
         uses: ./.github/actions/vpnd-sbom
       - name: Generate SHA256SUMS
         working-directory: dist
         run: sha256sum vpnd-* sbom.json | tee SHA256SUMS
+      - name: Attest SBOM and checksum provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
+        with:
+          subject-path: |
+            dist/sbom.json
+            dist/SHA256SUMS
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
