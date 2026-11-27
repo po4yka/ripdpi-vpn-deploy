@@ -232,6 +232,17 @@ def test_kit_refuses_invalid_current_authority(modules, kit, tmp_path, change):
     with pytest.raises((common.Refusal, KeyError)): kits.check(kit)
 
 
+@pytest.mark.parametrize('kind', [b'OPENSSH ', b'RSA ', b'EC ', b''])
+def test_kit_refuses_any_plaintext_private_key(modules, kit, kind):
+    common, _, kits, _ = modules
+    source = Path(json.loads(Path(kit['catalog']).read_bytes())['current'])
+    # Split so the secret scanner does not read the fixture as a key.
+    data = b'-----BEGIN ' + kind + b'PRIVATE KEY-----\nfixture\n'
+    source.write_bytes(data)
+    kit['entries'][0]['sha256'] = digest(data)
+    with pytest.raises(common.Refusal, match='plaintext-working-key-in-kit'): kits.check(kit)
+
+
 def test_cli_refusal_never_prints_secret_or_starts_unapproved_command(tmp_path):
     result = subprocess.run([sys.executable, str(ROOT / 'scripts/operator-maintenance.py'), 'operator-diagnostics'],
                             env={**os.environ, 'OPERATOR_MAINTENANCE_PLAN': '/private-secret-marker'}, capture_output=True)
