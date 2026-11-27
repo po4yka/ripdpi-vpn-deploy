@@ -310,7 +310,9 @@ def test_pipeline_matches_makefile_order_before_unconditional_cleanup(tmp_path):
         "smoke-test",
     ]
     assert len(rendered) == len(expected)
-    assert all(f"make {name} " in value for value, name in zip(rendered, expected))
+    # The Makefile refuses any command-line variable for check-prereqs.
+    assert rendered[0].endswith("&& make check-prereqs)")
+    assert all(f"make {name} " in value for value, name in zip(rendered[1:], expected[1:]))
 
 
 # Rust test: vpnd/src/commands/deploy.rs::skip_precheck_and_tag_on_success_flow_into_their_targets

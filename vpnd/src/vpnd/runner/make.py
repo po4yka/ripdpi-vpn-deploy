@@ -38,20 +38,29 @@ def validate_kv(key, value):
         )
 
 
-def target(ctx, name):
-    secrets = str(ctx.secrets_file)
-    for key, value in (("ENV", ctx.env), ("PROVIDER", ctx.provider), ("SECRETS_FILE", secrets)):
-        validate_kv(key, value)
+def goal(ctx, name):
+    """A Make goal without command-line variables, for goals that refuse them."""
     return (
         Cmd.new("make")
         # Each invocation is an independent operator transaction. Inherited
         # recursion flags add directory banners to structured stdout; other
         # Make controls can inject files, flags or parent command variables.
         .env_remove("MAKELEVEL", "MAKEFLAGS", "MAKEFILES", "MFLAGS", "GNUMAKEFLAGS")
-        .args([name, f"ENV={ctx.env}", f"PROVIDER={ctx.provider}", f"SECRETS_FILE={secrets}"])
+        .args([name])
+        .cwd(ctx.root)
+        .describe(f"make {name}")
+    )
+
+
+def target(ctx, name):
+    secrets = str(ctx.secrets_file)
+    for key, value in (("ENV", ctx.env), ("PROVIDER", ctx.provider), ("SECRETS_FILE", secrets)):
+        validate_kv(key, value)
+    return (
+        goal(ctx, name)
+        .args([f"ENV={ctx.env}", f"PROVIDER={ctx.provider}", f"SECRETS_FILE={secrets}"])
         .sensitive(secrets)
         .sensitive(str(ctx.sops_file))
-        .cwd(ctx.root)
         .describe(f"make {name} ENV={ctx.env} PROVIDER={ctx.provider}")
     )
 
