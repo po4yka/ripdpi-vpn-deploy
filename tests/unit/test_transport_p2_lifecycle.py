@@ -292,7 +292,14 @@ def test_probe_complete_nginx_candidate_contains_tls_vhost_and_exact_link():
         "name": "nginx-xhttp",
         "tasks_from": "transaction",
     }
-    files = enabled["vars"]["nginx_transaction_files"]
+    # The file list, which holds the TLS key, is staged by a no_log fact and passed by reference.
+    assert enabled["vars"]["nginx_transaction_files"] == "{{ _probe_matrix_nginx_files }}"
+    staged = next(
+        task
+        for task in tasks("probe-matrix-target")
+        if task["name"] == "Stage probe TLS and control listener files for the nginx candidate"
+    )
+    files = staged["ansible.builtin.set_fact"]["_probe_matrix_nginx_files"]
     assert {row["path"] for row in files} == {
         "/etc/probe-matrix/tls.crt",
         "/etc/probe-matrix/tls.key",
