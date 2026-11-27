@@ -30,11 +30,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - uses: ./.github/actions/apt-update
       - name: Install hash-pinned Python tooling + jq
         run: |
           set -euo pipefail
           python3 -m pip install --require-hashes --no-deps -r requirements.txt
-          sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends jq
 
       - name: Run baseline

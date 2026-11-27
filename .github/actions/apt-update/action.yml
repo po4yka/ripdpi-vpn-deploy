@@ -1,0 +1,20 @@
+---
+name: Refresh apt package lists
+description: Refresh the runner's apt lists from the Ubuntu archive only
+runs:
+  using: composite
+  steps:
+    - name: Refresh apt package lists from the Ubuntu archive
+      shell: bash
+      run: |
+        set -euo pipefail
+        # The runner image also lists third-party sources; packages.microsoft.com has
+        # answered 403 and failed apt-get update. No job installs from them, so read
+        # only the signed Ubuntu archive and keep every update error fatal (as the
+        # cloud-init job already does).
+        test -s /etc/apt/sources.list.d/ubuntu.sources
+        sudo apt-get \
+          -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources \
+          -o Dir::Etc::sourceparts=- \
+          -o APT::Update::Error-Mode=any \
+          update

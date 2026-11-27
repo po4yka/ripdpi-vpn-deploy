@@ -377,9 +377,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/apt-update
       - name: Run shellcheck on every shell script
         run: |
-          sudo apt-get update
           sudo apt-get install -y shellcheck
           shellcheck -s bash -S warning scripts/*.sh terraform/exception/cascade-ingress/*.sh
 
@@ -392,9 +392,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-ci-python
+      - uses: ./.github/actions/apt-update
       - name: Install nginx validator
         run: |
-          sudo apt-get update
           sudo apt-get install -y nginx-light
       - name: Install pinned Xray semantic validator
         uses: ./.github/actions/install-xray
@@ -445,9 +445,9 @@ jobs:
           tofu_version: "1.13.10"
           tofu_wrapper: false
           checksums: c1f0d6b34d8328f963d3b1ad10896fae30a6c6890596190ffef477dab991090f
+      - uses: ./.github/actions/apt-update
       - name: Install test system prerequisites
         run: |
-          sudo apt-get update
           sudo apt-get install -y restic openssh-server wireguard-tools uuid-runtime
           sudo install -d -m 0755 /run/sshd
       - uses: ./.github/actions/install-sops-age
@@ -615,9 +615,9 @@ jobs:
         run: make native-naive-build
       - name: Build exact transport semantic parser fixtures
         run: make native-transport-semantics-build
+      - uses: ./.github/actions/apt-update
       - name: Install native parser and protocol fixtures
         run: |
-          sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 openssh-server e2fsprogs util-linux mount nginx iproute2 openssl wireguard-tools unbound lynis prometheus-node-exporter tcpdump tshark
       - name: Stage trusted native runtime sources and artifacts
@@ -799,9 +799,9 @@ jobs:
         with:
           go-version: "1.27.3"
           cache: false
+      - uses: ./.github/actions/apt-update
       - name: Build exact native source pairs and verified protocol artifacts
         run: |
-          sudo apt-get update
           sudo apt-get install -y --no-install-recommends libmnl-dev
           make native-transport-semantics-build
           TRANSPORT_NATIVE_ISOLATED=1 python3 tests/native/transport_acceptance/prepare_awg.py
@@ -905,9 +905,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-ci-python
+      - uses: ./.github/actions/apt-update
       - name: Install bats and encrypted transaction tools
         run: |
-          sudo apt-get update
           sudo apt-get install -y bats ssss age
           curl -fsSL --retry 4 --retry-delay 10 --retry-max-time 480 --connect-timeout 10 --max-time 120 "https://github.com/getsops/sops/releases/download/v3.13.3/sops-v3.13.3.linux.amd64" -o /tmp/sops
           echo "e5bec3346a873ae91d871550f3e698c1aad962aff462a080e40f25fde17fef6b  /tmp/sops" | sha256sum -c -
