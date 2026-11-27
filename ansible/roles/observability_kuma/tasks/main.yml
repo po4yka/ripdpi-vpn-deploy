@@ -10,16 +10,16 @@
       - observability_kuma.port | int == 9444
       - observability_kuma.version == '2.5.9'
       - observability_kuma.image_repository == 'ghcr.io/po4yka/ripdpi-vpn-deploy/observability-kuma'
-      - observability_kuma.image_digests.x86_64 == 'sha256:55ce41ac46ed6aef8092815f5448f7f75e6b5b84046e37788686ea4ac4d396d5'
-      - observability_kuma.image_digests.aarch64 == 'sha256:507997d64bae974f763c0e94703a8f825fa6499a53aeb97c63a6ad6386c53e46'
+      - observability_kuma.image_digests.x86_64 == 'sha256:224ba1ca6abb1e350633d172a1145a2c2d1fc4ec4e8ca3e9f46a4568b26735fd'
+      - observability_kuma.image_digests.aarch64 == 'sha256:f52c3892f601e0c4eedad10f4964b00d675f9f49b99cc311928ce466ae21ad16'
       - ansible_facts['architecture'] in ['x86_64', 'aarch64']
       - observability_kuma.previous_image_references.keys() | sort == ['aarch64', 'x86_64']
       - >-
         observability_kuma.previous_image_references.x86_64
-        == 'ghcr.io/po4yka/ripdpi-vpn-deploy/observability-kuma@sha256:bfa4bc30bf1f9cf89c73f1fa6a276e02c0bcf5ae88fb8291dca24cf9b80b7235'
+        == 'ghcr.io/po4yka/ripdpi-vpn-deploy/observability-kuma@sha256:55ce41ac46ed6aef8092815f5448f7f75e6b5b84046e37788686ea4ac4d396d5'
       - >-
         observability_kuma.previous_image_references.aarch64
-        == 'ghcr.io/po4yka/ripdpi-vpn-deploy/observability-kuma@sha256:ffd154d2f3a8fa39661f4cce36826dc6aaac783ae9e5ab8850baf6f15b8acf1d'
+        == 'ghcr.io/po4yka/ripdpi-vpn-deploy/observability-kuma@sha256:507997d64bae974f763c0e94703a8f825fa6499a53aeb97c63a6ad6386c53e46'
       - >-
         observability_kuma.previous_image_references.x86_64
         != observability_kuma.image_repository ~ '@' ~ observability_kuma.image_digests.x86_64
