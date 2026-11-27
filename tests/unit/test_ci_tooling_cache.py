@@ -41,6 +41,31 @@ def test_native_package_pins_use_the_immutable_ubuntu_snapshot_with_exact_versio
         assert pin in script
 
 
+def test_runner_apt_installs_refresh_lists_through_the_shared_action():
+    # The runner image's packages.microsoft.com source has answered 403 and failed apt-get update.
+    apt_update = "./.github/actions/apt-update"
+    checked = 0
+    for workflow in sorted((ROOT / ".github/workflows").glob("*.yml")):
+        for name, job in (yaml.safe_load(workflow.read_text()).get("jobs") or {}).items():
+            steps = job.get("steps") or []
+            for index, step in enumerate(steps):
+                script = step.get("run", "")
+                if "docker exec" in script or not re.search(r"\bapt-get\b", script):
+                    continue
+                checked += 1
+                if "Dir::Etc::sourceparts=-" in script:
+                    continue  # the step isolates its own sources, as the cloud-init job does
+                assert "apt-get update" not in script, (workflow.name, name)
+                assert any(s.get("uses") == apt_update for s in steps[:index]), (workflow.name, name)
+    assert checked >= 9
+    action = yaml.safe_load((ROOT / ".github/actions/apt-update/action.yml").read_text())
+    script = action["runs"]["steps"][0]["run"]
+    for option in ("Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources",
+                   "Dir::Etc::sourceparts=-", "APT::Update::Error-Mode=any"):
+        assert option in script
+    assert "allow-insecure" not in script.lower() and "trusted=yes" not in script
+
+
 def test_all_ci_python_consumers_share_the_pinned_cached_install():
     jobs = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
     disposable_steps = yaml.safe_load(
