@@ -3,7 +3,7 @@
 [![ci](https://github.com/po4yka/ripdpi-vpn-deploy/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/po4yka/ripdpi-vpn-deploy/actions/workflows/ci.yml)
 [![codeql](https://github.com/po4yka/ripdpi-vpn-deploy/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/po4yka/ripdpi-vpn-deploy/actions/workflows/codeql.yml)
 [![scorecard](https://api.securityscorecards.dev/projects/github.com/po4yka/ripdpi-vpn-deploy/badge)](https://securityscorecards.dev/viewer/?uri=github.com/po4yka/ripdpi-vpn-deploy)
-[![vpnd release](https://img.shields.io/github/v/release/po4yka/ripdpi-vpn-deploy?filter=vpnd-v*&label=vpnd)](https://github.com/po4yka/ripdpi-vpn-deploy/releases)
+[![release](https://img.shields.io/github/v/release/po4yka/ripdpi-vpn-deploy)](https://github.com/po4yka/ripdpi-vpn-deploy/releases)
 [![license](https://img.shields.io/github/license/po4yka/ripdpi-vpn-deploy)](LICENSE)
 
 Reproducible infrastructure for a small VPN service on a filtered network path. The path does deep packet inspection: it inspects SNI, fingerprints TLS-in-TLS, probes servers actively and throttles UDP. Four transport tiers answer these behaviours, and each tier has a different wire shape. The [threat model](docs/explanation/threat-model.md) maps each observed behaviour to its design answer.
