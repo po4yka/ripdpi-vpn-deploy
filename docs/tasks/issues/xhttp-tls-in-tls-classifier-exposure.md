@@ -2,7 +2,7 @@
 id: SEC-1795706124070316
 title: Assess TLS-in-TLS classifier exposure of the XHTTP transport
 kind: research
-status: backlog
+status: review
 area: security
 priority: low
 risk: standard
@@ -12,9 +12,10 @@ blocked_by: []
 spec_mode: not-required
 openspec_change: null
 created: 2026-11-26
-updated: 2026-11-26
+updated: 2026-11-27
 spec_reason: research-only
-related_tasks: [po4yka/RIPDPI#TRN-1795705033979683]
+related_tasks: ["po4yka/RIPDPI#TRN-1795705033979683"]
+status_detail: Assessment in docs/research/xhttp-tls-in-tls-exposure-2026-11.md; go suggestion for VLESS Encryption with Vision on P1, filing left to the owner
 ---
 
 ## Goal

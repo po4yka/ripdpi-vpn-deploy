@@ -11,7 +11,7 @@ The target path is a filtered network with an in-path policy enforcement point t
 | Behaviour | What it looks like | Design answer |
 |---|---|---|
 | SNI inspection and allowlisting | TLS to an unknown name is reset or stalled; traffic to large allowlisted names passes | P0 borrows a real allowlisted TLS identity with REALITY; the owned self-steal variant serves a genuine site on loopback |
-| TLS-in-TLS and protocol fingerprinting | Tunnels inside TLS are classified by packet-length and timing shape | XTLS-Vision padding and Mux policy on P0; browser-shaped XHTTP behind a real nginx on P1 |
+| TLS-in-TLS and protocol fingerprinting | Tunnels inside TLS are classified by packet-length and timing shape | XTLS-Vision padding and Mux policy on P0; browser-shaped XHTTP behind a real nginx on P1, which does not pad the inner handshake ([assessment](../research/xhttp-tls-in-tls-exposure-2026-11.md)) |
 | Active probing | After a suspicious flow, the enforcement point connects to the server itself and checks what it serves | REALITY answers probes as the borrowed site; nginx serves a decoy site; honeypot and probing summaries record attempts |
 | UDP throttling and QUIC degradation | UDP/443 is rate-limited or dropped after a volume threshold | P2 Hysteria2 with optional port hopping; Salamander obfuscation is opt-in and off by default (`hysteria.salamander_enabled`); AmneziaWG cohorts with tuned junk packets and header shapes |
 | Payload-size throttling | Flows stall once a single response body crosses a size near 16 KiB | A probe measures the threshold per path; P1 and P2 give the client alternatives |
