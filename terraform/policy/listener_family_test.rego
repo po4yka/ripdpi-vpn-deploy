@@ -91,6 +91,16 @@ test_vultr_allows_v4_rule_for_ipv4_listener {
   count(deny) == 0 with input as vultr({"protocol": "tcp", "port": "443", "ip_type": "v4", "subnet": "0.0.0.0", "subnet_size": 0})
 }
 
+# Out-of-range and reversed selectors mean every port; they used to also match a
+# shape branch, so evaluation stopped with a conflict instead of denying.
+test_vultr_out_of_range_selector_is_denied_as_every_port {
+  count(deny) == 1 with input as vultr({"protocol": "tcp", "port": "70000", "ip_type": "v6", "subnet": "::", "subnet_size": 0})
+}
+
+test_vultr_reversed_range_selector_is_denied_as_every_port {
+  count(deny) == 1 with input as vultr({"protocol": "tcp", "port": "500:100", "ip_type": "v6", "subnet": "::", "subnet_size": 0})
+}
+
 test_dual_or_absent_family_closes_nothing {
   count(deny) == 0 with input as vultr({"protocol": "tcp", "port": "80", "ip_type": "v6", "subnet": "::", "subnet_size": 0})
 }

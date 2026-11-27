@@ -26,13 +26,17 @@ listener_bounds(listener) := [to_number(bounds[0]), to_number(bounds[1])] {
   bounds := split(listener.port_range, "-")
 }
 
-# An omitted or malformed provider selector means every port.
+# An omitted or malformed provider selector means every port. The branches must
+# exclude each other: an out-of-range or reversed selector that also matched a
+# shape branch made the function conflict and stopped the whole evaluation.
 selector_bounds(selector) := [to_number(text), to_number(text)] {
+  firewall.valid_selector(selector)
   text := sprintf("%v", [selector])
   regex.match("^[1-9][0-9]*$", text)
 }
 
 selector_bounds(selector) := [to_number(bounds[0]), to_number(bounds[1])] {
+  firewall.valid_selector(selector)
   text := replace(sprintf("%v", [selector]), ":", "-")
   regex.match("^[1-9][0-9]*-[1-9][0-9]*$", text)
   bounds := split(text, "-")

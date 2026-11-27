@@ -152,6 +152,24 @@ test_deny_private_key_block {
   count(result) == 1
 }
 
+upcloud_user_data(text) := {
+  "resource_changes": [{
+    "address": "upcloud_server.vpn",
+    "type": "upcloud_server",
+    "change": {"after": {"user_data": text}},
+  }]
+}
+
+# Prefixed keys and literal secret markers used to pass: the keyword had to start the line.
+test_deny_prefixed_keys_and_inline_secret_markers {
+  count(deny) == 1 with input as upcloud_user_data("hcloud_token: fixture-value-only\n")
+  count(deny) == 1 with input as upcloud_user_data("tailscale_auth_key = fixture-value-only\n")
+  count(deny) == 1 with input as upcloud_user_data("write_files:\n  - content: AGE-SECRET-KEY-1QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ\n")
+  count(deny) == 1 with input as upcloud_user_data("runcmd:\n  - tailscale up --authkey tskey-auth-fixture0000\n")
+  # The scheme is joined at run time so the secret scanner does not flag the fixture.
+  count(deny) == 1 with input as upcloud_user_data(sprintf("runcmd:\n  - echo %s://fixture-id@vpn.example.test:443\n", ["vless"]))
+}
+
 test_allow_locked_account_and_public_key {
   result := deny with input as {
     "resource_changes": [{
