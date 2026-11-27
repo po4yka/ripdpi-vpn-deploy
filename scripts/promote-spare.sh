@@ -61,8 +61,8 @@ fi
 
 if [[ -f "$context_file" ]]; then
   [[ -n "${LIVENESS_CONFIG:-}" && -f "$LIVENESS_CONFIG" ]] || {
-    echo "pending OTP is protocol-bound but LIVENESS_CONFIG is unavailable" >&2
-    rm -f "$otp_file" "$context_file"
+    # An input error, like the other missing inputs: keep the OTP for a retry with the config.
+    echo "pending OTP is protocol-bound; rerun with LIVENESS_CONFIG=<the watcher's liveness config>" >&2
     exit 1
   }
   protocol_liveness="${PROTOCOL_LIVENESS:-${REPO_ROOT}/scripts/protocol-liveness.py}"

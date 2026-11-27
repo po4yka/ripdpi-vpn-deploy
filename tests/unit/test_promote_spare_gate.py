@@ -90,10 +90,14 @@ def test_wrong_otp_refuses_and_stays_pending(tmp_path: Path) -> None:
     assert (state / "pending-otp").exists()
 
 
-@pytest.mark.parametrize("missing", ["ANSIBLE_SSH_PRIVATE_KEY_FILE", "GREEN_SOPS_FILE", "DEVICE_MIGRATION_PLAN"])
+@pytest.mark.parametrize("missing", ["ANSIBLE_SSH_PRIVATE_KEY_FILE", "GREEN_SOPS_FILE", "DEVICE_MIGRATION_PLAN",
+                                     "LIVENESS_CONFIG"])
 def test_missing_promotion_input_refuses_and_keeps_the_otp(tmp_path: Path, missing: str) -> None:
     state, stubs = _setup(tmp_path)
     _issue_otp(state, "123456")
+    context = state / "pending-otp-context.json"
+    if missing == "LIVENESS_CONFIG":
+        context.write_text('{"otp_ttl_seconds": 3600}')
 
     result = _run(stubs, state, "123456", env_extra={missing: ""})
 
@@ -101,6 +105,7 @@ def test_missing_promotion_input_refuses_and_keeps_the_otp(tmp_path: Path, missi
     assert missing in result.stderr
     assert "blue-green ran" not in result.stdout
     assert (state / "pending-otp").exists()
+    assert context.exists() is (missing == "LIVENESS_CONFIG")
 
 
 def test_matching_otp_is_consumed_once_and_swing_runs(tmp_path: Path) -> None:
