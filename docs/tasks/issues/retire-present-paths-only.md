@@ -2,7 +2,7 @@
 id: ANS-1795702245344721
 title: Retire absent owned paths and units without one remote call per path
 kind: chore
-status: review
+status: done
 area: ansible
 priority: medium
 risk: standard
@@ -16,6 +16,9 @@ updated: 2026-11-27
 spec_reason: mechanical-refactor
 related_tasks: []
 status_detail: "Merged in 9e415429c; timed node-a preview at 9e415429c: the changed retirement tasks made 9 remote calls instead of 49, no unreachable or failed host"
+closed_at: "2026-11-27T09:14:25Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Merged in 9e415429c (PR 757). Timed check-mode preview of node-a at 9e415429c passed in 1217.1 s with no unreachable or failed host; the changed retirement tasks made 9 remote calls instead of the 49 of the e16a6a59e preview. Recorded in docs/research/preview-cost-2026-11.md.
 ---
 
 ## Goal
