@@ -90,14 +90,10 @@
     _probe_matrix_nginx_candidate: "{{ lookup('ansible.builtin.template', role_path ~ '/templates/nginx.conf.j2') }}"
   no_log: true
 
-- name: Publish probe TLS and control listener as one complete nginx candidate
-  ansible.builtin.include_role:
-    name: nginx-xhttp
-    tasks_from: transaction
-  vars:
-    nginx_transaction_owner: probe-matrix-target
-    nginx_transaction_roots: [/etc/nginx, /etc/probe-matrix]
-    nginx_transaction_files:
+# The key stays out of include_role vars, which verbose and failure output can print.
+- name: Stage probe TLS and control listener files for the nginx candidate
+  ansible.builtin.set_fact:
+    _probe_matrix_nginx_files:
       - path: /etc/probe-matrix/tls.crt
         kind: file
         content_b64: "{{ probe_matrix_target_secrets.cert_pem | b64encode }}"
@@ -122,6 +118,17 @@
         mode: "0777"
         uid: 0
         gid: 0
+  no_log: true
+  diff: false
+
+- name: Publish probe TLS and control listener as one complete nginx candidate
+  ansible.builtin.include_role:
+    name: nginx-xhttp
+    tasks_from: transaction
+  vars:
+    nginx_transaction_owner: probe-matrix-target
+    nginx_transaction_roots: [/etc/nginx, /etc/probe-matrix]
+    nginx_transaction_files: "{{ _probe_matrix_nginx_files }}"
     nginx_transaction_validate_argv: [/usr/sbin/nginx, -t]
     nginx_transaction_unit: nginx.service
     nginx_transaction_activation: reload

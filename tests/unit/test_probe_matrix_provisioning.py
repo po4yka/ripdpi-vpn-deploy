@@ -27,6 +27,17 @@ def test_research_roles_are_tiered_and_wired_behind_explicit_toggles() -> None:
     assert "split-hop-ingress" in names
 
 
+def test_every_task_that_reads_the_probe_tls_key_hides_its_output() -> None:
+    # include_role vars carry no no_log, so the key must be staged by a no_log set_fact.
+    # An assert reports its expression text, never the value, so it keeps its readable failure.
+    readers = []
+    for path in sorted((ROOT / "ansible/roles/probe-matrix-target/tasks").glob("*.yml")):
+        for task in yaml.safe_load(path.read_text()) or []:
+            if "key_pem" in yaml.safe_dump(task) and "ansible.builtin.assert" not in task:
+                readers.append((path.name, task["name"], task.get("no_log"), task.get("diff")))
+    assert readers and all(no_log is True and diff is False for *_, no_log, diff in readers), readers
+
+
 def test_listener_manifest_exposes_five_target_ports_and_ingress_wireguard() -> None:
     manifest = (ROOT / "ansible/templates/listener-manifest.json.j2").read_text()
     for name in ("mtproto", "xhttp_vless", "xhttp_trojan", "tcp_trojan", "tls_non_443"):
