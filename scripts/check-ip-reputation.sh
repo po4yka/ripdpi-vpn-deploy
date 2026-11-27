@@ -39,7 +39,8 @@ if [[ -z "${IP:-}" ]]; then
   exit 2
 fi
 # The lookups below reverse a dotted IPv4 address and pass it to Python as data.
-if [[ ! "$IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+if [[ ! "$IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] \
+   || ! python3 -c 'import ipaddress, sys; ipaddress.IPv4Address(sys.argv[1])' "$IP" 2>/dev/null; then
   echo "IP must be a dotted IPv4 address" >&2
   exit 2
 fi
