@@ -88,6 +88,23 @@ def test_unknown_provider_returns_error(tmp_path):
         Context.discover(cli(root, "bogus"))
 
 
+@pytest.mark.parametrize("option,value", [
+    ("--provider", ".."),  # terraform/providers/.. exists, so a directory check alone admits it
+    ("--provider", "-x"),
+    ("--env", ".."),
+    ("--env", "../escape"),
+    ("--env", "-flag"),
+])
+def test_provider_and_environment_must_be_plain_names(tmp_path, option, value):
+    root = scaffold(tmp_path)
+    arguments = {"--provider": "upcloud", "--env": "prod", option: value}
+    # The `=` form reaches discovery even for a leading dash, which argparse would take as a flag.
+    parsed = parse_args(["--root", str(root), f"--provider={arguments['--provider']}",
+                         f"--env={arguments['--env']}", "completions", "bash"])
+    with pytest.raises(ValueError, match="invalid"):
+        Context.discover(parsed)
+
+
 # Rust test: vpnd/tests/config_discover.rs::missing_root_dir_returns_error
 def test_missing_root_dir_returns_error():
     with pytest.raises(ValueError) as error:
