@@ -2,7 +2,7 @@
 id: OPS-1795702284251279
 title: Keep full-graph previews alive through relayed Tailnet stalls
 kind: research
-status: backlog
+status: review
 area: operations
 priority: high
 risk: standard
@@ -12,9 +12,10 @@ blocked_by: []
 spec_mode: not-required
 openspec_change: null
 created: 2026-11-26
-updated: 2026-11-26
+updated: 2026-11-27
 spec_reason: research-only
 related_tasks: []
+status_detail: "Cause named from evidence: operator NAT with destination-dependent mapping plus node input policy keep every peer on DERP; node-b journal ties the 2026-11-26 stalls to operator home-region changes; controller change is SCR-1795774108061951"
 ---
 
 ## Goal

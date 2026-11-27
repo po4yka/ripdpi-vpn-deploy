@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-27
+goal: SCR-1795774108061951 Warm the Tailnet management route before readiness
+  and outlast relay home changes
