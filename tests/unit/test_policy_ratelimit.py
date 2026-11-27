@@ -156,13 +156,31 @@ def test_ssh_allowlist_sources_are_never_banned(cidrs):
 # ---------------------------------------------------------------------------
 
 
-def test_source_ip_is_extracted_not_private_destination(daemon):
-    # block-by-private-destination rule: source is public, dest is RFC1918.
-    line = (
-        "from tcp:203.0.113.55:52050 accepted tcp:192.168.1.1:80 "
-        "[vless-reality -> block] email: bob"
-    )
-    assert daemon["IP_RE"].search(line).group(1) == "203.0.113.55"
+@pytest.mark.parametrize(
+    ("line", "source"),
+    [
+        # block-by-private-destination rule: source is public, dest is RFC1918.
+        (
+            (
+                "from tcp:203.0.113.55:52050 accepted tcp:192.168.1.1:80 "
+                "[vless-reality -> block] email: bob"
+            ),
+            "203.0.113.55",
+        ),
+        # Xray brackets an IPv6 source; the public IPv4 destination must never be banned.
+        (
+            (
+                "from tcp:[2001:db8::1]:51999 accepted udp:142.250.1.1:443 "
+                "[vless-reality -> block] email: carol"
+            ),
+            "2001:db8::1",
+        ),
+    ],
+)
+def test_source_ip_is_banned_not_destination(daemon, line, source):
+    limiter = daemon["RateLimiter"](5, 60, 300)
+    banned = [limiter.observe(line, NOW) for _ in range(5)]
+    assert banned == [None, None, None, None, source]
 
 
 # ---------------------------------------------------------------------------
@@ -237,7 +255,7 @@ def test_dead_contract_flips_when_lines_but_no_events(daemon):
 def test_dead_contract_clears_once_an_event_is_seen(daemon):
     limiter = daemon["RateLimiter"](5, 60, 300)
     benign = "... accepted tcp:1.2.3.4:443 [vless-reality -> direct] email: x"
-    block = "... accepted udp:1.2.3.4:443 [vless-reality -> block] email: x"
+    block = "from tcp:198.51.100.7:40000 accepted udp:1.2.3.4:443 [vless-reality -> block] email: x"
     for _ in range(10):
         limiter.observe(benign, NOW)
     limiter.observe(block, NOW)

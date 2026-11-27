@@ -71,7 +71,11 @@ DEAD_CONTRACT_MIN_LINES = 5000
 
 MAX_SOURCES = 4096
 
-IP_RE = re.compile(r"(?:\bfrom\s+)?(?:tcp|udp):([0-9A-Fa-f:.]+):\d+")
+# Source only: "from tcp:[2001:db8::1]:p" (IPv6 bracketed) or "from tcp:198.51.100.1:p".
+# An optional "from" let a bracketed IPv6 source fall through to the destination.
+IP_RE = re.compile(
+    r"\bfrom\s+(?:(?:tcp|udp):)?(?:\[([0-9A-Fa-f:.]+)\]|([0-9]+(?:\.[0-9]+){3})):\d+"
+)
 # A connection routed to the blackhole outbound: "[<inbound> <sep> block]".
 # Separator is one of " -> ", " >> ", " ==> " (app/dispatcher/default.go),
 # so match the bracketed detour ending in the `block` tag, separator-agnostic.
@@ -156,7 +160,7 @@ class RateLimiter:
         m = IP_RE.search(line)
         if not m:
             return None
-        ip = m.group(1)
+        ip = m.group(1) or m.group(2)
         try:
             ipaddress.ip_address(ip)
         except ValueError:
