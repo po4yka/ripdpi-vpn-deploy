@@ -471,8 +471,9 @@ groups:
         labels: {severity: "warning", component: field-report, node: field-reports}
         annotations:
           value: "{{ $labels.protocol }} in {{ $labels.network }} {{ $labels.country }} {{ $value | humanizePercentage }} failed"
-          stage_mix: '{{ range query (printf "sort_desc(sum by (failure_stage) (increase(vpn_field_report_failures_total{environment=%q,protocol=%q,network=%q,node=~%q}[1h])))" $labels.environment $labels.protocol $labels.network "") }}{{ .Labels.failure_stage }}={{ .Value | printf "%.0f" }} {{ end }}'
-          rotation_hint: "Network {{ $labels.network }} blocks {{ $labels.protocol }} while the sentinel sees it healthy, by unauthenticated client reports. Consider a fresh endpoint for this network in the next fleet-rotate plan. This alert never starts a rotation."
+          # The relay refuses an empty or over-160-character annotation: keep the top three stages and a "none" fallback.
+          stage_mix: '{{ with query (printf "sort_desc(sum by (failure_stage) (increase(vpn_field_report_failures_total{environment=%q,protocol=%q,network=%q,node=~%q}[1h])))" $labels.environment $labels.protocol $labels.network "") }}{{ range $i, $s := . }}{{ if lt $i 3 }}{{ $s.Labels.failure_stage }}={{ $s.Value | printf "%.0f" }} {{ end }}{{ end }}{{ else }}none{{ end }}'
+          rotation_hint: "Client reports show this network blocking the protocol while the sentinel sees it healthy. Consider a fresh endpoint for it in the next fleet-rotate plan."
           incident_family: field-report-network-block
           evidence_class: sentinel-client-divergence
           source_generation: ""
