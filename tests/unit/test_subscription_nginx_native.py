@@ -208,9 +208,11 @@ def test_rate_limit_counts_an_ipv6_network_and_a_whole_ipv4_address():
         assert status("198.51.100.10") == 404
 
 
-def test_share_bundle_files_are_served_only_from_their_own_token_directory():
+# routes_enabled=False renders an empty upload list: bundles retained on disk must still be served.
+@pytest.mark.parametrize("routes_enabled", [True, False])
+def test_share_bundle_files_are_served_only_from_their_own_token_directory(routes_enabled):
     token = "SyntheticShareBoundary00000001"
-    with nginx_server(routes_enabled=True, rate="1000r/s", burst=50) as (origin, base):
+    with nginx_server(routes_enabled=routes_enabled, rate="1000r/s", burst=50) as (origin, base):
         bundle = base / "share" / token
         bundle.mkdir(parents=True)
         (bundle / "index.html").write_text("recipient-page")

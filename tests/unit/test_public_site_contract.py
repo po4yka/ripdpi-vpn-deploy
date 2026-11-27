@@ -112,6 +112,17 @@ def test_hysteria_string_values_roundtrip_through_yaml(value: str) -> None:
     assert parsed["masquerade"]["proxy"]["url"] == "https://owned.example.test/" + value
 
 
+def test_share_route_survives_a_deploy_with_an_empty_upload_list() -> None:
+    # share_bundles selects uploads only; retained bundles stay on disk and must stay reachable.
+    variables = renderer.merge_render_vars()
+    variables["vpn"]["share_bundles"] = []
+    rendered = renderer.render_template(
+        REPO_ROOT / "ansible/roles/subscription-host/templates/subscription.conf.j2", variables
+    )
+    assert "map $vpn_share_file $vpn_share_target {" in rendered
+    assert 'location ~ "^/share/(?<vpn_share_token>[A-Za-z0-9_-]{16,64})/' in rendered
+
+
 def test_subscription_routes_inherit_the_complete_no_store_header_baseline() -> None:
     variables = renderer.merge_render_vars()
     variables["subscription"]["enable_bootstrap"] = True

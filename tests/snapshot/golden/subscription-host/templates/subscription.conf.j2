@@ -1,6 +1,13 @@
 # Subscription delivery host. Listens on a non-default port to keep the
 # transport endpoint and the delivery endpoint topologically separated.
 
+# The bare bundle URL serves its page. A map, not `if`: try_files is not
+# inherited into the implicit location that a matching `if` creates.
+map $vpn_share_file $vpn_share_target {
+    ""      index.html;
+    default $vpn_share_file;
+}
+
 server {
     listen 8444 ssl http2;
     listen [::]:8444 ssl http2;
@@ -94,6 +101,25 @@ server {
     }
 
 
+    # Static recipient pages produced by `vpnd share <client>`.
+    # Served from the local filesystem; no proxy, no rate-limit (static HTML).
+    # Always rendered: bundles stay on disk across deploys whose upload list is
+    # empty, and a missing token answers like any unmatched path.
+    # Raw token MUST NOT appear in logs — categorical logging applies here
+    # as it does on /sub/. The vpnd audit trail is maintained
+    # out-of-band; nginx never sees the plaintext token in a logged field.
+    # `alias` with a variable in a regex location appends the whole request
+    # URI, so every page answered 404. Bundles are flat: one file name, no
+    # slash, which also keeps a request inside its own token directory.
+    location ~ "^/share/(?<vpn_share_token>[A-Za-z0-9_-]{16,64})/(?<vpn_share_file>[A-Za-z0-9._-]*)$" {
+        root /var/www/subscription-host/share/$vpn_share_token;
+        try_files /$vpn_share_target =404;
+
+        # Error records include request/upstream URIs; bearer locations use
+        # only URI-free categorical diagnostics, including failure outcomes.
+        error_log /dev/null crit;
+        access_log /var/log/nginx/vpn-sub.categorical.log vpn_sub_category;
+    }
 
     location @vpn_sub_not_found {
         return 404;
