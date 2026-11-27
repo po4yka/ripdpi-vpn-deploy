@@ -105,7 +105,9 @@ jobs:
           set -euo pipefail
           for package in 'vpnd-*-py3-none-any.whl' 'vpnd-[0-9]*.tar.gz'; do
             mapfile -t copies < <(compgen -G "runners/vpnd-*/$package")
-            test "${#copies[@]}" -eq 4
+            # 4 is the build matrix size; change both together.
+            test "${#copies[@]}" -eq 4 \
+              || { echo "::error::expected 4 copies of $package, found ${#copies[@]}"; exit 1; }
             test "$(sha256sum "${copies[@]}" | awk '{print $1}' | sort -u | wc -l)" -eq 1 \
               || { echo "::error::runners built different $package bytes"; exit 1; }
           done

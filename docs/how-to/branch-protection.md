@@ -27,7 +27,7 @@ The CI aggregate requires every selected job to pass. It rejects missing jobs, f
 
 The PR title and every commit subject in the PR must use Conventional Commit syntax, for example `ci: improve repository policy`, without `Co-authored-by` trailers. `pr-title.yml` rechecks the title on PR edits and the commit range on every push. It is a separate workflow so that a title or description edit does not cancel and restart the complete CI plan for an unchanged head commit. Dependabot uses the `chore` prefix. Rebase merging lands each PR commit on `main` unchanged, so each one is a release-please input; GitHub removes merged head branches. Auto-merge remains available when requirements pass.
 
-The aggregate enforces the existing behavior of its child checks. It does not strengthen their contracts: `reproducible-build` checks only the runtimes it pins (hysteria, rclone and RealiTLScanner) and leaves Xray to its pinned archive digest. Costly PR jobs follow the complete dependency plan; unknown paths and shared configuration select full CI. See [CI dependency selection](../reference/testing.md#ci-dependency-selection).
+The aggregate enforces the existing behavior of its child checks. It adds nothing to their contracts: `reproducible-build` checks only the runtimes it pins (hysteria, rclone and RealiTLScanner) and leaves Xray to its pinned archive digest. Costly PR jobs follow the complete dependency plan; unknown paths and shared configuration select full CI. See [CI dependency selection](../reference/testing.md#ci-dependency-selection).
 
 ## Actions runner and publish controls
 
