@@ -7,6 +7,7 @@ import subprocess
 import uuid
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -17,11 +18,14 @@ import hashlib
 TASKS = ROOT / 'ansible/roles/subscription-host/tasks'
 
 
-def run_share_tasks(tmp_path, name, variables):
+def run_share_tasks(tmp_path, name, variables, *, expected=0):
     """Run one production task file through ansible-playbook against a temporary public root."""
     tasks = yaml.safe_load((TASKS / name).read_text())
     selected = []
     for task in tasks:
+        if 'ansible.builtin.assert' in task:
+            selected.append(task)
+            continue
         action = next((task[key] for key in ('ansible.builtin.file', 'ansible.builtin.copy', 'ansible.builtin.find')
                        if key in task), None)
         if action is None or 'revoked_file' in json.dumps(action):
@@ -41,7 +45,7 @@ def run_share_tasks(tmp_path, name, variables):
     playbook.write_text(json.dumps(play))
     env = {**os.environ, 'ANSIBLE_CONFIG': str(ROOT / 'ansible/ansible.cfg'), 'ANSIBLE_DEBUG': 'false', 'ANSIBLE_DISPLAY_ARGS_TO_STDOUT': 'true', 'ANSIBLE_NOCOLOR': 'true'}
     result = subprocess.run(['ansible-playbook', '-i', 'localhost,', '-vvv', '--diff', str(playbook)], env=env, cwd=tmp_path, capture_output=True, text=True, timeout=120)
-    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.returncode == expected, result.stdout + result.stderr
     return result.stdout + result.stderr
 
 
@@ -59,6 +63,14 @@ def test_real_verbose_ansible_share_upload_censors_bearer(tmp_path):
                              {'vpn': {'share_bundles': [declared]}, 'subscription': {'revoked_tokens': []}})
     assert token not in output
     assert (tmp_path / 'public/share' / token / 'index.html').read_text() == f'<a href="/sub/{token}">synthetic</a>'
+
+
+@pytest.mark.parametrize("token", ["short", "A" * 20 + "\n"])
+def test_share_validation_precedes_publication_and_censors_token(tmp_path, token):
+    output = run_share_tasks(tmp_path, 'share-bundles.yml',
+                             {'vpn': {'share_bundles': [bundle_for(tmp_path, token)]}}, expected=2)
+    assert "censored" in output
+    assert not (tmp_path / 'public').exists()
 
 
 def test_a_declared_but_revoked_token_gets_no_bundle(tmp_path):

@@ -31,9 +31,8 @@ def urlencode(value):
 
 def build_sub_urls(base, segment):
     url = f"{base}/sub/{segment}"
-    return SubUrls(
-        url, "sing-box://import-remote-profile?url=" + urlencode(url), url, url
-    )
+    singbox = "sing-box://import-remote-profile?url=" + urlencode(url)
+    return SubUrls(url, singbox, singbox, url)
 
 
 def validate_token(token):
@@ -112,10 +111,13 @@ async def subscription_port(ctx, secrets):
 
 
 async def run(ctx, args):
+    make.validate_kv("CLIENT", args.client)
+    out = Path(args.out) if args.out else ctx.root / "share" / args.client
+    if not args.out and out.resolve() != out:
+        raise ValueError("the default share output must stay inside its own directory")
     if not ctx.secrets_file.is_file():
         await make.target(ctx, "decrypt").run(ctx.explain)
-        if not ctx.explain:
-            ctx.secure_secrets_file()
+    ctx.secure_secrets_file()
     if ctx.explain:
         print("→ would emit: sing-box bundle, recipient page, QR (if --qr)", file=sys.stderr)
         return 0
@@ -134,7 +136,6 @@ async def run(ctx, args):
     base = f"https://{sub_host}" + (f":{port}" if port != 443 else "")
     urls = build_sub_urls(base, token)
     singbox = await make.target_with(ctx, "emit-singbox", [("CLIENT", args.client)]).capture(False)
-    out = Path(args.out) if args.out else ctx.root / "share" / args.client
     deep = "ripdpi://import?sub=" + urlencode(urls.subscription_url)
     page = recipient.render(
         recipient.RecipientCtx(

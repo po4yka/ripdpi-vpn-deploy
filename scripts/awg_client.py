@@ -120,7 +120,10 @@ def export(document, context, name, host, instance, endpoint):
     endpoint = ('[' + endpoint + ']' if ':' in endpoint else endpoint) + ':' + str(server['listen_port'])
     params = {name: server[name] for name in PARAMS}
     params.update({f"i{index}": server[f"i{index}"] for index in range(1, 6) if f"i{index}" in server})
-    block = {'tag': 'p2-awg-' + name, 'address': [peer['allowed_ips'][family] for family in ('ipv4', 'ipv6')],
+    tag = f'p2-awg-{binding.provider}-{binding.environment}'
+    if len(tag) > 64:
+        tag = tag[:47] + '-' + hashlib.sha256(tag.encode()).hexdigest()[:16]
+    block = {'tag': tag, 'address': [peer['allowed_ips'][family] for family in ('ipv4', 'ipv6')],
              'dns': server['dns_servers'], 'mtu': server['mtu'], **params,
              'private_key_placeholder': True, 'peer': {'public_key': public_key(server['server_private_key']),
              'preshared_key': peer['preshared_key'], 'endpoint': endpoint,

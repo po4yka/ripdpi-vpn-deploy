@@ -54,7 +54,8 @@ def render_routing_lists(enabled: bool) -> str:
 
 def test_routing_token_stays_out_of_every_tls_access_log():
     rendered = render_routing_lists(True)
-    assert re.search(r"map \$request_uri \$vpn_public_loggable \{\s+~\^/routing/ 0;\s+default 1;", rendered)
+    assert "map $request_uri $vpn_public_loggable {" in rendered
+    assert "~^/routing/ 0;" in rendered
     # The route regex has braces of its own, so read the body from its alias onward.
     body = rendered.split("alias /var/lib/vpn-routing-lists/", 1)[1].split("}", 1)[0]
     assert all(directive in body for directive in SILENT)
@@ -63,12 +64,22 @@ def test_routing_token_stays_out_of_every_tls_access_log():
     assert logs == [" if=$vpn_public_loggable"] * 2
 
 
-def test_disabled_routing_lists_leave_the_vhost_unchanged():
+def test_disabled_routing_lists_keep_request_uri_protection():
     rendered = render_routing_lists(False)
-    assert "/routing/" not in rendered and "vpn_public_loggable" not in rendered
+    assert "alias /var/lib/vpn-routing-lists/" not in rendered
+    assert rendered.count("if=$vpn_public_loggable;") == 2
+    assert '"$request_method - $server_protocol" $status' in rendered
+    assert '"$request" ' not in rendered
+    https = [block for block in blocks(rendered, r"^server \{") if "if=$vpn_public_loggable;" in block]
+    assert len(https) == 2
+    for block in https:
+        body = block.split("location = /404.html {", 1)[1].split("}", 1)[0]
+        assert "internal;" in body and "access_log " not in body
 
 
 def test_snell_evaluation_location_never_logs_its_token_path():
-    locations = blocks(render_every_bearer_surface(), r"^\s*location ~ \^/synthetic_token_0123456789/")
+    rendered = render_every_bearer_surface()
+    locations = blocks(rendered, r"^\s*location ~ \^/synthetic_token_0123456789/")
     assert len(locations) == 1
     assert all(directive in locations[0] for directive in SILENT), locations[0]
+    assert r"~^/synthetic_token_0123456789(?:/|\?|$) 0;" in rendered

@@ -569,7 +569,7 @@ async def run(ctx, args):
                     ("PROTOCOL", "protocol"),
                     ("CONTROL_VERDICT", "verdict"),
                 ],
-            ).explain()
+            ).redacted_explain()
         )
         return 0
     started = int(time.time() * 1000)

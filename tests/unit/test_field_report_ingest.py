@@ -645,13 +645,18 @@ def test_network_hint_route_is_absent_without_a_dataset(ingest):
     (DATASET_ROWS + b"233.252.0.0\n", True),
     (b"2001:db8::\t2001:db8::ffff\t64501\tZY\tno IPv4\n", True),
     (None, True),
-], ids=["pin-mismatch", "overlap", "asn-text", "reversed", "short-line", "no-ipv4", "truncated-gzip"])
+    (b"", True),
+], ids=["pin-mismatch", "overlap", "asn-text", "reversed", "short-line", "no-ipv4", "truncated-gzip", "invalid-deflate"])
 def test_a_damaged_or_unpinned_dataset_turns_off_only_the_hint(ingest, tmp_path, rows, pin_matches):
     hint = _dataset(tmp_path, rows or DATASET_ROWS)
-    if rows is None:
-        # A truncated gzip stream whose pin matches its bytes.
+    if not rows:
         import hashlib
-        data = Path(hint["database"]).read_bytes()[:-12]
+        data = bytearray(Path(hint["database"]).read_bytes())
+        if rows is None:
+            del data[-12:]
+        else:
+            # DEFLATE block type 3 is invalid. The gzip header is still intact.
+            data[10] |= 0b110
         Path(hint["database"]).write_bytes(data)
         hint["database_sha256"] = hashlib.sha256(data).hexdigest()
     if not pin_matches:

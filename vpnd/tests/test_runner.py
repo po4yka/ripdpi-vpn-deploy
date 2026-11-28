@@ -878,7 +878,8 @@ def test_repeated_cancellation_joins_worker_before_caller_cleanup(monkeypatch, w
         ("PLAN", "relative.yaml", "'relative.yaml'", "absolute path [A-Za-z0-9._/-] without .. components"),
         ("MATRIX_CONFIG", "/a/../b", "'/a/../b'", "absolute path [A-Za-z0-9._/-] without .. components"),
         ("SECRETS_FILE", "/run/has space.yaml", "(redacted)", "runtime path without make, shell metacharacters, or whitespace"),
-        ("CLIENT", "a b", "'a b'", "identifier [A-Za-z0-9._-]"),
+        ("CLIENT", "a b", "'a b'", "device identifier [A-Za-z0-9_-]{1,64}"),
+        ("CLIENT", "..", "'..'", "device identifier [A-Za-z0-9_-]{1,64}"),
     ],
 )
 def test_validate_kv_refusal_message_is_exact(key, value, shown, rule):

@@ -27,3 +27,13 @@ def test_plaintext_left_in_the_runtime_directory_is_a_finding(tmp_path):
     assert result.returncode == 1
     assert f"FAIL stray plaintext: {left}" in result.stdout
     assert f"FAIL stray plaintext: {candidate}" in result.stdout
+
+
+def test_fallback_runtime_is_audited_even_with_xdg_runtime_set(tmp_path):
+    fallback = tmp_path / "tmp" / f"vpn-provision-{os.getuid()}"
+    fallback.mkdir(parents=True)
+    left = fallback / "vpn-prod.secrets.yaml"
+    left.touch()
+    result = _audit(tmp_path)
+    assert result.returncode == 1
+    assert f"FAIL stray plaintext: {left}" in result.stdout

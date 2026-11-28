@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import bisect
 import gzip
+import zlib
 import hashlib
 import hmac
 import importlib.util
@@ -499,9 +500,9 @@ def main(argv: list[str] | None = None) -> int:
         if hint:
             fleet = frozenset(map(fleet_address, hint["fleet_addresses"]))
             asn_table = AsnTable(hint["database"], hint["database_sha256"])
-    except (OSError, EOFError, ValueError) as error:
+    except (OSError, EOFError, ValueError, zlib.error) as error:
         # Report intake does not depend on the hint, so it keeps running without the hint route and the
-        # gauge shows the loss. A truncated or corrupt gzip stream raises EOFError or OSError; the
+        # gauge shows the loss. Gzip decoding can raise errors from either gzip or zlib; the
         # message never quotes file content.
         reason = error if isinstance(error, ValueError) else "network hint dataset is unreadable"
         print(f"vpn-field-report: {reason}; the network hint is off", file=sys.stderr)

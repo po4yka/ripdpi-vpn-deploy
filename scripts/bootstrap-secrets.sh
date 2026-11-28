@@ -10,7 +10,7 @@
 # key into shell history.
 #
 # Usage:
-#   scripts/bootstrap-secrets.sh --env prod --clients phone,laptop \
+#   scripts/bootstrap-secrets.sh --env prod \
 #       --target mirror.example.com:443 --server-name mirror.example.com \
 #       --xhttp-host vpn.example.com
 #
@@ -19,7 +19,6 @@
 set -euo pipefail
 
 ENV=prod
-CLIENTS=phone
 TARGET=""
 SERVER_NAME=""
 XHTTP_HOST=""
@@ -36,7 +35,6 @@ usage() {
   cat >&2 <<USAGE
 usage: $0 --target HOST:PORT --server-name HOST [options]
   --env NAME        environment label (default: prod)
-  --clients LIST    comma-separated client names (default: phone)
   --target SNI:PORT REALITY target (host:port)
   --server-name H   REALITY serverName (single hostname; SAN-covered)
   --xhttp-host H    nginx-xhttp server_name (defaults to --server-name)
@@ -44,11 +42,11 @@ usage: $0 --target HOST:PORT --server-name HOST [options]
   --ech-public-name H  optional explicit ECH outer SNI (requires verified Hysteria 2.13.0)
   --force           overwrite existing files
 
-Generates: age key (if missing), REALITY x25519 keypair, per-client
-UUIDs and 8-hex shortIds, restic password, AmneziaWG server key, four
+Generates: age key (if missing), REALITY x25519 keypair,
+restic password, AmneziaWG server key, four
 random H1..H4 singleton strings, and a generated AmneziaWG listen port with
 junk and padding values. Writes plaintext + SOPS-encrypted output to
-~/.config/vpn-provision/.
+~/.config/vpn-provision/. Enroll each device with scripts/new-client.sh.
 USAGE
   exit 1
 }
@@ -56,7 +54,6 @@ USAGE
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --env) ENV="$2"; shift 2 ;;
-    --clients) CLIENTS="$2"; shift 2 ;;
     --target) TARGET="$2"; shift 2 ;;
     --server-name) SERVER_NAME="$2"; shift 2 ;;
     --xhttp-host) XHTTP_HOST="$2"; shift 2 ;;
@@ -73,7 +70,6 @@ done
 command -v python3 >/dev/null 2>&1 || { echo "missing tool: python3" >&2; exit 1; }
 
 XHTTP_ORIGIN="$(BOOTSTRAP_ENV="$ENV" \
-BOOTSTRAP_CLIENTS="$CLIENTS" \
 BOOTSTRAP_TARGET="$TARGET" \
 BOOTSTRAP_SERVER_NAME="$SERVER_NAME" \
 BOOTSTRAP_XHTTP_HOST="$XHTTP_HOST" \
@@ -88,7 +84,6 @@ sys.path.insert(0, sys.argv[1] + "/scripts")
 from transport_semantics import served_origin
 
 environment = os.environ["BOOTSTRAP_ENV"]
-clients_raw = os.environ["BOOTSTRAP_CLIENTS"]
 target = os.environ["BOOTSTRAP_TARGET"]
 server_name = os.environ["BOOTSTRAP_SERVER_NAME"]
 xhttp_host = os.environ["BOOTSTRAP_XHTTP_HOST"]
@@ -114,12 +109,6 @@ def valid_dns_hostname(value: str) -> bool:
 
 if not slug_pattern.fullmatch(environment):
     fail("invalid environment name: use 1-64 letters, digits, underscores, or dashes")
-
-clients = clients_raw.split(",")
-if not clients_raw or any(not slug_pattern.fullmatch(client) for client in clients):
-    fail("invalid client list: every name must use 1-64 letters, digits, underscores, or dashes")
-if len(clients) != len(set(clients)):
-    fail("duplicate client name in --clients")
 
 if not valid_dns_hostname(server_name):
     fail("invalid server name: expected a DNS hostname")
@@ -169,7 +158,7 @@ if [[ "$FORCE" != 1 && -f "$ENCRYPTED" ]]; then
   exit 1
 fi
 
-for tool in sops age age-keygen openssl uuidgen wg sed; do
+for tool in sops age age-keygen openssl wg sed; do
   command -v "$tool" >/dev/null 2>&1 || {
     echo "missing tool: $tool" >&2; exit 1; }
 done
@@ -208,35 +197,6 @@ EGRESS_DIRECT_HYSTERIA="$(openssl rand -hex 32)"
 EGRESS_WARP_XRAY="$(openssl rand -hex 32)"
 EGRESS_DIRECT_GATEWAY="$(openssl rand -hex 32)"
 EGRESS_WARP_GATEWAY="$(openssl rand -hex 32)"
-
-# ---------------------------------------------------------------------------
-# Per-client UUIDs + 8-hex shortIds
-# ---------------------------------------------------------------------------
-declare -a CLIENT_BLOCKS_XRAY
-declare -a CLIENT_BLOCKS_HYS
-declare -a CLIENT_BLOCKS_NAIVE
-IFS=',' read -r -a client_list <<< "$CLIENTS"
-for name in "${client_list[@]}"; do
-  name_yaml="$(printf '%s' "$name" | yaml_scalar)"
-  uuid="$(uuidgen | tr 'A-Z' 'a-z')"
-  sid="$(openssl rand -hex 4)"
-  CLIENT_BLOCKS_XRAY+=("    - name: ${name_yaml}
-      uuid: \"${uuid}\"
-      short_id: \"${sid}\"")
-
-  hys_pw="$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)"
-  CLIENT_BLOCKS_HYS+=("    - name: ${name_yaml}
-      password: \"${hys_pw}\"")
-  naive_pw="$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)"
-  CLIENT_BLOCKS_NAIVE+=("    - name: ${name_yaml}
-      username: ${name_yaml}
-      password: \"${naive_pw}\"")
-
-done
-
-# Do not create AmneziaWG peers here: their private keys must be handed to a
-# device exactly once. Use scripts/new-client.sh after bootstrap; it emits the
-# client private key through the operator-controlled secure handoff path.
 
 # ---------------------------------------------------------------------------
 # AmneziaWG server params + random H1..H4
@@ -308,11 +268,7 @@ xray:
 
   xhttp_path: "/$(openssl rand -hex 16)"
 
-  clients:
-HEAD
-  for block in "${CLIENT_BLOCKS_XRAY[@]}"; do echo "$block"; done
-
-  cat <<NGX
+  clients: []
 
 nginx_xhttp:
   server_name: ${XHTTP_HOST_YAML}
@@ -353,18 +309,11 @@ hysteria:
   masquerade_url: "${XHTTP_ORIGIN}"
   salamander_enabled: false
   salamander_password: ""
-  clients:
-NGX
-  for block in "${CLIENT_BLOCKS_HYS[@]}"; do echo "$block"; done
-
-  cat <<NAIVE
+  clients: []
 
 naive_secrets:
   server_name: ${XHTTP_HOST_YAML}
-  clients:
-NAIVE
-  for block in "${CLIENT_BLOCKS_NAIVE[@]}"; do echo "$block"; done
-  cat <<NAIVE
+  clients: []
   probe_resistance_secret: "$(openssl rand -hex 16)"
   cert_pem: |
     -----BEGIN CERTIFICATE-----
@@ -401,7 +350,7 @@ ${AWG_SHAPE}
       h3: "${H3}"
       h4: "${H4}"
       peers: []
-NAIVE
+HEAD
 
   cat <<TAIL
 
@@ -467,3 +416,4 @@ echo "  * geodata pinned URLs"
 echo "  * verify AmneziaWG version/commit pairs before intentionally changing them"
 echo
 echo "Then run:  make spot-check-secrets   # catches remaining placeholders"
+echo "Enroll each device with scripts/new-client.sh after filling the deployment inputs."

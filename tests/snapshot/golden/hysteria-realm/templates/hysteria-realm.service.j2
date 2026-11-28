@@ -31,7 +31,9 @@ MemoryDenyWriteExecute=yes
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources
-ReadWritePaths=/var/log/hysteria-realm /etc/hysteria-realm
+InaccessiblePaths=-/etc/hysteria/config.yaml
+IPAddressDeny=localhost
+ReadWritePaths=/var/log/hysteria-realm
 
 [Install]
 WantedBy=multi-user.target

@@ -51,21 +51,22 @@
       - sing_box_sha256 | length > 0
     fail_msg: "Add hysteria_realm_secrets.linux_{{ sing_box_arch }}_sha256 to your secrets file."
 
-- name: Ensure system user
-  # With share_hysteria_tls the TLS material stays owned root:hysteria
-  # 0640 in the hysteria role's config dir; grant this service identity
-  # read access via an appended supplementary group rather than
-  # re-owning or widening the shared PEMs.
+- name: Ensure Realm service group
+  ansible.builtin.group:
+    name: hysteria-realm
+    system: true
+
+- name: Ensure Realm identity has no supplementary groups
   ansible.builtin.user:
     name: hysteria-realm
     system: true
     shell: /usr/sbin/nologin
     home: "{{ hysteria_realm.install_root }}"
     create_home: false
-    groups: >-
-      {{ ['hysteria'] if (hysteria_realm.share_hysteria_tls
-         | default((vpn | default({})).enable_hysteria | default(false)) | bool) else omit }}
-    append: "{{ hysteria_realm.share_hysteria_tls | default((vpn | default({})).enable_hysteria | default(false)) | bool }}"
+    group: hysteria-realm
+    groups: ''
+    append: false
+  notify: Restart hysteria-realm
 
 - name: Ensure directories
   ansible.builtin.file:
@@ -125,6 +126,7 @@
     owner: root
     group: hysteria-realm
     mode: "0640"
+    follow: false
   loop:
     - content: "{{ hysteria.cert_pem | default('') }}"
       dest: "{{ hysteria_realm.tls_cert_path }}"
@@ -132,22 +134,29 @@
       dest: "{{ hysteria_realm.tls_key_path }}"
   no_log: true
   diff: false
+  notify: Restart hysteria-realm
   when:
     - not (hysteria_realm.share_hysteria_tls | default((vpn | default({})).enable_hysteria | default(false)) | bool)
     - (hysteria.cert_pem | default('') | length) > 0
 
-- name: Stage shared TLS material from hysteria config dir
-  ansible.builtin.file:
+- name: Copy only the shared TLS files into Realm authority
+  ansible.builtin.copy:
     src: "{{ item.src }}"
     dest: "{{ item.dest }}"
-    state: link
-    force: true
+    remote_src: true
+    follow: false
+    owner: root
+    group: hysteria-realm
+    mode: "0640"
   loop:
     - src: "{{ hysteria_config_dir }}/server.fullchain.pem"
       dest: "{{ hysteria_realm.tls_cert_path }}"
     - src: "{{ hysteria_config_dir }}/server.key"
       dest: "{{ hysteria_realm.tls_key_path }}"
   when: hysteria_realm.share_hysteria_tls | default((vpn | default({})).enable_hysteria | default(false)) | bool
+  no_log: true
+  diff: false
+  notify: Restart hysteria-realm
 
 - name: Render sing-box realm config
   ansible.builtin.template:

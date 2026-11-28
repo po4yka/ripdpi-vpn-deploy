@@ -7,6 +7,7 @@ from . import StopSignals, confirm_async, render_summary, require_review
 
 # The operator reviews the saved plan between these two groups.
 PLAN_TARGETS = ("check-prereqs", "validate", "decrypt", "init", "plan")
+DECRYPT_STEP = PLAN_TARGETS.index("decrypt")
 APPLY_TARGETS = ("apply", "inventory", "wait")
 # The Makefile refuses any command-line variable for these goals.
 BARE_GOALS = {"check-prereqs"}
@@ -60,6 +61,8 @@ async def run(ctx, args):
                     await require_review(ctx, "Review the Terraform plan above. Apply it?", stop)
                     stop.check()
                 await cmd.run(ctx.explain)
+                if index == DECRYPT_STEP:
+                    ctx.secure_secrets_file()
             stop.check()
         except (Exception, asyncio.CancelledError) as outcome:
             error = stop.outcome(outcome)

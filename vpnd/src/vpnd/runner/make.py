@@ -28,9 +28,12 @@ def validate_kv(key, value):
             not c.isspace() and unicodedata.category(c) != "Cc" and c not in "$`\"';|&<>()\\#"
             for c in value
         )
+    elif key == "CLIENT":
+        rule = "device identifier [A-Za-z0-9_-]{1,64}"
+        valid = bool(re.fullmatch(r"[A-Za-z0-9_-]{1,64}", value))
     else:
         rule = "identifier [A-Za-z0-9._-]"
-        valid = bool(re.fullmatch(r"[A-Za-z0-9._-]+", value))
+        valid = value not in {".", ".."} and bool(re.fullmatch(r"[A-Za-z0-9._-]+", value))
     if not valid:
         rendered = "(redacted)" if key == "SECRETS_FILE" else repr(value)
         raise ValueError(

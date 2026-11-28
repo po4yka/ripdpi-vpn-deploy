@@ -1237,10 +1237,10 @@ def test_routing_list_base_url_omits_the_default_https_port(tmp_path: Path, port
 def test_public_access_logs_retain_no_client_address_or_user_agent(fallback: bool) -> None:
     rendered = _render(fallback=fallback)
     log_format = next(line for line in rendered.splitlines() if line.strip().startswith("log_format vpn_public"))
-    assert not any(field in log_format for field in ("$remote_addr", "$http_referer", "$http_user_agent"))
+    assert not any(field in log_format for field in ("$remote_addr", "$http_referer", "$http_user_agent", '"$request"'))
     assert "$status" in log_format
     enabled = [line.split() for line in rendered.splitlines() if line.strip().startswith("access_log") and "off;" not in line]
-    assert enabled and all(line[-1] == "vpn_public;" for line in enabled)
+    assert enabled and all(line[-2:] == ["vpn_public", "if=$vpn_public_loggable;"] for line in enabled)
 
 
 def test_every_public_nginx_server_block_hides_the_version() -> None:

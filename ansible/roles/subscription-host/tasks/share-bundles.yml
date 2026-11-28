@@ -8,6 +8,16 @@
 # A revoked token gets no bundle: revoked-hashes.yml removes it and the upload
 # below skips it.
 
+- name: Require exact share token segments before publishing
+  ansible.builtin.assert:
+    that:
+      - item.token is string
+      - item.token is match('^[A-Za-z0-9_-]{16,64}\Z')
+    quiet: true
+  loop: "{{ vpn.share_bundles | default([]) }}"
+  no_log: true
+  diff: false
+
 - name: Protect dedicated share ancestry
   ansible.builtin.file:
     path: /var/www/subscription-host

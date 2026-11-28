@@ -1,6 +1,12 @@
 variable "server_name" {
   type        = string
   description = "Hostname / Terraform name of the VPS."
+  nullable    = false
+
+  validation {
+    condition     = length(var.server_name) <= 253 && can(regex("^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$", var.server_name))
+    error_message = "server_name must be a DNS hostname of at most 253 characters."
+  }
 }
 
 variable "zone" {
@@ -54,6 +60,12 @@ variable "admin_user" {
   type        = string
   default     = "deploy"
   description = "Non-root user created by cloud-init for SSH and Ansible access."
+  nullable    = false
+
+  validation {
+    condition     = var.admin_user != "root" && can(regex("^[a-z_][a-z0-9_-]{0,31}$", var.admin_user))
+    error_message = "admin_user must be a non-root login name of at most 32 characters."
+  }
 }
 
 variable "admin_ssh_public_keys" {

@@ -9,6 +9,7 @@ import hashlib
 import pytest
 
 from awg_device_binding import BindingError, allocate_address, public_key, resolve_binding
+from awg_client import export
 
 
 def key(number):
@@ -50,6 +51,20 @@ def test_binding_uses_only_the_selected_effective_instance(index):
 def test_missing_peer_cannot_become_a_successful_partial_profile():
     with pytest.raises(BindingError, match="missing-device-binding"):
         resolve_binding(document(), {}, "absent", "upcloud:fixture", "awg0")
+
+
+def test_bounded_awg_tag_identifies_the_host_without_device_names():
+    source = document()
+    endpoint = "192.0.2.1"
+    assert export(source, {}, "device0", "upcloud:fixture", "awg0", endpoint)["tag"] == "p2-awg-upcloud-fixture"
+    assert export(source, {}, "device1", "upcloud:fixture", "awg1", endpoint)["tag"] == "p2-awg-upcloud-fixture"
+    client, environment = "device" + "x" * 58, "e" * 64
+    entry = source["client_registry"].pop("device0")
+    entry["awg_binding"]["environment"] = environment
+    source["client_registry"][client] = entry
+    source["amneziawg_secrets"]["instances"][0]["peers"][0]["name"] = client
+    tag = export(source, {}, client, f"upcloud:{environment}", "awg0", endpoint)["tag"]
+    assert len(tag) == 64 and tag.startswith("p2-awg-upcloud-") and client not in tag
 
 
 def test_duplicate_device_names_refuse_every_instance_selection():

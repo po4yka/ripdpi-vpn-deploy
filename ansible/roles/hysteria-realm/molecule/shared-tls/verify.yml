@@ -1,30 +1,27 @@
 ---
-# Verify the shared-TLS path: symlinks point at the hysteria role's
-# PEMs, those PEMs keep their production ownership/modes, and the
-# hysteria-realm service identity can actually read them through the
-# appended supplementary group.
+# Verify that Realm can read its copies and that Hysteria retains its files.
 
 - name: Verify hysteria-realm shared-TLS access
   hosts: all
   become: true
   tasks:
-    - name: Config dir TLS entries are symlinks into the hysteria dir
+    - name: Inspect Realm TLS copies
       ansible.builtin.stat:
         path: "{{ item }}"
         follow: false
       loop:
         - /etc/hysteria-realm/server.fullchain.pem
         - /etc/hysteria-realm/server.key
-      register: tls_links
+      register: realm_pems
 
-    - name: Assert both TLS entries are symlinks to the shared source
+    - name: Assert Realm owns read access to regular PEM copies
       ansible.builtin.assert:
         that:
-          - tls_links.results[0].stat.islnk
-          - tls_links.results[0].stat.lnk_target == '/etc/hysteria/server.fullchain.pem'
-          - tls_links.results[1].stat.islnk
-          - tls_links.results[1].stat.lnk_target == '/etc/hysteria/server.key'
-        fail_msg: "Shared-TLS symlink staging is broken"
+          - item.stat.isreg
+          - item.stat.pw_name == "root"
+          - item.stat.gr_name == "hysteria-realm"
+          - item.stat.mode == "0640"
+      loop: "{{ realm_pems.results }}"
 
     - name: Shared PEMs keep production ownership and modes
       ansible.builtin.stat:
@@ -45,18 +42,17 @@
           - shared_pems.results[1].stat.mode == "0640"
         fail_msg: "Shared TLS material ownership/modes drifted from the hysteria contract"
 
-    - name: Service user carries the supplementary hysteria group
+    - name: Inspect Realm service groups
       ansible.builtin.command:
         cmd: id -Gn hysteria-realm
       register: realm_groups
       changed_when: false
 
-    - name: Assert supplementary group present (append-only grant)
+    - name: Assert Realm has no Hysteria group access and uses the expected PEMs
       ansible.builtin.assert:
         that:
-          - "'hysteria' in realm_groups.stdout.split(' ')"
-        success_msg: "hysteria-realm reads shared TLS via the hysteria supplementary group"
-        fail_msg: "hysteria-realm lacks read path to shared TLS material"
+          - realm_groups.stdout.split() == ["hysteria-realm"]
+          - realm_pems.results | map(attribute='stat.checksum') | list == shared_pems.results | map(attribute='stat.checksum') | list
 
     - name: Read both shared PEMs as the service user (real permission probe)
       ansible.builtin.command:
@@ -73,5 +69,3 @@
       ansible.builtin.assert:
         that:
           - realm_read_probe.results | map(attribute='rc') | list == [0, 0]
-        success_msg: "Service user can read shared cert and key through the symlink"
-        fail_msg: "Permission probe failed — realm cannot read its own TLS material"

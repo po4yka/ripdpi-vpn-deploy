@@ -664,10 +664,13 @@ def test_fetch_runs_as_the_mirror_user_and_publication_waits_for_it() -> None:
         ({"source": "/srv/payload/", "ssh_opts": "-p 2222 -A"}, False),
         ({"source": "/srv/payload/", "rsync_opts": "-az $(id)"}, False),
         ({"source": "/srv/payload/", "rsync_opts": "-az --delete\n"}, False),
+        ({"source": "/srv/payload/", "ssh_key_path": "/etc/vpn-subscription/../key"}, False),
+        ({"source": "/srv/payload/", "interval": "5min\n"}, False),
         ({"backend": "restic", "restic_repo": "repository"}, True),
     ],
     ids=["local", "remote-pinned", "remote-unpinned", "remote-blank-pin", "rsync-daemon", "host-key-option",
-         "known-hosts-command", "agent-forwarding", "shell-syntax", "trailing-line-break", "restic"],
+         "known-hosts-command", "agent-forwarding", "shell-syntax", "trailing-line-break",
+         "parent-path", "timer-line-break", "restic"],
 )
 def test_mirror_inputs_need_a_pinned_host_key_and_plain_options(tmp_path, mirror, admitted) -> None:
     # Real Ansible evaluates the role's own task, so its typing of the conditions is what is tested.

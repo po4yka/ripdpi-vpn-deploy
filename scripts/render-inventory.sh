@@ -413,6 +413,11 @@ for i in "${!host_pairs[@]}"; do
   user="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw admin_user)"
   ssh_port="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw ssh_port)"
   hostname="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_hostname)"
+  if ! [[ "$user" =~ ^[a-z_][a-z0-9_-]{0,31}$ && "$user" != root &&
+          "${#hostname}" -le 253 && "$hostname" =~ ^[[:alnum:]]([[:alnum:]-]{0,61}[[:alnum:]])?(\.[[:alnum:]]([[:alnum:]-]{0,61}[[:alnum:]])?)*$ ]]; then
+    echo "invalid Terraform management identity for ${prov}:${env}" >&2
+    exit 1
+  fi
   if [[ -n "${host_sources[$hostname]:-}" ]]; then
     echo "duplicate inventory alias '${hostname}' from ${host_sources[$hostname]} and ${pair}" >&2
     exit 1

@@ -60,11 +60,27 @@ echo
 echo "[3] Stray plaintext"
 shopt -s nullglob
 strays=()
-# The same runtime directory that decrypt-secrets.sh writes to, its hidden
-# candidates, and blue-green's private temporary directories.
-runtime_dir="${VPN_RUNTIME_DIR:-${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}/vpn-provision-$(id -u)}}"
+# Check explicit and default locations together. A later invocation can use a
+# different runtime directory from an interrupted decrypt.
+runtime_suffix="vpn-provision-$(id -u)"
+seen_runtime_dirs=()
+for runtime_dir in "${VPN_RUNTIME_DIR:-}" "${XDG_RUNTIME_DIR:-}" "${RUNTIME_DIR:-}" \
+                   "${TMPDIR:-/tmp}/$runtime_suffix" "/tmp/$runtime_suffix"; do
+  [[ -n "$runtime_dir" ]] || continue
+  duplicate=false
+  for seen in ${seen_runtime_dirs[@]+"${seen_runtime_dirs[@]}"}; do
+    if [[ "$runtime_dir" == "$seen" ]]; then
+      duplicate=true
+      break
+    fi
+  done
+  [[ "$duplicate" == false ]] || continue
+  seen_runtime_dirs+=("$runtime_dir")
+  for p in "$runtime_dir"/vpn-*.secrets.yaml "$runtime_dir"/.vpn-*.secrets.*; do
+    [[ -f "$p" || -L "$p" ]] && strays+=("$p")
+  done
+done
 for p in /tmp/vpn-*.secrets.yaml \
-         "$runtime_dir"/vpn-*.secrets.yaml "$runtime_dir"/.vpn-*.secrets.* \
          "${TMPDIR:-/tmp}"/vpn-blue-green.*/*.yaml /tmp/vpn-blue-green.*/*.yaml \
          "$CONFIG_DIR"/*.secrets.yaml \
          "$REPO_ROOT"/secrets/*.secrets.yaml; do

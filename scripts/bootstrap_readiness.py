@@ -2,6 +2,7 @@
 
 from contextlib import contextmanager
 import os
+import re
 import selectors
 import signal
 import subprocess
@@ -262,8 +263,10 @@ def main():
     ssh = ["ssh", "-F", "/dev/null", "-o", "BatchMode=yes",
            "-o", "IdentitiesOnly=yes", "-o", "IdentityAgent=none",
            "-o", "StrictHostKeyChecking=accept-new",
-           "-o", "ConnectTimeout=10", "-p", port, "-i", key, user + "@" + address]
+           "-o", "ConnectTimeout=10", "-p", port, "-i", key, "--", user + "@" + address]
     try:
+        if user == "root" or not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", user):
+            raise ReadinessError("invalid bootstrap admin user")
         with cancellation():
             print("waiting for SSH and bootstrap…", flush=True)
             wait_for_bootstrap(ssh, first_boot=True)

@@ -1,9 +1,8 @@
-import asyncio
-import time
 import json
 import pytest
 from hypothesis import given, settings, strategies as st
 from artifact_helpers import private
+from test_probe_matrix_lifecycle import Fixture, report
 from vpnd.commands import probe_matrix as matrix
 
 
@@ -235,24 +234,38 @@ def test_unknown_evidence_is_indeterminate_and_suppresses_positive_results():
 
 
 # Rust test: vpnd/src/commands/probe_matrix.rs::concurrent_collection_is_ordered_and_isolates_timeout
-def test_concurrent_collection_is_ordered_and_isolates_timeout():
-    async def collect():
-        async def delayed(delay, value):
-            await asyncio.sleep(delay)
-            return value
-
-        async def timeout():
-            try:
-                return await asyncio.wait_for(delayed(0.2, "unexpected"), 0.02)
-            except TimeoutError:
-                return "timeout"
-
-        start = time.monotonic()
-        result = await asyncio.gather(delayed(0.08, "slow"), timeout(), delayed(0.01, "fast"))
-        assert result == ["slow", "timeout", "fast"]
-        assert time.monotonic() - start < 0.15
-
-    asyncio.run(collect())
+def test_concurrent_collection_is_ordered_and_isolates_timeout(tmp_path):
+    fixture = Fixture(tmp_path, cell="sh cell.sh")
+    path = tmp_path / "matrix.yaml"
+    settings = json.loads(path.read_text())
+    settings["protocols"] = ["mtproto", "xhttp-vless"]
+    settings["control"]["timeout_seconds"] = 2
+    path.write_text(json.dumps(settings))
+    for target in settings["targets"]:
+        profile_path = tmp_path / (target["id"] + ".json")
+        profile = json.loads(profile_path.read_text())
+        profile["protocols"]["xhttp-vless"] = {"port": 443}
+        profile_path.write_text(json.dumps(profile))
+    (tmp_path / "cell.sh").write_text("""case "$PROTOCOL:$TARGET_ID" in
+mtproto:pair-dual)
+  while [ ! -e fast-finished ]; do sleep 0.02; done
+  printf '%s\\n' '{"verdict":"ok","rtt_ms":50}'
+  ;;
+mtproto:pair-split) sleep 15 ;;
+xhttp-vless:*)
+  touch fast-finished
+  printf '%s\\n' '{"verdict":"ok","rtt_ms":1}'
+  ;;
+esac
+""")
+    result = fixture.run()
+    assert result.returncode == 0, result.stderr
+    cells = report(fixture)["cells"]
+    assert [(c["protocol"], c["target_id"], c["verdict"]) for c in cells] == [
+        ("mtproto", "pair-dual", "ok"), ("mtproto", "pair-split", "unknown"),
+        ("xhttp-vless", "pair-dual", "ok"), ("xhttp-vless", "pair-split", "ok"),
+    ]
+    assert cells[1]["error_kind"] == "timeout"
 
 
 def test_profile_schema_rejects_boolean_and_output_rejects_parent(tmp_path):

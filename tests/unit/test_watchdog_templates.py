@@ -307,7 +307,8 @@ def _public_access_line(status: int) -> str:
     layout = re.search(r"^log_format vpn_public '([^']*)';$", rendered, re.M).group(1)
     return (
         layout.replace("$time_local", "31/Oct/2026:10:00:00 +0000")
-        .replace("$request", "GET /wp-login.php HTTP/1.1")
+        .replace("$request_method", "GET")
+        .replace("$server_protocol", "HTTP/1.1")
         .replace("$status", str(status))
         .replace("$body_bytes_sent", "153")
         .replace("$http_referer", "-")
