@@ -71,10 +71,10 @@ DEAD_CONTRACT_MIN_LINES = {{ policy_ratelimit.dead_contract_min_lines | default(
 
 MAX_SOURCES = {{ policy_ratelimit.max_sources | default(4096) }}
 
-# Source only: "from tcp:[2001:db8::1]:p" (IPv6 bracketed) or "from tcp:198.51.100.1:p".
-# An optional "from" let a bracketed IPv6 source fall through to the destination.
-IP_RE = re.compile(
-    r"\bfrom\s+(?:(?:tcp|udp):)?(?:\[([0-9A-Fa-f:.]+)\]|([0-9]+(?:\.[0-9]+){3})):\d+"
+# The source precedes the access status and all destination text.
+SOURCE_RE = re.compile(
+    r"^(?:\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?\s+)?"
+    r"from\s+(?:(?:tcp|udp):)?(?:\[([0-9A-Fa-f:.]+)\]|([0-9]+(?:\.[0-9]+){3})):\d+(?=\s|$)"
 )
 # A connection routed to the blackhole outbound: "[<inbound> <sep> block]".
 # Separator is one of " -> ", " >> ", " ==> " (app/dispatcher/default.go),
@@ -108,14 +108,22 @@ def classify_line(line: str) -> str | None:
 
 # A client sharing the operator's egress IP must not ban public SSH (fail2ban ignoreip parity).
 {% set _allowed_ssh = allowed_ssh_cidrs | default([]) %}
-SSH_ALLOWLIST = tuple(ipaddress.ip_network(cidr, strict=False) for cidr in {{ ([_allowed_ssh] if _allowed_ssh is string else _allowed_ssh) | list | tojson }})
+{% set _tailnet_sources = (tailnet_management | default({})).approved_sources | default([]) %}
+MANAGEMENT_NETWORKS = tuple(ipaddress.ip_network(cidr, strict=False) for cidr in (
+    "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "fd7a:115c:a1e0::/48",
+    *{{ ([_allowed_ssh] if _allowed_ssh is string else _allowed_ssh | list) | tojson }},
+    *{{ _tailnet_sources | list | tojson }},
+))
 
 
 def is_exempt_ip(ip: str) -> bool:
-    """RFC1918 / loopback / null / SSH allowlist — never ban these sources."""
+    """Local and approved management sources are exempt from bans."""
     try:
         parsed = ipaddress.ip_address(ip)
-        return parsed.is_loopback or parsed.is_unspecified or parsed.is_link_local or (parsed.version == 4 and (parsed in ipaddress.ip_network("10.0.0.0/8") or parsed in ipaddress.ip_network("172.16.0.0/12") or parsed in ipaddress.ip_network("192.168.0.0/16"))) or any(parsed in network for network in SSH_ALLOWLIST if network.version == parsed.version)
+        if isinstance(parsed, ipaddress.IPv6Address) and parsed.ipv4_mapped is not None:
+            parsed = parsed.ipv4_mapped
+        return (parsed.is_loopback or parsed.is_unspecified or parsed.is_link_local
+                or any(parsed in network for network in MANAGEMENT_NETWORKS))
     except ValueError:
         return True
 
@@ -158,14 +166,16 @@ class RateLimiter:
         self.lines += 1
         if classify_line(line) is None:
             return None
-        m = IP_RE.search(line)
+        m = SOURCE_RE.match(line)
         if not m:
             return None
-        ip = m.group(1) or m.group(2)
         try:
-            ipaddress.ip_address(ip)
+            address = ipaddress.ip_address(m.group(1) or m.group(2))
         except ValueError:
             return None
+        if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+            address = address.ipv4_mapped
+        ip = str(address)
         if is_exempt_ip(ip):
             return None
         self.events += 1

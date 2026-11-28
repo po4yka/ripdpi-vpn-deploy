@@ -306,8 +306,8 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
             if resource != 'bandwidth-capped':
                 hyout['bbr_profile'] = resource.removeprefix('bbr-')
             extra = dict(insecure=False)
-            if hy.get('salamander_enabled') and hy.get('salamander_password'):
-                hyout['obfs'] = dict(type='salamander', password=hy['salamander_password'])
+            if hy.get('salamander_enabled'):
+                hyout['obfs'] = dict(type='salamander', password=required_text(hy.get('salamander_password')))
                 extra['obfs'] = hyout['obfs']
                 if hy.get('version') and not hy['version'].startswith('REPLACE_WITH_'):
                     extra['salamander_upstream_tag'] = hy['version']

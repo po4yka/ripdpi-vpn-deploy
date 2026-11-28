@@ -116,15 +116,10 @@ firewall_attachment := {
   "scaleway_instance_server": "security_group_id",
 }
 
-empty_values := {null, ""}
+empty_values := {null, "", false}
 
 empty_attachment(value) {
   empty_values[value]
-}
-
-# after_unknown holds false for an attribute that is known.
-empty_attachment(value) {
-  value == false
 }
 
 empty_attachment(value) {
@@ -132,12 +127,27 @@ empty_attachment(value) {
   count([item | item := value[_]; not empty_values[item]]) == 0
 }
 
+pending_attachment(value) {
+  value == true
+}
+
+pending_attachment(value) {
+  is_array(value)
+  value[_] == true
+}
+
+has_pending_attachment(change, attribute) {
+  unknown := object.get(change, "after_unknown", null)
+  is_object(unknown)
+  pending_attachment(object.get(unknown, attribute, false))
+}
+
 deny[msg] {
   rc := input.resource_changes[_]
   attribute := firewall_attachment[rc.type]
   rc.change.after != null
   empty_attachment(object.get(rc.change.after, attribute, null))
-  empty_attachment(object.get(object.get(rc.change, "after_unknown", {}), attribute, null))
+  not has_pending_attachment(rc.change, attribute)
 
   msg := sprintf(
     "resource %q (%s): server has no provider firewall (%s is empty)",
@@ -148,10 +158,58 @@ deny[msg] {
 deny[msg] {
   rc := input.resource_changes[_]
   rc.type == "scaleway_instance_security_group"
-  rc.change.after.inbound_default_policy == "accept"
+  after := rc.change.after
+  after != null
+  object.get(after, "inbound_default_policy", null) != "drop"
 
   msg := sprintf(
-    "resource %q: inbound_default_policy must be drop, not accept",
+    "resource %q: inbound_default_policy must be explicitly set to drop",
     [rc.address],
   )
+}
+
+# UpCloud evaluates inbound rules in order. Each family needs an
+# unconditional final drop, before any separately scoped outbound rules.
+deny[msg] {
+  rc := input.resource_changes[_]
+  rc.type == "upcloud_firewall_rules"
+  after := rc.change.after
+  after != null
+  family := {"ipv4", "ipv6"}[_]
+  not has_final_inbound_drop(object.get(after, "firewall_rule", []), family)
+  msg := sprintf("resource %q: UpCloud requires a final unconditional inbound drop for %s", [rc.address, family])
+}
+
+has_final_inbound_drop(rules, family) {
+  rule := rules[index]
+  rule.direction == "in"
+  drop_covers_family(rule, family)
+  rule.action == "drop"
+  {null, ""}[object.get(rule, "protocol", null)]
+  not restricted_drop(rule)
+  not later_inbound_rule(rules, index, family)
+}
+
+drop_covers_family(rule, _) {
+  {null, ""}[object.get(rule, "family", null)]
+}
+
+drop_covers_family(rule, family) {
+  lower(rule.family) == family
+}
+
+restricted_drop(rule) {
+  field := {
+    "source_address_start", "source_address_end", "destination_address_start", "destination_address_end",
+    "source_port_start", "source_port_end", "destination_port_start", "destination_port_end",
+    "icmp_type",
+  }[_]
+  not {null, ""}[object.get(rule, field, null)]
+}
+
+later_inbound_rule(rules, index, family) {
+  rule := rules[later]
+  later > index
+  rule.direction == "in"
+  lower(sprintf("%v", [object.get(rule, "family", null)])) != {"ipv4": "ipv6", "ipv6": "ipv4"}[family]
 }

@@ -52,6 +52,10 @@ table inet filter {
     iifname "eth0" meta nfproto ipv4 udp sport 67 udp dport 68 counter accept comment "dhcpv4-client-reply"
     ct state established,related accept
 
+    # A stale or unmanaged overlay interface never inherits the public SSH
+    # allowlist. Exact managed Tailnet sources were accepted above.
+    iifname "tailscale0" tcp dport 22 drop
+
     # ICMP follows the shaping floor: stateless error reports pass so
     # PMTUD and traceroute semantics stay intact. Echo is shaped above;
     # NDP requires a link-local sender only for router advertisements.
@@ -64,9 +68,6 @@ table inet filter {
     meta l4proto ipv6-icmp icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert } ip6 hoplimit 255 accept
     meta l4proto ipv6-icmp icmpv6 type echo-request accept
 
-    # A stale or unmanaged overlay interface never inherits the public SSH
-    # allowlist. Exact managed Tailnet sources were accepted above.
-    iifname "tailscale0" tcp dport 22 drop
     tcp dport 22 ip saddr { 198.51.100.42/32 } accept
 
     # Public listener contract: xray (tcp/443)

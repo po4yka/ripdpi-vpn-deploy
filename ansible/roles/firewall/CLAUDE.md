@@ -121,7 +121,8 @@ loop, never by transport variable name. Default policy drop.
 are accepted first, then every other SSH packet on that interface is dropped
 before the public CIDR allowlist. Keep that drop even when the Tailnet role is
 disabled because a stale interface can outlive its inventory toggle. The live
-listener verifier requires the exact accept/drop/public ordering.
+listener verifier requires the exact accept/drop/public ordering. The Xray
+offender sets follow the interface-scoped SSH decisions.
 
 **Empty Tailnet sets omit `elements`** — nftables rejects `elements = { }`.
 The disabled checked-in fragment stays empty. An enabled first convergence and

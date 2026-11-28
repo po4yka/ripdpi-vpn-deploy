@@ -90,7 +90,7 @@ server {
         # its own page for the same status, so the 410 contract is kept.
         proxy_intercept_errors on;
         error_page 404 /404.html;
-        error_page 403 501 =404 /404.html;
+        error_page 403 405 501 =404 /404.html;
         error_page 410 = @vpn_sub_gone;
         error_page 503 = @vpn_sub_unavailable;
 
@@ -119,10 +119,6 @@ server {
         # only URI-free categorical diagnostics, including failure outcomes.
         error_log /dev/null crit;
         access_log /var/log/nginx/vpn-sub.categorical.log vpn_sub_category;
-    }
-
-    location @vpn_sub_not_found {
-        return 404;
     }
 
     location @vpn_sub_gone {

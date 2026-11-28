@@ -22,7 +22,7 @@ FRAGMENT_PATH = "/etc/nftables.d/vpn-tailnet-ssh-sets.nft"
 
 def _render() -> str:
     variables = merge_render_vars()
-    variables["vpn"] = {**variables["vpn"], "enable_tailnet_management": True}
+    variables["vpn"] = {**variables["vpn"], "enable_tailnet_management": True, "enable_policy_ratelimit": True}
     variables["firewall_effective_ssh_ports"] = [22022]
     variables["public_listener_contract"] = []
     return render_template(TEMPLATE, variables)
@@ -119,6 +119,16 @@ def test_tailnet_sets_accept_only_exact_host_prefixes_on_existing_ssh_port() -> 
     )
     assert 'iifname "tailscale0" tcp dport 22022 accept' not in rendered
     assert 'iifname "tailscale0" accept' not in rendered
+
+
+def test_policy_offender_sets_cannot_override_exact_tailnet_ssh_rules() -> None:
+    rendered = _render()
+    for family, protocol in (("v4", "ip"), ("v6", "ip6")):
+        suffix = "6" if family == "v6" else ""
+        allow = rendered.index(f'{protocol} saddr @vpn_tailnet_ssh_{family} accept')
+        deny_other = rendered.index('iifname "tailscale0" tcp dport 22022 drop')
+        ban = rendered.index(f'{protocol} saddr @policy_offenders{suffix} drop')
+        assert allow < deny_other < ban
 
 
 def test_tailnet_ssh_accepts_are_absent_when_management_is_disabled() -> None:

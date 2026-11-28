@@ -33,6 +33,9 @@ monitoring role on for its rotation.
 API, so offenders go into the nftables `policy_offenders` set (firewall role
 owns it) for an early drop.
 
+The source field precedes access status and destination data. Count canonical
+IPv4 and IPv6 addresses and exempt both Tailnet ranges and approved SSH sources.
+
 **Threshold is conservative** — defaults 5 events / 60s / IP. The source IP
 on a blackhole line is the *client's* real IP, so a strict limit on a
 carrier-NAT pool takes out legitimate clients first.

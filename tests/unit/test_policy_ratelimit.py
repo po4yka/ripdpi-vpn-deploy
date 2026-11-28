@@ -151,6 +151,16 @@ def test_ssh_allowlist_sources_are_never_banned(cidrs):
     assert exempt("2001:db8::7") is (not isinstance(cidrs, str))
 
 
+def test_tailnet_sources_are_never_banned():
+    exempt = _render_daemon(tailnet_management={
+        "approved_sources": ["192.0.2.44", "2001:db8::44"],
+    })["is_exempt_ip"]
+    for address in ("100.64.0.1", "100.127.255.254", "fd7a:115c:a1e0::1",
+                    "192.0.2.44", "2001:db8::44", "::ffff:100.64.0.1"):
+        assert exempt(address)
+    assert not exempt("192.0.2.45")
+
+
 # ---------------------------------------------------------------------------
 # Source-IP extraction — ban the client, not a private destination
 # ---------------------------------------------------------------------------
@@ -186,6 +196,13 @@ def test_source_ip_is_banned_not_destination(daemon, line, source):
     banned = [limiter.observe(line, NOW) for _ in range(5)]
     assert banned == [None, None, None, None, source]
     assert limiter.events == (5 if source else 0)
+
+
+def test_ipv6_source_spellings_share_one_window(daemon):
+    limiter = daemon["RateLimiter"](2, 60, 300)
+    for address, expected in (("2001:0DB8:0:0::5", None), ("2001:db8::5", "2001:db8::5")):
+        line = f"from udp:[{address}]:12345 accepted tcp:example.test:80 [inbound -> block]"
+        assert limiter.observe(line, NOW) == expected
 
 
 # ---------------------------------------------------------------------------

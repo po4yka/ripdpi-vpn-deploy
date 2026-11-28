@@ -19,9 +19,10 @@ spec.loader.exec_module(scanner)
     ('.github/workflows/unselected.yml', 1),
     ('ansible/roles/hysteria/templates/unselected.j2', 1),
 ])
-def test_only_the_declared_schema_reader_is_exempt(tmp_path, monkeypatch, name, expected):
+@pytest.mark.parametrize("words", [("REPLACE", "WITH"), ("Replace", "with")])
+def test_only_the_declared_schema_reader_is_exempt(tmp_path, monkeypatch, name, expected, words):
     monkeypatch.chdir(tmp_path)
     path = Path(name)
     path.parent.mkdir(parents=True)
-    path.write_text('_'.join(('REPLACE', 'WITH', 'TEST_SENTINEL')))
+    path.write_text('_'.join((*words, 'TEST_SENTINEL')))
     assert scanner.main([name]) == expected

@@ -104,6 +104,12 @@ unpromoted_server := {
   "change": {"actions": ["no-op"], "before": {"firewall": false}, "after": {"firewall": false, "metadata": true}},
 }
 
+upcloud_default_drops := [
+  {"action": "drop", "direction": "in", "family": "IPv4"},
+  {"action": "drop", "direction": "in", "family": "IPv6"},
+  {"action": "accept", "direction": "out"},
+]
+
 test_deny_upcloud_existing_server_keeps_firewall_off {
   result := deny with input as {
     "resource_changes": [
@@ -111,7 +117,7 @@ test_deny_upcloud_existing_server_keeps_firewall_off {
       {
         "address": "upcloud_firewall_rules.vpn",
         "type": "upcloud_firewall_rules",
-        "change": {"actions": ["update"], "before": {}, "after": {}},
+        "change": {"actions": ["update"], "before": {}, "after": {"firewall_rule": upcloud_default_drops}},
       },
     ]
   }
@@ -161,7 +167,7 @@ test_allow_upcloud_interrupted_first_apply_and_empty_plan {
       {
         "address": "upcloud_firewall_rules.vpn",
         "type": "upcloud_firewall_rules",
-        "change": {"actions": ["create"], "before": null, "after": {}},
+        "change": {"actions": ["create"], "before": null, "after": {"firewall_rule": upcloud_default_drops}},
       },
     ]
   }
@@ -245,6 +251,56 @@ test_scaleway_inbound_default_policy {
     }]
   }
   count(drop) == 0
+}
+
+test_scaleway_requires_explicit_inbound_default_drop {
+  every_default_omission := [after |
+    after := [{}, {"inbound_default_policy": null}][_]
+    result := deny with input as {"resource_changes": [
+      {"address": "scaleway_instance_security_group.vpn", "type": "scaleway_instance_security_group", "change": {"after": after}},
+    ]}
+    count(result) == 1
+  ]
+  count(every_default_omission) == 2
+}
+
+test_known_empty_and_unknown_empty_firewall_attachments_refuse {
+  rejected := [unknown |
+    unknown := [null, {}, {"firewall_ids": [false]}][_]
+    result := deny with input as {"resource_changes": [
+      {"address": "hcloud_server.vpn", "type": "hcloud_server", "change": {
+        "after": {"firewall_ids": []}, "after_unknown": unknown,
+      }},
+    ]}
+    count(result) == 1
+  ]
+  count(rejected) == 3
+}
+
+test_upcloud_final_drop_covers_all_inbound_traffic_for_each_family {
+  restricted := {"action": "drop", "direction": "in", "family": "IPv6", "protocol": "tcp"}
+  scoped := {"action": "drop", "direction": "in", "family": "IPv6", "source_address_start": "2001:db8::1"}
+  rejected := [rules |
+    rules := [[upcloud_default_drops[0]], array.concat(upcloud_default_drops, [restricted]),
+              [upcloud_default_drops[0], scoped]][_]
+    result := deny with input as {"resource_changes": [
+      {"address": "upcloud_firewall_rules.vpn", "type": "upcloud_firewall_rules", "change": {
+        "after": {"firewall_rule": rules},
+      }},
+    ]}
+    count(result) == 1
+    contains(result[_], "ipv6")
+  ]
+  count(rejected) == 3
+}
+
+test_upcloud_unscoped_final_inbound_drop_covers_both_families {
+  result := deny with input as {"resource_changes": [
+    {"address": "upcloud_firewall_rules.vpn", "type": "upcloud_firewall_rules", "change": {
+      "after": {"firewall_rule": [{"action": "drop", "direction": "in"}]},
+    }},
+  ]}
+  count(result) == 0
 }
 
 # -- an ordinary plan never deletes or replaces the server --

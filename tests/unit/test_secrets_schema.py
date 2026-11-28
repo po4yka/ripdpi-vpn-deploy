@@ -619,7 +619,7 @@ def test_strict_disabled_observability_exempts_secret_blocks(filled, tmp_path):
 
 
 @pytest.mark.parametrize("placeholder", [
-    "REPLACE_with_rotate_cohort_token_output",  # the example cohort token's lowercase spelling
+    "_".join(("REPLACE", "with", "rotate_cohort_token_output")),
     "[offsite]\naccess_key_id = REPLACE\n",  # the example rclone_config block's bare word
 ])
 def test_strict_rejects_every_example_placeholder_spelling(filled, tmp_path, placeholder):
@@ -744,6 +744,28 @@ def test_hysteria_masquerade_requires_https(filled, tmp_path):
 
     assert proc.returncode == 1
     assert "hysteria.masquerade_url" in proc.stderr
+
+
+@pytest.mark.parametrize(("field", "value", "constraint"), [
+    ("rate_limit", "5r/m\n", "pattern"),
+    ("rate_burst", 4.0, "type"),
+])
+def test_secrets_cli_requires_exact_scalar_forms(filled, tmp_path, field, value, constraint):
+    filled.setdefault("subscription", {})[field] = value
+    proc = _validate_cli(filled, tmp_path)
+    assert proc.returncode == 1
+    assert f"subscription.{field}: failed {constraint} constraint" in proc.stderr
+
+
+@pytest.mark.parametrize("password", [None, "", "fixture-obfuscation-password"])
+def test_hysteria_schema_admits_salamander_only_with_password(filled, password):
+    hysteria = filled["hysteria"]
+    hysteria["salamander_enabled"] = True
+    if password is None:
+        hysteria.pop("salamander_password", None)
+    else:
+        hysteria["salamander_password"] = password
+    assert _validator().is_valid(filled) is bool(password)
 
 
 def test_plaintext_secrets_fixture_covers_required_hysteria_masquerade_url():

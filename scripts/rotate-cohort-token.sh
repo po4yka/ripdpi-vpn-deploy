@@ -38,7 +38,7 @@ if ! python3 "$REPO_ROOT/scripts/private-operator-lock.py" "$SOPS_LOCK" 9; then
   exit 1
 fi
 
-# Same backup contract as rotate-secrets.sh: three sops set calls change the
+# Same backup contract as rotate-secrets.sh: the individual SOPS edits change the
 # file, and any failure or interrupt restores the copy taken here.
 for stale in "${SOPS_FILE}".rotate.*; do
   [[ ! -e "$stale" ]] || {
@@ -56,17 +56,20 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 # Values travel through pipes only, never argv, the environment or output.
-current="$(sops --decrypt --output-type json "$SOPS_FILE" | FORCE="$FORCE" python3 -c '
+rotation="$(sops --decrypt --output-type json "$SOPS_FILE" | FORCE="$FORCE" python3 -c '
 import datetime, json, os, re, sys
 field_report = json.load(sys.stdin).get("field_report") or {}
+placeholder = re.compile(r"REPLACE_WITH_", re.IGNORECASE | re.ASCII)
 token = field_report.get("cohort_token", "")
 # A copied example placeholder is public text: issue a first token instead of keeping it in the overlap.
-if re.match(r"(?i)REPLACE_WITH_", token):
+if isinstance(token, str) and placeholder.match(token):
     token = ""
-if token and not re.fullmatch(r"[A-Za-z0-9_-]{22,64}", token):
+if not isinstance(token, str) or (token and not re.fullmatch(r"[A-Za-z0-9_-]{22,64}", token)):
     sys.exit("error: the current cohort token is malformed; fix it before rotating")
+previous = field_report.get("previous_cohort_token")
+clear_previous = isinstance(previous, str) and placeholder.match(previous) is not None
 until = field_report.get("previous_cohort_token_valid_until")
-if field_report.get("previous_cohort_token") and os.environ["FORCE"] != "1":
+if previous and not clear_previous and os.environ["FORCE"] != "1":
     try:
         end = datetime.datetime.fromisoformat(str(until).replace("Z", "+00:00"))
         open_overlap = end.tzinfo is None or end > datetime.datetime.now(datetime.timezone.utc)
@@ -75,7 +78,9 @@ if field_report.get("previous_cohort_token") and os.environ["FORCE"] != "1":
     if open_overlap:
         sys.exit("error: the previous cohort token is still accepted until " + re.sub(r"[^0-9TZ:-]", "?", str(until))
                  + "; rotating now cuts off devices that hold it. Wait for the overlap to end or run again with FORCE=1")
-print(token)')"
+print(int(clear_previous), token)')"
+read -r clear_previous current <<< "$rotation"
+unset rotation
 
 set_key() {
   python3 -c 'import json, sys; print(json.dumps(sys.stdin.read()))' | sops set --value-stdin "$SOPS_FILE" "[\"field_report\"][\"$1\"]"
@@ -91,6 +96,9 @@ if [[ -n "$current" ]]; then
   printf '%s' "$current" | set_key previous_cohort_token
   printf '%s' "$until_instant" | set_key previous_cohort_token_valid_until
   rotated=true
+elif [[ "$clear_previous" == 1 ]]; then
+  sops unset "$SOPS_FILE" '["field_report"]["previous_cohort_token"]'
+  sops unset --idempotent "$SOPS_FILE" '["field_report"]["previous_cohort_token_valid_until"]'
 fi
 python3 -c 'import secrets; print(secrets.token_urlsafe(32), end="")' | set_key cohort_token
 unset current

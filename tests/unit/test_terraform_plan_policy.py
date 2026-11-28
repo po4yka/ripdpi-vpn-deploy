@@ -153,7 +153,8 @@ def test_upcloud_entire_source_interval_must_be_allowed(tmp_path: Path, end: str
         "direction": "in", "action": "accept", "protocol": "tcp",
         "destination_port_start": "2222", "destination_port_end": "2222",
         "source_address_start": "192.0.2.0", "source_address_end": end,
-    }]}))
+    }, {"direction": "in", "action": "drop", "family": "IPv4"},
+       {"direction": "in", "action": "drop", "family": "IPv6"}]}))
     assert result.returncode == expected, result.stderr
 
 

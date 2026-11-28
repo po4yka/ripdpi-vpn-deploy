@@ -93,6 +93,11 @@ def _validate_hysteria(document: dict) -> None:
         ech = _mapping(document, 'ech')
         if ech != {'keyPath': '/run/credentials/hysteria-server.service/hysteria-ech'}:
             raise ValueError('Hysteria ECH credential path is invalid')
+    if "obfs" in document:
+        obfs = _mapping(document, "obfs")
+        if set(obfs) != {"type", "salamander"} or obfs["type"] != "salamander":
+            raise ValueError("Hysteria obfuscation type is invalid")
+        _string(_mapping(obfs, "salamander"), "password")
     if 'congestion' in document:
         congestion = _mapping(document, 'congestion')
         if (set(congestion) != {'type', 'bbrProfile'} or congestion['type'] != 'bbr'

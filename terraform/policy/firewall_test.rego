@@ -127,6 +127,27 @@ test_upcloud_null_endpoints_are_world {
   firewall.upcloud_is_world({"source_address_start": null, "source_address_end": null})
 }
 
+test_upcloud_requires_two_restricted_source_endpoints {
+  firewall.upcloud_is_world({"source_address_start": "192.0.2.1", "source_address_end": ""})
+  firewall.upcloud_is_world({"source_address_start": "0:0:0:0:0:0:0:0",
+                             "source_address_end": "FFFF:FFFF:FFFF:FFFF:FFFF:FFFF:FFFF:FFFF"})
+  not firewall.upcloud_is_world({"source_address_start": "2001:db8::1", "source_address_end": "2001:db8::2"})
+}
+
+test_vultr_requires_a_known_management_source_prefix {
+  rejected := [source |
+    source := [{}, {"subnet": "192.0.2.20"}, {"subnet_size": 32}][_]
+    resource := {"address": "vultr_firewall_rule.ssh", "type": "vultr_firewall_rule", "change": {
+      "after": object.union(source, {"protocol": "tcp", "port": "2222"}),
+    }}
+    admin := admin_port.deny with input as {"variables": variables, "resource_changes": [resource]}
+    sources := ssh_cidrs.deny with input as {"variables": variables, "resource_changes": [resource]}
+    count(admin) == 1
+    count(sources) == 1
+  ]
+  count(rejected) == 3
+}
+
 test_cached_plan_management_port_must_be_integer {
   invalid_ports := [22.5, null, "22", 0, 65536]
   rejected := [port |

@@ -24,6 +24,21 @@ from scripts.template_render import render_template
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_every_transport_candidate_fact_is_confidential():
+    roles = ROOT / "ansible" / "roles"
+    for path in roles.glob("*/tasks/*.yml"):
+        source = path.read_text()
+        if "transport_runtime_candidates:" not in source:
+            continue
+        pending = list(yaml.safe_load(source))
+        while pending:
+            task = pending.pop()
+            if "transport_runtime_candidates" in task.get("ansible.builtin.set_fact", {}):
+                assert task.get("no_log") is True, (path, task["name"])
+            for section in ("block", "rescue", "always"):
+                pending.extend(task.get(section, []))
+
+
 def load(role, name):
     spec = importlib.util.spec_from_file_location(
         f"review_{role}_{name}", ROOT / "ansible/roles" / role / "files" / name
