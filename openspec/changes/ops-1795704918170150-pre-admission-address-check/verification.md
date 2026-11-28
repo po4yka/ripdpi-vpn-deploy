@@ -1,11 +1,11 @@
 ---
 task_id: OPS-1795704918170150
 change: ops-1795704918170150-pre-admission-address-check
-commit_sha: null
+commit_sha: 6e2568ce4430ab300229814382dfb2006851cec9
 local: required
 local_evidence: "make -k -j 4 check: every target passed except test-unit; its failures were harness copies of tests/conftest.py (fixed) and load-induced timeouts that also fail on origin/main or pass serially. tests/unit/test_address_admission.py and test_emit_bundle_host_selection.py pass."
-remote_ci: required
-remote_ci_evidence: null
+remote_ci: passed
+remote_ci_evidence: "ci workflow run https://github.com/po4yka/ripdpi-vpn-deploy/actions/runs/46147749765 passed on main 6e2568ce44, which contains PR 777, including contract-sync after the client vendored the node-address-check contract."
 dry_run: not_applicable
 dry_run_evidence: Planning only; no deploy controller change is made yet.
 staging: required
@@ -20,7 +20,7 @@ artifact_evidence: No release artifact is produced.
 
 # Verification
 
-Local implementation evidence is recorded; remote CI and staging evidence remain required.
+Local and remote CI evidence are recorded; staging evidence remains required.
 
 ## Requirement evidence
 

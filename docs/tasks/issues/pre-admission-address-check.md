@@ -13,7 +13,7 @@ spec_mode: required
 openspec_change: ops-1795704918170150-pre-admission-address-check
 created: 2026-11-26
 updated: 2026-11-28
-status_detail: "Merged in PR 777 (7d96f9bc02); local checks passed. Remote CI is not green: no main ci run that contains this merge passed. Since this merge, contract-sync fails because po4yka/RIPDPI does not vendor node-address-check.schema.json and node-address-check.golden.json; the native runtime jobs fail separately and also failed before this merge. The gate refuses every RIPDPI bundle path until a signed attestation exists, and the producer does not exist yet: it is po4yka/RIPDPI#DGN-1795868945773730. Staging evidence remains: admit one address with a real filtered-side attestation and refuse one without it."
+status_detail: "Merged in PR 777 (7d96f9bc02); local checks passed; main ci run 46147749765 on 6e2568ce44 passed after po4yka/RIPDPI vendored the node-address-check contract. The gate refuses every RIPDPI bundle path until a signed attestation exists, and the client producer does not exist yet: it is po4yka/RIPDPI#DGN-1795868945773730. Staging evidence remains: admit one address with a real filtered-side attestation and refuse one without it."
 related_tasks: []
 ---
 
