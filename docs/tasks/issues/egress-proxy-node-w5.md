@@ -2,7 +2,7 @@
 id: ANS-1795328948145006
 title: Add a secretless egress proxy node for provider APIs
 kind: feature
-status: doing
+status: review
 area: ansible
 priority: high
 risk: high
@@ -12,8 +12,9 @@ blocked_by: [TFR-1795328347526492, TFR-1795328481774241, SEC-1795328680299474]
 spec_mode: required
 openspec_change: ans-1795328948145006-egress-proxy-node-w5
 created: 2026-11-22
-updated: 2026-11-26
+updated: 2026-11-28
 related_tasks: []
+status_detail: All six steps done; verification evidence recorded at 8c0f207ef
 ---
 
 ## Goal
