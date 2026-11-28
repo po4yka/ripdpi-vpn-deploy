@@ -366,10 +366,12 @@ def _candidates(captures):
 
 
 def _ownership_main(captures):
+    # Newer Debian 13 provider images ship PermitRootLogin prohibit-password;
+    # both values are shadowed by the earlier managed drop-in.
     allowed = {
-        "kbdinteractiveauthentication": ["no"],
-        "x11forwarding": ["yes"],
-        "permitrootlogin": ["yes"],
+        "kbdinteractiveauthentication": [["no"]],
+        "x11forwarding": [["yes"]],
+        "permitrootlogin": [["yes"], ["prohibit-password"]],
     }
     include_index = next(
         index
@@ -389,7 +391,7 @@ def _ownership_main(captures):
         if key == "subsystem":
             if tuple(values) != PACKAGED_SFTP:
                 raise OwnershipError("unsupported-subsystem")
-        elif key not in allowed or values != allowed[key]:
+        elif key not in allowed or values not in allowed[key]:
             raise OwnershipError("unsupported-owned-directive")
         result.append((index, key))
     return result
