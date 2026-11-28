@@ -2,7 +2,7 @@
 id: ANS-1795328948145006
 title: Add a secretless egress proxy node for provider APIs
 kind: feature
-status: review
+status: done
 area: ansible
 priority: high
 risk: high
@@ -15,6 +15,9 @@ created: 2026-11-22
 updated: 2026-11-28
 related_tasks: []
 status_detail: All six steps done; verification evidence recorded at 8c0f207ef
+closed_at: "2026-11-28T13:04:10Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Egress proxy node live on the retained IPv4 over the Tailnet; every provider and the state backend proven through it; Vultr access list holds only the egress /32; break-glass runbook with a stopped-service drill and a lost-server recovery; evidence at 8c0f207ef, staging mapped to CIC-1795329226354380
 ---
 
 ## Goal

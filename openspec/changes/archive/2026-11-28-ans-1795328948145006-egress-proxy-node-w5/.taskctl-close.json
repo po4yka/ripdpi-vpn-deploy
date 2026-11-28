@@ -1,0 +1,11 @@
+{
+  "change": "ans-1795328948145006-egress-proxy-node-w5",
+  "evidence_summary": "Egress proxy node live on the retained IPv4 over the Tailnet; every provider and the state backend proven through it; Vultr access list holds only the egress /32; break-glass runbook with a stopped-service drill and a lost-server recovery; evidence at 8c0f207ef, staging mapped to CIC-1795329226354380",
+  "execution_sha256": "eba995bb47aebaeb2674307c6f09e0a066bc200f64ff10527004f6178c46bc54",
+  "issue_sha256": "4a2041f80545fd1882d91f44e1fc5bff1ad7d3eb20ec2591c95ee0a932255fff",
+  "outcome": "done",
+  "prepared_at": "2026-11-28T13:04:10Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "ANS-1795328948145006"
+}
