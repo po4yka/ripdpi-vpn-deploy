@@ -66,3 +66,18 @@ def test_ci_initializes_all_roots_with_frozen_provider_locks():
         ]
         assert commands
         assert all("-lockfile=readonly" in command for command in commands), name
+
+
+def test_porkbun_provider_is_pinned_to_one_locked_release():
+    # A small community provider: a range would let a new release in unreviewed.
+    root = REPO_ROOT / "terraform/ops/porkbun"
+    block = re.search(r"porkbun\s*=\s*\{(.*?)\}", (root / "versions.tf").read_text(), re.DOTALL)
+    assert block, "versions.tf must declare the porkbun provider"
+    assert re.search(r'source\s*=\s*"marcfrederick/porkbun"', block[1])
+    pin = re.search(r'version\s*=\s*"([^"]*)"', block[1])
+    assert pin and re.fullmatch(r"\d+\.\d+\.\d+", pin[1]), f"exact version required, got {pin and pin[1]!r}"
+    lock = (root / ".terraform.lock.hcl").read_text()
+    entry = re.search(r'provider "registry\.opentofu\.org/marcfrederick/porkbun" \{(.*?)\n\}', lock, re.DOTALL)
+    assert entry, "the lock file must hold the porkbun provider"
+    assert f'version     = "{pin[1]}"' in entry[1] and f'constraints = "{pin[1]}"' in entry[1]
+    assert len(re.findall(r'"h1:', entry[1])) >= 4, "h1 hashes for every CI and operator platform"

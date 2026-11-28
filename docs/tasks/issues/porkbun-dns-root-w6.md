@@ -2,7 +2,7 @@
 id: TFR-1795329107889572
 title: Manage Porkbun DNS with a pinned OpenTofu root
 kind: feature
-status: backlog
+status: doing
 area: terraform
 priority: high
 risk: high
@@ -12,7 +12,7 @@ blocked_by: [TFR-1795328347526492, TFR-1795328481774241, ANS-1795328948145006]
 spec_mode: required
 openspec_change: tfr-1795329107889572-porkbun-dns-root-w6
 created: 2026-11-22
-updated: 2026-11-22
+updated: 2026-11-28
 related_tasks: []
 ---
 

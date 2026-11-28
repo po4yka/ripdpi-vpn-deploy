@@ -10,8 +10,8 @@ See `proposal.md`. Research (2026-11-22): Porkbun's API base is `https://api.por
 ## Decisions
 
 - Provider: `marcfrederick/porkbun` at exactly 1.3.3 (or the latest 1.x at implementation, re-vetted), because it is on a stable major line, covers DNS records, and its client honours proxy environment variables. Rejected: `jianyuan/porkbun` (0.x API, more surface than the fleet needs); writing a provider (new code). The vetting step reads the pinned release source for credential handling and outbound hosts and confirms it is on `registry.opentofu.org`.
-- Root layout: `terraform/dns/porkbun/{versions.tf,variables.tf,main.tf,outputs.tf,tests/*.tftest.hcl}`. Input `managed_domains` (list) and `records` (map keyed by a stable record ID with domain, name, type, content, ttl). `for_each` over `records`. Record content (including node addresses) comes from ops repository tfvars; no `terraform_remote_state`, so a DNS plan never needs another root's state key.
-- Encryption and backend as in W3 from the first commit; key `state/porkbun/terraform.tfstate`.
+- Root layout: `terraform/ops/porkbun/{versions.tf,variables.tf,main.tf,outputs.tf,tests/*.tftest.hcl}`. Input `managed_domains` (list) and `records` (map keyed by a stable record ID with domain, name, type, content, ttl). `for_each` over `records`. Record content (including node addresses) comes from ops repository tfvars; no `terraform_remote_state`, so a DNS plan never needs another root's state key.
+- Encryption and backend as in W3 from the first commit (the encrypted, locked S3 backend whose file lives in the ops repository); key `state/porkbun/terraform.tfstate`. The root lives under `terraform/ops/` like the egress proxy root: it holds no VPN node, and the scripts route `PROVIDER=porkbun` there.
 - Credentials: `PORKBUN_API_KEY` and the provider's secret variable only from the environment; the provider configuration has no credential arguments.
 - Policy: new `terraform/policy/porkbun_scope.rego` plus `_test.rego`: deny a record whose domain is not in `managed_domains`, deny TTL below 600.
 - Adoption: compare a read-only live inventory with the reviewed domain and record IDs, including explicit exclusions for externally managed records. Generate import blocks for the approved set. Inspect the saved plan and require an exact ID match, with zero creates, updates, replacements or deletes. Apply that plan, remove the import blocks and require an empty follow-up plan.
@@ -19,7 +19,7 @@ See `proposal.md`. Research (2026-11-22): Porkbun's API base is `https://api.por
 
 ## Contracts and ownership
 
-- New: `terraform/dns/porkbun/**`, `terraform/policy/porkbun_scope*.rego`, `scripts/porkbun-import-blocks.py`, `tests/unit/test_porkbun_import_blocks.py`, `docs/how-to/dns.md`.
+- New: `terraform/ops/porkbun/**`, `terraform/policy/porkbun_scope*.rego`, `scripts/porkbun-import-blocks.py`, `tests/unit/test_porkbun_import_blocks.py`, `docs/how-to/dns.md`.
 - Changed: `Makefile` `tf-test`/`validate` loops and `tf-conftest` provider list (after W5 in the shared lane), `docs/reference/testing.md`, `terraform/CLAUDE.md`.
 - Ops repository: `config/tfvars/porkbun/prod.tfvars`, `config/backend/porkbun.s3.tfbackend`.
 
@@ -33,7 +33,7 @@ See `proposal.md`. Research (2026-11-22): Porkbun's API base is `https://api.por
 
 1. Land root, policy, tests, import-block script and docs (offline: `make tf-test`, `make tf-policy-verify`, `python3 -m pytest tests/unit/test_porkbun_import_blocks.py`).
 2. Authorized live steps: enable API access on managed domains only; create read and DNS keys limited to those domains and the egress address; store them in the W4 environments; apply the reviewed import-only plan and require an empty second plan.
-3. Rollback: disable domain API access and revoke the keys; the state history stays in B2; the records are unchanged because adoption only imports.
+3. Rollback: disable domain API access and revoke the keys; the state history stays in the versioned state bucket; the records are unchanged because adoption only imports.
 
 ## Open verification questions
 
