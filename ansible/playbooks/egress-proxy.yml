@@ -10,7 +10,7 @@
 # reserved for enabled proxy transports and stays off here.
 #
 # Inputs: inventory group `egress` (one host, --limit equal to it), allowed_ssh_cidrs,
-# tailnet_management.approved_sources, vpn_service_address, and egress_proxy_state_host.
+# tailnet_management.approved_sources, vpn_host_address, and egress_proxy_state_host.
 # The node must already be enrolled (bootstrap-tailnet) with tag:egress.
 - name: Converge one exact egress proxy node
   hosts: egress
