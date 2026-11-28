@@ -68,12 +68,7 @@
     state: absent
   loop: "{{ _baseline_service_address_units.files }}"
   when: item.path | basename not in _baseline_service_units
-  register: _baseline_service_units_removed
-
-- name: Forget removed service address units
-  ansible.builtin.systemd_service:
-    daemon_reload: true
-  when: _baseline_service_units_removed is changed
+  notify: Forget removed service address units
 
 - name: Install persistent service address units
   ansible.builtin.template:
