@@ -24,6 +24,7 @@ RUN cp -a node_modules/@louislam/sqlite3/lib/binding /tmp/sqlite3-binding \
        libpam-runtime=1.5.2-6+deb12u3 \
        libpam0g=1.5.2-6+deb12u3 \
        libssl3=3.0.22-1~deb12u2 \
+       libzstd1=1.5.4+dfsg2-5+deb12u1 \
        openssl=3.0.22-1~deb12u2 \
     && apt-get purge -y apprise python3 python3.11 libpython3-stdlib libpython3.11-stdlib python3-jwt sqlite3 libsqlite3-0 \
     && rm -rf /var/lib/apt/lists/* /root/.npm \
