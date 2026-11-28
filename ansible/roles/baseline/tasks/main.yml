@@ -101,7 +101,11 @@
 
 - name: Reconcile the host resolver before any transport claims DNS ports
   ansible.builtin.import_tasks: resolver.yml
-  when: "'systemd-resolved.service' in ansible_facts.services"
+  # service_facts also lists a unit that other units only reference, with
+  # status not-found; images without the systemd-resolved package have one.
+  when: >-
+    'systemd-resolved.service' in ansible_facts.services and
+    ansible_facts.services['systemd-resolved.service'].status != 'not-found'
 
 - name: Require planned timesync installation when check mode lacks the unit
   ansible.builtin.assert:

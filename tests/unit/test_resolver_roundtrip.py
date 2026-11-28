@@ -184,3 +184,22 @@ def test_failed_encrypted_resolver_proof_withdraws_the_drop_in_and_refuses(resol
     assert "encrypted-resolver-unavailable" in result.stdout
     assert not (root / "etc/systemd/resolved.conf.d/vpn-dns-over-tls.conf").exists()
     assert resolver.resolve() == stub and restarts.read_text().splitlines() == ["restart", "restart"]
+
+
+@pytest.mark.parametrize(
+    ("services", "selected"),
+    [
+        ({"systemd-resolved.service": {"status": "enabled"}}, True),
+        # service_facts lists a unit that other units only reference.
+        ({"systemd-resolved.service": {"status": "not-found"}}, False),
+        ({}, False),
+    ],
+)
+def test_resolver_tasks_run_only_when_the_resolved_unit_is_installed(services, selected):
+    from jinja2 import DictLoader
+    from template_render import template_environment
+
+    main = yaml.safe_load((Path(__file__).resolve().parents[2] / "ansible/roles/baseline/tasks/main.yml").read_text())
+    gate = next(task["when"] for task in main if task.get("ansible.builtin.import_tasks") == "resolver.yml")
+    evaluate = template_environment(DictLoader({})).compile_expression(gate, undefined_to_none=False)
+    assert bool(evaluate({"ansible_facts": {"services": services}})) is selected
