@@ -46,7 +46,7 @@ def generated_p0(stack, monkeypatch):
     # This is the metadata boundary only. Both the materializer and protocol
     # configuration stay real, and no provider CLI or secret file is read.
     def metadata(argv, **_):
-        assert argv[-3:] == ["output", "-raw", "server_ipv4"]
+        assert argv[-3:] == ["output", "-raw", "service_ipv4"]
         return b"192.0.2.90"
     monkeypatch.setattr(client_payload, "command", metadata)
     monkeypatch.setattr(client_payload, "context", lambda _: deepcopy(values))

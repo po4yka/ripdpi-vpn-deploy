@@ -70,7 +70,7 @@ def test_encrypted_two_instance_tcp_udp_export_revocation_and_rejection(encrypte
         resolve_binding(issued, {}, client, 'upcloud:fixture', entry['awg_binding']['instance'])
     bin_dir = tmp_path / 'bin'; bin_dir.mkdir(mode=0o700)
     terraform = bin_dir / 'tofu'
-    terraform.write_text('#!/bin/sh\ncase "$*" in *"workspace select"*) exit 0;; *"output -raw server_ipv4"*) printf "%s" "$AWG_NATIVE_ENDPOINT";; *) exit 2;; esac\n')
+    terraform.write_text('#!/bin/sh\ncase "$*" in *"workspace select"*) exit 0;; *"output -raw service_ipv4"*) printf "%s" "$AWG_NATIVE_ENDPOINT";; *) exit 2;; esac\n')
     terraform.chmod(0o700)
     profile = ROOT / 'ansible/group_vars' / ('vpn-awg-native-' + token + '.yml')
     profile.write_text('vpn:\n  enable_xray_reality: false\n  enable_nginx_xhttp: false\n  enable_hysteria: false\n  enable_amneziawg: true\n  enable_naive: false\n  enable_snell: false\n')

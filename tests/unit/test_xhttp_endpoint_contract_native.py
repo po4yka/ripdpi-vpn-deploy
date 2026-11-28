@@ -82,6 +82,7 @@ def exported_outbound(stack, endpoint="primary", *, native=False):
         }))
         selected = json.loads(previous)
         selected["server_ipv4"]["value"] = "192.0.2.90"
+        selected["service_ipv4"]["value"] = "192.0.2.90"
         metadata.write_text(json.dumps(selected))
         environment = {key: value for key, value in os.environ.items() if key not in {
             "VPN_SECRETS_FILE", "SOPS_FILES", "SOPS_FILE", "HOSTS", "COHORTS", "PROVIDER", "ENV"}}
