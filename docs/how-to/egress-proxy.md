@@ -10,7 +10,7 @@ The egress node is one non-VPN host that runs a CONNECT-only squid proxy for pro
 
 - A rendered inventory with one host in the group `egress`, already enrolled in the Tailnet with `tag:egress` through the bootstrap-tailnet command. The playbook verifies the tag and fails closed without it.
 - `egress_proxy_state_host`, the S3 host of the OpenTofu state backend (path-style), for example `s3.fr-par.scw.cloud`. The role refuses an empty value or an IP address.
-- The usual `allowed_ssh_cidrs`, `vpn_service_address` and `tailnet_management.approved_sources` inventory values.
+- The usual `allowed_ssh_cidrs`, `vpn_host_address` and `tailnet_management.approved_sources` inventory values.
 
 The Tailnet grants already exist: `tag:ci-tofu` reaches `tag:egress` on 3128 and `tag:ci-deploy` reaches it on 22. The playbook reads the listen address from the node (`tailscale status --json`), so no address input is needed.
 
@@ -41,7 +41,7 @@ The other fields follow the table in [tailnet-management.md](tailnet-management.
 
 The Tailnet uses Tailnet Lock, so sign the enrollment key before bootstrap (`tailscale lock sign file:<key file>` on a trusted device, see [tailnet-management.md](tailnet-management.md#bootstrap-one-node)). With an unsigned key the node enrolls, but the controller never sees it as a peer and the management proof fails. Public SSH must come from one stable source address for the whole bootstrap; a network that sends connections through several NAT addresses fails at random steps.
 
-After `make migrate-ssh-ownership`, switch the inventory entry to the Tailnet transport: set `ansible_host` to the node's Tailnet IPv4 and move the `server_ipv4` value to `vpn_service_address`, which the tooling uses as the host key alias. Then restore the documentation-range placeholder in `allowed_ssh_cidrs` and apply it. The converge takes `tailnet_management.approved_sources` from the `binding.approved_sources` of the bootstrap handoff; a different list fails the Tailnet check with `tailnet-binding-mismatch`.
+After `make migrate-ssh-ownership`, switch the inventory entry to the Tailnet transport: set `ansible_host` to the node's Tailnet IPv4 and move the `server_ipv4` value to `vpn_host_address`, which the tooling uses as the host key alias and the Tailnet check uses as the public address. Then restore the documentation-range placeholder in `allowed_ssh_cidrs` and apply it. The converge takes `tailnet_management.approved_sources` from the `binding.approved_sources` of the bootstrap handoff; a different list fails the Tailnet check with `tailnet-binding-mismatch`.
 
 Open item (W7): CI runners that reach `tag:egress` on port 22 need Tailnet source addresses that the exact `approved_sources` firewall admits. Until that is resolved, only the operator controller sources in `approved_sources` can reach the node.
 
@@ -58,3 +58,31 @@ There is no Make target. The firewall policy is `strict`: DNS, NTP and TCP 80/44
 The Vultr API access list names only the egress IPv4, so a Vultr call from any other address returns HTTP 401. Run OpenTofu and other provider clients from a Tailnet controller with `HTTPS_PROXY=http://<egress Tailnet IPv4>:3128` and an empty `NO_PROXY`. The proxy admits only the hosts in `egress_proxy_api_hosts` and `egress_proxy_state_host`; any other HTTPS host fails at CONNECT with 403. A client that also needs another host, such as an ACME directory, must list that host in `NO_PROXY`.
 
 To change the Vultr access list, open the API Access page of the Vultr console. Keep exactly one entry, the egress IPv4 as `/32`, and keep the any-address entries disabled. The UpCloud, Scaleway and Porkbun access lists are optional; when one is enabled, it names only the egress IPv4.
+
+## Break-glass
+
+Every path below runs from the operator MacBook with the local operator kit and a local clone of the ops repository. None of them needs GitHub.
+
+### The proxy service stops
+
+Symptom: a proxied call fails before CONNECT (`curl` exit 7, connection refused, on port 3128) while the node still answers on the Tailnet. Rerun the egress playbook from a Tailnet controller, as in [Run](#run). Its `Enable and start squid` task starts the service and the run changes nothing else. Then make one proxied call to an allowlisted host and expect `CONNECT 200`. For a fast manual repair, connect over the Tailnet with the pinned key (`ssh -o HostKeyAlias=<vpn_host_address> <admin_user>@<Tailnet IPv4>`) and run `sudo systemctl start squid`, then rerun the playbook so the node matches its configuration.
+
+### The server is lost
+
+Use this path when the node does not answer on the Tailnet or its management access is gone. The node is disposable; recreate it rather than repairing it. Do not set `HTTPS_PROXY` for any step, because the proxy is the thing that is down: the egress root talks to Hetzner and the state backend directly.
+
+1. Put one stable operator source address in `allowed_ssh_cidrs` of the egress tfvars. A network that sends connections through several NAT addresses fails later steps at random.
+2. Plan and apply a destroy of only the server with the write state identity, so OpenTofu takes the state lock: `PROVIDER=egress-proxy ENV=prod scripts/terraform-env.sh plan -destroy -target=hcloud_server.egress -var-file=<egress tfvars> -out=<private plan>`, review that it destroys exactly one resource, then `scripts/terraform-env.sh apply <private plan>`. `make destroy` does not support this root, and a full destroy stops at the primary IP's `prevent_destroy`. The primary IP and the provider firewall stay.
+3. Run `make plan` and `make apply` for `PROVIDER=egress-proxy ENV=prod`. The new server takes the retained primary IPv4, so provider allowlists stay valid.
+4. Scan the new ed25519 host key, compare its fingerprint with the cloud-init output in the provider console, and pin it. Update `host_key_sha256` in the bootstrap config.
+5. Run `make wait`, `make install-ssh-recovery`, `make bootstrap-tailnet` with a fresh signed `tag:egress` key, and `make migrate-ssh-ownership`, as in [First enrollment](#first-enrollment). A fresh node needs no `policy_approval`.
+6. Switch the inventory to the Tailnet transport, converge, check one proxied call per provider, and restore the `allowed_ssh_cidrs` placeholder. Only then send proxied jobs back to the proxy.
+
+### The proxy and GitHub are down and a Vultr change cannot wait
+
+The Vultr API rejects every address except the egress IPv4. If a Vultr node must change before the proxy is back:
+
+1. Write a private receipt in the operator kit with the time, the reason and the address you are about to admit.
+2. In the Vultr console, add the operator's current stable source as one `/32` to the API access list.
+3. Run the Vultr plan and apply from the MacBook without `HTTPS_PROXY`.
+4. Remove the temporary entry at once, confirm that only the egress `/32` is left, and record the removal time in the receipt. Never enable the any-address entries.
