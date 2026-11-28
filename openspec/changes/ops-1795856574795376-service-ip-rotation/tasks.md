@@ -10,7 +10,7 @@ Terraform provider roots and policy, inventory rendering and its consumers, the 
 
 ## Verification
 
-Local: `make tf-test`, `make tf-policy-verify`, the touched unit test modules and `make test-unit`, `make snapshot-check`, `make docs-check`, then `make check`. CI: Molecule `baseline` and `tailnet-management`. Staging: one attach, refresh and retire cycle on a disposable node with a refreshed client.
+Local: `make tf-test`, `make tf-policy-verify`, the touched unit test modules and `make test-unit`, `make snapshot-check`, `make docs-check`, then `make check`. CI: Molecule `baseline` and `tailnet-management`. Staging and client: moved to `OPS-1795867688528839`, one attach, refresh and retire cycle on a disposable node with a refreshed client.
 
 ## Execution
 
@@ -19,4 +19,4 @@ Local: `make tf-test`, `make tf-policy-verify`, the touched unit test modules an
 - [x] OPS-1795857932939870 Limit the secondary-IP plan policy to the honeypot address with a policy test #feature !high @item:OPS-1795856574795376
 - [x] OPS-1795858000920970 Document the attach, move and retire runbook and update folder notes #feature !high @item:OPS-1795856574795376
 - [x] OPS-1795858050569373 Own service address guest /32s in the baseline role with Molecule retirement coverage #feature !high @item:OPS-1795856574795376
-- [ ] OPS-1795858101968177 Record staging evidence of one rotation with a refreshed client device #feature !high @item:OPS-1795856574795376
+- [x] OPS-1795858101968177 Move dry-run, staging and client acceptance to OPS-1795867688528839 with a shared evidence mapping #feature !high @item:OPS-1795856574795376

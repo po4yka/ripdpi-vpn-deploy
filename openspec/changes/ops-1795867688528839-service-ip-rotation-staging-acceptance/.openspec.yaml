@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-28
+goal: OPS-1795867688528839 Accept service IPv4 rotation on a disposable staging
+  node with a refreshed client
