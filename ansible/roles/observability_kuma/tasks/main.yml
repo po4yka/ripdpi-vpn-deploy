@@ -10,8 +10,8 @@
       - observability_kuma.port | int == 9444
       - observability_kuma.version == '2.5.9'
       - observability_kuma.image_repository == 'ghcr.io/po4yka/ripdpi-vpn-deploy/observability-kuma'
-      - observability_kuma.image_digests.x86_64 == 'sha256:224ba1ca6abb1e350633d172a1145a2c2d1fc4ec4e8ca3e9f46a4568b26735fd'
-      - observability_kuma.image_digests.aarch64 == 'sha256:f52c3892f601e0c4eedad10f4964b00d675f9f49b99cc311928ce466ae21ad16'
+      - observability_kuma.image_digests.x86_64 == 'sha256:df7214afbf62613061c9eee34b38ee5cc4104ea653f1f97abf9ead5e3c08b8d5'
+      - observability_kuma.image_digests.aarch64 == 'sha256:f345d69d4f7119fbb7dce398822b53413a82411e65214866e231d4ec4e0c1366'
       - ansible_facts['architecture'] in ['x86_64', 'aarch64']
       - observability_kuma.previous_image_references.keys() | sort == ['aarch64', 'x86_64']
       - >-
