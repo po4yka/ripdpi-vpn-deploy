@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-11-28T13:02:08Z",
+  "change": "ops-1795856574795376-service-ip-rotation",
+  "commit_sha": "0938faa0968b0bb1d0433f4f8301b0b796b8f42d",
+  "outcome": "review",
+  "schema": 1,
+  "task_id": "OPS-1795856574795376"
+}

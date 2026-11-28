@@ -1,0 +1,11 @@
+{
+  "change": "ops-1795856574795376-service-ip-rotation",
+  "evidence_summary": "Source, mock-provider, policy, Molecule and native evidence passed at protected main 0938faa09 (ci run 46144362488); dry-run, staging and client acceptance moved to OPS-1795867688528839",
+  "execution_sha256": "239dca33385dafe5541f563df75402d422bbb1fe298caa93d762657a75b786a8",
+  "issue_sha256": "52cac522a6137d7cec0d452f1c44c57ae65d1b467c1d50932a7a8f27e717432d",
+  "outcome": "done",
+  "prepared_at": "2026-11-28T13:02:53Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "OPS-1795856574795376"
+}

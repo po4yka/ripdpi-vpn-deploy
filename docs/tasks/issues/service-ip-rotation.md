@@ -2,7 +2,7 @@
 id: OPS-1795856574795376
 title: Rotate a node's client-facing IPv4 without replacing the server
 kind: feature
-status: review
+status: done
 area: operations
 priority: high
 risk: high
@@ -15,6 +15,9 @@ created: 2026-11-28
 updated: 2026-11-28
 related_tasks: []
 status_detail: Source and protected-main evidence passed; dry-run, staging and client evidence moved to OPS-1795867688528839
+closed_at: "2026-11-28T13:02:53Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Source, mock-provider, policy, Molecule and native evidence passed at protected main 0938faa09 (ci run 46144362488); dry-run, staging and client acceptance moved to OPS-1795867688528839
 ---
 
 ## Goal
