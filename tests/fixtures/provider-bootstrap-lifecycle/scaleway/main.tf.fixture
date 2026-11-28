@@ -41,6 +41,14 @@ resource "scaleway_instance_ip" "honeypot_ipv4" {
   tags = concat(local.base_tags, ["secondary"])
 }
 
+resource "scaleway_instance_ip" "service_ipv4" {
+  for_each = toset(var.service_ipv4_generations)
+
+  type = "routed_ipv4"
+  zone = var.zone
+  tags = concat(local.base_tags, ["service", each.key])
+}
+
 resource "scaleway_instance_server" "vpn" {
   name  = var.server_name
   zone  = var.zone
@@ -50,6 +58,7 @@ resource "scaleway_instance_server" "vpn" {
     [scaleway_instance_ip.ipv4[0].id],
     scaleway_instance_ip.ipv6[*].id,
     scaleway_instance_ip.honeypot_ipv4[*].id,
+    [for name in var.service_ipv4_generations : scaleway_instance_ip.service_ipv4[name].id],
   )
   security_group_id = scaleway_instance_security_group.vpn.id
   tags              = local.base_tags

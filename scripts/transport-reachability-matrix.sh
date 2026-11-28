@@ -30,7 +30,7 @@ mkdir -p "$(dirname "$OUTPUT_DIR")"
 mkdir "$OUTPUT_DIR"
 HOST_ALIAS="$(PROVIDER="$PROVIDER" ENV="$ENV" "$REPO_ROOT/scripts/terraform-env.sh" output -raw server_hostname)"
 [[ "$HOST_ALIAS" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || exit 1
-EXIT_IP="$(PROVIDER="$PROVIDER" ENV="$ENV" "$REPO_ROOT/scripts/terraform-env.sh" output -raw server_ipv4)"
+EXIT_IP="$(PROVIDER="$PROVIDER" ENV="$ENV" "$REPO_ROOT/scripts/terraform-env.sh" output -raw service_ipv4)"
 python3 - "$EXIT_IP" <<'PYIP'
 import ipaddress, sys
 ipaddress.IPv4Address(sys.argv[1])

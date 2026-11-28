@@ -90,7 +90,7 @@ def setup(tmp_path, monkeypatch):
             return json.dumps(doc).encode()
         if name == "terraform-env.sh":
             assert environment["PROVIDER"] == "vultr" and environment["ENV"] == "probe"
-            assert command[1:] == ["output", "-raw", "server_ipv4"]
+            assert command[1:] == ["output", "-raw", "service_ipv4"]
             return b"192.0.2.3"
         if name in ("awg", "wg"):
             assert command[1:] == ["pubkey"]

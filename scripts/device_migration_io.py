@@ -149,7 +149,7 @@ class PublisherIO:
 
     def origin(self, alias):
         origin = urlsplit(self.plan['publication']['origin'])
-        host = self.hosts[alias]['address']
+        host = self.hosts[alias]['service']
         context = ssl.create_default_context()
         context.minimum_version = ssl.TLSVersion.TLSv1_2
         with socket.create_connection((host, origin.port or 443), timeout=10) as connection, \
@@ -158,13 +158,13 @@ class PublisherIO:
 
     def pivot_ready(self):
         origin = urlsplit(self.plan['publication']['origin'])
-        target = self.hosts[self.plan['publication']['target_alias']]['address']
+        target = self.hosts[self.plan['publication']['target_alias']]['service']
         addresses = {item[4][0] for item in socket.getaddrinfo(origin.hostname, origin.port or 443, type=socket.SOCK_STREAM)}
         if addresses != {target}:
             raise MigrationRefused('migration-publication-origin-pivot-unconfirmed')
 
     def read_route(self, alias, token, expected, *, expected_status=200):
-        request = {'origin': self.plan['publication']['origin'], 'address': self.hosts[alias]['address'],
+        request = {'origin': self.plan['publication']['origin'], 'address': self.hosts[alias]['service'],
                    'token': token, 'expected_b64': base64.b64encode(expected).decode(), 'expected_status': expected_status}
         status, _ = run_command([sys.executable, str(ROOT / 'scripts/device_migration_route.py')],
                                 input_data=encoded(request), capture=True, timeout=15, output_limit=4096,
@@ -205,7 +205,7 @@ class LocalIO(PublisherIO):
             selected = select_hosts(plan['inventory'], [node['host']], include_variables=True, selection_kind='provider-env', include_cohorts=True)[0]
             if selected != hosts[node['alias']] or selected['cohorts'] != [node['cohort']]:
                 raise MigrationRefused('migration-inventory-identity-mismatch')
-        if hosts[plan['source']['alias']]['address'] == hosts[plan['target']['alias']]['address']:
+        if hosts[plan['source']['alias']]['service'] == hosts[plan['target']['alias']]['service']:
             raise MigrationRefused('distinct-migration-endpoints-required')
         # ssh_command admits the complete private key and known-hosts paths.
         commands = {alias: ssh_command(host, plan['known_hosts']) for alias, host in hosts.items()}
@@ -221,7 +221,7 @@ class LocalIO(PublisherIO):
 
     def endpoint(self, host):
         selected = select_hosts(self.plan['inventory'], [host], selection_kind='provider-env')[0]
-        return selected['address']
+        return selected['service']
 
     def _revalidate_admission(self):
         if LocalIO(self.plan).admission != self.admission:

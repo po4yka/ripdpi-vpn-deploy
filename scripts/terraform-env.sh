@@ -17,7 +17,7 @@ umask 077
 # The monitor, its probes and its notification clients never inherit state credentials.
 if [[ -n "${MONITOR_STATE_IDENTITY_SOPS_FILE:-}" && "${1:-}" == output ]]; then
   case "$*" in
-    "output -raw server_ipv4"|"output -raw admin_user") ;;
+    "output -raw server_ipv4"|"output -raw service_ipv4"|"output -raw admin_user") ;;
     *) echo "unsupported scheduled state output" >&2; exit 2 ;;
   esac
   printf -v output_command '%q ' "$0" "$@"

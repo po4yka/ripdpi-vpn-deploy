@@ -259,7 +259,7 @@ def prepare_intent(intent, host, memberships, directory, deployed_secrets, envir
         if (
             memberships != ["vpn-" + value["cohort"]]
             or host["name"] != value["target_identity"]["inventory_alias"]
-            or hashlib.sha256(host["address"].encode()).hexdigest()
+            or hashlib.sha256(host["service"].encode()).hexdigest()
             != value["target_identity"]["public_service_address_sha256"]
         ):
             raise ValueError
@@ -399,8 +399,10 @@ def finalize(intent, environment, *, clock=None):
                 "name": value["target_identity"]["inventory_alias"],
             },
         )
+        # The target binds the client endpoint; the sentinel probes that address.
+        service_ipv4 = state["outputs"]["service_ipv4"]["value"]
         if (
-            hashlib.sha256(server_ipv4.encode()).hexdigest()
+            hashlib.sha256(service_ipv4.encode()).hexdigest()
             != value["target_identity"]["public_service_address_sha256"]
         ):
             raise ValueError
@@ -584,14 +586,14 @@ def finalize(intent, environment, *, clock=None):
             if entry is None:
                 if ci:
                     receipt = installer.install(outputs["liveness_config"], sid, value["client"],
-                                                outputs["registry"], environment=env, server_ipv4=server_ipv4)
+                                                outputs["registry"], environment=env, server_ipv4=service_ipv4)
                 else:
                     # A private read supplies only the installer's stdin.
                     key = guard._private_read(inputs["awg_key_file"], "onboarding input", max_bytes=128)
                     with io.StringIO(key.decode("ascii")) as stream:
                         receipt = installer.install(
                             outputs["liveness_config"], sid, value["client"], outputs["registry"],
-                            read_awg_stdin=True, stdin=stream, environment=env, server_ipv4=server_ipv4,
+                            read_awg_stdin=True, stdin=stream, environment=env, server_ipv4=service_ipv4,
                             executor_manifest=outputs["executor_manifest"], executor_binding=outputs["binding"],
                             cleanup_manifest=inputs["cleanup_manifest"])
                 if (

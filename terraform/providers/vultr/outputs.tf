@@ -13,6 +13,16 @@ output "honeypot_ipv4" {
   description = "Secondary public IPv4 used by the honeypot when additional_public_ip = true. Null when not allocated."
 }
 
+output "service_ipv4_addresses" {
+  value       = [for name in var.service_ipv4_generations : vultr_reserved_ip.service_ipv4[name].subnet]
+  description = "Movable client-traffic IPv4 addresses attached to the instance, in generation order. Empty when the main IPv4 carries client traffic."
+}
+
+output "service_ipv4" {
+  value       = length(var.service_ipv4_generations) > 0 ? vultr_reserved_ip.service_ipv4[var.service_ipv4_generations[length(var.service_ipv4_generations) - 1]].subnet : vultr_instance.vpn.main_ip
+  description = "Client endpoint IPv4: the newest service address, or the main IPv4 when none is attached."
+}
+
 output "admin_user" {
   value = var.admin_user
 }

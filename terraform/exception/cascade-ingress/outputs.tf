@@ -13,6 +13,14 @@ output "honeypot_ipv4" {
   description = "Always empty; the inert exception root allocates no address."
 }
 
+output "service_ipv4_addresses" {
+  value       = []
+  description = "Always empty; the inert exception root allocates no address."
+}
+output "service_ipv4" {
+  value       = ""
+  description = "Always empty while the candidate root is inert."
+}
 output "admin_user" {
   value = var.admin_user
 }

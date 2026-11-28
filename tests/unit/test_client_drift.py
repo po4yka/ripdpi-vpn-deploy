@@ -51,7 +51,7 @@ def lab(tmp_path, monkeypatch):
     (bin_dir / 'tofu').write_text('''#!/usr/bin/env python3
 import sys
 key = sys.argv[-1]
-print({'server_ipv4':'192.0.2.10','server_hostname':'vpn.example.com','admin_user':'admin','ssh_port':'22'}.get(key, ''))
+print({'server_ipv4':'192.0.2.10','service_ipv4':'192.0.2.10','server_hostname':'vpn.example.com','admin_user':'admin','ssh_port':'22'}.get(key, ''))
 ''')
     (bin_dir / 'ssh').write_text('''#!/usr/bin/env python3
 import base64, json, os, pathlib, sys
@@ -293,7 +293,8 @@ def test_endpoint_and_renderer_failure_have_categorical_verdict(lab, monkeypatch
     capsys.readouterr()
     original = payload.command
     def changed(argv, **kw):
-        if argv[-1] == 'server_ipv4':
+        # A rotated client address makes the delivered profile stale.
+        if argv[-1] == 'service_ipv4':
             return b'192.0.2.44'
         return original(argv, **kw)
     monkeypatch.setattr(payload, 'command', changed)
@@ -548,7 +549,7 @@ def test_peer_public_key_rotation_is_stale_even_with_identical_export(lab, capsy
 
 def test_explicit_cohort_needs_only_endpoint(lab):
     terraform = Path(os.environ['PATH'].split(os.pathsep)[0]) / 'tofu'
-    terraform.write_text('#!/bin/sh\ncase "$*" in *workspace*) exit 0;; *server_ipv4) printf 192.0.2.10;; *) exit 2;; esac\n')
+    terraform.write_text('#!/bin/sh\ncase "$*" in *workspace*) exit 0;; *server_ipv4|*service_ipv4) printf 192.0.2.10;; *) exit 2;; esac\n')
     artifact, bindings = payload.materialize('phone', payload.options('ripdpi', cohorts=['p2-udp']), extended=True)
     assert artifact['ripdpi']['amneziawg'] and bindings
 

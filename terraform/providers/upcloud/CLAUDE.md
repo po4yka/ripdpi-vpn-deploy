@@ -28,8 +28,9 @@ across providers so `scripts/render-inventory.sh` is provider-neutral.
 `docs/how-to/incident.md`, "State loss".
 
 **Secondary public IP is opt-in** — `additional_public_ip = true` allocates a
-second public IPv4 for the honeypot role; there is no generic floating-IP
-toggle. Blue-green moves follow the disposable-node path instead.
+second public IPv4 interface for the honeypot role. Client address rotation uses
+`service_ipv4_generations`: floating IPs bound to the primary public IPv4
+interface MAC, so the server's interfaces never change.
 
 **Explicit address families** — every public interface declares IPv4 or IPv6.
 The provider schema may otherwise leave the family unknown during planning,

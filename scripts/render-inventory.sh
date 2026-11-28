@@ -388,12 +388,28 @@ for i in "${!host_pairs[@]}"; do
   # Terraform keeps no null output in the state, so a read by name fails for a
   # null value and for a broken state alike. The full listing fails only for
   # the second; an absent or null entry is an address the node does not have.
-  if ! optional_addresses="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -json \
-      | jq -er '"\(.server_ipv6.value // "")|\(.honeypot_ipv4.value // "")"')"; then
+  if ! outputs_json="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -json)" \
+     || ! optional_addresses="$(jq -er '"\(.server_ipv6.value // "")|\(.honeypot_ipv4.value // "")"' <<< "$outputs_json")"; then
     echo "cannot read Terraform outputs for ${prov}:${env}; the inventory was not changed" >&2
     exit 1
   fi
   ipv6="${optional_addresses%%|*}"
+  # Movable service addresses carry client traffic; the primary address stays
+  # the host's SSH and Tailnet identity. State applied before these outputs
+  # existed lacks them until the next apply records them.
+  if ! service_addresses="$(jq -ec --arg primary "$ip" --arg honeypot "${optional_addresses#*|}" '
+      def v4: type == "string" and test("^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}$");
+      .service_ipv4.value as $endpoint | .service_ipv4_addresses.value as $list
+      | if ($list | type) == "array" and ($list | length) <= 2 and all($list[]; v4)
+           and ($list | unique | length) == ($list | length)
+           and all($list[]; . != $primary and . != $honeypot)
+           and $endpoint == (if ($list | length) > 0 then $list[-1] else $primary end)
+        then $list else error("invalid") end' <<< "$outputs_json")"; then
+    echo "missing or inconsistent service address outputs for ${prov}:${env}; apply the provider root to record them" >&2
+    exit 1
+  fi
+  service_ip="$(jq -r '.[-1] // empty' <<< "$service_addresses")"
+  service_ip="${service_ip:-$ip}"
   user="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw admin_user)"
   ssh_port="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw ssh_port)"
   hostname="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_hostname)"
@@ -462,7 +478,10 @@ for i in "${!host_pairs[@]}"; do
     failure_domain="${observability_failure_domain_list[$i]}"
     [[ "$failure_domain" =~ ^[a-z][a-z0-9_-]{0,63}$ ]] || { echo "invalid observability failure domain" >&2; exit 1; }
   fi
-  vpn_line="${hostname} ansible_host=${transport_ip} vpn_service_address=${ip} ansible_user=${user} ansible_port=${ssh_port} provider=${prov} env=${env}"
+  vpn_line="${hostname} ansible_host=${transport_ip} vpn_service_address=${service_ip} vpn_host_address=${ip} ansible_user=${user} ansible_port=${ssh_port} provider=${prov} env=${env}"
+  if [[ "$service_addresses" != "[]" ]]; then
+    vpn_line+=" vpn_service_addresses='${service_addresses}'"
+  fi
   vpn_line+=" vpn_build_environment=${build_environment_ini}"
   # The INI inventory plugin tokenizes host vars with shlex before applying
   # Python literal parsing. Quote the complete JSON value so the inner string

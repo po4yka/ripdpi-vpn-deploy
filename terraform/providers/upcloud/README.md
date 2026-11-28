@@ -52,6 +52,7 @@ No modules.
 | ---- | ---- |
 | [terraform_data.ssh_port](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
 | [upcloud_firewall_rules.vpn](https://registry.terraform.io/providers/UpCloudLtd/upcloud/latest/docs/resources/firewall_rules) | resource |
+| [upcloud_floating_ip_address.service_ipv4](https://registry.terraform.io/providers/UpCloudLtd/upcloud/latest/docs/resources/floating_ip_address) | resource |
 | [upcloud_server.vpn](https://registry.terraform.io/providers/UpCloudLtd/upcloud/latest/docs/resources/server) | resource |
 | [upcloud_storage.ci_ssh_seed](https://registry.terraform.io/providers/UpCloudLtd/upcloud/latest/docs/resources/storage) | resource |
 | [upcloud_storage.observer_backup](https://registry.terraform.io/providers/UpCloudLtd/upcloud/latest/docs/resources/storage) | resource |
@@ -79,6 +80,7 @@ No modules.
 | <a name="input_provider_return_ephemeral_ports"></a> [provider\_return\_ephemeral\_ports](#input\_provider\_return\_ephemeral\_ports) | Linux client ephemeral port range accepted for inbound TCP/UDP return traffic by the stateless provider firewall. | <pre>object({<br/>    start = number<br/>    end   = number<br/>  })</pre> | <pre>{<br/>  "end": 60999,<br/>  "start": 32768<br/>}</pre> | no |
 | <a name="input_public_listeners"></a> [public\_listeners](#input\_public\_listeners) | Public TCP/UDP listeners allowed at the provider edge. Specify exactly one of port or port\_range for each entry. Optional family (ipv4, ipv6 or dual; absent means dual) limits the entry to one address family at every layer. | <pre>list(object({<br/>    name       = string<br/>    protocol   = string<br/>    port       = optional(number)<br/>    port_range = optional(string)<br/>    family     = optional(string)<br/>  }))</pre> | `[]` | no |
 | <a name="input_server_name"></a> [server\_name](#input\_server\_name) | Hostname / Terraform name of the VPS. | `string` | n/a | yes |
+| <a name="input_service_ipv4_generations"></a> [service\_ipv4\_generations](#input\_service\_ipv4\_generations) | Ordered names of movable public IPv4 addresses (floating IPs on the primary public interface) that carry client traffic on this server. The last name is the client endpoint; an earlier name stays attached while devices move to the new address. Empty keeps the primary IPv4 as the client endpoint. | `list(string)` | `[]` | no |
 | <a name="input_ssh_port"></a> [ssh\_port](#input\_ssh\_port) | Effective SSH listener port configured by cloud-init and opened at the provider edge. | `number` | `22` | no |
 | <a name="input_state_passphrase"></a> [state\_passphrase](#input\_state\_passphrase) | State and plan encryption passphrase, from TF\_VAR\_state\_passphrase only. | `string` | n/a | yes |
 | <a name="input_storage_size_gb"></a> [storage\_size\_gb](#input\_storage\_size\_gb) | Root disk size in GB. | `number` | `25` | no |
@@ -97,6 +99,8 @@ No modules.
 | <a name="output_server_hostname"></a> [server\_hostname](#output\_server\_hostname) | n/a |
 | <a name="output_server_ipv4"></a> [server\_ipv4](#output\_server\_ipv4) | Public IPv4 address (primary). |
 | <a name="output_server_ipv6"></a> [server\_ipv6](#output\_server\_ipv6) | Public IPv6 address (may be null if disabled). |
+| <a name="output_service_ipv4"></a> [service\_ipv4](#output\_service\_ipv4) | Client endpoint IPv4: the newest service address, or the primary IPv4 when none is attached. |
+| <a name="output_service_ipv4_addresses"></a> [service\_ipv4\_addresses](#output\_service\_ipv4\_addresses) | Movable client-traffic IPv4 addresses attached to the server, in generation order. Empty when the primary IPv4 carries client traffic. |
 | <a name="output_ssh_port"></a> [ssh\_port](#output\_ssh\_port) | Effective SSH listener port. |
 | <a name="output_zone"></a> [zone](#output\_zone) | Provider-specific zone/region/location identifier. |
 <!-- END_TF_DOCS -->

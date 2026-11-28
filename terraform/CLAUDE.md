@@ -10,8 +10,9 @@ coverage. Existing explicit operator contracts are not rewritten.
 **Per-provider root, identical outputs** — Terraform module sources can't
 be variable-driven, so each provider gets its own root under
 `providers/<name>/`. Every root exports the same outputs: `server_ipv4`,
-`server_ipv6`, `honeypot_ipv4`, `admin_user`, `ssh_port`, `server_hostname`,
-`zone`, `public_listeners`, `nat_source_port_range`. The NAT range is nonempty
+`server_ipv6`, `honeypot_ipv4`, `service_ipv4`, `service_ipv4_addresses`,
+`admin_user`, `ssh_port`, `server_hostname`, `zone`, `public_listeners`,
+`nat_source_port_range`. The NAT range is nonempty
 only when UpCloud stateless filtering requires source-port remapping; stateful
 providers and the inert exception root export an empty string.
 `scripts/render-inventory.sh` consumes the common inventory contract.
@@ -32,8 +33,16 @@ blue-green path rather than changing a live node in place.
 cloud-init owns first-boot bootstrap; Ansible owns runtime state.
 
 **Secondary public IP is opt-in per root** — `additional_public_ip = true`
-allocates the honeypot address; there is no generic floating-IP toggle.
-Blue-green moves follow the disposable-node path instead.
+allocates the honeypot address only.
+
+**Client addresses are movable generations** — `service_ipv4_generations`
+(at most two names) attaches provider-movable IPv4s to the same server. The
+last one is the `service_ipv4` output (inventory `vpn_service_address`), the
+client endpoint; `server_ipv4` (inventory `vpn_host_address`) stays the SSH,
+Tailnet and egress identity and never moves. `service_ipv4_addresses` lists
+every attached generation for guest `/32` ownership in the `baseline` role.
+A blocked prefix or ASN still needs the disposable-node path
+(`docs/how-to/rotate-service-ip.md`).
 
 **Typed listener contract crosses the cloud/runtime boundary** — `public_listeners` in tfvars is the provider-edge allowlist. Its resolved Terraform output is rendered into inventory, verified against Ansible's enabled listener manifest before deploy, and used by nftables and security verification. An empty contract fails the plan; the historical implicit default set survives only behind the explicit `use_legacy_public_listeners = true` opt-in. An optional entry `family` (`ipv4`, `ipv6`, `dual`; null means dual and keeps existing rule keys) limits the provider rule, the node ruleset and the verifier to that family; the Ansible `public_listener_families` map must state the same value, set per node in its private `ANSIBLE_EXTRA_VARS_FILE`, and the `listener_family` plan policy refuses a closed-family provider rule.
 

@@ -29,6 +29,16 @@
     "type": "string",
     "value": ""
   },
+  "service_ipv4": {
+    "sensitive": false,
+    "type": "string",
+    "value": "198.51.100.10"
+  },
+  "service_ipv4_addresses": {
+    "sensitive": false,
+    "type": ["tuple", []],
+    "value": []
+  },
   "public_listeners": {
     "sensitive": false,
     "type": [

@@ -856,6 +856,57 @@ def test_tailnet_transport_keeps_terraform_public_service_address(tmp_path):
     assert "ansible_host=198.51.100.10" in (root / "ansible/inventory/generated.ini").read_text()
 
 
+def _render_with_outputs(tmp_path, mutate):
+    root, env = _isolated_inventory_repo(tmp_path)
+    data = json.loads((FIXTURES / "tf-output-sample.json").read_text())
+    mutate(data)
+    fixture = tmp_path / "service-output.json"
+    fixture.write_text(json.dumps(data))
+    _build_terraform_stub(tmp_path / "bin", fixture)
+    result = subprocess.run(
+        ["bash", str(root / "scripts/render-inventory.sh")],
+        env=env, capture_output=True, text=True, timeout=20,
+    )
+    return result, (root / "ansible/inventory/generated.ini").read_text()
+
+
+def test_service_generations_move_only_the_client_endpoint(tmp_path):
+    def rotated(data):
+        data["service_ipv4_addresses"]["value"] = ["203.0.113.21", "203.0.113.22"]
+        data["service_ipv4"]["value"] = "203.0.113.22"
+
+    result, inventory = _render_with_outputs(tmp_path, rotated)
+
+    assert result.returncode == 0, result.stderr
+    line = next(item for item in inventory.splitlines() if item.startswith("vpn-test.example.com "))
+    assert " ansible_host=198.51.100.10 " in line
+    assert " vpn_host_address=198.51.100.10 " in line
+    assert " vpn_service_address=203.0.113.22 " in line
+    assert " vpn_service_addresses='[\"203.0.113.21\",\"203.0.113.22\"]' " in line
+
+
+@pytest.mark.parametrize("mutate", [
+    pytest.param(lambda data: data.pop("service_ipv4_addresses"), id="missing-addresses"),
+    pytest.param(lambda data: data.pop("service_ipv4"), id="missing-endpoint"),
+    pytest.param(lambda data: data["service_ipv4_addresses"].update(value=["203.0.113.21"]), id="endpoint-not-newest"),
+    pytest.param(lambda data: data.update(service_ipv4={"value": "203.0.113.21"}), id="endpoint-without-addresses"),
+    pytest.param(lambda data: (data["service_ipv4_addresses"].update(value=["198.51.100.10"]),
+                               data["service_ipv4"].update(value="198.51.100.10")), id="primary-reused"),
+    pytest.param(lambda data: (data["service_ipv4_addresses"].update(value=["203.0.113.1", "203.0.113.2", "203.0.113.3"]),
+                               data["service_ipv4"].update(value="203.0.113.3")), id="three-generations"),
+    pytest.param(lambda data: (data["service_ipv4_addresses"].update(value=["203.0.113.300"]),
+                               data["service_ipv4"].update(value="203.0.113.300")), id="malformed"),
+    pytest.param(lambda data: (data["service_ipv4_addresses"].update(value=["203.0.113.01"]),
+                               data["service_ipv4"].update(value="203.0.113.01")), id="leading-zero"),
+])
+def test_inconsistent_service_outputs_preserve_inventory(tmp_path, mutate):
+    result, inventory = _render_with_outputs(tmp_path, mutate)
+
+    assert result.returncode != 0
+    assert "service address outputs" in result.stderr
+    assert inventory == "last-good\n"
+
+
 def test_tailnet_ipv6_proof_selects_confirmed_management_transport(tmp_path):
     root, env = _isolated_inventory_repo(tmp_path)
     handoff = _tailnet_handoff(tmp_path, management_address="fd7a:115c:a1e0::42")

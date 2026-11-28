@@ -109,3 +109,14 @@ resource "vultr_instance_ipv4" "honeypot" {
   # network configuration. Inventory verifies the address before publishing it.
   reboot = true
 }
+
+# The baseline role owns the guest /32 of each service address and refuses
+# convergence when the address does not reach the guest.
+resource "vultr_reserved_ip" "service_ipv4" {
+  for_each = toset(var.service_ipv4_generations)
+
+  region      = var.region
+  ip_type     = "v4"
+  label       = "${var.server_name}-service-${each.key}"
+  instance_id = vultr_instance.vpn.id
+}

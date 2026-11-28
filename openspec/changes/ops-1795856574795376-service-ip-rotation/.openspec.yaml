@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-28
+goal: OPS-1795856574795376 Rotate a node's client-facing IPv4 without replacing
+  the server

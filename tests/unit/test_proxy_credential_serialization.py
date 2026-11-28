@@ -44,7 +44,7 @@ def test_snell_server_smoke_and_recipient_preserve_exact_credentials(tmp_path, m
     }}
     monkeypatch.setattr(client_payload, "context", lambda _: deepcopy(context))
     def metadata(argv, **_):
-        assert argv[-3:] == ["output", "-raw", "server_ipv4"]
+        assert argv[-3:] == ["output", "-raw", "service_ipv4"]
         return b"192.0.2.90"
     monkeypatch.setattr(client_payload, "command", metadata)
     source = str(tmp_path / "in-memory-authority")

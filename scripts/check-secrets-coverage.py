@@ -32,6 +32,8 @@ NON_SECRET_TOPLEVEL = {
     "ansible_user",
     "ansible_host",
     "vpn_service_address",
+    "vpn_host_address",
+    "vpn_service_addresses",
     "ansible_facts",
     "ansible_distribution",
     "ansible_python_interpreter",
@@ -89,6 +91,9 @@ NON_SECRET_TOPLEVEL = {
     "_honeypot_secondary_address",
     "_honeypot_secondary_interface",
     "_honeypot_secondary_unit",
+    # Validated service address and interface from baseline service-address tasks.
+    "_baseline_service_address",
+    "_baseline_service_interface",
     "xray_arch",
     "xray_sha256",
     "hysteria_arch",
@@ -202,7 +207,8 @@ JINJA_ENVIRONMENT.tests = _AnyName(JINJA_ENVIRONMENT.tests)
 # hostvars exposes every variable of every host, secrets included, so a template
 # may read through it only these non-secret inventory keys, each as a literal
 # hostvars[<host>]['<key>'] lookup.
-HOSTVARS_NON_SECRET_KEYS = {"vpn_service_address", "server_ipv6", "honeypot_listen_addr"}
+HOSTVARS_NON_SECRET_KEYS = {"vpn_service_address", "vpn_host_address", "vpn_service_addresses", "server_ipv6",
+                            "honeypot_listen_addr"}
 
 
 def _hostvars_reads_only_listed_keys(tree: nodes.Template) -> bool:

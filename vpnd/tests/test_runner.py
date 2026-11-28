@@ -503,7 +503,7 @@ def inventory():
                     "env": "prod",
                     "provider": "upcloud",
                     "ansible_host": "100.64.0.5",
-                    "vpn_service_address": "203.0.113.5",
+                    "vpn_host_address": "203.0.113.5",
                 },
                 "staging-node": {
                     "env": "staging",

@@ -32,7 +32,7 @@ def _run_burn_check(
         "#!/usr/bin/env bash\n"
         "case \"$*\" in\n"
         "  *'workspace select test'*) exit 0 ;;\n"
-        "  *'output -raw server_ipv4'*) printf '%s\\n' 203.0.113.10 ;;\n"
+        "  *'output -raw service_ipv4'*) printf '%s\\n' 203.0.113.10 ;;\n"
         "  *) exit 2 ;;\n"
         "esac\n",
     )

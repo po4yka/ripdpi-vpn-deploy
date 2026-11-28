@@ -153,7 +153,7 @@ for tool in curl jq; do
 done
 
 if [[ -z "${IP:-}" ]]; then
-  IP="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
+  IP="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw service_ipv4)"
 fi
 python3 - "$IP" <<'PY'
 import ipaddress, sys

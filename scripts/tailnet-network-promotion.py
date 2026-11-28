@@ -710,7 +710,8 @@ class ProviderTarget:
                 and item.get("name") == "vpn"
             ]
             instances = matches[0]["instances"]
-            address = state["outputs"]["server_ipv4"]["value"]
+            # The target identity hashes the client endpoint, as the deploy controller does.
+            address = state["outputs"]["service_ipv4"]["value"]
             if (
                 len(matches) != 1
                 or len(instances) != 1
@@ -1491,7 +1492,7 @@ def _execute(
             != {"inventory_alias", "public_service_address_sha256", "deployable_digest"}
             or expected_identity["inventory_alias"] != host["name"]
             or expected_identity["public_service_address_sha256"]
-            != hashlib.sha256(host["address"].encode()).hexdigest()
+            != hashlib.sha256(host["service"].encode()).hexdigest()
             or HEX.fullmatch(expected_identity["deployable_digest"]) is None
             or HEX.fullmatch(request["provider_target_sha256"]) is None
         ):

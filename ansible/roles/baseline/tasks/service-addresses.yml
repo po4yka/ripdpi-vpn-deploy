@@ -1,0 +1,131 @@
+---
+# Terraform attaches movable client-traffic IPv4s (service_ipv4_generations) at
+# the provider edge; the guest must own each /32 before clients can reach it.
+# Every listener binds the wildcard address, so no service restart is needed.
+- name: Resolve guest service address ownership
+  ansible.builtin.set_fact:
+    _baseline_service_addresses: "{{ vpn_service_addresses | default([]) }}"
+    _baseline_service_interface: "{{ ansible_facts.get('default_ipv4', {}).get('interface', '') }}"
+
+- name: Validate service addresses and the existing guest interface
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import ipaddress, json, re, socket, sys
+        addresses = json.loads(sys.argv[1])
+        assert isinstance(addresses, list) and len(addresses) <= 2 and len(set(addresses)) == len(addresses)
+        for value in addresses:
+            address = ipaddress.IPv4Address(value)
+            assert str(address) == value and not (address.is_unspecified or address.is_multicast or address.is_loopback)
+            assert value not in sys.argv[3:], 'service address cannot be the primary or honeypot IPv4'
+        assert re.fullmatch(r'[A-Za-z0-9_.:-]{1,15}', sys.argv[2])
+        socket.if_nametoindex(sys.argv[2])
+      - "{{ _baseline_service_addresses | to_json }}"
+      - "{{ _baseline_service_interface }}"
+      - "{{ vpn_host_address | default('') }}"
+      - "{{ ansible_facts.get('default_ipv4', {}).get('address', '') }}"
+      - "{{ honeypot_listen_addr | default('') }}"
+  changed_when: false
+  check_mode: false
+  when: _baseline_service_addresses | length > 0
+
+- name: Resolve exact service address unit names
+  ansible.builtin.set_fact:
+    _baseline_service_units: >-
+      {{ _baseline_service_addresses
+         | map('regex_replace', '^(.*)$', 'vpn-service-address-\1-' ~ _baseline_service_interface ~ '.service')
+         | list }}
+
+- name: Discover previously owned service address units
+  ansible.builtin.find:
+    paths: /etc/systemd/system
+    patterns: vpn-service-address-*.service
+    file_type: file
+  register: _baseline_service_address_units
+
+- name: Install exact service address cleanup helper
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../honeypot/files/remove-secondary-address.py"
+    dest: /usr/local/libexec/vpn-service-remove-address.py
+    owner: root
+    group: root
+    mode: "0755"
+  when: _baseline_service_addresses | length > 0 or _baseline_service_address_units.files | length > 0
+
+- name: Stop obsolete service address ownership before removing its unit
+  ansible.builtin.systemd_service:
+    name: "{{ item.path | basename }}"
+    state: stopped
+    enabled: false
+  loop: "{{ _baseline_service_address_units.files }}"
+  when: item.path | basename not in _baseline_service_units
+
+- name: Remove obsolete owned service address units
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ _baseline_service_address_units.files }}"
+  when: item.path | basename not in _baseline_service_units
+  register: _baseline_service_units_removed
+
+- name: Forget removed service address units
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: _baseline_service_units_removed is changed
+
+- name: Install persistent service address units
+  ansible.builtin.template:
+    src: service-address.service.j2
+    dest: "/etc/systemd/system/{{ _baseline_service_units[index] }}"
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    _baseline_service_address: "{{ item }}"
+  loop: "{{ _baseline_service_addresses }}"
+  loop_control:
+    index_var: index
+  register: _baseline_service_unit_files
+
+- name: Inspect service address drift before unit reconciliation
+  ansible.builtin.command:
+    argv: [ip, -j, -4, address, show, dev, "{{ _baseline_service_interface }}"]
+  changed_when: false
+  register: _baseline_guest_addresses_before
+  when: _baseline_service_addresses | length > 0 and not ansible_check_mode
+
+- name: Configure each service IPv4 inside the guest
+  ansible.builtin.systemd_service:
+    name: "{{ _baseline_service_units[index] }}"
+    enabled: true
+    daemon_reload: true
+    state: >-
+      {{ 'restarted' if not ansible_check_mode and
+         (_baseline_guest_addresses_before.stdout | from_json | map(attribute='addr_info') | flatten
+          | selectattr('local', 'equalto', item)
+          | selectattr('prefixlen', 'equalto', 32) | list | length) != 1 else 'started' }}
+  loop: "{{ _baseline_service_addresses }}"
+  loop_control:
+    index_var: index
+  # Check mode writes no new unit, so systemd cannot know it yet.
+  when: not (ansible_check_mode and _baseline_service_unit_files.results[index] is changed)
+
+- name: Inspect the actual guest service addresses
+  ansible.builtin.command:
+    argv: [ip, -j, -4, address, show, dev, "{{ _baseline_service_interface }}"]
+  changed_when: false
+  register: _baseline_guest_addresses
+  when: _baseline_service_addresses | length > 0 and not ansible_check_mode
+
+- name: Require every provider service address to exist in the guest
+  ansible.builtin.assert:
+    that:
+      - >-
+        (_baseline_guest_addresses.stdout | from_json | map(attribute='addr_info') | flatten
+         | selectattr('local', 'equalto', item)
+         | selectattr('prefixlen', 'equalto', 32) | list | length) == 1
+    fail_msg: A service IPv4 did not converge inside the guest
+  loop: "{{ _baseline_service_addresses }}"
+  when: not ansible_check_mode

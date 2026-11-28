@@ -19,13 +19,13 @@ def setup(plan):
     path = Path(document['inventory'])
     raw = path.read_text().replace('\n[vpn-test]\nnode-b\n', '').replace('[vpn-test]\nnode-a', '[vpn-test]\nnode-a\nnode-b')
     raw = raw.replace('[vpn-test]',
-        'publisher provider=hetzner env=delivery ansible_host=100.64.0.9 vpn_service_address=192.0.2.9 '
+        'publisher provider=hetzner env=delivery ansible_host=100.64.0.9 vpn_service_address=192.0.2.9 vpn_host_address=192.0.2.9 '
         'ansible_user=deploy ansible_port=2202\n'
         'alternate provider=vultr env=alternate ansible_host=192.0.2.8 ansible_user=deploy ansible_port=22\n'
         '[vpn-delivery]\npublisher\n[vpn-p0-minimal]\nalternate\n[vpn-test]')
     path.write_text(raw)
     document['publication'].update(source_alias='publisher', target_alias='publisher')
-    fresh = raw.replace('ansible_host=192.0.2.2', 'ansible_host=100.64.0.2 vpn_service_address=192.0.2.2')
+    fresh = raw.replace('ansible_host=192.0.2.2', 'ansible_host=100.64.0.2 vpn_service_address=192.0.2.2 vpn_host_address=192.0.2.2')
     fresh = '\n'.join(line for line in fresh.splitlines() if not line.startswith(('publisher', 'alternate', '[vpn-delivery]', '[vpn-p0-minimal]'))) + '\n'
     return document, path, fresh
 

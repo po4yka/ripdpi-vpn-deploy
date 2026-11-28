@@ -21,7 +21,7 @@ def materialization(monkeypatch):
     monkeypatch.setattr(client_payload, "context", lambda _: deepcopy(context))
 
     def metadata(argv, **_):
-        assert argv[-1] == "server_ipv4"
+        assert argv[-1] == "service_ipv4"
         return b"203.0.113.10"
 
     monkeypatch.setattr(client_payload, "command", metadata)

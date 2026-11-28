@@ -1,0 +1,26 @@
+[Unit]
+Description=Client service guest IPv4
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/ip address replace {{ _baseline_service_address }}/32 dev {{ _baseline_service_interface }}
+ExecStop=/usr/bin/python3 -I -B /usr/local/libexec/vpn-service-remove-address.py {{ _baseline_service_address }} {{ _baseline_service_interface }}
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

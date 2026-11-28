@@ -38,7 +38,7 @@ def main() -> int:
             raise ValueError("expected address and interface")
         remove(sys.argv[1], sys.argv[2])
     except (OSError, ValueError, subprocess.SubprocessError):
-        print("Dedicated honeypot address cleanup failed", file=sys.stderr)
+        print("Owned guest address cleanup failed", file=sys.stderr)
         return 1
     return 0
 

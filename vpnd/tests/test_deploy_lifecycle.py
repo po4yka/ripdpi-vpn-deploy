@@ -108,7 +108,7 @@ fi
             "ansible-inventory",
             """#!/bin/sh
 printf 'inventory\n' >> "$FIXTURE_ROOT/calls"
-printf '%s\n' '{"vpn":{"hosts":["fixture-node","other-env"]},"_meta":{"hostvars":{"fixture-node":{"env":"test","provider":"upcloud","ansible_host":"100.64.0.5","vpn_service_address":"203.0.113.5"},"other-env":{"env":"staging","provider":"upcloud","ansible_host":"203.0.113.6"}}}}'
+printf '%s\n' '{"vpn":{"hosts":["fixture-node","other-env"]},"_meta":{"hostvars":{"fixture-node":{"env":"test","provider":"upcloud","ansible_host":"100.64.0.5","vpn_host_address":"203.0.113.5"},"other-env":{"env":"staging","provider":"upcloud","ansible_host":"203.0.113.6"}}}}'
 """,
         )
         self.executable(

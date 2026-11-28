@@ -136,6 +136,66 @@ run "server_secondary_public_ip_when_honeypot_enabled" {
   }
 }
 
+run "service_ipv4_defaults_to_the_primary_address" {
+  command = plan
+
+  assert {
+    condition = (
+      length(scaleway_instance_ip.service_ipv4) == 0
+      && output.service_ipv4 == output.server_ipv4
+      && length(output.service_ipv4_addresses) == 0
+    )
+    error_message = "Without service generations the primary IPv4 must remain the client endpoint"
+  }
+}
+
+run "service_ipv4_generations_attach_movable_addresses" {
+  command = plan
+
+  variables {
+    service_ipv4_generations = ["g1", "g2"]
+  }
+
+  override_resource {
+    target = scaleway_instance_ip.ipv4[0]
+    values = { id = "fr-par-1/ip-primary", address = "203.0.113.10" }
+  }
+
+  override_resource {
+    target = scaleway_instance_ip.service_ipv4["g1"]
+    values = { id = "fr-par-1/ip-g1", address = "198.51.100.11" }
+  }
+
+  override_resource {
+    target = scaleway_instance_ip.service_ipv4["g2"]
+    values = { id = "fr-par-1/ip-g2", address = "198.51.100.12" }
+  }
+
+  assert {
+    condition = (
+      length(scaleway_instance_ip.service_ipv4) == 2
+      && scaleway_instance_ip.service_ipv4["g2"].type == "routed_ipv4"
+      && contains(scaleway_instance_server.vpn.ip_ids, "fr-par-1/ip-g1")
+      && contains(scaleway_instance_server.vpn.ip_ids, "fr-par-1/ip-g2")
+      && contains(scaleway_instance_server.vpn.ip_ids, "fr-par-1/ip-primary")
+      && output.service_ipv4 == "198.51.100.12"
+      && jsonencode(output.service_ipv4_addresses) == jsonencode(["198.51.100.11", "198.51.100.12"])
+      && output.server_ipv4 == "203.0.113.10"
+    )
+    error_message = "Service generations must attach routed IPv4s to the server and publish the newest one as the client endpoint"
+  }
+}
+
+run "service_ipv4_generations_are_bounded" {
+  command = plan
+
+  variables {
+    service_ipv4_generations = ["G1"]
+  }
+
+  expect_failures = [var.service_ipv4_generations]
+}
+
 run "stateful_provider_preserves_unconstrained_nat_output" {
   command = plan
   assert {

@@ -68,7 +68,8 @@ def route_io(port, *, hostname=HOSTNAME):
     instance = object.__new__(migration_io.LocalIO)
     instance.plan = {'publication': {'origin': f'https://{hostname}:{port}',
                                      'source_alias': 'delivery', 'target_alias': 'delivery'}}
-    instance.hosts = {'delivery': {'address': '127.0.0.1'}}
+    # Routes reach the client service address; the host address is unreachable here.
+    instance.hosts = {'delivery': {'address': '192.0.2.200', 'service': '127.0.0.1'}}
     return instance
 
 

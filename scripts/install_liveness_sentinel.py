@@ -367,7 +367,7 @@ def _awg_context(secrets, sentinel, mapping, environment, endpoint=None):
             raise InstallError("invalid-awg-cohort")
         cohort = _yaml(role / "vars/cohorts" / (slug + ".yml")).get("amneziawg_cohort", {})
     if endpoint is None:
-        endpoint = _run([str(REPO / "scripts/terraform-env.sh"), "output", "-raw", "server_ipv4"],
+        endpoint = _run([str(REPO / "scripts/terraform-env.sh"), "output", "-raw", "service_ipv4"],
                         environment={**environment, "PROVIDER": binding["provider"], "ENV": binding["environment"]})
     try:
         endpoint = str(ipaddress.IPv4Address(endpoint.decode().strip() if isinstance(endpoint, bytes) else endpoint))

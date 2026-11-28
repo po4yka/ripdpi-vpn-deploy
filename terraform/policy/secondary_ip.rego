@@ -50,11 +50,14 @@ deny[msg] {
   )
 }
 
-# hcloud_server: detect companion hcloud_floating_ip resource being added
+# hcloud_server: detect the companion honeypot hcloud_floating_ip being added.
+# Service addresses (hcloud_floating_ip.service_ipv4) carry client traffic and
+# are bounded by var.service_ipv4_generations instead.
 deny[msg] {
   not opt_in
   rc := input.resource_changes[_]
   rc.type == "hcloud_floating_ip"
+  startswith(rc.address, "hcloud_floating_ip.honeypot_ipv4")
   rc.change.actions[_] == "create"
 
   msg := sprintf(

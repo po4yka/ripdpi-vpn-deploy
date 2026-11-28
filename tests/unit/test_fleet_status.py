@@ -56,7 +56,7 @@ def inputs(tmp_path):
     key.chmod(0o600)
     inventory = tmp_path / "inventory.ini"
     inventory.write_text(
-        "[vpn]\nnode-a ansible_host=100.64.0.2 vpn_service_address=192.0.2.1 "
+        "[vpn]\nnode-a ansible_host=100.64.0.2 vpn_service_address=192.0.2.1 vpn_host_address=192.0.2.1 "
         "ansible_user=deploy ansible_port=2222 provider=upcloud env=prod\n"
         "node-b ansible_host=192.0.2.2 ansible_user=deploy ansible_port=22 provider=vultr env=prod\n"
         f"[vpn:vars]\nansible_ssh_private_key_file={key}\n"

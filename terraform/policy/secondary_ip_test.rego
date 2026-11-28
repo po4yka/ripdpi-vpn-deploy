@@ -30,6 +30,18 @@ test_deny_hcloud_floating_ip_no_opt_in {
   count(result) == 1
 }
 
+test_allow_hcloud_service_floating_ip_without_honeypot_opt_in {
+  result := deny with input as {
+    "variables": {"additional_public_ip": {"value": false}},
+    "resource_changes": [{
+      "address": "hcloud_floating_ip.service_ipv4[\"g2\"]",
+      "type": "hcloud_floating_ip",
+      "change": {"actions": ["create"], "after": {}},
+    }],
+  }
+  count(result) == 0
+}
+
 test_deny_vultr_instance_ipv4_no_opt_in {
   result := deny with input as {
     "variables": {"additional_public_ip": {"value": false}},

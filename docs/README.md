@@ -58,6 +58,7 @@ Complete one task against real infrastructure. Every guide names its preconditio
 | [Runbook — disaster recovery / restore](how-to/restore.md) | Disaster recovery: full rebuild from git plus secrets, or restore from a restic snapshot; RTO and RPO | CORE |
 | [Runbook — rollback](how-to/rollback.md) | Three rollback levels: config rescue, binary rollback, blue-green replacement; what blocks rollback | CORE |
 | [Runbook — credential rotation](how-to/rotate.md) | Credential rotation for one client, the REALITY keypair, Hysteria and AmneziaWG server keys, restic, SSH | CORE |
+| [Rotate a node's client IPv4 without replacing the server](how-to/rotate-service-ip.md) | Attach a movable provider IPv4, move devices to it and retire the old client address on the same server | CORE |
 | [Repository security checks and host audits](how-to/security-checks.md) | Review daily scan notifications, retry complete scans and collect private host audit reports | — |
 | [Snell refinement evaluation](how-to/snell-refinement.md) | Staging-only Snell payload and refinement matrix; research tier, disabled in every shipped profile | — |
 | [Runbook: stand up a split-hop pilot](how-to/split-hop-pilot.md) | Stand up the two-VPS split-hop pilot: node keys, egress and ingress configuration, verification, tear-down | RESEARCH |

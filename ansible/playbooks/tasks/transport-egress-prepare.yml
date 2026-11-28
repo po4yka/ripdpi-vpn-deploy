@@ -106,7 +106,9 @@
              | regex_replace('(?s)if __name__ == .__main__.:.*$', '') }}
         {{ lookup('ansible.builtin.file', role_path ~ '/../../../scripts/transport_egress_host_context.py')
              | replace('from transport_destination_policy import normalize_address', '') }}
-    stdin: "{{ [vpn_service_address | default(none), honeypot_ipv4 | default(none)] | to_json }}"
+    stdin: >-
+      {{ ([vpn_service_address | default(none), vpn_host_address | default(none), honeypot_ipv4 | default(none)]
+          + (vpn_service_addresses | default([]))) | to_json }}
     stdin_add_newline: false
   register: _transport_egress_host_context
   changed_when: false

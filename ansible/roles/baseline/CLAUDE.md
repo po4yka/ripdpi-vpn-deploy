@@ -63,6 +63,8 @@ For SSH recovery helper or unit changes, inspect the [bundle and controller cons
 policy only after the VPN stack converges. Doesn't open ports or install
 Xray/nginx; other roles layer on top.
 
+**Service addresses are guest `/32`s** — each `vpn_service_addresses` entry gets a `vpn-service-address-<address>-<interface>.service` oneshot that adds the exact `/32` to the default IPv4 interface; convergence restarts it when the address drifted away and refuses when the provider address is still absent. An obsolete unit is stopped (its `ExecStop` removes only its own `/32`, through the honeypot role's exact-address helper) and deleted. Listeners bind wildcards, so no service restarts. The primary IPv4 is never a service address.
+
 **No reboots from this role** — reboots belong to `playbooks/os-maintenance.yml`,
 which checks `/var/run/reboot-required` and reboots one host at a time.
 A reboot mid-deploy would burn idempotency.

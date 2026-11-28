@@ -810,7 +810,7 @@ def transaction_inputs(mode, hosts, identity, directory, root, environment, *,
         alias = host["name"]
         expected_target = {
             "inventory_alias": alias,
-            "public_service_address_sha256": hashlib.sha256(host["address"].encode()).hexdigest(),
+            "public_service_address_sha256": hashlib.sha256(host["service"].encode()).hexdigest(),
             "deployable_digest": identity["DEPLOYABLE_SOURCE_DIGEST"],
         }
         promotion = None
