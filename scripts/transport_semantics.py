@@ -117,7 +117,7 @@ def source_errors(raw: dict, source: dict, path: str) -> list[tuple[str, str]]:
 
 
 INTERFACE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,14}\Z")
-PLACEHOLDER = re.compile(r"REPLACE_WITH_[A-Z0-9_]+\Z")
+PLACEHOLDER = re.compile(r"REPLACE_WITH_[A-Z0-9_]+\Z", re.IGNORECASE | re.ASCII)
 # Published fallback and example set: staging and fixtures may keep it, production refuses it.
 AWG_PARAMETERS = {"jc": 4, "jmin": 40, "jmax": 70, "s1": 50, "s2": 100}
 AWG_PUBLISHED_PORT = 51820
@@ -486,6 +486,9 @@ def hysteria_profile_errors(raw):
     import hashlib
     import base64
     errors = []
+    password = raw.get('salamander_password')
+    if raw.get('salamander_enabled') is True and (not isinstance(password, str) or not password):
+        errors.append(('hysteria.salamander_password', 'required when Salamander is enabled'))
     tuning = raw.get('resource_profile')
     if 'resource_profile' in raw and tuning not in ('bandwidth-capped', 'bbr-conservative', 'bbr-standard'):
         errors.append(('hysteria.resource_profile', 'unsupported resource profile'))

@@ -150,12 +150,9 @@ package_updates:
 # egress is allowed when the corresponding VPN profile needs it.
 firewall_egress_policy: permissive  # valid: permissive, logged, strict
 allowed_ssh_cidrs: []  # populated from terraform tfvars; see render-inventory.sh
-# Exact controller addresses approved by the saved Tailnet ACL. The role stays
-# inert unless a reviewed fleet profile enables vpn.enable_tailnet_management.
+# Exact SSH source addresses come from the confirmed private deployment input.
 tailnet_management:
-  approved_sources:
-    - 100.116.80.32
-    - fd7a:115c:a1e0::4701:50a4
+  approved_sources: []
 public_site_canonical_url: "https://vpn.example.com:8443"
 # Operator-owned site bundle served by nginx-xhttp instead of the bundled
 # decoy. A controller-local directory from `make public-site-build`: every

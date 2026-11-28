@@ -38,7 +38,7 @@ gate them; the pin checker keeps the release-line repository pin in the list.
 - Archive installation is idempotent and validates the resulting binary through
   the shared runtime receipt before exposing the symlink.
 
-Archive runtime and GeoIP staging append the generic `runtime_release_candidates` result explicitly to the complete transport plan. Source-build staging retains its own existing complete candidate selection.
+Archive, GeoIP and source staging append selections to the complete transport plan. Each update suppresses task output because earlier selections can contain private configuration.
 
 ## Pitfalls
 

@@ -188,20 +188,25 @@ def test_generator_refuses_a_ttl_above_the_configured_maximum(tmp_path):
     assert "client-payload: health-ttl-exceeds-maximum" in result.stderr
 
 
-# A plaintext JSON stand-in for sops: decrypt prints the file, set writes one key read from stdin.
+# A plaintext JSON stand-in for the SOPS decrypt, set and unset boundary.
 SOPS_STUB = r'''#!/usr/bin/env python3
 import json, re, sys
 args = sys.argv[1:]
 if "--decrypt" in args:
     sys.stdout.write(open(args[-1]).read()); sys.exit(0)
-if args[0] == "set" and "--value-stdin" in args:
+if args[0] in {"set", "unset"}:
     path, index = args[-2], args[-1]
     document = json.load(open(path))
     keys = re.findall(r'\["([^"]+)"\]', index)
     node = document
     for key in keys[:-1]:
         node = node.setdefault(key, {})
-    node[keys[-1]] = json.loads(sys.stdin.read())
+    if args[0] == "set" and "--value-stdin" in args:
+        node[keys[-1]] = json.loads(sys.stdin.read())
+    elif args[0] == "unset":
+        node.pop(keys[-1])
+    else:
+        sys.exit("unexpected sops call")
     json.dump(document, open(path, "w")); sys.exit(0)
 sys.exit("unexpected sops call")
 '''
@@ -245,14 +250,20 @@ def test_rotation_keeps_one_previous_token_and_the_ingest_honours_the_overlap(tm
     assert [_post(config, body, token=token) for token in reversed(tokens)] == [202, 202, 401]
 
 
-def test_rotation_never_keeps_the_example_placeholder_as_previous_token(tmp_path):
+@pytest.mark.parametrize("has_previous", [False, True])
+def test_rotation_never_keeps_the_example_placeholder_as_previous_token(tmp_path, has_previous):
     secrets = tmp_path / "prod.secrets.sops.json"
-    secrets.write_text(json.dumps({"field_report": {"cohort_token": "REPLACE_with_rotate_cohort_token_output"}}))
+    placeholder = "_".join(("REPLACE", "with", "rotate_cohort_token_output"))
+    field_report = {"cohort_token": placeholder}
+    if has_previous:
+        field_report.update(previous_cohort_token=placeholder, previous_cohort_token_valid_until="2999-01-01T00:00:00Z")
+    secrets.write_text(json.dumps({"field_report": field_report}))
     secrets.chmod(0o600)
     result = _rotate(tmp_path, secrets)
     assert result.returncode == 0, result.stderr
     field_report = json.loads(secrets.read_text())["field_report"]
-    assert "previous_cohort_token" not in field_report
+    assert set(field_report) == {"cohort_token"}
+    assert placeholder not in result.stdout + result.stderr
     assert len(field_report["cohort_token"]) == 43
 
 

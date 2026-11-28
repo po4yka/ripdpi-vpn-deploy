@@ -31,7 +31,7 @@ import yaml
 
 from transport_semantics import transport_errors
 
-PLACEHOLDER_RE = re.compile(r"REPLACE_WITH_")
+PLACEHOLDER_RE = re.compile(r"(?i:REPLACE_WITH_)[A-Za-z0-9_]+|\bREPLACE\b")
 OVERUSED_TARGETS = {
     "www.cloudflare.com", "cloudflare.com",
     "www.microsoft.com", "microsoft.com",

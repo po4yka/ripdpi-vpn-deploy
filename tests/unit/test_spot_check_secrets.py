@@ -30,6 +30,16 @@ def test_malformed_yaml_exits_two_with_diagnosis_not_traceback(tmp_path: Path) -
     assert "unclosed" not in result.stderr
 
 
+def test_mixed_case_placeholder_is_reported_without_its_value(tmp_path):
+    path = tmp_path / "secrets.yml"
+    placeholder = "_".join(("Replace", "With", "Synthetic_Value"))
+    path.write_text(f"field_report:\n  cohort_token: {placeholder}\n")
+    result = _run(path)
+    assert result.returncode == 1
+    assert "field_report.cohort_token: placeholder still present" in result.stdout
+    assert placeholder not in result.stdout + result.stderr
+
+
 def test_certificates_are_left_to_the_enabled_authority_check(tmp_path: Path) -> None:
     # Regression: a self-signed placeholder for a role the node disables failed every
     # verify; check-certs.sh owns certificates and selects only enabled authorities.

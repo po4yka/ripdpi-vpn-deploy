@@ -74,6 +74,11 @@ After login, fresh public and Tailnet SSH and SFTP connections must verify the s
 
 ## Recovery and ordinary deployment
 
+The tracked configuration has an empty SSH source list. With Tailnet
+management enabled, supply exact addresses from the confirmed private
+handoff. For a direct Ansible run, supply the same approved addresses as
+`tailnet_management.approved_sources` in a private extra-vars file.
+
 A persistent worker rolls back an expired unconfirmed transaction. At boot, the early worker restores firewall files and effective policy before nftables, networking and `ssh.socket`, without calling tailscaled. The late worker runs after tailscaled and gates only `ssh.service`, completing owned-identity logout and firewall service reconciliation. A socket may listen after early recovery, but sshd cannot serve/authenticate connections until late recovery succeeds. This separation avoids the socket/basic-target/daemon dependency cycle.
 
 Both workers share the same private lock and durable rollback decision. Interrupted restoration is replayable; confirmation refuses once rollback begins. Corrupt or foreign state remains for diagnosis. Pinned inert packages may remain after rollback, but the access-changing runtime policy is restored.

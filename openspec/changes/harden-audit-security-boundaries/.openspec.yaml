@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-11-28
+goal: SEC-1795866391476569 Enforce security boundaries found in deployment audit

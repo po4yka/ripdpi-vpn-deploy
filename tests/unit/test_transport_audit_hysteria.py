@@ -10,12 +10,13 @@ import client_payload
 from test_liveness_profiles import inputs, load
 
 
-def emit(monkeypatch, *, rates=("100 mbps", "200 mbps"), profile="bandwidth-capped", format="singbox", hopping=False):
+def emit(monkeypatch, *, rates=("100 mbps", "200 mbps"), profile="bandwidth-capped", format="singbox",
+         hopping=False, salamander_password="fixture-obfs-password"):
     document = {"hysteria": {
         "version": "v2.13.0", "resource_profile": profile,
         "bandwidth_up": rates[0], "bandwidth_down": rates[1],
         "masquerade_url": "https://origin.example", "server_name": "origin.example",
-        "salamander_enabled": True, "salamander_password": "fixture-obfs-password",
+        "salamander_enabled": True, "salamander_password": salamander_password,
         "clients": [{"name": "phone", "password": "fixture-client-password"}],
     }}
     context = {"vpn": {"enable_xray_reality": False, "enable_nginx_xhttp": False,
@@ -51,6 +52,12 @@ def test_every_official_singbox_endpoint_retains_hopping(monkeypatch):
     for outbound in outbounds:
         assert outbound["server_ports"] == ["46000:46015"]
         assert outbound["hop_interval"] == "30s"
+
+
+@pytest.mark.parametrize("format", ["singbox", "ripdpi"])
+def test_bundle_export_refuses_enabled_salamander_without_password(monkeypatch, format):
+    with pytest.raises(ValueError):
+        emit(monkeypatch, format=format, salamander_password="")
 
 
 @pytest.mark.parametrize("rates,expected", [

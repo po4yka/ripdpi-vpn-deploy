@@ -50,14 +50,14 @@ def test_tailnet_role_is_opt_in_tactical_and_wired_after_geodata() -> None:
     assert roles.index("tailnet-management") < roles.index("xray")
 
 
-def test_live_fleet_profiles_enable_only_reviewed_tailnet_management_sources() -> None:
+def test_live_fleet_profiles_require_private_tailnet_management_sources() -> None:
     group_vars = ROOT / "ansible" / "group_vars"
     defaults = yaml.safe_load((group_vars / "all.yml").read_text())
     approved_sources = defaults["tailnet_management"]["approved_sources"]
     controller = _load_controller()
-
-    assert controller.validate_sources(approved_sources) == approved_sources
-    assert len(approved_sources) == 2
+    assert approved_sources == []
+    with pytest.raises(controller.Refusal):
+        controller.validate_sources(approved_sources)
 
     enabled_profiles = {
         "vpn-p0-minimal.yml",

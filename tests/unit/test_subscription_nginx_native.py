@@ -18,6 +18,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 import test_subscription_retention
+import yaml
 from template_render import render_template
 from test_subscription_delivery_urls import (
     build_sub_urls,
@@ -32,7 +33,7 @@ pytestmark = pytest.mark.native_runtime
 
 
 @contextmanager
-def nginx_server(*, routes_enabled=True, upstream=None, rate="5r/m", burst=1):
+def nginx_server(*, routes_enabled=True, upstream=None, rate="5r/m", burst=1, network_hint=False):
     assert os.geteuid() == 0 and shutil.which("nginx")
     base = Path("/var/lib") / ("vpn-p2-bearer-" + uuid.uuid4().hex[:12])
     base.mkdir(mode=0o755)
@@ -82,6 +83,11 @@ def nginx_server(*, routes_enabled=True, upstream=None, rate="5r/m", burst=1):
         helper.validate({**authority, "hostname": "other.example.test"})
     with pytest.raises(ValueError):
         helper.validate({**authority, "private_key": "invalid-key"})
+    field_report = yaml.safe_load(
+        (ROOT / "ansible/roles/subscription-host/defaults/main.yml").read_text()
+    )["subscription_field_report"]
+    field_report["enabled"] = network_hint
+    field_report["network_hint"]["enabled"] = network_hint
     context = {
         "subscription": {
             "port": port,
@@ -92,7 +98,7 @@ def nginx_server(*, routes_enabled=True, upstream=None, rate="5r/m", burst=1):
             "enable_bootstrap": routes_enabled,
         },
         "subscription_port": port,
-        "subscription_field_report": {"enabled": False},
+        "subscription_field_report": field_report,
         "nginx_xhttp": {"server_name": "unused.example.test"},
         "vpn": {"share_bundles": [{"token": "synthetic"}] if routes_enabled else []},
     }
@@ -273,7 +279,7 @@ def test_other_methods_on_bearer_routes_answer_as_an_unmatched_path(service):
     token, _, _, _ = prepare_subscription(service)
     with (
         delivery_server(service) as backend,
-        nginx_server(upstream=backend.server_port, rate="1000r/s", burst=20) as (origin, _),
+        nginx_server(upstream=backend.server_port, rate="1000r/s", burst=20, network_hint=True) as (origin, _),
     ):
         tls = ssl._create_unverified_context()
 
@@ -287,6 +293,6 @@ def test_other_methods_on_bearer_routes_answer_as_an_unmatched_path(service):
         for method in ("HEAD", "POST", "PUT", "OPTIONS"):
             absent = answer(method, f"/unknown/{token}")
             assert absent[0] == 404
-            for path in (f"/sub/{token}", f"/bootstrap/{token}"):
+            for path in (f"/sub/{token}", f"/bootstrap/{token}", "/v1/network-hint"):
                 assert answer(method, path) == absent, (method, path)
         assert answer("POST", f"/sub/{token}")[:2] == (404, b"synthetic-site-not-found")

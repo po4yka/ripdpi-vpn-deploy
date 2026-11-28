@@ -94,13 +94,21 @@ deny[msg] {
   rule.direction == "in"
   listener := closed_listeners[_]
   family := closed[listener.family]
-  lower(rule.family) == family
+  upcloud_rule_matches_family(rule, family)
   protocol_matches(object.get(rule, "protocol", null), listener)
   firewall.upcloud_is_world(rule)
   start := object.get(rule, "destination_port_start", "")
   end := object.get(rule, "destination_port_end", start)
   overlaps(selector_bounds(sprintf("%v-%v", [start, end])), listener)
   msg := message(rc.address, listener, family)
+}
+
+upcloud_rule_matches_family(rule, family) {
+  lower(object.get(rule, "family", "")) == family
+}
+
+upcloud_rule_matches_family(rule, _) {
+  not {"ipv4", "ipv6"}[lower(sprintf("%v", [object.get(rule, "family", null)]))]
 }
 
 deny[msg] {
@@ -168,7 +176,7 @@ deny[msg] {
   listener := closed_listeners[_]
   family := closed[listener.family]
   rule.ip_type == {"ipv4": "v4", "ipv6": "v6"}[family]
-  rule.subnet_size == 0
+  firewall.vultr_is_world(rule)
   protocol_matches(object.get(rule, "protocol", null), listener)
   overlaps(selector_bounds(object.get(rule, "port", null)), listener)
   msg := message(rc.address, listener, family)

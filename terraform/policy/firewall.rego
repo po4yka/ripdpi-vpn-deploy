@@ -97,8 +97,8 @@ upcloud_port_contains(rule, port) {
 }
 
 upcloud_is_world(rule) {
-  object.get(rule, "source_address_start", "") in {"", null}
-  object.get(rule, "source_address_end", "") in {"", null}
+  field := {"source_address_start", "source_address_end"}[_]
+  object.get(rule, field, "") in {"", null}
 }
 
 upcloud_is_world(rule) {
@@ -107,8 +107,21 @@ upcloud_is_world(rule) {
 }
 
 upcloud_is_world(rule) {
-  rule.source_address_start == "::"
-  rule.source_address_end == "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"
+  net.cidr_contains("::/128", rule.source_address_start)
+  net.cidr_contains("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff/128", rule.source_address_end)
+}
+
+vultr_cidr(rule) := sprintf("%v/%v", [
+  object.get(rule, "subnet", null),
+  object.get(rule, "subnet_size", null),
+])
+
+vultr_is_world(rule) {
+  world_cidr(vultr_cidr(rule))
+}
+
+vultr_is_world(rule) {
+  not net.cidr_is_valid(vultr_cidr(rule))
 }
 
 # Hetzner defaults an omitted source set to unrestricted sources.

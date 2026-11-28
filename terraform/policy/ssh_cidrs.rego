@@ -71,12 +71,12 @@ deny[msg] {
 }
 
 source_allowed(source) {
+  not firewall.world_cidr(source)
   allowed_cidrs[source]
 }
 
 source_allowed(source) {
-  source != ""
-  source != null
+  not firewall.world_cidr(source)
   cidr := allowed_cidrs[_]
   net.cidr_contains(cidr, source)
 }
@@ -123,21 +123,19 @@ deny[msg] {
   rule.direction == "in"
   firewall.tcp_protocol(object.get(rule, "protocol", null))
   firewall.port_contains(object.get(rule, "port", null), ssh_port)
-  count(object.get(rule, "source_ips", [])) == 0
+  count({source | source := object.get(rule, "source_ips", [])[_]}) == 0
 
-  msg := sprintf("resource %q: hcloud SSH rule names no source_ips", [rc.address])
+  msg := sprintf("resource %q: hcloud SSH rule has unrestricted source_ips", [rc.address])
 }
 
-# vultr: SSH firewall rules use subnet+subnet_size; compare via comment or
-# reconstruct CIDR string from subnet/subnet_size attributes.
+# vultr: SSH firewall rules use a known and restricted subnet/subnet_size.
 deny[msg] {
   rc := input.resource_changes[_]
   rc.type == "vultr_firewall_rule"
   firewall.tcp_protocol(object.get(rc.change.after, "protocol", null))
   firewall.port_contains(object.get(rc.change.after, "port", null), ssh_port)
-  after := rc.change.after
-  cidr := sprintf("%s/%d", [after.subnet, after.subnet_size])
-  not source_allowed(cidr)
+  cidr := firewall.vultr_cidr(rc.change.after)
+  not vultr_source_allowed(rc.change.after, cidr)
 
   msg := sprintf(
     "resource %q: vultr SSH rule source CIDR %q is not in var.allowed_ssh_cidrs",
@@ -145,6 +143,10 @@ deny[msg] {
   )
 }
 
+vultr_source_allowed(rule, cidr) {
+  not firewall.vultr_is_world(rule)
+  source_allowed(cidr)
+}
 
 upcloud_interval_allowed(rule) {
   start := object.get(rule, "source_address_start", "")

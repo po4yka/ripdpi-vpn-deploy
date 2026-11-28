@@ -37,7 +37,7 @@ ALLOW_PREFIXES = (
     "tests/snapshot/golden/",
 )
 
-NEEDLE = re.compile(r"REPLACE_WITH_[A-Z0-9_]+")
+NEEDLE = re.compile(r"REPLACE_WITH_[A-Z0-9_]+", re.IGNORECASE | re.ASCII)
 
 
 def main(args: list[str]) -> int:

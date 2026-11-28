@@ -446,8 +446,7 @@ def test_nginx_location_limits_size_and_rate_and_keeps_body_in_memory():
     assert "proxy_pass http://unix:/run/vpn-field-report.sock:;" in location and "127.0.0.1" not in location
     # An unknown token or a refused method gets the vhost's uniform not-found answer, so a probe cannot tell the route exists.
     # The backend's 501 page for an unsupported method would name http.server.
-    assert "proxy_intercept_errors on;\n        error_page 401 403 501 = @vpn_sub_not_found;" in location
-    assert "location @vpn_sub_not_found {\n        return 404;\n    }" in vhost
+    assert "proxy_intercept_errors on;\n        error_page 401 403 405 501 =404 /404.html;" in location
     # The zone shares the /sub/ key: one IPv6 /64 is one source.
     assert "limit_req_zone $vpn_sub_limit_key zone=vpn_field_report_per_ip:10m rate=30r/m;" in _rendered("rate-limit.conf.j2")
     assert "field-report" not in _rendered("subscription.conf.j2", enabled=False)
@@ -520,13 +519,25 @@ def test_settings_assert_refuses_a_trailing_newline(key):
 
 
 # Joined so the staged-file placeholder scan does not read the fixture as a leaked placeholder.
-@pytest.mark.parametrize("placeholder", ["REPLACE_with_rotate_cohort_token_output",
+@pytest.mark.parametrize("placeholder", ["_".join(("REPLACE", "with", "rotate_cohort_token_output")),
                                          "_".join(("REPLACE", "WITH", "COHORT_TOKEN_VALUE"))])
 def test_settings_assert_refuses_the_example_cohort_token(placeholder):
     # Both spellings fit the token grammar, so only an explicit placeholder check keeps the public value out.
     assert not _settings_assert_holds(cohort_token=placeholder)
     # A rotation before the fix could already have moved it into the overlap slot.
     assert not _settings_assert_holds(previous_cohort_token=placeholder)
+
+
+@pytest.mark.parametrize("slot", ["current", "previous"])
+def test_ingest_refuses_example_tokens_at_load(tmp_path, slot):
+    placeholder = "_".join(("Replace", "With", "Synthetic_Cohort_Token"))
+    path = tmp_path / "tokens.json"
+    path.write_text(json.dumps({
+        "current": TOKEN, "previous": PREVIOUS, "previous_valid_until": "2999-01-01T00:00:00Z",
+    } | {slot: placeholder}))
+    with pytest.raises(ValueError, match=f"{slot} token") as failure:
+        _module().load_tokens(str(path))
+    assert placeholder not in str(failure.value)
 
 
 @pytest.mark.parametrize(("release", "package"), [("trixie", "python3-jsonschema=4.19.2-6"),
@@ -711,7 +722,6 @@ def test_nginx_hint_location_uses_only_the_peer_address_and_refuses_forwarding_h
     defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())["subscription_field_report"]["network_hint"]
     vhost = _rendered("subscription.conf.j2", network_hint={**defaults, "enabled": True})
     location = vhost.split(f"location = {HINT_PATH} {{", 1)[1].split("\n    }", 1)[0]
-    assert "limit_except GET { deny all; }" in location
     assert "if ($vpn_network_hint_forwarded) {\n            return 400;\n        }" in location
     assert "limit_req zone=vpn_network_hint_per_ip burst=10 nodelay;" in location
     assert "proxy_set_header X-Network-Hint-Peer $remote_addr;" in location
@@ -719,8 +729,8 @@ def test_nginx_hint_location_uses_only_the_peer_address_and_refuses_forwarding_h
         assert f'proxy_set_header {header} "";' in location
     assert "proxy_pass_request_body off;" in location
     assert "proxy_pass http://unix:/run/vpn-field-report.sock:;" in location
-    # limit_except GET admits HEAD, which the backend answers with its 501 page.
-    assert "proxy_intercept_errors on;\n        error_page 401 403 501 = @vpn_sub_not_found;" in location
+    assert 'if ($request_method != GET) {\n            return 404;\n        }' in location
+    assert "proxy_intercept_errors on;\n        error_page 401 403 405 501 =404 /404.html;" in location
     assert "access_log /var/log/nginx/vpn-sub.categorical.log vpn_sub_category;" in location
     assert "error_log /dev/null crit;" in location
     # A real_ip setting would let a client choose the address that the hint looks up.

@@ -90,7 +90,7 @@ server {
         # its own page for the same status, so the 410 contract is kept.
         proxy_intercept_errors on;
         error_page 404 /404.html;
-        error_page 403 501 =404 /404.html;
+        error_page 403 405 501 =404 /404.html;
         error_page 410 = @vpn_sub_gone;
         error_page 503 = @vpn_sub_unavailable;
 
@@ -124,7 +124,7 @@ server {
         # its own page for the same status, so the 410 contract is kept.
         proxy_intercept_errors on;
         error_page 404 /404.html;
-        error_page 403 501 =404 /404.html;
+        error_page 403 405 501 =404 /404.html;
         error_page 410 = @vpn_sub_gone;
         error_page 503 = @vpn_sub_unavailable;
 
@@ -153,7 +153,7 @@ server {
         # without the cohort token cannot tell this route from any other path by 401, 403 or 501. 400, 413
         # and 429 stay distinct: the path is published in every bundle, so hiding it is not the goal.
         proxy_intercept_errors on;
-        error_page 401 403 501 = @vpn_sub_not_found;
+        error_page 401 403 405 501 =404 /404.html;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header Connection "";
@@ -168,7 +168,10 @@ server {
     # client copy of the peer header and sends no forwarding header, and a request that carries
     # one is refused before the backend sees it. The categorical log holds no address.
     location = {{ subscription_field_report.network_hint.path }} {
-        limit_except GET { deny all; }
+        error_page 404 /404.html;
+        if ($request_method != GET) {
+            return 404;
+        }
         if ($vpn_network_hint_forwarded) {
             return 400;
         }
@@ -180,7 +183,7 @@ server {
         # without the cohort token cannot tell this route from any other path by 401, 403 or 501. 400, 413
         # and 429 stay distinct: the path is published in every bundle, so hiding it is not the goal.
         proxy_intercept_errors on;
-        error_page 401 403 501 = @vpn_sub_not_found;
+        error_page 401 403 405 501 =404 /404.html;
         proxy_http_version 1.1;
         proxy_pass_request_body off;
         proxy_set_header Host $host;
@@ -215,10 +218,6 @@ server {
         # only URI-free categorical diagnostics, including failure outcomes.
         error_log /dev/null crit;
         access_log /var/log/nginx/vpn-sub.categorical.log vpn_sub_category;
-    }
-
-    location @vpn_sub_not_found {
-        return 404;
     }
 
     location @vpn_sub_gone {

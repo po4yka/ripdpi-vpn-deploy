@@ -153,10 +153,17 @@ table inet filter {
     # threshold.
     ip saddr @f2b_sshd4 drop
     ip6 saddr @f2b_sshd6 drop
-{% endif -%}
-{% if vpn.enable_policy_ratelimit | default(false) %}
+{% endif %}
 
-    # Early drop for IPs the policy-ratelimit daemon has flagged
+{% if vpn.enable_tailnet_management | default(false) %}
+    iifname "tailscale0" tcp dport {{ ssh_port }} ip saddr @vpn_tailnet_ssh_v4 accept
+    iifname "tailscale0" tcp dport {{ ssh_port }} ip6 saddr @vpn_tailnet_ssh_v6 accept
+{% endif %}
+    # A stale or unmanaged overlay interface never inherits the public SSH
+    # allowlist. Exact managed Tailnet sources were accepted above.
+    iifname "tailscale0" tcp dport {{ ssh_port }} drop
+{% if vpn.enable_policy_ratelimit | default(false) %}
+    # Apply policy bans after the interface-scoped management rules.
     ip saddr @policy_offenders drop
     ip6 saddr @policy_offenders6 drop
 {% endif %}
@@ -173,13 +180,6 @@ table inet filter {
     meta l4proto ipv6-icmp icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert } ip6 hoplimit 255 accept
     meta l4proto ipv6-icmp icmpv6 type echo-request accept
 
-{% if vpn.enable_tailnet_management | default(false) %}
-    iifname "tailscale0" tcp dport {{ ssh_port }} ip saddr @vpn_tailnet_ssh_v4 accept
-    iifname "tailscale0" tcp dport {{ ssh_port }} ip6 saddr @vpn_tailnet_ssh_v6 accept
-{% endif %}
-    # A stale or unmanaged overlay interface never inherits the public SSH
-    # allowlist. Exact managed Tailnet sources were accepted above.
-    iifname "tailscale0" tcp dport {{ ssh_port }} drop
 {% if ssh_v4_cidrs %}
     tcp dport {{ ssh_port }} ip saddr { {{ ssh_v4_cidrs | join(", ") }} } accept
 {% endif %}

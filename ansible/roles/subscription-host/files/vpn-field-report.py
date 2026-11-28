@@ -53,6 +53,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 TOKEN = re.compile(r"^[A-Za-z0-9_-]{22,64}$")
+PLACEHOLDER_PREFIX = "replace_with_"
 # Candidate keys tracked per window for the top-N choice; bounds memory under a flood of distinct values.
 CANDIDATE_CAP = 4096
 OTHER = "other"
@@ -158,11 +159,11 @@ def load_tokens(path: str) -> tuple[bytes, bytes | None, float]:
     """Current token, optional previous token and the end of its overlap (epoch seconds)."""
     data = json.loads(Path(path).read_text())
     current, previous = data.get("current"), data.get("previous")
-    if not isinstance(current, str) or not TOKEN.fullmatch(current):
+    if not isinstance(current, str) or not TOKEN.fullmatch(current) or current.lower().startswith(PLACEHOLDER_PREFIX):
         raise ValueError("cohort token file: current token is missing or malformed")
     if previous is None:
         return current.encode(), None, 0.0
-    if not isinstance(previous, str) or not TOKEN.fullmatch(previous):
+    if not isinstance(previous, str) or not TOKEN.fullmatch(previous) or previous.lower().startswith(PLACEHOLDER_PREFIX):
         raise ValueError("cohort token file: previous token is malformed")
     until = datetime.fromisoformat(str(data.get("previous_valid_until", "")).replace("Z", "+00:00"))
     if until.tzinfo is None:

@@ -144,6 +144,7 @@
   ansible.builtin.set_fact:
     transport_runtime_candidates: >-
       {{ (transport_runtime_candidates | default([])) + runtime_release_candidates }}
+  no_log: true
   when: xray_runtime_stage_only | bool and not (xray_runtime_build_from_source | bool)
 
 - name: Capture pinned Xray binary publication state
@@ -191,6 +192,7 @@
   ansible.builtin.set_fact:
     transport_runtime_candidates: >-
       {{ (transport_runtime_candidates | default([])) + runtime_release_candidates }}
+  no_log: true
   when: xray_runtime_stage_only | bool and xray_runtime_publish_geoip | bool
 
 - name: Capture bundled GeoIP publication state
@@ -264,6 +266,7 @@
     transport_runtime_candidates: >-
       {{ (transport_runtime_candidates | default([])) +
          ((_xray_source_selection.stdout | from_json).links | default([])) }}
+  no_log: true
   when: xray_runtime_build_from_source | bool and xray_runtime_stage_only | bool
 
 - name: Publish Xray runtime change state

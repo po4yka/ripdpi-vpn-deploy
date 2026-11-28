@@ -242,6 +242,7 @@
   ansible.builtin.set_fact:
     transport_runtime_candidates: >-
       {{ (transport_runtime_candidates | default([])) + runtime_release_candidates }}
+  no_log: true
 
 - name: Admit an explicitly requested fresh native ACME cache recovery
   ansible.builtin.command:

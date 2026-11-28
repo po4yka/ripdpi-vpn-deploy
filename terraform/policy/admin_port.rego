@@ -87,17 +87,12 @@ deny[msg] {
   )
 }
 
-# vultr_firewall_rule — subnet_size=0 means any source
-vultr_is_world(rc) {
-  rc.change.after.subnet_size == 0
-}
-
 # vultr_firewall_rule — deny world-open TCP/22 or TCP/3389
 deny[msg] {
   rc := input.resource_changes[_]
   rc.type == "vultr_firewall_rule"
   firewall.tcp_protocol(object.get(rc.change.after, "protocol", null))
-  vultr_is_world(rc)
+  firewall.vultr_is_world(rc.change.after)
   port := admin_ports[_]
   firewall.port_contains(object.get(rc.change.after, "port", null), port)
 

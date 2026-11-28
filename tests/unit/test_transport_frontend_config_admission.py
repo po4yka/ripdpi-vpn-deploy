@@ -89,6 +89,22 @@ def test_hysteria_traffic_stats_renders_only_when_enabled():
     assert config['trafficStats'] == {'listen': '127.0.0.1:25413', 'secret': 's' * 43}
 
 
+@pytest.mark.parametrize("password", ["", "fixture-obfuscation-password"])
+def test_hysteria_runtime_admission_requires_a_salamander_password(tmp_path, password):
+    from template_render import merge_render_vars, render_template
+
+    config = yaml.safe_load(render_template(ROOT/'ansible/roles/hysteria/templates/config.yaml.j2', merge_render_vars()))
+    config["obfs"] = {"type": "salamander", "salamander": {"password": password}}
+    path = tmp_path / "candidate.yaml"
+    path.write_text(yaml.safe_dump(config))
+    path.chmod(0o600)
+    result = subprocess.run(
+        [sys.executable, str(ROOT/'ansible/roles/runtime-release/files/validate_yaml_mapping.py'),
+         '--profile', 'hysteria', str(path)], text=True, capture_output=True,
+    )
+    assert (result.returncode == 0) is bool(password), result.stderr
+
+
 def test_loaded_immutable_runtime_authority_selects_validator(tmp_path):
     # This is the wrapper contract, not native runtime forwarding evidence.
     import os

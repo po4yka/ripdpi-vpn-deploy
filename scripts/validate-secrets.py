@@ -46,6 +46,23 @@ AWG_FINGERPRINT = re.compile(r"^sha256:([0-9a-fA-F]{16})$")
 OBSERVABILITY_ROTATION_MAX_SECONDS = 24 * 60 * 60
 
 
+def _strict_schema_validator(schema):
+    import jsonschema
+
+    def pattern(_validator, expression, instance, _schema):
+        if not isinstance(instance, str):
+            return
+        if expression.endswith("$") and not expression.endswith(r"\$"):
+            expression = expression[:-1] + r"\Z"
+        if re.search(expression, instance) is None:
+            yield jsonschema.ValidationError("string does not match pattern")
+
+    base = jsonschema.Draft202012Validator
+    types = base.TYPE_CHECKER.redefine("integer", lambda _checker, instance: type(instance) is int)
+    strict = jsonschema.validators.extend(base, {"pattern": pattern}, type_checker=types)
+    return strict(schema)
+
+
 def _observability_selector_enabled(environments: list[str] | None) -> bool:
     """Bind tracked enablement to explicit operation scope, never ambient ENV."""
     try:
@@ -462,7 +479,7 @@ def main() -> int:
         return 2
 
     try:
-        import jsonschema
+        validator = _strict_schema_validator(json.loads(SCHEMA.read_text()))
     except ImportError:
         print(
             "validate-secrets: missing 'jsonschema' — `pip install jsonschema`",
@@ -470,7 +487,6 @@ def main() -> int:
         )
         return 2
 
-    schema = json.loads(SCHEMA.read_text())
     try:
         doc = yaml.safe_load(target.read_text()) or {}
     except yaml.YAMLError as exc:
@@ -480,8 +496,7 @@ def main() -> int:
         print(f"validate-secrets: YAML parse error{location}", file=sys.stderr)
         return 1
 
-    validator = jsonschema.Draft202012Validator(schema)
-    errors = sorted(validator.iter_errors(doc), key=lambda e: list(e.absolute_path))
+    errors = sorted(validator.iter_errors(doc), key=lambda e: list(map(str, e.absolute_path)))
     # A device operation record keeps each document as it was written, so the
     # XHTTP path minimum, which is newer than those records, applies to the
     # current path only.
@@ -508,6 +523,7 @@ def main() -> int:
     semantic_errors = _semantic_errors(
         doc,
         observability_enabled=observability_enabled,
+        allow_placeholders=not args.strict,
         production=args.strict and "prod" in (args.environment or []),
     ) + registry_errors(doc, allow_placeholders=not args.strict)
     if args.observability_topology is not None:
