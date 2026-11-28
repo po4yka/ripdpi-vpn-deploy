@@ -1,6 +1,6 @@
 # Converge the egress proxy node
 
-> **Status:** Current · **Type:** how-to · **Tier:** TACTICAL · **Reviewed:** 2026-11-27
+> **Status:** Current · **Type:** how-to · **Tier:** TACTICAL · **Reviewed:** 2026-11-28
 
 ## Purpose and scope
 
@@ -39,6 +39,10 @@ The `bootstrap-tailnet` config for this node uses these fields:
 
 The other fields follow the table in [tailnet-management.md](tailnet-management.md#bootstrap-one-node). The scripts do not choose or verify the Tailnet tag. Create the one-node enrollment key with `tag:egress` as its only tag. Before `make migrate-ssh-ownership`, confirm in the Tailscale admin console that the node's tags are exactly `tag:egress`. The converge playbook then fails closed, before any role runs, unless the node's tags are exactly `['tag:egress']`. Production bootstrap reads no Terraform state: the server binding is the pinned host key, the `server_ipv4` match against the inventory address and the `/etc/vpn-build-id` check. All three scripts also read the host's own `provider`, `env` and `vpn_build_environment`: section `egress` needs `egress-proxy`, `prod` and `"prod"`, and any other section refuses provider `egress-proxy`.
 
+The Tailnet uses Tailnet Lock, so sign the enrollment key before bootstrap (`tailscale lock sign file:<key file>` on a trusted device, see [tailnet-management.md](tailnet-management.md#bootstrap-one-node)). With an unsigned key the node enrolls, but the controller never sees it as a peer and the management proof fails. Public SSH must come from one stable source address for the whole bootstrap; a network that sends connections through several NAT addresses fails at random steps.
+
+After `make migrate-ssh-ownership`, switch the inventory entry to the Tailnet transport: set `ansible_host` to the node's Tailnet IPv4 and move the `server_ipv4` value to `vpn_service_address`, which the tooling uses as the host key alias. Then restore the documentation-range placeholder in `allowed_ssh_cidrs` and apply it. The converge takes `tailnet_management.approved_sources` from the `binding.approved_sources` of the bootstrap handoff; a different list fails the Tailnet check with `tailnet-binding-mismatch`.
+
 Open item (W7): CI runners that reach `tag:egress` on port 22 need Tailnet source addresses that the exact `approved_sources` firewall admits. Until that is resolved, only the operator controller sources in `approved_sources` can reach the node.
 
 ## Run
@@ -48,3 +52,9 @@ ansible-playbook ansible/playbooks/egress-proxy.yml -i inventory/<env>.yml --lim
 ```
 
 There is no Make target. The firewall policy is `strict`: DNS, NTP and TCP 80/443 are the only host-originated traffic, which is all squid needs.
+
+## Call provider APIs through the proxy
+
+The Vultr API access list names only the egress IPv4, so a Vultr call from any other address returns HTTP 401. Run OpenTofu and other provider clients from a Tailnet controller with `HTTPS_PROXY=http://<egress Tailnet IPv4>:3128` and an empty `NO_PROXY`. The proxy admits only the hosts in `egress_proxy_api_hosts` and `egress_proxy_state_host`; any other HTTPS host fails at CONNECT with 403. A client that also needs another host, such as an ACME directory, must list that host in `NO_PROXY`.
+
+To change the Vultr access list, open the API Access page of the Vultr console. Keep exactly one entry, the egress IPv4 as `/32`, and keep the any-address entries disabled. The UpCloud, Scaleway and Porkbun access lists are optional; when one is enabled, it names only the egress IPv4.
