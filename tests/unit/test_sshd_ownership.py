@@ -396,13 +396,13 @@ def packaged_config(config):
     return config
 
 
-@pytest.mark.parametrize("shadowed_root", [False, True])
+@pytest.mark.parametrize("shadowed_root", [None, b"yes", b"prohibit-password"])
 def test_packaged_main_is_normalized_only_when_every_publish_boundary_preserves_policy(
     planner, packaged_config, shadowed_root
 ):
     if shadowed_root:
         path = packaged_config / "sshd_config"
-        path.write_bytes(path.read_bytes() + b"PermitRootLogin yes\n")
+        path.write_bytes(path.read_bytes() + b"PermitRootLogin " + shadowed_root + b"\n")
     originals = configuration_records(packaged_config)
     plan = planner.build_plan(packaged_config, contexts=CONTEXTS)
     assert plan["schema_version"] == 2
@@ -413,9 +413,8 @@ def test_packaged_main_is_normalized_only_when_every_publish_boundary_preserves_
         b"# normalized-shadowed X11Forwarding yes\n",
     )
     if shadowed_root:
-        expected = expected.replace(
-            b"PermitRootLogin yes\n", b"# normalized-shadowed PermitRootLogin yes\n"
-        )
+        line = b"PermitRootLogin " + shadowed_root + b"\n"
+        expected = expected.replace(line, b"# normalized-shadowed " + line)
     main = plan["files"]["sshd_config"]
     assert base64.b64decode(main["after"]["data_b64"]) == expected
     assert {key: main["after"][key] for key in ("mode", "uid", "gid")} == {
@@ -508,7 +507,7 @@ def test_main_root_login_normalization_refuses_unsafe_or_unknown_layout(
     elif fault == "duplicate":
         main.write_bytes(original + b"PermitRootLogin yes\nPermitRootLogin yes\n")
     elif fault == "unexpected-value":
-        main.write_bytes(original + b"PermitRootLogin prohibit-password\n")
+        main.write_bytes(original + b"PermitRootLogin forced-commands-only\n")
     else:
         main.write_bytes(original + b"PermitRootLogin yes\n")
         boot = packaged_config / BOOT

@@ -157,7 +157,8 @@ when optional congestion tuning and a mandatory setting fail together.
 - **Congestion tuning is optional, hardening is mandatory** — only `net.core.default_qdisc` and `net.ipv4.tcp_congestion_control` are marked optional in the role policy. Network namespaces may omit the global qdisc setting; unsupported FQ/BBR cannot conceal any later mandatory security-setting failure. Supported settings still apply in policy order.
 
 - **Shadowed root-login declarations need policy proof** — ownership migration
-  may comment one main `PermitRootLogin yes` after the canonical Include only
+  may comment one main `PermitRootLogin yes` or `prohibit-password` (newer
+  Debian 13 provider images) after the canonical Include only
   with bootstrap root denial and real global/contextual `permitrootlogin no`.
   Never accept an unshadowed line or edit it directly on the host.
 
