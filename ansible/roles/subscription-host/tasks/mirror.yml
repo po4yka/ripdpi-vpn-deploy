@@ -16,6 +16,8 @@
 - name: Validate mirror inputs
   vars:
     mirror_source: "{{ subscription.mirror.source | default('') }}"
+    mirror_key_path: "{{ subscription.mirror.ssh_key_path | default('/etc/vpn-subscription/mirror_ssh_key') }}"
+    mirror_hosts_path: "{{ subscription.mirror.ssh_known_hosts_path | default('/etc/vpn-subscription/mirror_known_hosts') }}"
     mirror_remote_rsync: >-
       {{ (subscription.mirror.backend | default('rsync')) == 'rsync'
          and (subscription.mirror.source | default('')) is match('^[^/][^:]*:') }}
@@ -30,11 +32,12 @@
       - (subscription.mirror.rsync_opts | default('-az --delete')) is match(mirror_plain)
       - mirror_source is match(mirror_plain)
       - mirror_source is not match('(?i)rsync://')
-      - (subscription.mirror.ssh_key_path | default('/etc/vpn-subscription/mirror_ssh_key')) is match(mirror_path)
-      - (subscription.mirror.ssh_known_hosts_path | default('/etc/vpn-subscription/mirror_known_hosts')) is match(mirror_path)
+      - mirror_key_path is match(mirror_path) and '..' not in mirror_key_path.split('/')
+      - mirror_hosts_path is match(mirror_path) and '..' not in mirror_hosts_path.split('/')
+      - (subscription.mirror.interval | default('5min')) is match('^[1-9][0-9]{0,5}(s|min|h|d|w)\Z')
       - not mirror_remote_rsync or (subscription.mirror.ssh_known_hosts | default('') | trim | length > 0)
     fail_msg: >-
-      The mirror needs plain option strings and absolute paths without spaces.
+      The mirror needs plain option strings, absolute paths without parent components and a bounded timer interval.
       mirror.ssh_opts admits only a port ("-p 2222"): the role fixes the
       host-key and forwarding options. An rsync:// source is refused, because
       it has no host authentication. A remote rsync source needs

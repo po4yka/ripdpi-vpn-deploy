@@ -185,12 +185,13 @@ def test_pinned_endpoints_preserve_peer_origin_privacy_and_rejected_candidate(pr
         # It must reach the verified primary HTTPS listener and keep ordinary 404 semantics.
         hosts = stack.file("masquerade-hosts", "127.0.0.1 localhost\n192.0.2.90 owned.example\n", "h")
         stack.start_hysteria(masquerade_origin=origin, hosts=hosts)
+        public_log = stack.library / "vpn-xhttp.access.log"
+        offset = public_log.stat().st_size if public_log.exists() else 0
         stack.start_client("hysteria", True)
         deadline = time.monotonic() + 10
-        public_log = stack.library / "vpn-xhttp.access.log"
         while time.monotonic() < deadline:
-            content = public_log.read_text() if public_log.exists() else ""
-            if re.search(r'"POST /auth HTTP/(?:1\.1|2\.0)" 404\b', content):
+            content = public_log.read_bytes()[offset:] if public_log.exists() else b""
+            if re.search(rb'"(?:GET|POST) - HTTP/(?:1\.1|2\.0)" 404\b', content):
                 break
             time.sleep(.1)
         else:

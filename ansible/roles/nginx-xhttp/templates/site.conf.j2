@@ -73,19 +73,19 @@
 {% if (vpn.enable_snell | default(false)) and (snell | default({})).evaluation_enabled | default(false) %}
 limit_req_zone $binary_remote_addr zone=snell_evaluation:1m rate=10r/s;
 {% endif %}
-# Combined field layout without the client address, referer or user agent, so
-# status-column tooling (awk '$9') keeps working on these logs.
-log_format vpn_public '- - - [$time_local] "$request" $status $body_bytes_sent "-" "-"';
+# Keep the status column and omit request URIs, including alternate encodings.
+log_format vpn_public '- - - [$time_local] "$request_method - $server_protocol" $status $body_bytes_sent "-" "-"';
 
-{% if (nginx_xhttp.routing_lists | default({})).enabled | default(false) | bool %}
-# A missing file leaves the routing location through error_page, and any near
-# miss reaches the site location; neither may log the token in the request line.
+# The original URI is still available when the final location is an error page.
 map $request_uri $vpn_public_loggable {
     ~^/routing/ 0;
+    ~^{{ xray.xhttp_path }}(?:/|\?|$) 0;
+{% if (vpn.enable_snell | default(false)) and (snell | default({})).evaluation_enabled | default(false) %}
+    ~^/{{ snell_secrets.evaluation_path_token }}(?:/|\?|$) 0;
+{% endif %}
     default 1;
 }
 
-{% endif %}
 server {
     listen {{ nginx_xhttp_public_port }} ssl http2;
     listen [::]:{{ nginx_xhttp_public_port }} ssl http2;
@@ -144,6 +144,7 @@ server {
     error_page 404 /404.html;
 
     location = /404.html {
+        # The server's URI filter also applies after this redirect.
         internal;
     }
 
@@ -178,7 +179,7 @@ server {
         try_files $uri $uri/ =404;
     }
 
-    access_log /var/log/nginx/vpn-xhttp.access.log vpn_public{% if (nginx_xhttp.routing_lists | default({})).enabled | default(false) | bool %} if=$vpn_public_loggable{% endif %};
+    access_log /var/log/nginx/vpn-xhttp.access.log vpn_public if=$vpn_public_loggable;
     error_log  /var/log/nginx/vpn-xhttp.error.log warn;
 }
 {% if nginx_fallback_enabled %}
@@ -236,6 +237,7 @@ server {
     error_page 404 /404.html;
 
     location = /404.html {
+        # The server's URI filter also applies after this redirect.
         internal;
     }
 
@@ -259,7 +261,7 @@ server {
         try_files $uri $uri/ =404;
     }
 
-    access_log /var/log/nginx/vpn-xhttp-fallback.access.log vpn_public{% if (nginx_xhttp.routing_lists | default({})).enabled | default(false) | bool %} if=$vpn_public_loggable{% endif %};
+    access_log /var/log/nginx/vpn-xhttp-fallback.access.log vpn_public if=$vpn_public_loggable;
     error_log  /var/log/nginx/vpn-xhttp-fallback.error.log warn;
 }
 

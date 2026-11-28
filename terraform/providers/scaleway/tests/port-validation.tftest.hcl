@@ -10,6 +10,25 @@ variables {
   public_listeners      = [{ name = "xray", protocol = "tcp", port = 443 }]
 }
 
+run "reject_root_admin" {
+  command = plan
+
+  variables {
+    admin_user = "root"
+  }
+
+  expect_failures = [var.admin_user]
+}
+
+run "reject_invalid_server_name" {
+  command = plan
+
+  variables {
+    server_name = "invalid host"
+  }
+
+  expect_failures = [var.server_name]
+}
 
 run "reject_fractional_tcp_listener" {
   command = plan

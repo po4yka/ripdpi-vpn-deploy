@@ -3,13 +3,6 @@
 from pathlib import Path
 
 
-def test_bootstrap_defers_awg_peers_to_new_client_handoff():
-    script = (Path(__file__).resolve().parents[2] / "scripts/bootstrap-secrets.sh").read_text()
-    client_loop = script.split("for name in", 1)[1].split("# ---------------------------------------------------------------------------\n# AmneziaWG server", 1)[0]
-    assert "wg genkey" not in client_loop
-    assert "scripts/new-client.sh" in script
-
-
 def _bootstrap_awg_instance(tmp_path, name):
     """Run the real bootstrap; only key tools and encryption are stubbed."""
     import os
@@ -47,6 +40,7 @@ def test_bootstrap_writes_a_generated_wire_shape_and_port_per_instance(tmp_path)
     second = _bootstrap_awg_instance(tmp_path, "second")
     names = ("listen_port", "jc", "jmin", "jmax", "s1", "s2")
     for instance in (first, second):
+        assert instance["peers"] == []
         assert all(type(instance[name]) is int for name in names)
         assert 20000 <= instance["listen_port"] <= 32767
         assert 3 <= instance["jc"] <= 8 and 20 <= instance["jmin"] <= 80

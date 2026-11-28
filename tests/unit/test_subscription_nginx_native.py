@@ -251,7 +251,7 @@ def test_generated_import_and_qr_targets_cross_real_nginx_and_backend(service):
         urls = build_sub_urls(origin, token)
         imported = parse_qs(urlsplit(urls.singbox_deeplink).query)["url"][0]
         tls = ssl._create_unverified_context()
-        for target in (urls.subscription_url, imported, urls.qr_singbox):
+        for target in (urls.subscription_url, imported, urls.qr_uri):
             with urllib.request.urlopen(target, context=tls, timeout=3) as response:
                 assert response.status == 200 and response.read() == body
                 assert response.headers.get_all("Cache-Control") == ["no-store"]
@@ -266,7 +266,7 @@ def test_generated_import_and_qr_targets_cross_real_nginx_and_backend(service):
         meta.write_text("{}")
         service.REVOKED_FILE.write_text(digest + "\n")
         with pytest.raises(urllib.error.HTTPError) as revoked:
-            urllib.request.urlopen(urls.qr_singbox, context=tls, timeout=3)
+            urllib.request.urlopen(urls.qr_uri, context=tls, timeout=3)
         assert revoked.value.code == 410
         time.sleep(0.1)
         logs = "\n".join(path.read_text() for path in base.glob("*.log"))

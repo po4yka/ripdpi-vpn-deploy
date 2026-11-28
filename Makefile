@@ -1874,13 +1874,13 @@ probe-sni-survival:
 	VANTAGE="$${VANTAGE:-filtered}" ./scripts/probe-sni-survival.sh "$(EXIT_IP)" --secrets "$(SECRETS_FILE)"
 
 bootstrap-secrets:
+	@test -z "$${CLIENTS:-}" || { echo "Enroll devices separately with scripts/new-client.sh"; exit 1; }
 	@test -n "$(TARGET)$(SERVER_NAME)" || { \
 	  echo "usage: make bootstrap-secrets TARGET=mirror.example.com:443 SERVER_NAME=mirror.example.com"; \
-	  echo "  optional: CLIENTS=phone,laptop ENV=prod XHTTP_HOST=vpn.example.com XHTTP_PORT=8443"; \
+	  echo "  optional: ENV=prod XHTTP_HOST=vpn.example.com XHTTP_PORT=8443"; \
 	  exit 1; }
 	./scripts/bootstrap-secrets.sh \
 	  $(if $(ENV),--env $(ENV)) \
-	  $(if $(CLIENTS),--clients $(CLIENTS)) \
 	  --target $(TARGET) --server-name $(SERVER_NAME) \
 	  $(if $(XHTTP_HOST),--xhttp-host $(XHTTP_HOST)) \
 	  --xhttp-port "$${BOOTSTRAP_XHTTP_PORT_LITERAL:-8443}"

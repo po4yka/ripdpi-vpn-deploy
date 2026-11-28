@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-11-28
+goal: SEC-1795869545417758 Repair privilege and input boundaries from the
+  deployment audit

@@ -83,6 +83,11 @@ def test_selected_engine_checks_run_through_the_required_reusable_workflow():
         ("tests/bats/example.bats", {"bats-test"}, {"molecule", "vpnd-test"}),
         ('tools/engine-interop.json', {'engine-interop'}, {'contract-sync', 'molecule', 'tf-test'}),
         (
+            "ansible/roles/observability_control_plane/molecule/enabled/tasks/fixture-contract.yml",
+            {"engine-interop", "molecule"},
+            {"contract-sync", "tf-test"},
+        ),
+        (
             "images/debian13/Dockerfile",
             {"molecule", "image-scan"},
             {"vpnd-test", "terraform"},

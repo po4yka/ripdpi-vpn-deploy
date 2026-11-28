@@ -34,10 +34,9 @@ breaking change until upstream cuts a stable line.
 
 **TLS ownership follows the enabled profile** — `share_hysteria_tls` defaults
 to `vpn.enable_hysteria`. Co-hosted P2/P5 reuse the hysteria role's cert/key;
-standalone P5 publishes its own PEM copies without requiring P2 files or
-accounts. An explicit override is still respected. Supplementary
-`hysteria` membership and `append` are enabled together only for shared TLS;
-Ansible rejects `append: true` without a `groups` argument.
+standalone P5 uses the supplied PEMs. Both modes publish Realm-owned read
+authority and restart the service on TLS changes. Convergence removes former
+Hysteria group membership. The unit denies Hysteria configuration and loopback.
 
 TLS destinations stay inside the role's config directory. Retirement removes
 those configured copies or links and preserves shared Hysteria source material.
@@ -75,11 +74,8 @@ those configured copies or links and preserves shared Hysteria source material.
   UpCloud/Hetzner/Vultr default closed. The Ansible firewall role opens
   it inside the VM, but the cloud firewall is a separate layer; the
   Terraform provider must include the rule.
-- **Shared-cert renewal restarts realm only via its own converge** — the
-  symlink to the hysteria cert dir is stable, so Ansible sees no change when
-  only the underlying PEM rotates; a hysteria-side restart does not reach
-  this service. Re-run the realm role (or restart it manually) after
-  rotating shared TLS material.
+- **Shared-cert renewal must converge both roles** — run Hysteria before Realm
+  so Realm copies the renewed PEM files and restarts when they change.
 - **Hole-punch failure is silent at this tier** — if NAT mapping
   collapses between rendezvous and data-plane setup, the client sees a
   timeout, not a server-side error. Logs here will show a successful

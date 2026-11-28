@@ -546,14 +546,18 @@ def hysteria_errors(raw: object, canonical_origin: object = None) -> list[tuple[
             errors.append(("hysteria.clients", "must be a client collection"))
         else:
             names = set()
+            passwords = set()
             for index, item in enumerate(clients):
                 name, password = item.get("name"), item.get("password")
                 if not isinstance(name, str) or not name or not isinstance(password, str) or not password:
                     errors.append((f"hysteria.clients.{index}", "invalid userpass client"))
-                elif name in names:
+                    continue
+                if name in names:
                     errors.append(("hysteria.clients", "duplicate name"))
-                else:
-                    names.add(name)
+                if password in passwords:
+                    errors.append(("hysteria.clients", "duplicate device password"))
+                names.add(name)
+                passwords.add(password)
     return errors
 
 

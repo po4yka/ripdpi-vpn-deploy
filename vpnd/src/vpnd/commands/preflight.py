@@ -12,6 +12,6 @@ def required_steps(ctx, skip_certs):
 async def run(ctx, args):
     if not ctx.secrets_file.is_file():
         await target(ctx, "decrypt").run(ctx.explain)
-        ctx.secure_secrets_file()
+    ctx.secure_secrets_file()
     for command in required_steps(ctx, args.skip_certs):
         await command.run(ctx.explain)

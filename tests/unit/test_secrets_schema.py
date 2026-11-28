@@ -746,6 +746,18 @@ def test_hysteria_masquerade_requires_https(filled, tmp_path):
     assert "hysteria.masquerade_url" in proc.stderr
 
 
+def test_hysteria_devices_require_distinct_passwords(filled, tmp_path):
+    password = "synthetic-password-never-printed"
+    filled["hysteria"]["clients"] = [
+        {"name": "first-device", "password": password},
+        {"name": "second-device", "password": password},
+    ]
+    result = _validate_cli(filled, tmp_path)
+    assert result.returncode == 1
+    assert "hysteria.clients: duplicate device password" in result.stderr
+    assert password not in result.stdout + result.stderr
+
+
 @pytest.mark.parametrize(("field", "value", "constraint"), [
     ("rate_limit", "5r/m\n", "pattern"),
     ("rate_burst", 4.0, "type"),

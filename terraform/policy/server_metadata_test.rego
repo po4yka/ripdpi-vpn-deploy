@@ -1,5 +1,21 @@
 package terraform.policy.server_metadata
 
+test_refuse_invalid_provisioning_identities {
+  result := deny with input as {"variables": {
+    "admin_user": {"value": "root"},
+    "server_name": {"value": "invalid host"},
+  }}
+  count(result) == 2
+}
+
+test_admit_valid_provisioning_identities {
+  result := deny with input as {"variables": {
+    "admin_user": {"value": "deploy_test"},
+    "server_name": {"value": "vpn.example.test"},
+  }}
+  count(result) == 0
+}
+
 # -- bad input: metadata explicitly disabled should deny --
 
 test_deny_upcloud_metadata_false {

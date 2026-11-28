@@ -6,7 +6,6 @@ SCRIPT="${REPO_ROOT}/scripts/bootstrap-secrets.sh"
 _run_bootstrap() {
   run env HOME="$BATS_TEST_TMPDIR" bash "$SCRIPT" \
     --env "${TEST_ENV-prod}" \
-    --clients "${TEST_CLIENTS-phone}" \
     --target "${TEST_TARGET-mirror.example.com:443}" \
     --server-name "${TEST_SERVER_NAME-mirror.example.com}" \
     --xhttp-host "${TEST_XHTTP_HOST-vpn.example.com}" \
@@ -99,17 +98,6 @@ EOF
   done
 }
 
-@test "bootstrap rejects invalid and duplicate client names" {
-  local clients
-  for clients in 'phone,bad:name' 'phone,phone' 'phone,' ''; do
-    TEST_CLIENTS="$clients"
-    _run_bootstrap
-    [ "$status" -ne 0 ]
-    [[ "$output" == *"client"* ]]
-    [ ! -e "${BATS_TEST_TMPDIR}/.config" ]
-  done
-}
-
 @test "bootstrap rejects malformed server and xhttp hostnames" {
   TEST_SERVER_NAME=$'vpn.example.com"\nadmin: true'
   _run_bootstrap
@@ -143,14 +131,12 @@ EOF
 @test "bootstrap serializes validated inputs into quoted YAML scalars" {
   _install_bootstrap_stubs
   TEST_ENV='test-env'
-  TEST_CLIENTS='phone,laptop'
   TEST_TARGET='mirror.example.com:8443'
   TEST_SERVER_NAME='mirror.example.com'
   TEST_XHTTP_HOST='vpn.example.com'
 
   run env -u VPN_PROVISION_CONFIG_DIR PATH="${FAKE_BIN}:${PATH}" UUID_STATE="$UUID_STATE" OPENSSL_STATE="$OPENSSL_STATE" HOME="$BATS_TEST_TMPDIR" bash "$SCRIPT" \
     --env "$TEST_ENV" \
-    --clients "$TEST_CLIENTS" \
     --target "$TEST_TARGET" \
     --server-name "$TEST_SERVER_NAME" \
     --xhttp-host "$TEST_XHTTP_HOST"
@@ -161,56 +147,22 @@ EOF
   [ ! -e "${BATS_TEST_TMPDIR}/.config/vpn-provision/test-env.secrets.yaml" ]
   [ "$(grep -Fc 'target: "mirror.example.com:8443"' "$encrypted")" -eq 1 ]
   [ "$(grep -Fc '    - "mirror.example.com"' "$encrypted")" -eq 1 ]
-  # The SOPS stub exposes only synthetic producer output. Inspect each protocol
-  # separately so a missing client block cannot be hidden by another duplicate.
+  # The SOPS stub exposes only synthetic output. The first enrollment owns
+  # all device credentials, so bootstrap must leave every list empty.
   run python3 - "$encrypted" <<'PY'
 import sys
 from pathlib import Path
-import json
 import re
+import yaml
 
 source = Path(sys.argv[1]).read_text()
 authority = re.search(r"^transport_egress_secrets:\n((?:  [^\n]+\n)+)", source, re.M)
 assert authority
 values = re.findall(r'password: "([0-9a-f]{64})"', authority.group(1))
 assert len(values) == len(set(values)) == 5
-contracts = {
-    "xray": {"name", "uuid", "short_id"},
-    "hysteria": {"name", "password"},
-    "naive_secrets": {"name", "username", "password"},
-}
-for protocol, fields in contracts.items():
-    sections = re.findall(
-        rf"^{protocol}:\n(.*?)(?=^\S|\Z)", source, flags=re.M | re.S
-    )
-    assert len(sections) == 1, protocol
-    blocks = re.findall(
-        r"^  clients:\n((?:    -[^\n]*\n|      [^\n]*\n)*)",
-        sections[0], flags=re.M,
-    )
-    assert len(blocks) == 1, protocol
-    records = []
-    for line in blocks[0].splitlines():
-        match = re.fullmatch(r'(    - |      )([a-z_]+): (".*")', line)
-        assert match, protocol
-        prefix, field, scalar = match.groups()
-        if prefix == "    - ":
-            assert field == "name", protocol
-            records.append({})
-        assert records and field not in records[-1], protocol
-        records[-1][field] = json.loads(scalar)
-    assert [row["name"] for row in records] == ["phone", "laptop"], protocol
-    for row in records:
-        assert set(row) == fields, protocol
-        assert all(isinstance(value, str) and value for value in row.values()), protocol
-        if protocol == "naive_secrets":
-            assert row["username"] == row["name"]
-            assert len(row["password"]) == 24
-    if protocol == "xray":
-        assert len({row["uuid"] for row in records}) == 2
-        assert len({row["short_id"] for row in records}) == 2
-    if protocol == "naive_secrets":
-        assert not re.search(r"^  (username|password):", sections[0], flags=re.M)
+document = yaml.safe_load(source)
+for protocol in ("xray", "hysteria", "naive_secrets"):
+    assert document[protocol]["clients"] == [], protocol
 PY
   [ "$status" -eq 0 ]
   [ "$(grep -Fc 'server_name: "vpn.example.com"' "$encrypted")" -eq 2 ]
@@ -236,7 +188,6 @@ PY
 
   run env PATH="${FAKE_BIN}:${PATH}" UUID_STATE="$UUID_STATE" OPENSSL_STATE="$OPENSSL_STATE" HOME="$BATS_TEST_TMPDIR" VPN_PROVISION_CONFIG_DIR="$config_dir" bash "$SCRIPT" \
     --env local-env \
-    --clients phone \
     --target mirror.example.com:443 \
     --server-name mirror.example.com \
     --xhttp-host vpn.example.com
@@ -256,7 +207,7 @@ EOF
   chmod 0700 "${FAKE_BIN}/xray"
 
   run env PATH="${FAKE_BIN}:${PATH}" UUID_STATE="$UUID_STATE" OPENSSL_STATE="$OPENSSL_STATE" HOME="$BATS_TEST_TMPDIR" bash "$SCRIPT" \
-    --env local-env --clients phone --target mirror.example.com:443 \
+    --env local-env --target mirror.example.com:443 \
     --server-name mirror.example.com --xhttp-host vpn.example.com
 
   [ "$status" -ne 0 ]

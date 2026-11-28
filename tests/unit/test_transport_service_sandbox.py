@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 import yaml
 from jinja2 import Environment, StrictUndefined
-from ansible.plugins.filter.core import to_bool
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -127,31 +126,21 @@ def test_transport_units_run_as_dedicated_non_root_users() -> None:
         ) or "\nDynamicUser=true" in unit, rel
 
 
-@pytest.mark.parametrize("shared_tls", [False, True])
-def test_realm_user_group_arguments_match_the_tls_ownership_mode(shared_tls) -> None:
+def test_realm_identity_and_tls_copy_exclude_hysteria_group() -> None:
     tasks = yaml.safe_load(
         (REPO_ROOT / "ansible/roles/hysteria-realm/tasks/enable.yml").read_text()
     )
-    task = next(task for task in tasks if task.get("name") == "Ensure system user")
-    environment = Environment(autoescape=True, undefined=StrictUndefined)
-    environment.filters["bool"] = to_bool
-    omitted = object()
-    values = {}
-    for name in ("groups", "append"):
-        value = task["ansible.builtin.user"][name]
-        if isinstance(value, str) and value.startswith("{{"):
-            value = environment.compile_expression(value[2:-2].strip())(
-                hysteria_realm={"share_hysteria_tls": shared_tls}, omit=omitted
-            )
-        values[name] = value
-
-    if shared_tls:
-        assert values["groups"] == ["hysteria"]
-        assert values["append"] is True  # preserve unrelated supplementary groups
-    else:
-        assert values["groups"] is omitted
-        # ansible.builtin.user rejects append=true when groups is omitted.
-        assert values["append"] is False or values["append"] is omitted
+    user = next(task["ansible.builtin.user"] for task in tasks if "ansible.builtin.user" in task)
+    assert user["group"] == "hysteria-realm" and user["groups"] == "" and user["append"] is False
+    tls_tasks = [task for task in tasks if task.get("ansible.builtin.copy", {}).get("group") == "hysteria-realm"]
+    assert len(tls_tasks) == 2
+    assert all(task["notify"] == "Restart hysteria-realm" and task["no_log"] for task in tls_tasks)
+    for task in tls_tasks:
+        copy = task["ansible.builtin.copy"]
+        assert copy["owner"] == "root" and copy["mode"] == "0640" and copy["follow"] is False
+    unit = (REPO_ROOT / "ansible/roles/hysteria-realm/templates/hysteria-realm.service.j2").read_text()
+    assert "InaccessiblePaths=" in unit and "/config.yaml" in unit
+    assert "IPAddressDeny=localhost" in unit
 
 
 def test_hysteria_unit_keeps_connection_records_out_of_the_journal() -> None:

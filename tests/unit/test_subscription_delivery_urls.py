@@ -43,7 +43,7 @@ def test_generated_import_and_qr_targets_serve_exact_payload_and_retain_authorit
     with delivery_server(service) as server:
         urls = build_sub_urls("http://127.0.0.1:" + str(server.server_port), token)
         imported = parse_qs(urlsplit(urls.singbox_deeplink).query)["url"][0]
-        for target in (urls.subscription_url, imported, urls.qr_singbox):
+        for target in (urls.subscription_url, imported, urls.qr_uri):
             with urlopen(target, timeout=3) as response:
                 assert response.status == 200
                 assert response.headers.get_content_type() == "application/json"
@@ -57,5 +57,5 @@ def test_generated_import_and_qr_targets_serve_exact_payload_and_retain_authorit
         meta.write_text("{}")
         service.REVOKED_FILE.write_text(digest + "\n")
         with pytest.raises(HTTPError) as revoked:
-            urlopen(urls.qr_singbox, timeout=3)
+            urlopen(urls.qr_uri, timeout=3)
         assert revoked.value.code == 410

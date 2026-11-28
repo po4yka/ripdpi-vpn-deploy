@@ -278,10 +278,12 @@ def _sha256(value: str, algorithm: str) -> str:
 
 
 @pass_eval_context
-def _to_json(context, value):
+def _to_json(context, value, *, ensure_ascii=True):
     # HTML scripts need valid JSON without script-closing characters. Config
     # artifacts retain ordinary JSON serialization instead of HTML entities.
-    return htmlsafe_json_dumps(value) if context.autoescape else json.dumps(value)
+    if context.autoescape:
+        return htmlsafe_json_dumps(value, ensure_ascii=ensure_ascii)
+    return json.dumps(value, ensure_ascii=ensure_ascii)
 
 
 def template_environment(loader) -> Environment:

@@ -32,7 +32,8 @@ def args(root, out=None):
 
 
 # Rust test: vpnd/tests/share_command.rs::share_generates_a_bundle_for_a_canonical_xray_client
-def test_share_generates_a_bundle_for_a_canonical_xray_client(tmp_path, monkeypatch):
+@pytest.mark.parametrize("qr_type", ["singbox", "uri"])
+def test_share_generates_a_bundle_for_a_canonical_xray_client(tmp_path, monkeypatch, qr_type):
     qr_targets = {}
     write_svg = qr.write_svg
 
@@ -49,7 +50,9 @@ def test_share_generates_a_bundle_for_a_canonical_xray_client(tmp_path, monkeypa
     stale = ["config.singbox.tmp", "index.tmp", "qr.tmp", "qr-ripdpi.tmp"]
     for name in stale:
         (out / name).write_text("interrupted old write")
-    asyncio.run(share.run(ctx, args(tmp_path, out)))
+    options = args(tmp_path, out)
+    options.type = qr_type
+    asyncio.run(share.run(ctx, options))
     assert (out / "config.singbox.json").read_text() == '{"outbounds":[]}\n'
     page = (out / "index.html").read_text()
     assert "phone" in page and "https://sub.example.com:8444/sub/test-token_123" in page
@@ -57,7 +60,7 @@ def test_share_generates_a_bundle_for_a_canonical_xray_client(tmp_path, monkeypa
     assert link is not None
     target = parse_qs(urlsplit(unescape(link.group(1))).query)["url"][0]
     assert target == "https://sub.example.com:8444/sub/test-token_123"
-    assert qr_targets["qr.svg"] == target
+    assert qr_targets["qr.svg"] == (target if qr_type == "uri" else unescape(link.group(1)))
     assert out.stat().st_mode & 0o777 == 0o700
     for name in ["config.singbox.json", "index.html", "qr.svg", "qr-ripdpi.svg"]:
         assert (out / name).stat().st_mode & 0o777 == 0o600

@@ -29,6 +29,16 @@
       - subscription.reads_log_backup_count | default(4) | int <= 14
     fail_msg: Subscription retention settings must be within their explicit storage and lifetime bounds.
 
+- name: Require bounded nginx report rate settings before mutation
+  ansible.builtin.assert:
+    that:
+      - subscription_field_report.nginx_rate is match('^[1-9][0-9]{0,3}r/[sm]\Z')
+      - subscription_field_report.nginx_burst is integer
+      - subscription_field_report.nginx_burst >= 1
+      - subscription_field_report.nginx_burst <= 100
+    quiet: true
+  when: subscription_field_report.enabled | default(false) | bool
+
 - name: Retire disabled mirror execution before payload changes
   ansible.builtin.import_tasks: mirror-disable.yml
   when: not (subscription.mirror.enabled | default(false))

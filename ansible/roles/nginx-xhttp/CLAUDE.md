@@ -136,6 +136,8 @@ shared-role idempotence without claiming an inactive unit adopted configuration.
   this vhost. The non-XHTTP public paths are the opt-in, secret-token routing
   lists and Snell evaluation fixture locations. Both disable access and error
   logging; the Snell location also disables compression and is rate-limited.
+- **HTTPS logs omit request paths** — the bearer map uses the original URI
+  across internal redirects. The public log keeps the HTTP status column.
 - **Plain HTTP logs nothing** — every TCP/80 server sets
   `access_log off` and `error_log /dev/null crit`, because a client can send
   any bearer path over HTTP.

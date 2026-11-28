@@ -54,6 +54,8 @@
       - /etc/systemd/system/vpn-bootstrap.service
       - /usr/local/bin/vpn-bootstrap.py
       - /usr/local/bin/vpn-sub-mirror-fetch.sh
+      - /usr/local/bin/vpn-sub-mirror.sh
+      - /usr/local/lib/vpn-sub-mirror.py
       - /var/lib/vpn-sub-mirror
       - /usr/local/sbin/vpn-sub-mirror.sh
       - /usr/local/sbin/vpn-sub-mirror.py

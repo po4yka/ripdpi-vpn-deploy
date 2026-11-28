@@ -23,7 +23,7 @@ def test_actual_share_copy_repairs_modes_preserves_bytes_and_converges(tmp_path)
     for name, data in expected.items():
         (bundle / name).write_bytes(data)
     public = tmp_path / 'public'
-    target = public / 'share' / 'synthetic-token'
+    target = public / 'share' / 'synthetic-token-01'
     (target / 'nested').mkdir(parents=True)
     for directory in [public, public / 'share', target, target / 'nested']:
         directory.chmod(0o755)
@@ -38,6 +38,8 @@ def test_actual_share_copy_repairs_modes_preserves_bytes_and_converges(tmp_path)
     tasks = yaml.safe_load((ROOT / 'ansible/roles/subscription-host/tasks/share-bundles.yml').read_text())
     for task in tasks:
         action = task.get('ansible.builtin.file', task.get('ansible.builtin.copy'))
+        if action is None:
+            continue
         field = 'path' if 'path' in action else 'dest'
         action[field] = action[field].replace('/var/www/subscription-host', str(public))
         action['owner'] = pwd.getpwuid(os.getuid()).pw_name
@@ -45,7 +47,7 @@ def test_actual_share_copy_repairs_modes_preserves_bytes_and_converges(tmp_path)
     play = [{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False,
              'become': False, 'vars': {'ansible_become': False, 'ansible_python_interpreter': sys.executable,
              'subscription': {'revoked_tokens': []},
-             'vpn': {'share_bundles': [{'token': 'synthetic-token', 'client': 'synthetic', 'local_path': str(bundle)}]}},
+             'vpn': {'share_bundles': [{'token': 'synthetic-token-01', 'client': 'synthetic', 'local_path': str(bundle)}]}},
              'tasks': tasks, 'handlers': [{'name': 'Reload nginx', 'ansible.builtin.debug': {'msg': 'synthetic handler'}}]}]
     playbook = tmp_path / 'play.json'
     playbook.write_text(json.dumps(play))

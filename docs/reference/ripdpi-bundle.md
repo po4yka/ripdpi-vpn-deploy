@@ -193,11 +193,13 @@ The [deployment snapshot](deployment-status.md#transport-activation) records the
 
 Array of AWG device-VPN entries.  Empty array (`[]`) when AmneziaWG is not enabled for the selected profiles. Enabled AWG requires a unique bound device under `amneziawg_secrets.instances[].peers`; absence refuses the whole payload. Use `AWG_HOST=provider:env` for multiple enabled hosts and `AWG_INSTANCE=name` for multiple matching instances. The endpoint and parameters come from that instance, using the same resolver as the standalone and liveness clients.
 
+The tag identifies the node selected by `AWG_HOST`. It has the form `p2-awg-<provider>-<env>`. If the tag exceeds 64 characters, the export truncates its prefix and adds a 16-character hash. Add the new tag to `subscription_field_report.server_refs` and export fresh bundles to replace device-specific AWG tags in field reports.
+
 ### AWGEntry fields
 
 ```jsonc
 {
-  "tag":     "p2-awg-<client>",      // stable identifier; matches naming convention
+  "tag":     "p2-awg-<provider>-<env>",
   "address": ["10.66.66.2/32", "fd42:42:42::2/128"], // typed device identities, IPv4 then IPv6
   "dns":     ["1.1.1.1", "1.0.0.1"],
   "mtu":     1420, // integer 1280..1420, resolved once for every consumer

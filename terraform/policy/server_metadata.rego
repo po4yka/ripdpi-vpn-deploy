@@ -16,6 +16,29 @@ server_resource_types := {
 }
 
 deny[msg] {
+  some name
+  matcher := {
+    "admin_user": "^[a-z_][a-z0-9_-]{0,31}$",
+    "server_name": "^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$",
+  }[name]
+  variable := input.variables[name]
+  not valid_identity(name, matcher, object.get(variable, "value", null))
+  msg := sprintf("plan input %s must name a valid provisioning identity", [name])
+}
+
+valid_identity("admin_user", matcher, value) {
+  is_string(value)
+  value != "root"
+  regex.match(matcher, value)
+}
+
+valid_identity("server_name", matcher, value) {
+  is_string(value)
+  count(value) <= 253
+  regex.match(matcher, value)
+}
+
+deny[msg] {
   rc := input.resource_changes[_]
   server_resource_types[rc.type]
   after := rc.change.after

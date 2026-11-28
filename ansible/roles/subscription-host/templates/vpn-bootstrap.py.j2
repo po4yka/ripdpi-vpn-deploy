@@ -47,11 +47,11 @@ import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-SUBSCRIPTION_DIR = pathlib.Path("{{ subscription.subscription_dir | default('/var/lib/vpn-subscription') }}")
-LISTEN_ADDR      = "{{ subscription.bootstrap_listen_addr | default('127.0.0.1') }}"
+SUBSCRIPTION_DIR = pathlib.Path({{ subscription.subscription_dir | default('/var/lib/vpn-subscription') | to_json(ensure_ascii=False) }})
+LISTEN_ADDR      = {{ subscription.bootstrap_listen_addr | default('127.0.0.1') | to_json }}
 LISTEN_PORT      = {{ subscription.bootstrap_listen_port | default(8445) }}
-READS_LOG        = pathlib.Path("{{ subscription.reads_log | default('/var/log/vpn-subscription/reads.log') }}")
-REVOKED_FILE     = pathlib.Path("{{ subscription.revoked_file | default('/var/lib/vpn-subscription/revoked') }}")
+READS_LOG        = pathlib.Path({{ subscription.reads_log | default('/var/log/vpn-subscription/reads.log') | to_json(ensure_ascii=False) }})
+REVOKED_FILE     = pathlib.Path({{ subscription.revoked_file | default('/var/lib/vpn-subscription/revoked') | to_json(ensure_ascii=False) }})
 MIRROR_GENERATIONS = SUBSCRIPTION_DIR / ".vpn-sub-mirror-generations"
 MIRROR_CURRENT = SUBSCRIPTION_DIR / ".vpn-sub-mirror-current"
 CONSUMED_BOOTSTRAP_DIR = SUBSCRIPTION_DIR / ".vpn-bootstrap-consumed"

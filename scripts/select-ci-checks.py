@@ -40,6 +40,7 @@ CONSUMERS = {
 PATHS = (
     ("docs/", {"python-vpnd"}),  # vpnd packages the entire tracked Markdown directory.
     ("vpnd/", {"python-vpnd"}),
+    ("ansible/roles/observability_control_plane/molecule/enabled/tasks/fixture-contract.yml", {"ansible", "engine"}),
     ("ansible/", {"ansible"}),
     ("terraform/", {"terraform"}),
     ("secrets/", {"pins"}),

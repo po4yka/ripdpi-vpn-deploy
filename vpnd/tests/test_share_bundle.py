@@ -87,7 +87,7 @@ def test_build_sub_urls_token_path_with_host_and_port():
     assert urls.singbox_deeplink == "sing-box://import-remote-profile?url=" + urlencode(
         urls.subscription_url
     )
-    assert urls.qr_singbox == urls.subscription_url
+    assert urls.qr_singbox == urls.singbox_deeplink
     assert urls.qr_uri == urls.subscription_url
 
 
