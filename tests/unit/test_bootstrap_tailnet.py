@@ -222,6 +222,7 @@ def test_named_permanent_workspace_keeps_identity(controller, inputs, monkeypatc
     fixture = json.loads((ROOT / "tests/fixtures/tf-output-sample.json").read_text())
     fixture["server_hostname"]["value"] = "node-one"
     fixture["server_ipv4"]["value"] = "192.0.2.10"
+    fixture["service_ipv4"]["value"] = "192.0.2.10"
     fixture_path = inputs[0] / "terraform-output.json"
     fixture_path.write_text(json.dumps(fixture))
     helpers._build_terraform_stub(inputs[0] / "renderer/bin", fixture_path)

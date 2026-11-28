@@ -72,3 +72,13 @@ resource "hcloud_floating_ip" "honeypot_ipv4" {
   server_id     = hcloud_server.vpn.id
   labels        = local.base_labels
 }
+
+resource "hcloud_floating_ip" "service_ipv4" {
+  for_each = toset(var.service_ipv4_generations)
+
+  type          = "ipv4"
+  name          = "${var.server_name}-service-${each.key}"
+  home_location = var.location
+  server_id     = hcloud_server.vpn.id
+  labels        = local.base_labels
+}

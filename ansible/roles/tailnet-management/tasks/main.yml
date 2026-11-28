@@ -14,7 +14,7 @@
       - /usr/local/lib/vpn-tailnet/tailnet-check.py
     stdin: >-
       {{ {'inventory_alias': inventory_hostname,
-          'public_address': vpn_service_address,
+          'public_address': vpn_host_address,
           'ssh_port': ansible_port | int,
           'approved_sources': tailnet_management.approved_sources} | to_json }}
   environment:

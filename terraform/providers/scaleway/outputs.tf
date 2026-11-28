@@ -15,6 +15,16 @@ output "honeypot_ipv4" {
   description = "Secondary routed public IPv4 used by the honeypot when additional_public_ip = true."
 }
 
+output "service_ipv4_addresses" {
+  value       = [for name in var.service_ipv4_generations : scaleway_instance_ip.service_ipv4[name].address]
+  description = "Movable client-traffic IPv4 addresses attached to the server, in generation order. Empty when the primary IPv4 carries client traffic."
+}
+
+output "service_ipv4" {
+  value       = length(var.service_ipv4_generations) > 0 ? scaleway_instance_ip.service_ipv4[var.service_ipv4_generations[length(var.service_ipv4_generations) - 1]].address : scaleway_instance_ip.ipv4[0].address
+  description = "Client endpoint IPv4: the newest service address, or the primary IPv4 when none is attached."
+}
+
 output "admin_user" {
   value = var.admin_user
 }

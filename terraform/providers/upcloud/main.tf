@@ -136,3 +136,12 @@ resource "upcloud_server" "vpn" {
     ]
   }
 }
+
+resource "upcloud_floating_ip_address" "service_ipv4" {
+  for_each = toset(var.service_ipv4_generations)
+
+  zone        = var.zone
+  access      = "public"
+  family      = "IPv4"
+  mac_address = [for ni in upcloud_server.vpn.network_interface : ni.mac_address if ni.type == "public" && ni.ip_address_family == "IPv4"][0]
+}

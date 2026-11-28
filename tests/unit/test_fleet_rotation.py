@@ -264,7 +264,8 @@ def liveness(rotation, tmp_path, monkeypatch):
     key.chmod(0o600)
     inventory = tmp_path / "inventory.ini"
     inventory.write_text("[vpn]\nnode-c provider=hetzner env=spare ansible_host=100.64.0.1 "
-                         "vpn_service_address=192.0.2.9 ansible_user=deploy ansible_port=2222\n"
+                         # Liveness binds the client address, never the distinct host address.
+                         "vpn_service_address=192.0.2.9 vpn_host_address=192.0.2.8 ansible_user=deploy ansible_port=2222\n"
                          f"[vpn:vars]\nansible_ssh_private_key_file={key}\n")
     monkeypatch.setenv("FLEET_INVENTORY", str(inventory))
     target = {"inventory_alias": "node-c", "public_service_address_sha256":
@@ -426,7 +427,7 @@ def test_source_cannot_masquerade_as_survivor(rotation, liveness, monkeypatch):
     inventory = Path(os.environ["FLEET_INVENTORY"])
     inventory.write_text(inventory.read_text().replace("[vpn]\n", "[vpn]\n"
                          "node-a provider=upcloud env=blue ansible_host=100.64.0.2 "
-                         "vpn_service_address=192.0.2.9 ansible_user=deploy ansible_port=2223\n"))
+                         "vpn_service_address=192.0.2.9 vpn_host_address=192.0.2.9 ansible_user=deploy ansible_port=2223\n"))
     nodes.insert(0, {"current": "upcloud:blue", "inventory_alias": "node-a"})
     monkeypatch.setattr(live, "pull_report", lambda *_: pytest.fail("aliased survivor probe"))
     with pytest.raises(rotation.RotationError, match="distinct-targets"):

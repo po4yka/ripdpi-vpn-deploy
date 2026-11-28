@@ -178,6 +178,65 @@ run "server_secondary_public_ip_when_honeypot_enabled" {
   }
 }
 
+run "service_ipv4_defaults_to_the_main_address" {
+  command = plan
+
+  assert {
+    condition = (
+      length(vultr_reserved_ip.service_ipv4) == 0
+      && output.service_ipv4 == output.server_ipv4
+      && length(output.service_ipv4_addresses) == 0
+    )
+    error_message = "Without service generations the main IPv4 must remain the client endpoint"
+  }
+}
+
+run "service_ipv4_generations_attach_movable_addresses" {
+  command = plan
+
+  variables {
+    service_ipv4_generations = ["g1", "g2"]
+  }
+
+  override_resource {
+    target = vultr_instance.vpn
+    values = { id = "instance-1", main_ip = "203.0.113.10" }
+  }
+
+  override_resource {
+    target = vultr_reserved_ip.service_ipv4["g1"]
+    values = { subnet = "198.51.100.11" }
+  }
+
+  override_resource {
+    target = vultr_reserved_ip.service_ipv4["g2"]
+    values = { subnet = "198.51.100.12" }
+  }
+
+  assert {
+    condition = (
+      length(vultr_reserved_ip.service_ipv4) == 2
+      && vultr_reserved_ip.service_ipv4["g2"].ip_type == "v4"
+      && vultr_reserved_ip.service_ipv4["g2"].region == var.region
+      && vultr_reserved_ip.service_ipv4["g2"].instance_id == "instance-1"
+      && output.service_ipv4 == "198.51.100.12"
+      && jsonencode(output.service_ipv4_addresses) == jsonencode(["198.51.100.11", "198.51.100.12"])
+      && output.server_ipv4 == "203.0.113.10"
+    )
+    error_message = "Service generations must attach reserved IPv4s to the instance and publish the newest one as the client endpoint"
+  }
+}
+
+run "service_ipv4_generations_are_bounded" {
+  command = plan
+
+  variables {
+    service_ipv4_generations = ["-g1"]
+  }
+
+  expect_failures = [var.service_ipv4_generations]
+}
+
 run "stateful_provider_preserves_unconstrained_nat_output" {
   command = plan
   assert {

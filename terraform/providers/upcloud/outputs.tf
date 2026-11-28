@@ -13,6 +13,16 @@ output "honeypot_ipv4" {
   description = "Secondary public IPv4 used by the honeypot when additional_public_ip = true. Null when not allocated."
 }
 
+output "service_ipv4_addresses" {
+  value       = [for name in var.service_ipv4_generations : upcloud_floating_ip_address.service_ipv4[name].ip_address]
+  description = "Movable client-traffic IPv4 addresses attached to the server, in generation order. Empty when the primary IPv4 carries client traffic."
+}
+
+output "service_ipv4" {
+  value       = length(var.service_ipv4_generations) > 0 ? upcloud_floating_ip_address.service_ipv4[var.service_ipv4_generations[length(var.service_ipv4_generations) - 1]].ip_address : [for ni in upcloud_server.vpn.network_interface : ni.ip_address if ni.type == "public" && ni.ip_address_family == "IPv4"][0]
+  description = "Client endpoint IPv4: the newest service address, or the primary IPv4 when none is attached."
+}
+
 output "admin_user" {
   value = var.admin_user
 }

@@ -188,7 +188,7 @@ def test_blue_green_uses_exact_alias_and_separate_target_secrets_through_make(tm
     executable(scripts / 'terraform-env.sh', '''#!/bin/sh
 case "$*" in
   *server_hostname*) printf 'node-%s\\n' "$ENV" ;;
-  *server_ipv4*) echo 192.0.2.7 ;;
+  *server_ipv4*|*service_ipv4*) echo 192.0.2.7 ;;
   *ssh_port*) echo 2222 ;;
   *) exit 1 ;;
 esac
@@ -273,7 +273,7 @@ def test_single_profile_matrix_requires_fresh_complete_probe_reports(tmp_path, p
     scripts.mkdir()
     shutil.copy(ROOT / 'scripts/transport-reachability-matrix.sh', scripts)
     executable(scripts / 'terraform-env.sh', '''#!/bin/sh
-case "$*" in *server_hostname*) echo node-a ;; *server_ipv4*) echo 192.0.2.7 ;; *) exit 1 ;; esac
+case "$*" in *server_hostname*) echo node-a ;; *service_ipv4*) echo 192.0.2.7 ;; *) exit 1 ;; esac
 ''')
     executable(scripts / 'render-inventory.sh', '#!/bin/sh\ntest "$COHORTS" = ci-p0\n')
     executable(tmp_path / 'bin/make', '#!/bin/sh\ntest "$ANSIBLE_LIMIT" = node-a\n')

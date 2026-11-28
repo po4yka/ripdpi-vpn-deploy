@@ -295,7 +295,7 @@ shift
 mode="$1"; key="${2:-}"
 case "$key" in
   server_ipv4) printf '198.51.100.10' ;;
-  "") printf '{"server_ipv6":{"value":"2001:db8::1"}}' ;;
+  "") printf '{"server_ipv6":{"value":"2001:db8::1"},"service_ipv4":{"value":"198.51.100.10"},"service_ipv4_addresses":{"value":[]}}' ;;
   admin_user) printf deploy ;;
   ssh_port) printf 22 ;;
   server_hostname) printf '%s-test' "$provider" ;;

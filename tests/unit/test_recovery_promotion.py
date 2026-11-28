@@ -136,7 +136,8 @@ def prepared(intent, tmp_path, monkeypatch):
         output.write_bytes(plaintext)
         output.chmod(0o600)
     monkeypatch.setattr(disposable_promotion, '_decrypt', decrypt)
-    host = {'name': intent['target_identity']['inventory_alias'], 'address': '192.0.2.10', 'port': 22, 'user': 'deploy'}
+    host = {'name': intent['target_identity']['inventory_alias'], 'address': '192.0.2.10', 'service': '192.0.2.10',
+            'port': 22, 'user': 'deploy'}
     value = promotion.prepare_intent(intent, host, ['vpn-p0-minimal'], directory, plaintext, {})
     return value, outputs, directory, host, plaintext
 
@@ -179,7 +180,7 @@ def test_prepare_decrypts_actual_sops_and_cleans_owned_plaintext(intent, tmp_pat
         {'public_ipv4': ['192.0.2.10']}, outputs))
     directory = tmp_path / 'real-sops-transaction'
     directory.mkdir(mode=0o700)
-    host = {'name': intent['target_identity']['inventory_alias'], 'address': '192.0.2.10'}
+    host = {'name': intent['target_identity']['inventory_alias'], 'address': '192.0.2.10', 'service': '192.0.2.10'}
     prepared = promotion.prepare_intent(intent, host, ['vpn-p0-minimal'], directory, plain, dict(os.environ))
     assert Path(prepared['inputs']['sops_file']).read_bytes() == source.read_bytes() == cipher
     assert not (directory / 'recovery-promotion-plaintext.yaml').exists()

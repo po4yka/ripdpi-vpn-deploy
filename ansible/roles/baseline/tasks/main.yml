@@ -245,6 +245,9 @@
 - name: Reconcile forwarding for every enabled routing workload
   ansible.builtin.import_tasks: forwarding.yml
 
+- name: Reconcile guest ownership of movable client service addresses
+  ansible.builtin.import_tasks: service-addresses.yml
+
 - name: Read effective MPTCP policy
   ansible.builtin.command:
     cmd: sysctl -n net.mptcp.enabled

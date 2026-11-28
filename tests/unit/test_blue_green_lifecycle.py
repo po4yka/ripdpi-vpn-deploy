@@ -132,7 +132,7 @@ case "$1" in
 esac
 case "$*" in
   *server_hostname*) printf 'node-%s\n' "$ENV" ;;
-  *server_ipv4*) echo 192.0.2.7 ;;
+  *server_ipv4*|*service_ipv4*) echo 192.0.2.7 ;;
   *ssh_port*) echo 2222 ;;
   *) exit 1 ;;
 esac

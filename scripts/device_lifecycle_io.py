@@ -196,6 +196,7 @@ class LocalIO:
                 raise ValueError('device-inventory-identity-mismatch')
             allowed = {'ansible_host', 'ansible_user', 'ansible_port', 'ansible_ssh_private_key_file',
                        'ansible_python_interpreter', 'provider', 'env', 'vpn_service_address',
+                       'vpn_host_address', 'vpn_service_addresses',
                        'vpn_build_environment', 'allowed_ssh_cidrs', 'terraform_public_listeners_b64',
                        'terraform_nat_source_port_range', 'server_ipv6', 'honeypot_listen_addr',
                        'observability_node_id', 'observability_capabilities', 'observability_failure_domain',
@@ -250,7 +251,7 @@ class LocalIO:
         return read_document(path)
 
     def endpoint(self, host):
-        return self.hosts[host]['address']
+        return self.hosts[host]['service']
 
     def publication_io(self, host):
         from device_migration_io import PublisherIO

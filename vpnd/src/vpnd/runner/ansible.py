@@ -59,7 +59,7 @@ def inventory_limit(raw, env, provider, expected_ip=None):
                 raise ValueError(f"missing {field} for inventory host '{name}'")
         if variables["env"] != env or variables["provider"] != provider:
             continue
-        address = variables.get("vpn_service_address", variables.get("ansible_host"))
+        address = variables.get("vpn_host_address", variables.get("ansible_host"))
         if not isinstance(address, str):
             raise ValueError(f"missing address for inventory host '{name}'")
         try:

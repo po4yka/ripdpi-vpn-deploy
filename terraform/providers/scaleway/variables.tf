@@ -208,3 +208,18 @@ variable "additional_public_ip" {
   default     = false
   description = "Allocate a second routed public IPv4 for the honeypot role."
 }
+
+variable "service_ipv4_generations" {
+  type        = list(string)
+  default     = []
+  description = "Ordered names of movable routed public IPv4 addresses that carry client traffic on this server. The last name is the client endpoint; an earlier name stays attached while devices move to the new address. Empty keeps the primary IPv4 as the client endpoint."
+
+  validation {
+    condition = (
+      length(var.service_ipv4_generations) <= 2
+      && length(distinct(var.service_ipv4_generations)) == length(var.service_ipv4_generations)
+      && alltrue([for name in var.service_ipv4_generations : can(regex("^[a-z0-9][a-z0-9-]{0,30}$", name))])
+    )
+    error_message = "service_ipv4_generations holds at most two unique names of 1-31 lowercase letters, digits or hyphens, not starting with a hyphen."
+  }
+}

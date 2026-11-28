@@ -40,7 +40,9 @@ def inventory():
                     "env": "test",
                     "provider": "upcloud",
                     "ansible_host": "203.0.113.8",
-                    "vpn_service_address": "192.0.2.1",
+                    "vpn_host_address": "192.0.2.1",
+                    # A rotated client address never selects the host.
+                    "vpn_service_address": "192.0.2.2",
                 },
                 "second": {"env": "test", "provider": "upcloud", "ansible_host": "192.0.2.2"},
                 "foreign": {"env": "test", "provider": "hetzner", "ansible_host": "192.0.2.3"},
@@ -66,7 +68,7 @@ def test_inventory_scope_uses_selected_provider_and_service_address(tmp_path, mo
 
 def test_inventory_scope_refuses_ambiguous_service_address(tmp_path, monkeypatch):
     data = inventory()
-    data["_meta"]["hostvars"]["second"]["vpn_service_address"] = "192.0.2.1"
+    data["_meta"]["hostvars"]["second"]["vpn_host_address"] = "192.0.2.1"
     ctx, marker = inventory_program(tmp_path, monkeypatch, data)
     host = ("registered", Host("test", "upcloud", ipv4="192.0.2.1"))
     with pytest.raises(ValueError, match="exactly one matching inventory hosts, found 2"):

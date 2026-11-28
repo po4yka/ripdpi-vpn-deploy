@@ -381,7 +381,7 @@ shred -u -- "$GREEN_SECRETS_FILE" 2>/dev/null || rm -f -- "$GREEN_SECRETS_FILE"
 # 6. Operator pivot — flip clients / DNS / floating IP
 # ---------------------------------------------------------------------------
 step "6/8  Operator pivot"
-GREEN_IP="$(PROVIDER="$PROVIDER" ENV="$GREEN_ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
+GREEN_IP="$(PROVIDER="$PROVIDER" ENV="$GREEN_ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw service_ipv4)"
 cat <<EOF
 
 Green node is ready. Its public IPv4 is: ${GREEN_IP}

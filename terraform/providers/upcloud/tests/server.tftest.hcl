@@ -252,6 +252,76 @@ run "server_secondary_public_ip_when_honeypot_enabled" {
   }
 }
 
+run "service_ipv4_defaults_to_the_primary_address" {
+  command = plan
+
+  assert {
+    condition = (
+      length(upcloud_floating_ip_address.service_ipv4) == 0
+      && output.service_ipv4 == output.server_ipv4
+      && length(output.service_ipv4_addresses) == 0
+    )
+    error_message = "Without service generations the primary IPv4 must remain the client endpoint"
+  }
+}
+
+run "service_ipv4_generations_attach_movable_addresses" {
+  command = plan
+
+  variables {
+    service_ipv4_generations = ["g1", "g2"]
+  }
+
+  # The provider validates the MAC syntax during planning; random mock values fail it.
+  override_resource {
+    target = upcloud_server.vpn
+    values = {
+      network_interface = {
+        ip_address  = "203.0.113.10"
+        mac_address = "de:ad:be:ef:00:01"
+      }
+    }
+  }
+
+  override_resource {
+    target = upcloud_floating_ip_address.service_ipv4["g1"]
+    values = { ip_address = "198.51.100.11" }
+  }
+
+  override_resource {
+    target = upcloud_floating_ip_address.service_ipv4["g2"]
+    values = { ip_address = "198.51.100.12" }
+  }
+
+  assert {
+    condition = (
+      length(upcloud_floating_ip_address.service_ipv4) == 2
+      && upcloud_floating_ip_address.service_ipv4["g2"].zone == "fi-hel1"
+      && upcloud_floating_ip_address.service_ipv4["g2"].access == "public"
+      && upcloud_floating_ip_address.service_ipv4["g2"].family == "IPv4"
+      && upcloud_floating_ip_address.service_ipv4["g2"].mac_address == "de:ad:be:ef:00:01"
+      && output.server_ipv4 == "203.0.113.10"
+      && output.service_ipv4 == "198.51.100.12"
+      && jsonencode(output.service_ipv4_addresses) == jsonencode(["198.51.100.11", "198.51.100.12"])
+      && length([
+        for ni in upcloud_server.vpn.network_interface :
+        ni if ni.type == "public" && ni.ip_address_family == "IPv4"
+      ]) == 1
+    )
+    error_message = "Service generations must attach floating IPv4s to the primary public NIC and publish the newest one as the client endpoint"
+  }
+}
+
+run "service_ipv4_generations_are_bounded" {
+  command = plan
+
+  variables {
+    service_ipv4_generations = ["g1", "g1"]
+  }
+
+  expect_failures = [var.service_ipv4_generations]
+}
+
 run "server_ipv6_is_disabled_when_requested" {
   command = plan
 

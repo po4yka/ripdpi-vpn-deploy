@@ -98,21 +98,23 @@ def test_generated_inventory_fixture_is_supported(tmp_path):
 
 def test_service_address_and_tailnet_transport_remain_distinct(tmp_path):
     m = module()
-    path = inventory(tmp_path, "vpn_service_address=192.0.2.1")
+    # A rotated client address never replaces the host's SSH identity.
+    path = inventory(tmp_path, "vpn_host_address=192.0.2.1 vpn_service_address=198.51.100.7")
     path.write_text(path.read_text().replace(
         "node-a ansible_host=192.0.2.1", "node-a ansible_host=100.64.0.2"))
     host = m.select_hosts(path, ["node-a"])[0]
-    assert (host["address"], host["transport"], host["alias"]) == (
-        "192.0.2.1", "100.64.0.2", "192.0.2.1")
+    assert (host["address"], host["service"], host["transport"], host["alias"]) == (
+        "192.0.2.1", "198.51.100.7", "100.64.0.2", "192.0.2.1")
+
+    for valid in ("vpn_host_address=192.0.2.1", "vpn_service_address=198.51.100.7"):
+        broken = tmp_path / ("broken-" + valid.split("=", 1)[0])
+        broken.write_text(path.read_text().replace(valid, valid.split("=", 1)[0] + "=example.com"))
+        with pytest.raises(m.InspectionError, match="invalid-service-address"):
+            m.select_hosts(broken, ["node-a"])
 
     path.write_text(path.read_text().replace(
-        "vpn_service_address=192.0.2.1", "vpn_service_address=example.com"))
-    with pytest.raises(m.InspectionError, match="invalid-service-address"):
-        m.select_hosts(path, ["node-a"])
-
-    path.write_text(path.read_text().replace(
-        "vpn_service_address=example.com",
-        "vpn_service_address=192.0.2.1 inspection_transport_host=100.64.0.3 "
+        "vpn_host_address=192.0.2.1",
+        "vpn_host_address=192.0.2.1 inspection_transport_host=100.64.0.3 "
         "inspection_host_key_alias=192.0.2.1"))
     with pytest.raises(m.InspectionError, match="conflicting-transport-identity"):
         m.select_hosts(path, ["node-a"])

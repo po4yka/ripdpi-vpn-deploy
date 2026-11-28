@@ -1,9 +1,11 @@
 {#- A hint request from a fleet node's public address came through the tunnel; the ingest answers it with 204.
-    The inventory names each node's primary IPv4, its IPv6 (matched by /64) and the honeypot secondary IPv4. -#}
+    The inventory names each node's primary IPv4, its client service IPv4s, its IPv6 (matched by /64) and the
+    honeypot secondary IPv4. -#}
 {%- set _fleet_addresses = [] -%}
 {%- for host in (groups | default({}))['all'] | default([]) -%}
-{%- for address in [hostvars[host]['vpn_service_address'] | default(''), hostvars[host]['server_ipv6'] | default(''),
-                    hostvars[host]['honeypot_listen_addr'] | default('')] if address -%}
+{%- for address in [hostvars[host]['vpn_service_address'] | default(''), hostvars[host]['vpn_host_address'] | default(''),
+                    hostvars[host]['server_ipv6'] | default(''), hostvars[host]['honeypot_listen_addr'] | default('')]
+                   + (hostvars[host]['vpn_service_addresses'] | default([])) if address -%}
 {%- set _ = _fleet_addresses.append(address) -%}
 {%- endfor -%}
 {%- endfor -%}

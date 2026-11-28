@@ -78,11 +78,11 @@ def healthy_survivors(config_path, nodes, *, excluded=()):
         aliases = {node["inventory_alias"] for node in nodes}
         if [host["name"] for host in hosts] != [node["inventory_alias"] for node in nodes]:
             raise RotationError("liveness-inventory-binding-mismatch")
-        if len({host["address"] for host in hosts}) != len(hosts):
+        if len({host["service"] for host in hosts}) != len(hosts):
             raise RotationError("liveness-distinct-targets-required")
         aliases -= set(excluded)
         witnesses = {alias: [] for alias in aliases}
-        addresses = {host["name"]: hashlib.sha256(host["address"].encode()).hexdigest() for host in hosts}
+        addresses = {host["name"]: hashlib.sha256(host["service"].encode()).hexdigest() for host in hosts}
         targets = {}
         for sentinel in config["sentinels"]:
             target = sentinel["target"]

@@ -92,6 +92,74 @@
         that:
           - (baseline_keys_revoked.content | b64decode).splitlines() == [fixture_operator_key]
 
+    # Rotation: attach two service generations, retire the older one, then all.
+    - name: Converge with two attached service addresses
+      ansible.builtin.include_role:
+        name: baseline
+      vars:
+        admin_ssh_public_keys: ["{{ fixture_operator_key }}"]
+        vpn_service_addresses: [192.0.2.77, 192.0.2.78]
+    - name: Read guest addresses with both service generations
+      ansible.builtin.command:
+        argv: [ip, -j, -4, address, show, dev, "{{ ansible_facts.default_ipv4.interface }}"]
+      register: baseline_service_both
+      changed_when: false
+    - name: Both service addresses are owned /32s on the default interface
+      ansible.builtin.assert:
+        that:
+          - _info | selectattr('local', 'equalto', '192.0.2.77') | selectattr('prefixlen', 'equalto', 32) | list | length == 1
+          - _info | selectattr('local', 'equalto', '192.0.2.78') | selectattr('prefixlen', 'equalto', 32) | list | length == 1
+      vars:
+        _info: "{{ baseline_service_both.stdout | from_json | map(attribute='addr_info') | flatten }}"
+    - name: Retire the older service generation
+      ansible.builtin.include_role:
+        name: baseline
+      vars:
+        admin_ssh_public_keys: ["{{ fixture_operator_key }}"]
+        vpn_service_addresses: [192.0.2.78]
+    - name: Read guest addresses after the older generation is retired
+      ansible.builtin.command:
+        argv: [ip, -j, -4, address, show, dev, "{{ ansible_facts.default_ipv4.interface }}"]
+      register: baseline_service_one
+      changed_when: false
+    - name: Read the owned service address units after retirement
+      ansible.builtin.find:
+        paths: /etc/systemd/system
+        patterns: vpn-service-address-*.service
+      register: baseline_service_units_one
+    - name: Only the newest service address and its unit remain
+      ansible.builtin.assert:
+        that:
+          - "'192.0.2.77' not in _locals"
+          - "'192.0.2.78' in _locals"
+          - baseline_service_units_one.files | map(attribute='path') | map('basename') | list
+            == ['vpn-service-address-192.0.2.78-' ~ ansible_facts.default_ipv4.interface ~ '.service']
+      vars:
+        _locals: "{{ baseline_service_one.stdout | from_json | map(attribute='addr_info') | flatten | map(attribute='local') | list }}"
+    - name: Return every client to the primary address
+      ansible.builtin.include_role:
+        name: baseline
+      vars:
+        admin_ssh_public_keys: ["{{ fixture_operator_key }}"]
+        vpn_service_addresses: []
+    - name: Read guest addresses after every service generation is retired
+      ansible.builtin.command:
+        argv: [ip, -j, -4, address, show, dev, "{{ ansible_facts.default_ipv4.interface }}"]
+      register: baseline_service_none
+      changed_when: false
+    - name: Read the owned service address units after full retirement
+      ansible.builtin.find:
+        paths: /etc/systemd/system
+        patterns: vpn-service-address-*.service
+      register: baseline_service_units_none
+    - name: No owned service address or unit remains
+      ansible.builtin.assert:
+        that:
+          - "'192.0.2.78' not in _locals"
+          - baseline_service_units_none.files | length == 0
+      vars:
+        _locals: "{{ baseline_service_none.stdout | from_json | map(attribute='addr_info') | flatten | map(attribute='local') | list }}"
+
     - name: Collect service facts
       ansible.builtin.service_facts:
 

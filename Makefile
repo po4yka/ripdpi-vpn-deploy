@@ -1904,7 +1904,7 @@ probe-matrix-tools:
 emit-probe-matrix-profile:
 	@test -n "$(TARGET_ID)" -a -n "$(PROFILE_OUTPUT)" -a -n "$(PROFILE_VARS)" || { echo "usage: make emit-probe-matrix-profile TARGET_ID=... PROFILE_OUTPUT=... PROFILE_VARS=/absolute/host-vars.yml"; exit 1; }
 	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run make decrypt"; exit 1; }
-	@endpoint="$$(PROVIDER="$(PROVIDER)" ENV="$(ENV)" $(TF_ENV) output -raw server_ipv4)"; \
+	@endpoint="$$(PROVIDER="$(PROVIDER)" ENV="$(ENV)" $(TF_ENV) output -raw service_ipv4)"; \
 	python3 ./scripts/emit-probe-matrix-profile.py --target-id "$(TARGET_ID)" --endpoint "$$endpoint" --vars-file "$(PROFILE_VARS)" --secrets-file "$(SECRETS_FILE)" --output "$(PROFILE_OUTPUT)"
 
 # Per-cell probe invoked by `vpnd probe-matrix`. Emits one JSON line on stdout.

@@ -167,7 +167,8 @@ a complete prior verified environment, without migrating operator state.
   `make decrypt` overwrites it; share/preflight check for existing plaintext
   first. Missing, empty or unsafe input must fail before dependent work.
 - **Limits are inventory keys.** Match the `vpn` group, env/provider and
-  `vpn_service_address`; reject absent, ambiguous or pattern-shaped matches.
+  `vpn_host_address` (the host's primary IPv4, never a rotated client address);
+  reject absent, ambiguous or pattern-shaped matches.
   A cleanup failure fails success but never replaces a primary pipeline error.
 - **Rotation names one alias.** `runner.ansible.rotate` takes one exact alias,
   passes it as `--limit` with `ENV` (the play refuses a host whose inventory env

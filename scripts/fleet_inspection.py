@@ -371,6 +371,18 @@ def _connection_name(value):
         return value
 
 
+def _inventory_address(values, key, default):
+    if key not in values:
+        return default
+    value = values[key]
+    try:
+        if str(ipaddress.ip_address(value)) != value:
+            raise ValueError
+    except ValueError:
+        raise InspectionError("invalid-service-address") from None
+    return value
+
+
 def _open_local_file(path, private=False):
     candidate = Path(path).expanduser().absolute()
     fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
@@ -515,15 +527,10 @@ def select_hosts(inventory_path, selected, *, primary_section="vpn", include_var
         _require_egress_pairing(primary_section, values)
         try:
             connection = _connection_name(values["ansible_host"])
-            address = connection
-            if "vpn_service_address" in values:
-                service = values["vpn_service_address"]
-                try:
-                    if str(ipaddress.ip_address(service)) != service:
-                        raise ValueError
-                except ValueError:
-                    raise InspectionError("invalid-service-address") from None
-                address = service
+            # The host's primary address is its SSH identity; a rotated client
+            # address (vpn_service_address) never becomes a host-key alias.
+            address = _inventory_address(values, "vpn_host_address", connection)
+            service = _inventory_address(values, "vpn_service_address", address)
             user = values["ansible_user"]
             port = int(values["ansible_port"])
             if not re.fullmatch(r"[a-z_][a-z_0-9-]{0,31}", user) or not 1 <= port <= 65535:
@@ -539,7 +546,7 @@ def select_hosts(inventory_path, selected, *, primary_section="vpn", include_var
             or _connection_name(values["inspection_host_key_alias"]) != address
         ):
             raise InspectionError("conflicting-transport-identity")
-        host = {"name": name, "address": address, "port": port, "user": user, "key": key,
+        host = {"name": name, "address": address, "service": service, "port": port, "user": user, "key": key,
                 "transport": _connection_name(values.get("inspection_transport_host", connection)),
                 "alias": _connection_name(values.get("inspection_host_key_alias", address))}
         if include_variables:

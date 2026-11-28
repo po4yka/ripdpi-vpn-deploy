@@ -174,7 +174,7 @@ def capabilities(intent, tmp_path, monkeypatch):
     private = tmp_path.resolve() / "capabilities"
     private.mkdir(mode=0o700)
     state = fixture._state_view()
-    state["outputs"] = {"server_ipv4": {"value": "192.0.2.10"}}
+    state["outputs"] = {"server_ipv4": {"value": "192.0.2.10"}, "service_ipv4": {"value": "192.0.2.10"}}
     import tofu_state
     served = guard.canonical_json(state)
     monkeypatch.setattr(tofu_state, "pull", lambda provider, environment: (
@@ -238,6 +238,7 @@ def capabilities(intent, tmp_path, monkeypatch):
         "host": {
             "name": intent["target_identity"]["inventory_alias"],
             "address": "192.0.2.10",
+            "service": "192.0.2.10",
         },
         "memberships": ["vpn-device-full-staging"],
         "directory": controller_dir,

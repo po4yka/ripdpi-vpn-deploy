@@ -43,6 +43,7 @@ No modules.
 | ---- | ---- |
 | [hcloud_firewall.vpn](https://registry.terraform.io/providers/hetznercloud/hcloud/latest/docs/resources/firewall) | resource |
 | [hcloud_floating_ip.honeypot_ipv4](https://registry.terraform.io/providers/hetznercloud/hcloud/latest/docs/resources/floating_ip) | resource |
+| [hcloud_floating_ip.service_ipv4](https://registry.terraform.io/providers/hetznercloud/hcloud/latest/docs/resources/floating_ip) | resource |
 | [hcloud_server.vpn](https://registry.terraform.io/providers/hetznercloud/hcloud/latest/docs/resources/server) | resource |
 | [hcloud_ssh_key.admin](https://registry.terraform.io/providers/hetznercloud/hcloud/latest/docs/resources/ssh_key) | resource |
 | [terraform_data.admin_user](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
@@ -68,6 +69,7 @@ No modules.
 | <a name="input_public_listeners"></a> [public\_listeners](#input\_public\_listeners) | Public TCP/UDP listeners allowed at the provider edge. Specify exactly one of port or port\_range for each entry. Optional family (ipv4, ipv6 or dual; absent means dual) limits the entry to one address family at every layer. | <pre>list(object({<br/>    name       = string<br/>    protocol   = string<br/>    port       = optional(number)<br/>    port_range = optional(string)<br/>    family     = optional(string)<br/>  }))</pre> | `[]` | no |
 | <a name="input_server_name"></a> [server\_name](#input\_server\_name) | Hostname / Terraform name of the VPS. | `string` | n/a | yes |
 | <a name="input_server_type"></a> [server\_type](#input\_server\_type) | Hetzner server type, e.g. cpx22, cpx32, cx23, cx33. | `string` | n/a | yes |
+| <a name="input_service_ipv4_generations"></a> [service\_ipv4\_generations](#input\_service\_ipv4\_generations) | Ordered names of movable public IPv4 addresses (floating IPs) that carry client traffic on this server. The last name is the client endpoint; an earlier name stays attached while devices move to the new address. Empty keeps the primary IPv4 as the client endpoint. | `list(string)` | `[]` | no |
 | <a name="input_ssh_port"></a> [ssh\_port](#input\_ssh\_port) | Effective SSH listener port configured by cloud-init and opened at the provider edge. | `number` | `22` | no |
 | <a name="input_state_passphrase"></a> [state\_passphrase](#input\_state\_passphrase) | State and plan encryption passphrase, from TF\_VAR\_state\_passphrase only. | `string` | n/a | yes |
 | <a name="input_use_legacy_public_listeners"></a> [use\_legacy\_public\_listeners](#input\_use\_legacy\_public\_listeners) | Opt-in to the historical implicit listener set when public\_listeners is empty. New environments must define public\_listeners explicitly; an empty effective contract fails the plan. | `bool` | `false` | no |
@@ -83,6 +85,8 @@ No modules.
 | <a name="output_server_hostname"></a> [server\_hostname](#output\_server\_hostname) | n/a |
 | <a name="output_server_ipv4"></a> [server\_ipv4](#output\_server\_ipv4) | Public IPv4 address (primary). |
 | <a name="output_server_ipv6"></a> [server\_ipv6](#output\_server\_ipv6) | Public IPv6 address (may be null if disabled). |
+| <a name="output_service_ipv4"></a> [service\_ipv4](#output\_service\_ipv4) | Client endpoint IPv4: the newest service address, or the primary IPv4 when none is attached. |
+| <a name="output_service_ipv4_addresses"></a> [service\_ipv4\_addresses](#output\_service\_ipv4\_addresses) | Movable client-traffic IPv4 addresses attached to the server, in generation order. Empty when the primary IPv4 carries client traffic. |
 | <a name="output_ssh_port"></a> [ssh\_port](#output\_ssh\_port) | Effective SSH listener port. |
 | <a name="output_zone"></a> [zone](#output\_zone) | Provider-specific zone/region/location identifier. |
 <!-- END_TF_DOCS -->

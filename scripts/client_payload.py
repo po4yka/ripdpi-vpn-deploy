@@ -201,7 +201,7 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
         d = loaded[source]
         provider, environment = host.split(':')
         env = dict(os.environ, PROVIDER=provider, ENV=environment)
-        ip = (endpoints[host] if endpoints is not None else command([str(ROOT / 'scripts/terraform-env.sh'), 'output', '-raw', 'server_ipv4'], env=env).decode().strip())
+        ip = (endpoints[host] if endpoints is not None else command([str(ROOT / 'scripts/terraform-env.sh'), 'output', '-raw', 'service_ipv4'], env=env).decode().strip())
         if extended and admission:
             address_admission.require(ip)
         cohort = o['cohorts'][i] if o['cohorts'] else inventory_cohort(command(
