@@ -8,7 +8,7 @@ The fleet's domains are registered at Porkbun, but the repository has no Porkbun
 
 ## What Changes
 
-- New OpenTofu root `terraform/dns/porkbun` that manages DNS records of an explicit list of managed domains, with encrypted B2 state from the start (W3) and `mock_provider` tests.
+- New OpenTofu root `terraform/ops/porkbun` that manages DNS records of an explicit list of managed domains, with encrypted remote state from the start (W3) and `mock_provider` tests.
 - A vetted community Porkbun provider pinned to one exact version with lock-file hashes.
 - A conftest policy that refuses records outside the managed domains and TTLs below Porkbun's minimum.
 - Per-domain API access: API access is turned on only for managed domains, and the CI keys are limited to those domains, to DNS (apply) or read (plan) permission, and to the egress address (W5).

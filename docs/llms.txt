@@ -101,6 +101,7 @@
 - [iOS client research for the deployed VPN fleet](/md/research/ios-client.md)
 - [iOS split routing: curated direct allowlist, fail-closed VPN default](/md/research/ios-split-routing.md)
 - [Management route stalls on the relayed Tailnet path — 2026-11-27](/md/research/management-route-stalls-2026-11.md)
+- [Porkbun OpenTofu provider vetting — 2026-11-28](/md/research/porkbun-provider-vetting-2026-11.md)
 - [Full-graph preview cost and concurrent previews — 2026-11-26](/md/research/preview-cost-2026-11.md)
 - [REALITY target selection — 2026-07-12](/md/research/reality-target-selection-2026-07.md)
 - [XHTTP TLS-in-TLS classifier exposure — 2026-11-27](/md/research/xhttp-tls-in-tls-exposure-2026-11.md)
