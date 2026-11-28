@@ -729,20 +729,24 @@ def test_realm_role_defaults_preserve_standalone_tls_without_p2(
 ):
     role = ANSIBLE / "roles/hysteria-realm"
     production = tasks("roles/hysteria-realm/tasks/main.yml")
-    account = named(production, "Ensure system user")
+    account = named(production, "Ensure Realm identity has no supplementary groups")
     spec = account.pop("ansible.builtin.user")
     account["ansible.builtin.debug"] = {"msg": spec}
     account["register"] = "realm_account"
     copy_tls = named(production, "Drop TLS material when not sharing the hysteria cert")
-    copy_tls["ansible.builtin.copy"].pop("owner")
-    copy_tls["ansible.builtin.copy"].pop("group")
-    copy_tls["ansible.builtin.copy"]["dest"] = (
-        str(tmp_path) + "/{{ item.dest | basename }}"
-    )
-    shared_tls = named(production, "Stage shared TLS material from hysteria config dir")
-    shared_spec = shared_tls.pop("ansible.builtin.file")
-    shared_tls["ansible.builtin.debug"] = {"msg": shared_spec}
-    shared_tls["register"] = "realm_shared_tls"
+    shared_tls = named(production, "Copy only the shared TLS files into Realm authority")
+    for tls_task in (copy_tls, shared_tls):
+        copy_args = tls_task["ansible.builtin.copy"]
+        copy_args.pop("owner")
+        copy_args.pop("group")
+        copy_args["dest"] = str(tmp_path) + "/{{ item.dest | basename }}"
+    source = tmp_path / "hysteria"
+    if share:
+        source.mkdir()
+        for filename in ("server.fullchain.pem", "server.key"):
+            original = source / filename
+            original.write_text("shared " + filename)
+            (tmp_path / filename).symlink_to(original)
     checks = {
         "ansible.builtin.assert": {
             "that": [
@@ -750,24 +754,29 @@ def test_realm_role_defaults_preserve_standalone_tls_without_p2(
                 'hysteria_realm.install_root == "/opt/hysteria-realm"',
                 "hysteria_realm.listen_port | int == 8444",
                 "hysteria_realm.share_hysteria_tls | bool == expected_share",
-                "realm_account.msg.append == expected_share",
-                '(realm_account.msg.groups | default([])) == (["hysteria"] if expected_share else [])',
-                "(realm_shared_tls.skipped | default(false)) == (not expected_share)",
+                'realm_account.msg.group == "hysteria-realm"',
+                "not realm_account.msg.append",
+                'realm_account.msg.groups == ""',
             ]
         },
     }
     probe_role = tmp_path / "probe-role"
     (probe_role / "tasks").mkdir(parents=True)
     (probe_role / "defaults").mkdir()
+    (probe_role / "handlers").mkdir()
     (probe_role / "defaults/main.yml").write_bytes(
         (role / "defaults/main.yml").read_bytes()
     )
+    (probe_role / "handlers/main.yml").write_text(yaml.safe_dump([{
+        "name": "Restart hysteria-realm",
+        "ansible.builtin.debug": {"msg": "Realm TLS reload requested"},
+    }]))
     probe = probe_role / "tasks/main.yml"
     probe.write_text(yaml.safe_dump([account, copy_tls, shared_tls, checks]))
     variables = {
         **yaml.safe_load((ANSIBLE / "group_vars/vpn-ci-p0p5.yml").read_text()),
         "hysteria_realm_listen_port": 8444,
-        "hysteria_config_dir": "/nonexistent-p2-config",
+        "hysteria_config_dir": str(source),
         "hysteria": {"cert_pem": "synthetic-cert", "key_pem": "synthetic-key"},
         "expected_share": share,
     }
@@ -788,14 +797,14 @@ def test_realm_role_defaults_preserve_standalone_tls_without_p2(
         variables,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+    assert "Realm TLS reload requested" in result.stdout
     for filename, expected in [
         ("server.fullchain.pem", "synthetic-cert"),
         ("server.key", "synthetic-key"),
     ]:
         destination = tmp_path / filename
-        assert destination.exists() != share
-        if not share:
-            assert destination.read_text() == expected
+        assert not destination.is_symlink()
+        assert destination.read_text() == ("shared " + filename if share else expected)
 
 
 def test_split_hop_molecule_verifies_the_production_forwarding_file(tmp_path):

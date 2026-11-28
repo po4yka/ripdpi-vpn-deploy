@@ -29,7 +29,8 @@ import urllib.request
 from pathlib import Path
 
 import pytest
-from jinja2 import Environment, FileSystemLoader, StrictUndefined
+
+from scripts.template_render import render_template
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE = (
@@ -70,20 +71,17 @@ def service(tmp_path):
     revoked_file = sub_dir / "revoked"
     port = _free_port()
 
-    env = Environment(
-        loader=FileSystemLoader(str(TEMPLATE.parent)),
-        undefined=StrictUndefined,
-        keep_trailing_newline=True,
-        autoescape=True,
-    )
-    rendered = env.get_template(TEMPLATE.name).render(
-        subscription={
-            "subscription_dir": str(sub_dir),
-            "bootstrap_listen_addr": "127.0.0.1",
-            "bootstrap_listen_port": port,
-            "reads_log": str(reads_log),
-            "revoked_file": str(revoked_file),
-        }
+    rendered = render_template(
+        TEMPLATE,
+        {
+            "subscription": {
+                "subscription_dir": str(sub_dir),
+                "bootstrap_listen_addr": "127.0.0.1",
+                "bootstrap_listen_port": port,
+                "reads_log": str(reads_log),
+                "revoked_file": str(revoked_file),
+            }
+        },
     )
     py_path = tmp_path / "vpn_bootstrap.py"
     py_path.write_text(rendered)
