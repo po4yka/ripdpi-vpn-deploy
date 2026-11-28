@@ -30,6 +30,7 @@
     update_cache: true
     cache_valid_time: 3600
     allow_downgrade: false
+  register: _egress_proxy_install
 
 - name: Create the systemd drop-in directory
   ansible.builtin.file:
@@ -75,3 +76,5 @@
     enabled: true
     state: started
     daemon_reload: true
+  # A first dry-run only plans the install, so the unit does not exist yet.
+  when: not (ansible_check_mode and _egress_proxy_install is changed)
