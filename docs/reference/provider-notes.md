@@ -1,6 +1,6 @@
 # Provider notes
 
-> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-05
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-11-28
 
 The sanitized mapping and last observed convergence state of the accepted four-host, three-provider fleet are recorded in [the deployment snapshot](deployment-status.md). Provider support in this file is a capability statement; only a refreshed plan against the named environment is evidence of current provider state.
 
@@ -136,7 +136,7 @@ Uses:
 - Wider region coverage than UpCloud / Hetzner.
 - IP reputation is more variable; rotate regions when burn-check shows a region's prefix is blocked at the enforcement point.
 - The provider schema marks its API key as required but fills it from the `VULTR_API_KEY` environment variable; the provider block stays empty and tokens never enter tfvars or state inputs.
-- If an API access allowlist is enabled, admit only the operator's current egress as an exact IP/CIDR before the first plan; never use an all-addresses entry. The Terraform workspace wrapper runs a redacted authenticated preflight for control-plane operations and reports allowlist, credential, and network failures separately. Validate a replacement key with a scoped plan before revoking its predecessor; a failed plan is not provider-state evidence.
+- The API access allowlist names only the egress proxy IPv4 as an exact `/32`; never use an all-addresses entry or a workstation address. Run plans with `HTTPS_PROXY` set to the proxy ([egress proxy](../how-to/egress-proxy.md#call-provider-apis-through-the-proxy)). The Terraform workspace wrapper runs a redacted authenticated preflight for control-plane operations and reports allowlist, credential, and network failures separately. Validate a replacement key with a scoped plan before revoking its predecessor; a failed plan is not provider-state evidence.
 - Optional secondary IPv4 allocation uses the provider's reboot path. After apply, `render-inventory.sh` blocks until the address appears on a guest interface over the primary SSH endpoint; API allocation alone is not sufficient evidence for publishing `honeypot_listen_addr`.
 - `vultr_dns_record.managed` owns only the records selected by `managed_dns_records` in the existing `dns_zone`. Keep cross-provider targets in ignored environment `*.tfvars`, populated from the endpoint provider's `server_ipv4` and `server_ipv6` outputs. A server replacement is not complete until DNS is refreshed and `make verify` confirms the published addresses.
 

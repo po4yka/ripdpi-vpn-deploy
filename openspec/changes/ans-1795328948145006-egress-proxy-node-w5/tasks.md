@@ -13,8 +13,8 @@ New `terraform/ops/egress-proxy/**`, `ansible/roles/egress-proxy/**`, `ansible/p
 - [x] ANS-1795329022845451 Add the egress-proxy OpenTofu root with a retained primary IPv4, encrypted state, mock_provider tests and policy #feature !high @item:ANS-1795328948145006
 - [x] ANS-1795329034006860 Add the egress-proxy Ansible role with the CONNECT-only allowlist, hardened unit, nftables and a Molecule scenario #feature !high @item:ANS-1795328948145006
 - [x] ANS-1795329045195870 Add the egress playbook, inventory group and the Tailnet grant from tag:ci-tofu to the proxy port #feature !high @item:ANS-1795328948145006
-- [ ] ANS-1795329056411801 Create and deploy the egress node and prove each provider and the state backend through the proxy (authorized live step) #feature !high @item:ANS-1795328948145006
-- [ ] ANS-1795329068636739 Enable provider API allowlists and remove the workstation Vultr entry (authorized live step) #feature !high @item:ANS-1795328948145006
+- [x] ANS-1795329056411801 Create and deploy the egress node and prove each provider and the state backend through the proxy (authorized live step) #feature !high @item:ANS-1795328948145006
+- [x] ANS-1795329068636739 Enable provider API allowlists and remove the workstation Vultr entry (authorized live step) #feature !high @item:ANS-1795328948145006
 - [ ] ANS-1795329082564404 Document egress break-glass for proxy, VPS and GitHub outages and exercise stopped-service and lost-server recovery #feature !high @item:ANS-1795328948145006
 
 ## Verification

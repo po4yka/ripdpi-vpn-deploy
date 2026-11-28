@@ -29,6 +29,6 @@ artifact_evidence: No release artifact.
 | REQ-EGRESS-SECRETLESS | ANS-1795329034006860 | Molecule file audit; `security-review` checklist | planned |
 | REQ-EGRESS-HARDENED | ANS-1795329034006860 | Molecule `systemd-analyze security` score | planned |
 | REQ-EGRESS-FIXED-ADDRESS | ANS-1795329022845451 | `tofu test` replacement case; recreation drill | planned |
-| REQ-EGRESS-PROVIDER-PROOF | ANS-1795329056411801 | proxy log per provider in the ops repository receipt | planned |
-| REQ-EGRESS-ALLOWLISTS | ANS-1795329068636739 | Vultr direct-call negative receipt | planned |
+| REQ-EGRESS-PROVIDER-PROOF | ANS-1795329056411801 | proxy log per provider in the ops repository receipt (`receipts/egress-proxy-w5-20261128/provider-proof.json`): five plans through the proxy, CONNECT to every provider host and the state host | passed 2026-11-28 |
+| REQ-EGRESS-ALLOWLISTS | ANS-1795329068636739 | Vultr direct-call negative receipt (same file): access list holds only the egress `/32`; direct call 401, proxied call 200 | passed 2026-11-28 |
 | REQ-EGRESS-BREAK-GLASS | ANS-1795329082564404 | Stopped-service SSH repair and lost-server direct bootstrap with retained address and backend lock | planned |
