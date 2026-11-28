@@ -2,7 +2,7 @@
 id: OPS-1795856574795376
 title: Rotate a node's client-facing IPv4 without replacing the server
 kind: feature
-status: doing
+status: review
 area: operations
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: ops-1795856574795376-service-ip-rotation
 created: 2026-11-28
 updated: 2026-11-28
 related_tasks: []
+status_detail: Source and protected-main evidence passed; dry-run, staging and client evidence moved to OPS-1795867688528839
 ---
 
 ## Goal
